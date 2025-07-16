@@ -56,9 +56,18 @@ def create_application() -> FastAPI:
 
     # Trusted Host middleware (security) - disabled in development
     if settings.ENVIRONMENT == "production":
+        # Convert ALLOWED_HOSTS to list if it's a string
+        allowed_hosts = settings.ALLOWED_HOSTS
+        if isinstance(allowed_hosts, str):
+            import json
+            try:
+                allowed_hosts = json.loads(allowed_hosts)
+            except:
+                allowed_hosts = [allowed_hosts]
+        
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=settings.ALLOWED_HOSTS,
+            allowed_hosts=allowed_hosts,
         )
 
     # Request logging middleware
