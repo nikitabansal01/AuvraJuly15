@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase 로그인 테스트</title>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .config-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .config-section h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .user-info {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Firebase 로그인 테스트</h1>
+    
+    <!-- Firebase 설정 섹션 -->
+    <div class="container config-section">
+        <h3>Firebase 설정</h3>
+        <div class="form-group">
+            <label for="apiKey">API Key:</label>
+            <input type="text" id="apiKey" placeholder="Firebase API Key를 입력하세요">
+        </div>
+        <div class="form-group">
+            <label for="authDomain">Auth Domain:</label>
+            <input type="text" id="authDomain" placeholder="your-project.firebaseapp.com">
+        </div>
+        <div class="form-group">
+            <label for="projectId">Project ID:</label>
+            <input type="text" id="projectId" placeholder="your-project-id">
+        </div>
+        <div class="form-group">
+            <label for="storageBucket">Storage Bucket:</label>
+            <input type="text" id="storageBucket" placeholder="your-project.appspot.com">
+        </div>
+        <div class="form-group">
+            <label for="messagingSenderId">Messaging Sender ID:</label>
+            <input type="text" id="messagingSenderId" placeholder="123456789">
+        </div>
+        <div class="form-group">
+            <label for="appId">App ID:</label>
+            <input type="text" id="appId" placeholder="1:123456789:web:abcdef123456">
+        </div>
+        <div class="form-group">
+            <label for="measurementId">Measurement ID:</label>
+            <input type="text" id="measurementId" placeholder="G-XXXXXXXXXX">
+        </div>
+        <button onclick="initializeFirebase()">Firebase 초기화</button>
+        <button onclick="loadDefaultConfig()">기본 설정 로드</button>
+    </div>
+
+    <!-- 로그인 섹션 -->
+    <div class="container" id="auth-container">
+        <h3>사용자 인증</h3>
+        <div class="form-group">
+            <label for="email">이메일:</label>
+            <input type="email" id="email" value="test@auvra.com">
+        </div>
+        <div class="form-group">
+            <label for="password">비밀번호:</label>
+            <input type="password" id="password" value="testpassword123">
+        </div>
+        
+        <button onclick="signIn()">로그인</button>
+        <button onclick="signUp()">회원가입</button>
+        <button onclick="signOut()">로그아웃</button>
+        <button onclick="signInWithGoogle()">Google 로그인</button>
+    </div>
+
+    <!-- 사용자 정보 섹션 -->
+    <div class="container user-info hidden" id="user-info">
+        <h3>사용자 정보</h3>
+        <div id="user-details"></div>
+        <button onclick="getUserInfo()">서버에서 사용자 정보 가져오기</button>
+        <button onclick="getIdToken()">ID 토큰 가져오기</button>
+        <button onclick="testServerAuth()">서버 인증 테스트</button>
+    </div>
+
+    <!-- API 응답 섹션 -->
+    <div class="container">
+        <h3>API 응답</h3>
+        <pre id="response" class="result info">Firebase 설정을 초기화한 후 로그인을 시도해보세요.</pre>
+    </div>
+
+    <script>
+        let auth = null;
+        let firebaseInitialized = false;
+
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('response');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+        }
+
+        function loadDefaultConfig() {
+            // 기본 설정 로드 (실제 프로젝트 설정으로 교체 필요)
+            document.getElementById('apiKey').value = 'AIzaSyDr1bLIcQrd4HtzOb1sVGNKGirA6XeFdPo';
+            document.getElementById('authDomain').value = 'auvra-adf59.firebaseapp.com';
+            document.getElementById('projectId').value = 'auvra-adf5';
+            document.getElementById('storageBucket').value = 'auvra-adf59.firebasestorage.app';
+            document.getElementById('messagingSenderId').value = '830547438935';
+            document.getElementById('appId').value = '1:830547438935:web:0f8886caaf2abb1993e212';
+            document.getElementById('measurementId').value = 'G-P8SVZVEPH1';
+            
+            showResult('⚠️ 기본 설정이 로드되었습니다.\n실제 Firebase 프로젝트 설정으로 교체해주세요.', 'warning');
+        }
+
+        function initializeFirebase() {
+            try {
+                const apiKey = document.getElementById('apiKey').value;
+                const authDomain = document.getElementById('authDomain').value;
+                const projectId = document.getElementById('projectId').value;
+                const storageBucket = document.getElementById('storageBucket').value;
+                const messagingSenderId = document.getElementById('messagingSenderId').value;
+                const appId = document.getElementById('appId').value;
+                const measurementId = document.getElementById('measurementId').value;
+
+                if (!apiKey || !authDomain || !projectId) {
+                    showResult('❌ Firebase 설정이 완료되지 않았습니다.\n모든 필수 필드를 입력해주세요.', 'error');
+                    return;
+                }
+
+                const firebaseConfig = {
+                    apiKey: apiKey,
+                    authDomain: authDomain,
+                    projectId: projectId,
+                    storageBucket: storageBucket,
+                    messagingSenderId: messagingSenderId,
+                    appId: appId,
+                    measurementId: measurementId
+                };
+
+                // Firebase 초기화
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                firebaseInitialized = true;
+
+                // 인증 상태 변경 감지
+                auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        console.log('사용자 로그인:', user.uid);
+                        document.getElementById('user-info').classList.remove('hidden');
+                        updateUserDetails(user);
+                    } else {
+                        console.log('사용자 로그아웃');
+                        document.getElementById('user-info').classList.add('hidden');
+                        document.getElementById('user-details').textContent = '';
+                    }
+                });
+
+                showResult('✅ Firebase가 성공적으로 초기화되었습니다!\n이제 로그인을 시도할 수 있습니다.', 'success');
+            } catch (error) {
+                showResult(`❌ Firebase 초기화 실패: ${error.message}`, 'error');
+            }
+        }
+
+        function updateUserDetails(user) {
+            const userDetails = document.getElementById('user-details');
+            userDetails.innerHTML = `
+                <strong>UID:</strong> ${user.uid}<br>
+                <strong>이메일:</strong> ${user.email}<br>
+                <strong>이메일 인증:</strong> ${user.emailVerified ? '✅' : '❌'}<br>
+                <strong>로그인 시간:</strong> ${user.metadata.lastSignInTime}<br>
+                <strong>계정 생성:</strong> ${user.metadata.creationTime}
+            `;
+        }
+
+        async function signIn() {
+            if (!firebaseInitialized) {
+                showResult('❌ Firebase가 초기화되지 않았습니다.\nFirebase 설정을 먼저 초기화해주세요.', 'error');
+                return;
+            }
+
+            try {
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                
+                if (!email || !password) {
+                    showResult('❌ 이메일과 비밀번호를 입력해주세요.', 'error');
+                    return;
+                }
+                
+                showResult('로그인 중...', 'info');
+                
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                showResult(`✅ 로그인 성공!\nUID: ${user.uid}\n이메일: ${user.email}\n이메일 인증: ${user.emailVerified}`, 'success');
+            } catch (error) {
+                showResult(`❌ 로그인 실패: ${error.message}`, 'error');
+            }
+        }
+
+        async function signUp() {
+            if (!firebaseInitialized) {
+                showResult('❌ Firebase가 초기화되지 않았습니다.\nFirebase 설정을 먼저 초기화해주세요.', 'error');
+                return;
+            }
+
+            try {
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                
+                if (!email || !password) {
+                    showResult('❌ 이메일과 비밀번호를 입력해주세요.', 'error');
+                    return;
+                }
+                
+                showResult('회원가입 중...', 'info');
+                
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                // 이메일 인증 메일 발송
+                await user.sendEmailVerification();
+                
+                showResult(`✅ 회원가입 성공!\nUID: ${user.uid}\n이메일: ${user.email}\n\n📧 이메일 인증 메일이 발송되었습니다.`, 'success');
+            } catch (error) {
+                showResult(`❌ 회원가입 실패: ${error.message}`, 'error');
+            }
+        }
+
+        async function signOut() {
+            if (!firebaseInitialized) {
+                showResult('❌ Firebase가 초기화되지 않았습니다.', 'error');
+                return;
+            }
+
+            try {
+                await auth.signOut();
+                showResult('✅ 로그아웃 성공!', 'success');
+            } catch (error) {
+                showResult(`❌ 로그아웃 실패: ${error.message}`, 'error');
+            }
+        }
+
+        async function signInWithGoogle() {
+            if (!firebaseInitialized) {
+                showResult('❌ Firebase가 초기화되지 않았습니다.\nFirebase 설정을 먼저 초기화해주세요.', 'error');
+                return;
+            }
+
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                showResult('Google 로그인 중...', 'info');
+                
+                const result = await auth.signInWithPopup(provider);
+                const user = result.user;
+                
+                showResult(`✅ Google 로그인 성공!\nUID: ${user.uid}\n이메일: ${user.email}\n이름: ${user.displayName}`, 'success');
+            } catch (error) {
+                showResult(`❌ Google 로그인 실패: ${error.message}`, 'error');
+            }
+        }
+
+        async function getIdToken() {
+            if (!firebaseInitialized) {
+                showResult('❌ Firebase가 초기화되지 않았습니다.', 'error');
+                return;
+            }
+
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    showResult('❌ 로그인된 사용자가 없습니다.', 'error');
+                    return;
+                }
+
+                const idToken = await user.getIdToken();
+                showResult(`✅ ID 토큰 가져오기 성공!\n토큰: ${idToken.substring(0, 50)}...`, 'success');
+                
+                // 토큰을 클립보드에 복사
+                try {
+                    await navigator.clipboard.writeText(idToken);
+                    showResult(`✅ ID 토큰 가져오기 성공!\n토큰: ${idToken.substring(0, 50)}...\n\n📋 토큰이 클립보드에 복사되었습니다!`, 'success');
+                } catch (clipboardError) {
+                    showResult(`✅ ID 토큰 가져오기 성공!\n토큰: ${idToken.substring(0, 50)}...\n\n⚠️ 클립보드 복사 실패: ${clipboardError.message}`, 'success');
+                }
+            } catch (error) {
+                showResult(`❌ ID 토큰 가져오기 실패: ${error.message}`, 'error');
+            }
+        }
+
+        async function testServerAuth() {
+            if (!firebaseInitialized) {
+                showResult('❌ Firebase가 초기화되지 않았습니다.', 'error');
+                return;
+            }
+
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    showResult('❌ 로그인된 사용자가 없습니다.', 'error');
+                    return;
+                }
+
+                const idToken = await user.getIdToken();
+                
+                // ID 토큰 내용 확인 (JWT 디코딩)
+                const tokenParts = idToken.split('.');
+                if (tokenParts.length === 3) {
+                    const payload = JSON.parse(atob(tokenParts[1]));
+                    console.log('ID 토큰 페이로드:', payload);
+                }
+                
+                showResult(`🔍 ID 토큰 정보:\n토큰: ${idToken.substring(0, 100)}...\n\n서버 인증 테스트 중...`, 'info');
+                
+                const response = await fetch('http://localhost:8000/api/v1/auth/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id_token: idToken
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ 서버 인증 성공!\n\n📋 ID 토큰 내용:\nUID: ${result.uid}\n이메일: ${result.email}\n이메일 인증: ${result.email_verified}\n\n🔑 토큰 (처음 100자):\n${idToken.substring(0, 100)}...`, 'success');
+                } else {
+                    showResult(`❌ 서버 인증 실패: ${result.detail}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ 서버 인증 테스트 실패: ${error.message}`, 'error');
+            }
+        }
+
+        async function getUserInfo() {
+            if (!firebaseInitialized) {
+                showResult('❌ Firebase가 초기화되지 않았습니다.', 'error');
+                return;
+            }
+
+            const user = auth.currentUser;
+            if (!user) {
+                showResult('❌ 로그인된 사용자가 없습니다.', 'error');
+                return;
+            }
+            
+            try {
+                const idToken = await user.getIdToken();
+                const response = await fetch('http://localhost:8000/api/v1/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ 서버에서 사용자 정보 조회 성공!\n${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    showResult(`❌ 서버에서 사용자 정보 조회 실패: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ 사용자 정보 조회 실패: ${error.message}`, 'error');
+            }
+        }
+
+        // 페이지 로드 시 기본 설정 로드
+        window.onload = function() {
+            loadDefaultConfig();
+        };
+    </script>
+</body>
+</html> 
