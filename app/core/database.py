@@ -6,7 +6,7 @@ from datetime import datetime
 from app.core.config import settings
 import uuid
 
-# 데이터베이스 엔진 생성
+# Database engine creation
 engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -51,29 +51,29 @@ class UserResponse(Base):
     session_id = Column(String(255))
     uid = Column(String(255), nullable=True)
     
-    # 기본 정보
+    # Basic information
     name = Column(String(255), nullable=True)
     age = Column(Integer, nullable=True)
     
-    # 생리 관련
+    # Menstrual related
     period_description = Column(String(100), nullable=True)
     birth_control = Column(ARRAY(String), nullable=True)
     
-    # 생리 세부사항
-    last_period_date = Column(String(50), nullable=True)  # MM/DD/YYYY 형태
+    # Menstrual details
+    last_period_date = Column(String(50), nullable=True)  # MM/DD/YYYY format
     cycle_length = Column(String(50), nullable=True)
     
-    # 건강 문제 (JSONB로 저장)
+    # Health concerns (stored as JSONB)
     period_concerns = Column(JSONB, nullable=True)
     body_concerns = Column(JSONB, nullable=True)
     skin_hair_concerns = Column(JSONB, nullable=True)
     mental_health_concerns = Column(JSONB, nullable=True)
     other_concerns = Column(JSONB, nullable=True)
     
-    # 최우선 문제
+    # Top priority concern
     top_concern = Column(String(255), nullable=True)
     
-    # 진단된 질환
+    # Diagnosed conditions
     diagnosed_conditions = Column(ARRAY(String), nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
