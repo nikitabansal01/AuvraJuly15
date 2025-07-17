@@ -17,7 +17,6 @@ services:
       
       # 데이터베이스 설정 (환경변수 우선, 없으면 기본값)
       - DATABASE_URL=${DATABASE_URL:-postgresql://auvra_user:auvra_password@db:5432/auvra_db}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       
       # Firebase 설정 (환경변수 우선)
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-auvra-adf59}
@@ -31,7 +30,6 @@ services:
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-["*"]}
     depends_on:
       - db
-      - redis
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
@@ -53,15 +51,7 @@ services:
     networks:
       - auvra-network
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - auvra-network
+
 
   nginx:
     image: nginx:alpine
@@ -79,7 +69,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
 
 networks:
   auvra-network:

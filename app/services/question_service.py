@@ -52,7 +52,7 @@ class QuestionService:
             if not session:
                 raise Exception("세션을 찾을 수 없습니다")
             
-            # 기존 세션의 uid 업데이트
+            # Update uid of existing session
             session.uid = uid
             session.status = "linked"
             session.completed_at = datetime.utcnow()
@@ -66,12 +66,12 @@ class QuestionService:
                 response.uid = uid
             
             self.db.commit()
-            logger.info(f"세션 {session_id}을 사용자 {uid}와 연결")
+            logger.info(f"Session {session_id} linked to user {uid}")
             return True
             
         except Exception as e:
             self.db.rollback()
-            logger.error(f"세션 연결 실패: {str(e)}")
+            logger.error(f"Session linking failed: {str(e)}")
             raise Exception(f"세션 연결 실패: {str(e)}")
 
     def save_user_responses(self, session_id: str, responses: UserResponseData, uid: Optional[str] = None) -> UserResponse:
@@ -88,7 +88,7 @@ class QuestionService:
                 existing_response.uid = uid or existing_response.uid
                 existing_response.updated_at = datetime.utcnow()
                 self.db.commit()
-                logger.info(f"응답 업데이트: 세션 {session_id}")
+                logger.info(f"Response updated: session {session_id}")
                 return existing_response
             else:
                 # 새 응답 생성
@@ -112,12 +112,12 @@ class QuestionService:
                 
                 self.db.add(new_response)
                 self.db.commit()
-                logger.info(f"새 응답 저장: 세션 {session_id}")
+                logger.info(f"New response saved: session {session_id}")
                 return new_response
                 
         except Exception as e:
             self.db.rollback()
-            logger.error(f"응답 저장 실패: {str(e)}")
+            logger.error(f"Response save failed: {str(e)}")
             raise Exception(f"응답 저장 실패: {str(e)}")
 
     def _update_response_fields(self, response: UserResponse, new_data: UserResponseData):
@@ -156,7 +156,7 @@ class QuestionService:
                 UserResponse.uid == uid
             ).order_by(UserResponse.created_at.desc()).all()
         except Exception as e:
-            logger.error(f"사용자 응답 조회 실패: {str(e)}")
+            logger.error(f"User response retrieval failed: {str(e)}")
             raise Exception(f"사용자 응답 조회 실패: {str(e)}")
 
     def get_session_responses(self, session_id: str) -> Optional[UserResponse]:
@@ -166,13 +166,13 @@ class QuestionService:
                 UserResponse.session_id == session_id
             ).first()
         except Exception as e:
-            logger.error(f"세션 응답 조회 실패: {str(e)}")
+            logger.error(f"Session response retrieval failed: {str(e)}")
             raise Exception(f"세션 응답 조회 실패: {str(e)}")
 
     def merge_user_sessions(self, uid: str, session_ids: List[str]) -> bool:
         """여러 세션을 하나의 사용자로 병합"""
         try:
-            # 모든 세션의 응답 데이터 수집
+            # Collect response data from all sessions
             all_responses = []
             for session_id in session_ids:
                 response = self.get_session_responses(session_id)
@@ -185,7 +185,7 @@ class QuestionService:
             # 가장 최신 응답을 기준으로 병합
             latest_response = max(all_responses, key=lambda x: x.created_at)
             
-            # 다른 세션들의 데이터를 최신 응답에 병합
+            # Merge data from other sessions into the latest response
             for response in all_responses:
                 if response.id != latest_response.id:
                     self._merge_response_data(latest_response, response)
@@ -194,7 +194,7 @@ class QuestionService:
             latest_response.uid = uid
             latest_response.updated_at = datetime.utcnow()
             
-            # 다른 세션들 삭제
+            # Delete other sessions
             for session_id in session_ids:
                 if session_id != latest_response.session_id:
                     self.db.query(UserResponse).filter(
@@ -202,12 +202,12 @@ class QuestionService:
                     ).delete()
             
             self.db.commit()
-            logger.info(f"세션 병합 완료: 사용자 {uid}")
+            logger.info(f"Session merge completed: user {uid}")
             return True
             
         except Exception as e:
             self.db.rollback()
-            logger.error(f"세션 병합 실패: {str(e)}")
+            logger.error(f"Session merge failed: {str(e)}")
             raise Exception(f"세션 병합 실패: {str(e)}")
 
     def _merge_response_data(self, target: UserResponse, source: UserResponse):
@@ -273,7 +273,7 @@ class QuestionService:
             }
             
         except Exception as e:
-            logger.error(f"분석 데이터 조회 실패: {str(e)}")
+            logger.error(f"Analytics data retrieval failed: {str(e)}")
             raise Exception(f"분석 데이터 조회 실패: {str(e)}")
 
     def _get_concerns_stats(self, field_name: str) -> Dict[str, int]:
