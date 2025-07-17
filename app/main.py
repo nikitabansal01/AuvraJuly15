@@ -21,6 +21,14 @@ async def lifespan(app: FastAPI):
     # Application startup
     logger.info("Application started.")
     
+    # Database initialization
+    try:
+        from app.core.database import create_tables
+        create_tables()
+        logger.info("Database tables created successfully.")
+    except Exception as e:
+        logger.warning(f"Database initialization failed: {e}")
+    
     # Firebase initialization
     try:
         initialize_firebase()

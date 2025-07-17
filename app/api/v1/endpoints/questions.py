@@ -226,8 +226,22 @@ async def get_analytics(
 async def initialize_database():
     """데이터베이스 테이블 생성 (개발용)"""
     try:
-        create_tables()
-        return {"message": "데이터베이스 테이블이 성공적으로 생성되었습니다"}
+        # Alembic 마이그레이션 실행
+        import subprocess
+        import sys
+        
+        # Alembic upgrade 실행
+        result = subprocess.run([
+            sys.executable, "-m", "alembic", "upgrade", "head"
+        ], capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            # Alembic 실패시 직접 테이블 생성
+            create_tables()
+            return {"message": "데이터베이스 테이블이 성공적으로 생성되었습니다 (직접 생성)"}
+        else:
+            return {"message": "데이터베이스 마이그레이션이 성공적으로 완료되었습니다"}
+            
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
