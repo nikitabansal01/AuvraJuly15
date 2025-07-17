@@ -9,19 +9,22 @@ import uuid
 # Database engine creation
 # Render PostgreSQL requires SSL
 if settings.ENVIRONMENT == "production":
-    # For Render, add SSL mode
+    # For Render with Session Pooler, optimize settings
     database_url = settings.DATABASE_URL
     if "?" not in database_url:
         database_url += "?sslmode=require"
+    
+    # Session Pooler에 최적화된 설정
     engine = create_engine(
         database_url,
-        pool_size=10,
-        max_overflow=20,
-        pool_pre_ping=True,
-        pool_recycle=300
+        pool_size=5,           # Session Pooler가 관리하므로 작게 설정
+        max_overflow=10,       # 적절한 오버플로우
+        pool_pre_ping=False,   # Session Pooler가 관리하므로 비활성화
+        pool_recycle=300,      # 5분마다 연결 재생성
+        echo=False             # 프로덕션에서는 SQL 로그 비활성화
     )
 else:
-    engine = create_engine(settings.DATABASE_URL)
+engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

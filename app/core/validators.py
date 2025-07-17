@@ -6,11 +6,11 @@ class QuestionValidators:
     
     # 허용된 옵션들
     PERIOD_DESCRIPTION_OPTIONS = [
-        "Regular", "Irregular", "Occasional Skips", "I don't get periods"
+        "Regular", "Irregular", "Occasional Skips", "I don't get periods", "I'm not sure"
     ]
     
     CYCLE_LENGTH_OPTIONS = [
-        "Less than 21 days", "21-25 days", "26-30 days", "31-35 days", "35+ days"
+        "Less than 21 days", "21-25 days", "26-30 days", "31-35 days", "35+ days", "I'm not sure"
     ]
     
     BIRTH_CONTROL_OPTIONS = [
@@ -43,7 +43,11 @@ class QuestionValidators:
         "PCOS", "PCOD", "Endometriosis", "Dysmenorrhea (painful periods)",
         "Amenorrhea (absence of periods)", "Menorrhagia (prolonged/heavy bleeding)",
         "Metrorrhagia (irregular bleeding)", "Cushing's Syndrome (PMS)",
-        "Premenstrual Syndrome (PMS)", "None of the above"
+        "Premenstrual Syndrome (PMS)", "None of the above", "Others (please specify)"
+    ]
+    
+    OTHER_CONCERNS_OPTIONS = [
+        "None of these", "Others (please specify)"
     ]
     
     @classmethod
@@ -113,4 +117,12 @@ class QuestionValidators:
         for value in values:
             if value not in cls.DIAGNOSED_CONDITIONS_OPTIONS:
                 raise ValueError(f"Invalid diagnosed_condition: {value}. Allowed options: {cls.DIAGNOSED_CONDITIONS_OPTIONS}")
+        return values
+    
+    @classmethod
+    def validate_other_concerns(cls, values: List[str]) -> List[str]:
+        """기타 문제 검증"""
+        for value in values:
+            if value not in cls.OTHER_CONCERNS_OPTIONS:
+                raise ValueError(f"Invalid other_concern: {value}. Allowed options: {cls.OTHER_CONCERNS_OPTIONS}")
         return values 

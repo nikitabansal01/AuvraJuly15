@@ -12,6 +12,9 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.database import create_tables
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -48,16 +51,22 @@ async def save_responses(
 ):
     """Save user responses (available without login)"""
     try:
+        logger.info(f"답변 저장 요청 받음: session_id={session_id}")
+        logger.info(f"요청 데이터: {response_data}")
+        
         service = QuestionService(db)
         uid = None  # 로그인 없이도 답변 저장 가능
         
         # Check if session exists
         session = service.get_session(session_id)
         if not session:
+            logger.error(f"세션을 찾을 수 없음: {session_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
+        
+        logger.info(f"세션 확인됨: {session.session_id}")
         
         # Save responses
         saved_response = service.save_user_responses(
@@ -66,11 +75,13 @@ async def save_responses(
             uid
         )
         
+        logger.info(f"답변 저장 성공: {saved_response.id}")
         return UserResponseFull.from_orm(saved_response)
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"답변 저장 중 예외 발생: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Response save failed: {str(e)}"
