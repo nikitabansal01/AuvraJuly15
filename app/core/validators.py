@@ -4,7 +4,7 @@ from pydantic import validator, ValidationError
 class QuestionValidators:
     """질문 옵션 검증 클래스"""
     
-    # 허용된 옵션들
+    # 허용된 옵션들 (QuestionScreen과 완전히 일치)
     PERIOD_DESCRIPTION_OPTIONS = [
         "Regular", "Irregular", "Occasional Skips", "I don't get periods", "I'm not sure"
     ]
@@ -113,16 +113,16 @@ class QuestionValidators:
     
     @classmethod
     def validate_diagnosed_conditions(cls, values: List[str]) -> List[str]:
-        """진단된 질환 검증"""
+        """진단된 질환 검증 - Others 텍스트 입력 허용"""
         for value in values:
-            if value not in cls.DIAGNOSED_CONDITIONS_OPTIONS:
-                raise ValueError(f"Invalid diagnosed_condition: {value}. Allowed options: {cls.DIAGNOSED_CONDITIONS_OPTIONS}")
+            if value not in cls.DIAGNOSED_CONDITIONS_OPTIONS and not value.startswith("Others:"):
+                raise ValueError(f"Invalid diagnosed_condition: {value}. Allowed options: {cls.DIAGNOSED_CONDITIONS_OPTIONS} or custom text starting with 'Others:'")
         return values
     
     @classmethod
     def validate_other_concerns(cls, values: List[str]) -> List[str]:
-        """기타 문제 검증"""
+        """기타 문제 검증 - Others 텍스트 입력 허용"""
         for value in values:
-            if value not in cls.OTHER_CONCERNS_OPTIONS:
-                raise ValueError(f"Invalid other_concern: {value}. Allowed options: {cls.OTHER_CONCERNS_OPTIONS}")
+            if value not in cls.OTHER_CONCERNS_OPTIONS and not value.startswith("Others:"):
+                raise ValueError(f"Invalid other_concern: {value}. Allowed options: {cls.OTHER_CONCERNS_OPTIONS} or custom text starting with 'Others:'")
         return values 

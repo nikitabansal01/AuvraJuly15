@@ -24,7 +24,7 @@ if settings.ENVIRONMENT == "production":
         echo=False             # 프로덕션에서는 SQL 로그 비활성화
     )
 else:
-engine = create_engine(settings.DATABASE_URL)
+    engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
