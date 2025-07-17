@@ -67,8 +67,8 @@ class ProductionSettings(Settings):
     DEBUG: bool = False
     LOG_LEVEL: str = "WARNING"
     ENVIRONMENT: str = "production"
-    # 프로덕션 환경: 특정 도메인만 허용
-    ALLOWED_HOSTS: List[str] = ["your-domain.com", "api.your-domain.com"]
+    # 프로덕션 환경: 모든 호스트 허용 (Render용)
+    ALLOWED_HOSTS: List[str] = ["*"]
     # 프로덕션에서는 환경변수에서 가져와야 함
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/auvra_db")
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")

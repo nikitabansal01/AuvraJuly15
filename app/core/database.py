@@ -7,7 +7,21 @@ from app.core.config import settings
 import uuid
 
 # Database engine creation
-engine = create_engine(settings.DATABASE_URL)
+# Render PostgreSQL requires SSL
+if settings.ENVIRONMENT == "production":
+    # For Render, add SSL mode
+    database_url = settings.DATABASE_URL
+    if "?" not in database_url:
+        database_url += "?sslmode=require"
+    engine = create_engine(
+        database_url,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=300
+    )
+else:
+    engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
