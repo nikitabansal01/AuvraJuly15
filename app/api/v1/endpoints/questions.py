@@ -44,13 +44,12 @@ async def create_session(
 async def save_responses(
     session_id: str,
     response_data: UserResponseCreate,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
-    """Save user responses"""
+    """Save user responses (available without login)"""
     try:
         service = QuestionService(db)
-        uid = current_user.get("uid") if current_user else None
+        uid = None  # 로그인 없이도 답변 저장 가능
         
         # Check if session exists
         session = service.get_session(session_id)
@@ -144,10 +143,9 @@ async def get_user_responses(
 @router.get("/sessions/{session_id}/responses", response_model=UserResponseFull)
 async def get_session_responses(
     session_id: str,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
-    """Get session responses"""
+    """Get session responses (available without login)"""
     try:
         service = QuestionService(db)
         response = service.get_session_responses(session_id)
@@ -226,21 +224,9 @@ async def get_analytics(
 async def initialize_database():
     """데이터베이스 테이블 생성 (개발용)"""
     try:
-        # Alembic 마이그레이션 실행
-        import subprocess
-        import sys
-        
-        # Alembic upgrade 실행
-        result = subprocess.run([
-            sys.executable, "-m", "alembic", "upgrade", "head"
-        ], capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            # Alembic 실패시 직접 테이블 생성
-            create_tables()
-            return {"message": "데이터베이스 테이블이 성공적으로 생성되었습니다 (직접 생성)"}
-        else:
-            return {"message": "데이터베이스 마이그레이션이 성공적으로 완료되었습니다"}
+        # 직접 테이블 생성 (더 안전한 방법)
+        create_tables()
+        return {"message": "데이터베이스 테이블이 성공적으로 생성되었습니다"}
             
     except Exception as e:
         raise HTTPException(
