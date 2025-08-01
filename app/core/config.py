@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     # 데이터베이스 설정
     DATABASE_URL: str = "postgresql://user:password@localhost/auvra_db"
     
+    # RAG 설정
+    FIRECRAWL_API_KEY: str = ""
+    FIRECRAWL_BASE_URL: str = "https://api.firecrawl.dev/v0/scrape"
+    
+    # Pinecone 설정
+    PINECONE_API_KEY: str = ""
+    PINECONE_ENVIRONMENT: str = ""
+    PINECONE_INDEX: str = ""
+    
 
     
     # 로깅 설정

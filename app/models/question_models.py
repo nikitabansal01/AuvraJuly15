@@ -92,7 +92,7 @@ class UserResponseData(BaseModel):
         if v is not None:
             return QuestionValidators.validate_diagnosed_conditions(v)
         return v
-    
+
     @validator('other_concerns')
     def validate_other_concerns(cls, v):
         if v is not None:

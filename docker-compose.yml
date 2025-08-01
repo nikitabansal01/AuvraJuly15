@@ -23,11 +23,26 @@ services:
       - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY:-}
       - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL:-}
       
+      # AI 설정
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      
+      # RAG 설정
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
+      - FIRECRAWL_BASE_URL=${FIRECRAWL_BASE_URL:-https://api.firecrawl.dev/v0/scrape}
+      
+      # Pinecone 설정
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+      - PINECONE_INDEX=${PINECONE_INDEX}
+      
       # 보안 설정
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here-change-in-production}
       
       # CORS 설정 (환경변수 우선, 없으면 모든 호스트 허용)
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-["*"]}
+
+      
     depends_on:
       - db
     volumes:
