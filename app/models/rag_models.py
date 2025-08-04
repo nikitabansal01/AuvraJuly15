@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
+from datetime import datetime
 
 class Author(BaseModel):
     """저자 정보"""
@@ -12,6 +13,26 @@ class PublicationDate(BaseModel):
     year: Optional[int] = None
     month: Optional[int] = None
     day: Optional[int] = None
+
+class StudyArm(BaseModel):
+    """연구 팔 정보"""
+    arm_name: Optional[str] = ""
+    intervention_type: Optional[List[str]] = []
+    target_symptoms: Optional[List[str]] = []
+    hormone_focus: Optional[List[str]] = []
+    participant_count: Optional[int] = 0
+    duration: Optional[str] = ""
+    description: Optional[str] = ""
+
+class ChunkStudyArms(BaseModel):
+    """청크의 study arms 정보를 PostgreSQL에 저장하기 위한 모델"""
+    chunk_id: str
+    paper_id: str  # pmid 또는 pmcid
+    section_type: Optional[str] = ""
+    chunk_summary: Optional[str] = ""
+    study_arms: List[StudyArm] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 class PaperMeta(BaseModel):
     title: str

@@ -1,10 +1,14 @@
 import httpx
 import logging
 from typing import List, Dict, Any, Optional
-from app.models.rag_models import PaperMeta, ChunkedPaper, TaggedChunk, EmbeddingResult
+from app.models.rag_models import PaperMeta, ChunkedPaper, TaggedChunk, EmbeddingResult, ChunkStudyArms, StudyArm
 import uuid
 from app.services.ai_service import AIService
 import os
+import json
+from datetime import datetime
+from app.core.database import get_db
+from sqlalchemy import text
 
 # RAG service logger configuration
 logger = logging.getLogger(__name__)
@@ -501,14 +505,14 @@ class RAGService:
                         url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmcid}/"
                     
                     # 논문 정보 구성
-                                paper = {
+                    paper = {
                         "title": title,
                         "abstract": abstract,
                         "pmid": pmid_text,
                         "pmcid": pmcid,
                         "doi": doi,
                         "date": str(publication_year) if publication_year else "",
-                                    "url": url,
+                        "url": url,
                         "mesh_terms": mesh_terms,
                         "content": abstract,  # 기본값으로 abstract 사용
                         # 새로운 메타데이터
@@ -532,18 +536,14 @@ class RAGService:
                             papers.append(paper)
                             logger.debug(f"PCOS related paper added (abstract only): {title}")
                     else:
-                            logger.debug(f"Excluded due to no PCOS relevance: {title}")
-                else:
-                          # Exclude if neither abstract nor PMC ID exists
-                          logger.warning(f"Excluded due to no abstract and PMC ID: {title}")
-                        
-        except Exception as e:
+                        logger.debug(f"Excluded due to no PCOS relevance: {title}")
+                except Exception as e:
                     logger.error(f"Paper parsing failed: {e}")
                     continue
                     
             logger.info(f"PubMed XML parsing completed: {len(papers)} papers")
             return papers
-            
+        
         except Exception as e:
             logger.error(f"PubMed XML parsing failed: {e}")
             return []
@@ -1220,9 +1220,9 @@ Respond with ONLY this JSON format (no additional text):
                 
                 # 기본 메타데이터
                 metadata = {
-                    "title": chunk.title,
-                    "url": chunk.source_url,
-                    "text": chunk.text,  # 원문 텍스트 저장 (RAG 필수)
+                    "title": chunk.title[:500] if chunk.title else "",  # 크기 제한
+                    "url": chunk.source_url[:200] if chunk.source_url else "",  # 크기 제한
+                    "text": chunk.text[:1000] if chunk.text else "",  # 원문 텍스트 저장 (RAG 필수, 크기 제한)
                     "start_idx": chunk.start_idx,
                     "end_idx": chunk.end_idx
                 }
@@ -1304,15 +1304,21 @@ Respond with ONLY this JSON format (no additional text):
                         # 청크 태깅 수행 (문서 레벨 태그를 컨텍스트로 활용)
                         chunk_tagged = await RAGService.tag_chunk_with_llm(chunk, section_tags)
                         
+                        # study_arms를 텍스트로 변환
+                        study_arms_text = ""
+                        if chunk_tagged.study_arms:
+                            study_arms_text = RAGService.convert_study_arms_to_text(chunk_tagged.study_arms)
+                        
                         # 청크 레벨 태그 추가
                         metadata.update({
                             "chunk_section_type": chunk_tagged.section_type or "",
                             "chunk_summary": chunk_tagged.chunk_summary or "",
-                            "chunk_study_arms": chunk_tagged.study_arms or [],
                             # study_arms에서 추출한 필드들 (중복 제거)
                             "intervention_type": chunk_tagged.intervention_type or [],
                             "symptoms_focus": chunk_tagged.symptoms_focus or [],
-                            "hormone_focus": chunk_tagged.hormone_focus or []
+                            "hormone_focus": chunk_tagged.hormone_focus or [],
+                            # study_arms를 텍스트로 저장
+                            "study_arms_text": study_arms_text
                         })
                         
                         # study_arms 구조 로깅
@@ -1330,15 +1336,21 @@ Respond with ONLY this JSON format (no additional text):
                         # 청크 태깅만 수행
                         chunk_tagged = await RAGService.tag_chunk_with_llm(chunk, None)
                         
+                        # study_arms를 텍스트로 변환
+                        study_arms_text = ""
+                        if chunk_tagged.study_arms:
+                            study_arms_text = RAGService.convert_study_arms_to_text(chunk_tagged.study_arms)
+                        
                         # 청크 레벨 태그만 추가
                         metadata.update({
                             "chunk_section_type": chunk_tagged.section_type or "",
                             "chunk_summary": chunk_tagged.chunk_summary or "",
-                            "chunk_study_arms": chunk_tagged.study_arms or [],
                             # study_arms에서 추출한 필드들 (중복 제거)
                             "intervention_type": chunk_tagged.intervention_type or [],
                             "symptoms_focus": chunk_tagged.symptoms_focus or [],
-                            "hormone_focus": chunk_tagged.hormone_focus or []
+                            "hormone_focus": chunk_tagged.hormone_focus or [],
+                            # study_arms를 텍스트로 저장
+                            "study_arms_text": study_arms_text
                         })
                         
                         logger.info(f"[Embedding] Chunk tags only processed: {chunk.chunk_id}")
@@ -1574,20 +1586,35 @@ Respond with ONLY this JSON format (no additional text):
         try:
             index = RAGService.get_pinecone_client()
             
+            # 메타데이터 크기 확인
+            metadata_size = len(str(embedding.metadata))
+            if metadata_size > 40000:  # Pinecone 메타데이터 제한
+                logger.error(f"[Pinecone] Metadata too large ({metadata_size} chars), exceeding 40,000 char limit. Skipping vector: {embedding.id}")
+                logger.error(f"[Pinecone] Metadata keys: {list(embedding.metadata.keys())}")
+                return False
+            
             # 벡터 저장
             vector_data = {
                 "id": embedding.id,
                 "values": embedding.values,
                 "metadata": embedding.metadata
             }
+            
+            logger.debug(f"[Pinecone] Attempting to save vector: {embedding.id}")
+            logger.debug(f"[Pinecone] Vector dimension: {len(embedding.values)}")
+            logger.debug(f"[Pinecone] Metadata keys: {list(embedding.metadata.keys())}")
+            
             index.upsert(vectors=[vector_data], namespace=namespace)
             
             logger.info(f"[Pinecone] 임베딩 저장 성공: {embedding.id}")
             logger.debug(f"  - 벡터 차원: {len(embedding.values)}")
-            logger.debug(f"  - 메타데이터: {embedding.metadata}")
+            logger.debug(f"  - 메타데이터 크기: {len(str(embedding.metadata))} chars")
             return True
         except Exception as e:
             logger.error(f"[Pinecone] 임베딩 저장 실패: {e}")
+            logger.error(f"[Pinecone] Vector ID: {embedding.id}")
+            logger.error(f"[Pinecone] Vector dimension: {len(embedding.values)}")
+            logger.error(f"[Pinecone] Metadata keys: {list(embedding.metadata.keys()) if embedding.metadata else 'None'}")
             return False
 
     @staticmethod
@@ -1855,54 +1882,43 @@ Respond with ONLY this JSON format (no additional text):
     @staticmethod
     async def search_and_rank_papers(query: str, user_profile: Optional[Dict] = None, top_k: int = 10, filter: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """
-        사용자 쿼리에 따라 Pinecone에서 논문을 검색하고 우선순위를 계산한다.
-        :param query: 사용자 쿼리
-        :param user_profile: 사용자 프로필
-        :param top_k: 반환할 최대 논문 수
-        :param filter: Pinecone 필터 조건
-        :return: 우선순위가 계산된 논문 리스트
+        Pinecone을 이용해 논문을 검색하고 우선순위를 계산한다.
+        :param query: 검색 쿼리
+        :param user_profile: 사용자 프로필 (선택사항)
+        :param top_k: 반환할 결과 수
+        :param filter: 필터 조건 (선택사항)
+        :return: 검색 결과 리스트
         """
         try:
-            # 1. 쿼리를 벡터로 변환
-            query_vector = await RAGService.get_query_embedding(query)
+            # 1. 쿼리 임베딩 생성
+            query_embedding = await RAGService.get_query_embedding(query)
             
-            # 2. Pinecone에서 유사한 벡터 검색
+            # 2. Pinecone 검색
             index = RAGService.get_pinecone_client()
-            search_kwargs = {
-                "vector": query_vector,
-                "top_k": top_k * 3,  # 더 많은 결과를 가져와서 필터링
-                "namespace": "pcos-rag",
-                "include_metadata": True
-            }
+            search_results = index.query(
+                vector=query_embedding,
+                top_k=top_k * 2,  # 더 많은 결과를 가져와서 필터링
+                include_metadata=True,
+                namespace="pcos-rag"
+            )
             
-            # 필터가 있으면 추가
-            if filter:
-                search_kwargs["filter"] = filter
-            
-            search_results = index.query(**search_kwargs)
-            
-            # 3. 검색 결과를 논문 형태로 변환
+            # 3. 검색 결과 처리
             papers = []
             for match in search_results.matches:
                 paper = {
-                    "title": match.metadata.get("title", ""),
-                    "content": match.metadata.get("text", ""),  # 원문 텍스트 (RAG 필수)
-                    "url": match.metadata.get("url", ""),
-                    "date": match.metadata.get("date", ""),
-                    "source": match.metadata.get("source", ""),
-                    "study_type": match.metadata.get("study_type", ""),
-                    "intervention_type": match.metadata.get("intervention_type", ""),
-                    "hormone_focus": match.metadata.get("hormone_focus", []),
-                    "symptoms_focus": match.metadata.get("symptoms_focus", []),
-                    "participant_count": match.metadata.get("participant_count", 0),
-                    "published_year": match.metadata.get("published_year", 0),
-                    "citation_count": match.metadata.get("citation_count", 0),
-                    "risk_of_bias": match.metadata.get("risk_of_bias", ""),
-                    "similarity_score": match.score
+                    "id": match.id,
+                    "score": match.score,
+                    "metadata": match.metadata
                 }
+                
+                # Pinecone 메타데이터에서 study arms 정보 가져오기
+                paper["study_arms_text"] = match.metadata.get("study_arms_text", "")
+                paper["section_type"] = match.metadata.get("chunk_section_type", "")
+                paper["chunk_summary"] = match.metadata.get("chunk_summary", "")
+                
                 papers.append(paper)
             
-            # 4. 사용자 프로필 기반 우선순위 계산
+            # 4. 우선순위 계산
             if user_profile:
                 ranked_papers = RAGService.calculate_user_priority(papers, user_profile)
             else:
@@ -1910,7 +1926,8 @@ Respond with ONLY this JSON format (no additional text):
             
             # 5. 상위 결과만 반환
             return ranked_papers[:top_k]
-            except Exception as e:
+            
+        except Exception as e:
             logger.error(f"논문 검색 및 우선순위 계산 실패: {e}")
             return []
 
@@ -2101,6 +2118,8 @@ Respond with ONLY this JSON format (no additional text):
             # <sec> 태그들을 찾기
             sec_elements = root.findall(".//sec")
             
+            logger.info(f"Found {len(sec_elements)} <sec> elements in PMC XML")
+            
             for sec in sec_elements:
                 section_info = {
                     "title": "",
@@ -2119,13 +2138,39 @@ Respond with ONLY this JSON format (no additional text):
                 sec_type = sec.get("sec-type", "").lower()
                 section_info["sec_type"] = sec_type
                 
-                # 내용 추출 (p 태그들)
-                paragraphs = []
+                # 내용 추출 (모든 텍스트 노드 포함)
+                content_parts = []
+                
+                # p 태그들
                 for p in sec.findall(".//p"):
                     if p.text:
-                        paragraphs.append(p.text.strip())
+                        content_parts.append(p.text.strip())
                 
-                section_info["content"] = " ".join(paragraphs)
+                # list 태그들
+                for list_elem in sec.findall(".//list"):
+                    for item in list_elem.findall(".//list-item"):
+                        if item.text:
+                            content_parts.append(f"• {item.text.strip()}")
+                
+                # table 태그들 (간단한 텍스트로 변환)
+                for table in sec.findall(".//table"):
+                    table_text = "Table: "
+                    for row in table.findall(".//tr"):
+                        row_text = []
+                        for cell in row.findall(".//td"):
+                            if cell.text:
+                                row_text.append(cell.text.strip())
+                        if row_text:
+                            table_text += " | ".join(row_text) + " "
+                    if table_text != "Table: ":
+                        content_parts.append(table_text)
+                
+                # 기타 텍스트 노드들
+                for elem in sec.iter():
+                    if elem.text and elem.text.strip() and elem.tag not in ['p', 'list', 'table']:
+                        content_parts.append(elem.text.strip())
+                
+                section_info["content"] = " ".join(content_parts)
                 
                 # 섹션 타입에 따른 우선순위 설정
                 priority_map = {
@@ -2143,7 +2188,7 @@ Respond with ONLY this JSON format (no additional text):
                 if sec_type in priority_map:
                     section_info["priority"] = priority_map[sec_type]
                     section_info["confidence"] = 0.9
-        else:
+                else:
                     # 제목 키워드 기반 우선순위
                     title_lower = section_info["title"].lower()
                     for keyword, priority in priority_map.items():
@@ -2154,10 +2199,14 @@ Respond with ONLY this JSON format (no additional text):
                 
                 if section_info["content"].strip():  # 내용이 있는 섹션만 추가
                     sections.append(section_info)
+                    logger.debug(f"Section found: {section_info['title']} ({section_info['sec_type']}) - {len(section_info['content'])} chars")
+                else:
+                    logger.debug(f"Section skipped (no content): {section_info['title']} ({section_info['sec_type']})")
             
             # 우선순위로 정렬
             sections.sort(key=lambda x: x["priority"])
             
+            logger.info(f"Successfully parsed {len(sections)} sections with content")
             return sections
             
         except Exception as e:
@@ -2345,13 +2394,22 @@ Respond with ONLY this JSON format (no additional text):
         Process paper with section-based tagging (all sections, no priority) and create document-level tags
         """
         try:
+            # PMC XML이 있으면 그것을 사용, 없으면 content 사용
+            pmc_xml = paper.get("pmc_xml", "")
             content = paper.get("content", "")
-            if not content:
-                logger.warning(f"No content available for section tagging: {paper.get('title', 'Unknown')}")
+            
+            if not pmc_xml and not content:
+                logger.warning(f"No PMC XML or content available for section tagging: {paper.get('title', 'Unknown')}")
                 return paper
             
-            # Parse sections from PMC XML
-            sections = RAGService.parse_pmc_sections(content)
+            # PMC XML이 있으면 XML에서 섹션 파싱, 없으면 content에서 파싱
+            if pmc_xml:
+                sections = RAGService.parse_pmc_sections(pmc_xml)
+                logger.info(f"Parsing sections from PMC XML: {paper.get('title', 'Unknown')}")
+            else:
+                # content가 이미 추출된 텍스트인 경우, 섹션 파싱이 어려우므로 fallback
+                logger.info(f"No PMC XML available, using fallback tagging: {paper.get('title', 'Unknown')}")
+                return await RAGService.process_paper_with_fallback_tagging(paper)
             
             if sections:
                 logger.info(f"Found {len(sections)} sections for tagging: {paper.get('title', 'Unknown')}")
@@ -2363,7 +2421,7 @@ Respond with ONLY this JSON format (no additional text):
                         section_tags = await RAGService.tag_section_with_llm(
                             section_title=section.get("title", ""),
                             section_content=section.get("content", ""),
-                            section_type=section.get("type", ""),
+                            section_type=section.get("sec_type", ""),  # sec_type으로 수정
                             paper_context={
                                 "title": paper.get("title", ""),
                                 "abstract": paper.get("abstract", ""),
@@ -2373,7 +2431,7 @@ Respond with ONLY this JSON format (no additional text):
                         
                         tagged_sections.append({
                             "title": section.get("title", ""),
-                            "type": section.get("type", ""),
+                            "type": section.get("sec_type", ""),  # sec_type으로 수정
                             "content": section.get("content", ""),
                             "tags": section_tags
                         })
@@ -2473,48 +2531,17 @@ Respond with ONLY this JSON format (no additional text):
                 all_tags.append(tags)
                 logger.debug(f"청크 {i+1} 태깅 완료")
             
-            # 신뢰도 기반으로 최고 값 선택
-            final_tags = {
-                "study_type": {"value": "", "confidence": 0.0},
-                "is_human_study": {"value": False, "confidence": 0.0},
-                "study_duration": {"value": "", "confidence": 0.0},
-                "risk_of_bias": {"value": "", "confidence": 0.0},
-                "hybrid": False
-            }
-            
-            # 각 태그별로 최고 신뢰도 값 선택
-            for tag_name in ["study_type", "is_human_study", "study_duration"]:
-                best_tag = None
-                best_confidence = 0.0
-                
-                for tags in all_tags:
-                    if tags[tag_name]["confidence"] > best_confidence and tags[tag_name]["value"]:
-                        best_confidence = tags[tag_name]["confidence"]
-                        best_tag = tags[tag_name]
-                
-                if best_tag:
-                    final_tags[tag_name] = best_tag
-                    logger.debug(f"최고 신뢰도 {tag_name}: {best_tag['value']} (신뢰도: {best_tag['confidence']:.2f})")
-            
-            # risk_of_bias 종합 (모든 청크의 결과를 종합)
-            risk_scores = [tag["risk_of_bias"] for tag in all_tags if tag["risk_of_bias"]["value"]]
-            if risk_scores:
-                # 신뢰도 기반 종합
-                high_count = sum(1 for score in risk_scores if score["value"] == "high")
-                moderate_count = sum(1 for score in risk_scores if score["value"] == "moderate")
-                low_count = sum(1 for score in risk_scores if score["value"] == "low")
-                
-                if high_count > moderate_count and high_count > low_count:
-                    final_risk = "high"
-                elif moderate_count > low_count:
-                    final_risk = "moderate"
-                else:
-                    final_risk = "low"
-                
-                avg_confidence = sum(score["confidence"] for score in risk_scores) / len(risk_scores)
-                final_tags["risk_of_bias"] = {"value": final_risk, "confidence": avg_confidence}
-                
-                logger.debug(f"Risk of bias 종합: {final_risk} (신뢰도: {avg_confidence:.2f})")
+            # 섹션 태깅과 동일한 방식으로 종합
+            if all_tags:
+                final_tags = await RAGService.aggregate_section_tags(all_tags)
+                logger.debug(f"Fallback 태깅 종합: {len(all_tags)}개 청크에서 {len(final_tags.get('study_arms', []))}개 study arms 추출")
+            else:
+                final_tags = {
+                    "section_type": "",
+                    "section_summary": "",
+                    "study_type": "",
+                    "study_arms": []
+                }
             
             paper["section_tags"] = final_tags
             paper["fallback_tagging"] = True
@@ -3018,3 +3045,66 @@ Respond with ONLY this JSON format (no additional text):
                 "risk_of_bias": "",
                 "summary": ""
             }
+
+    # @staticmethod
+    # async def save_chunk_study_arms_to_db(chunk_id: str, paper_id: str, chunk_tagged: TaggedChunk) -> bool:
+    #     """
+    #     청크의 study arms 정보를 PostgreSQL에 저장 (사용하지 않음 - Pinecone에 텍스트로 저장)
+    #     """
+    #     # PostgreSQL 저장 로직 제거 - Pinecone에 study_arms_text로 저장
+    #     return True
+
+    # @staticmethod
+    # async def get_chunk_study_arms_from_db(chunk_id: str) -> Optional[ChunkStudyArms]:
+    #     """
+    #     PostgreSQL에서 chunk study arms 정보를 조회 (사용하지 않음 - Pinecone에서 텍스트로 조회)
+    #     """
+    #     # PostgreSQL 조회 로직 제거 - Pinecone에서 study_arms_text로 조회
+    #     return None
+
+    @staticmethod
+    def convert_study_arms_to_text(study_arms: List[Dict[str, Any]]) -> str:
+        """
+        study_arms 리스트를 텍스트로 변환
+        :param study_arms: study_arms 리스트
+        :return: 텍스트 형태의 study_arms 정보
+        """
+        if not study_arms:
+            return ""
+        
+        text_parts = []
+        for i, arm in enumerate(study_arms, 1):
+            arm_text = f"Study Arm {i}: "
+            
+            # 기본 정보
+            if arm.get("arm_name"):
+                arm_text += f"Name: {arm['arm_name']}, "
+            
+            if arm.get("intervention_type"):
+                interventions = ", ".join(arm["intervention_type"])
+                arm_text += f"Interventions: {interventions}, "
+            
+            if arm.get("target_symptoms"):
+                symptoms = ", ".join(arm["target_symptoms"])
+                arm_text += f"Target Symptoms: {symptoms}, "
+            
+            if arm.get("hormone_focus"):
+                hormones = ", ".join(arm["hormone_focus"])
+                arm_text += f"Hormone Focus: {hormones}, "
+            
+            if arm.get("participant_count"):
+                arm_text += f"Participants: {arm['participant_count']}, "
+            
+            if arm.get("duration"):
+                arm_text += f"Duration: {arm['duration']}, "
+            
+            if arm.get("description"):
+                arm_text += f"Description: {arm['description']}"
+            
+            # 마지막 쉼표 제거
+            if arm_text.endswith(", "):
+                arm_text = arm_text[:-2]
+            
+            text_parts.append(arm_text)
+        
+        return " | ".join(text_parts)

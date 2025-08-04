@@ -361,10 +361,25 @@ CONFIDENCE ASSESSMENT:
             # 원문 텍스트 추출
             text = result.get("content", "")
             title = result.get("title", "")
+            study_arms_text = result.get("study_arms_text", "")
+            section_type = result.get("section_type", "")
+            chunk_summary = result.get("chunk_summary", "")
             
             if text and title:
                 # 제목과 내용을 결합
                 research_text = f"Title: {title}\n\nContent: {text[:2000]}"  # 2000자로 제한
+                
+                # study_arms 정보 추가
+                if study_arms_text:
+                    research_text += f"\n\nStudy Arms: {study_arms_text}"
+                
+                # 섹션 정보 추가
+                if section_type:
+                    research_text += f"\n\nSection Type: {section_type}"
+                
+                if chunk_summary:
+                    research_text += f"\n\nChunk Summary: {chunk_summary}"
+                
                 research_texts.append(research_text)
         
         return research_texts[:5]  # 상위 5개 연구만 사용 
