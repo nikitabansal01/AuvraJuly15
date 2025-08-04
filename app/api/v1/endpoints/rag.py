@@ -246,7 +246,7 @@ async def test_pubmed_search_endpoint():
                 logger.warning(f"XML 파싱 실패: {e}")
                 id_count = "파싱 실패"
             
-            return {
+    return {
                 "status": "success",
                 "search_url": search_url,
                 "id_count": id_count,

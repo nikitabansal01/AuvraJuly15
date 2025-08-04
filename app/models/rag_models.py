@@ -79,28 +79,34 @@ class ChunkedPaper(BaseModel):
 
 class TaggedChunk(BaseModel):
     chunk_id: str
-    # 기본 정보
+    text: str
+    
+    # 새로운 필드들 (2차 태깅 리팩토링)
+    section_type: Optional[str] = ""
+    chunk_summary: Optional[str] = ""
+    study_arms: Optional[List[Dict[str, Any]]] = []
+    
+    # Study arm에서 추출되는 필드들
+    condition_disease: Optional[List[str]] = []
+    target: Optional[List[str]] = []
+    target_age_distribution: Optional[Dict[str, int]] = {}
+    num_of_participants: Optional[int] = 0
+    study_duration: Optional[str] = ""
+    hormone_focus: Optional[List[str]] = []
+    target_symptoms: Optional[List[str]] = []
+    primary_outcome: Optional[List[str]] = []
+    
+    # 기존 필드들 (호환성을 위해 유지)
     study_type: Optional[str] = ""
     is_human_study: Optional[bool] = False
-    # published_year: Optional[int] = None  # PubMed API 출판년도 우선 사용
     participant_count: Optional[int] = 0
-    
-    # 우선순위 기준 Level 1 (의학적 관련성)
-    hormone_focus: Optional[List[str]] = []
     symptoms_focus: Optional[List[str]] = []
     relevance_score: Optional[int] = 0
-    
-    # 우선순위 기준 Level 2 (필터링)
-    intervention_type: Optional[List[str]] = []  # food, exercise, mindfulness, supplement, medication, combination, none
-    
-    # 우선순위 기준 Level 3 (품질)
-    risk_of_bias: Optional[str] = ""  # low, moderate, high
+    intervention_type: Optional[List[str]] = []
+    risk_of_bias: Optional[str] = ""
     citation_count: Optional[int] = 0
-    
-    # 추가 정보
     menstrual_phase: Optional[str] = ""
-    study_duration: Optional[str] = ""
-    primary_outcome: Optional[str] = ""
+    primary_outcome_text: Optional[str] = ""
     
     # 기존 필드 (하위 호환성)
     tags: Optional[List[str]] = []

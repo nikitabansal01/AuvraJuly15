@@ -501,14 +501,14 @@ class RAGService:
                         url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmcid}/"
                     
                     # 논문 정보 구성
-                    paper = {
+                                paper = {
                         "title": title,
                         "abstract": abstract,
                         "pmid": pmid_text,
                         "pmcid": pmcid,
                         "doi": doi,
                         "date": str(publication_year) if publication_year else "",
-                        "url": url,
+                                    "url": url,
                         "mesh_terms": mesh_terms,
                         "content": abstract,  # 기본값으로 abstract 사용
                         # 새로운 메타데이터
@@ -531,13 +531,13 @@ class RAGService:
                         if RAGService.is_pcos_related_paper(abstract, title, url):
                             papers.append(paper)
                             logger.debug(f"PCOS related paper added (abstract only): {title}")
-                        else:
+                    else:
                             logger.debug(f"Excluded due to no PCOS relevance: {title}")
-                      else:
+                else:
                           # Exclude if neither abstract nor PMC ID exists
                           logger.warning(f"Excluded due to no abstract and PMC ID: {title}")
                         
-                except Exception as e:
+        except Exception as e:
                     logger.error(f"Paper parsing failed: {e}")
                     continue
                     
@@ -935,68 +935,129 @@ class RAGService:
     @staticmethod
     def suggest_tagging_prompt(chunk: ChunkedPaper, section_tags: Optional[Dict[str, Any]] = None) -> str:
         """
-        LLM 태깅 프롬프트 생성 - 청크별 세부 정보만 추출 (1차 태깅 결과를 컨텍스트로 활용)
+        LLM tagging prompt generation - extract chunk-specific details with strict options
         """
-        # 1차 태깅 결과가 있으면 컨텍스트로 활용
+        # Use document-level tagging results as context
         context_info = ""
-        if section_tags:
+        if section_tags and section_tags.get("document_level"):
+            doc_tags = section_tags["document_level"]
             context_info = f"""
-DOCUMENT-LEVEL CONTEXT (from section tagging):
-- Study Type: {section_tags.get('study_type', {}).get('value', 'unknown')}
-- Human Study: {section_tags.get('is_human_study', {}).get('value', False)}
-- Study Duration: {section_tags.get('study_duration', {}).get('value', 'unknown')}
-- Risk of Bias: {section_tags.get('risk_of_bias', {}).get('value', 'unknown')}
-- Participant Count: {section_tags.get('participant_count', {}).get('value', 0)}
+DOCUMENT-LEVEL CONTEXT (from document-level tagging):
+- Study Type: {', '.join(doc_tags.get('study_type', []))}
+- Conditions: {', '.join(doc_tags.get('condition_disease', []))}
+- Target: {', '.join(doc_tags.get('target', []))}
+- Participants: {doc_tags.get('num_of_participants', 0)}
+- Duration: {doc_tags.get('study_duration', '')}
+- Interventions: {', '.join(doc_tags.get('intervention_type', []))}
+- Hormones: {', '.join(doc_tags.get('hormone_focus', []))}
+- Symptoms: {', '.join(doc_tags.get('target_symptoms', []))}
+- Risk of Bias: {doc_tags.get('risk_of_bias', '')}
+- Summary: {doc_tags.get('summary', '')}
 
 Note: Do NOT extract the above fields again. Focus only on chunk-specific information.
 """
 
+        # Add PubMed API information if available
+        pubmed_context = ""
+        if hasattr(chunk, 'source_paper') and chunk.source_paper:
+            paper_info = chunk.source_paper
+            pubmed_context = f"""
+PAPER CONTEXT (from PubMed API):
+- Title: {paper_info.get('title', 'N/A')}
+- Abstract: {paper_info.get('abstract', 'N/A')[:500]}...
+- MeSH Terms: {', '.join(paper_info.get('mesh_terms', []))}
+"""
+
+        # Add chunk-specific section information
+        chunk_section_context = ""
+        if hasattr(chunk, 'overlapping_sections') and chunk.overlapping_sections:
+            chunk_section_context = "CHUNK-SPECIFIC SECTION INFORMATION:\n"
+            for i, section in enumerate(chunk.overlapping_sections):
+                chunk_section_context += f"Section {i+1}: {section.get('section_title', 'Unknown')}\n"
+                chunk_section_context += f"- Type: {section.get('section_type', 'unknown')}\n"
+                chunk_section_context += f"- Overlap Ratio: {section.get('overlap_ratio', 0):.2f}\n"
+                
+                # Include section tags if available
+                if section.get('section_tags'):
+                    section_tags_info = section['section_tags']
+                    chunk_section_context += f"- Section Summary: {section_tags_info.get('section_summary', '')}\n"
+                    chunk_section_context += f"- Study Type: {section_tags_info.get('study_type', '')}\n"
+                    
+                    # Include study arms for this section
+                    if section_tags_info.get('study_arms'):
+                        chunk_section_context += f"- Study Arms:\n"
+                        for j, arm in enumerate(section_tags_info['study_arms']):
+                            chunk_section_context += f"  Arm {j+1}:\n"
+                            chunk_section_context += f"    - Conditions: {', '.join(arm.get('condition_disease', []))}\n"
+                            chunk_section_context += f"    - Target: {', '.join(arm.get('target', []))}\n"
+                            chunk_section_context += f"    - Participants: {arm.get('num_of_participants', 0)}\n"
+                            chunk_section_context += f"    - Duration: {arm.get('study_duration', '')}\n"
+                            chunk_section_context += f"    - Interventions: {', '.join(arm.get('intervention_category', []))}\n"
+                            chunk_section_context += f"    - Hormones: {', '.join(arm.get('hormone_biomarker_focus', []))}\n"
+                            chunk_section_context += f"    - Symptoms: {', '.join(arm.get('target_symptoms', []))}\n"
+                            chunk_section_context += f"    - Risk of Bias: {arm.get('risk_of_bias', '')}\n"
+                chunk_section_context += "\n"
+
         return f'''
-Given the following medical text chunk about PCOS, extract chunk-specific information. 
-Use the document-level context provided and focus ONLY on chunk-specific details.
-Respond ONLY with valid JSON format.
+Given the following medical text chunk about PCOS, extract chunk-specific information with strict options.
+Use the provided context and focus ONLY on chunk-specific details.
+Respond ONLY with valid JSON format using the specified options.
 
 {context_info}
 
+{pubmed_context}
+
+{chunk_section_context}
+
 CHUNK TEXT: """{chunk.text}"""
 
-REQUIRED FIELDS (chunk-specific only):
-- intervention_type: list of intervention types mentioned in this chunk [food, movement, mindfulness]
-  IMPORTANT: You MUST use ONLY these exact terms: "food", "movement", "mindfulness". 
-  Do NOT use "diet", "exercise", "workout", "training", "physical activity", "meditation", "stress", "relaxation".
-  If you find diet/nutrition related content, use "food".
-  If you find exercise/workout/training related content, use "movement".
-  If you find meditation/stress/relaxation related content, use "mindfulness".
-  If you find supplement/medication content or no intervention content, use empty list [].
-- hormone_focus: list of hormones mentioned in this chunk [estrogen, progesterone, androgens, cortisol, insulin, thyroid, testosterone, DHEA, SHBG]
-- symptoms_focus: list of PCOS symptoms mentioned in this chunk [acne, hair_loss, hair_thinning, bloating, breast_tenderness]
-- relevance_score: 1-10 (10 = highly relevant to PCOS treatment for this specific chunk)
-- primary_outcome: main result or finding mentioned in this chunk
+REQUIRED FIELDS (with strict options):
+- section_type: Options: method, abstract, introduction, method, results, discussion, conclusion, others
+- condition_disease: Options: PCOD, PCOS, endometriosis, dysmenorrhea, amenorrhea, menorrhagia, metrorrhagia, PMS, cushing's syndrome, others
+- target: Options: female, male, mixed, animal, not_specified
+- target_age_distribution: Options: children, teenager, young_adult, adult, middle_aged, aged, perimenopause, postmenopausal, others
+  Criteria: children (-12), teenager (13-18), young_adult (18-25), adult (26-44), middle_aged (45-64), aged (65+)
+  Format: {{"teenager": 10, "adult": 20}}
+- num_of_participants: Total number
+- study_duration: Total study duration (not partial results duration)
+- intervention_category: Options: food, movement, mindfulness, others
+- hormone_focus: Options: androgens, progesterone, estrogen, thyroid, cortisol, insulin, others
+- target_symptoms: Options: irregular periods, painful periods, light periods, spotting, heavy periods, bloating, hot flashes, nausea, difficulty losing weight, stubborn belly fat, weight gain, menstrual headaches, hirsutism, thinning of hair, adult acne, mood swings, stress, fatigue, others
+- primary_outcome: Who did what for how long and what results were obtained
+- chunk_summary: 2-3 sentence summary of this chunk
 
-OPTIONAL FIELDS (chunk-specific):
-- menstrual_phase: if mentioned in this chunk [follicular, ovulation, luteal, menses]
-- citation_count: if mentioned in this chunk
-
-IMPORTANT: Do NOT extract study_type, is_human_study, study_duration, or risk_of_bias as these are already determined at document level.
+IMPORTANT RULES:
+1. Use ONLY the specified options for each field
+2. If information is not found or doesn't match options, use empty string "" for text fields, empty list [] for list fields, and 0 for numeric fields
+3. Do NOT use null or None values
+4. Do NOT extract document-level fields that are already provided in context
 
 Respond with ONLY this JSON format (no additional text):
 {{
-  "intervention_type": ["food", "movement"],
-  "hormone_focus": ["insulin", "androgens"],
-                  "symptoms_focus": ["acne", "hair_loss"],
-  "relevance_score": 8,
-  "primary_outcome": "Improved insulin sensitivity",
-  "menstrual_phase": "follicular",
-  "citation_count": 45
+  "section_type": "method",
+  "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+  "study_arms": [
+    {{
+      "condition_disease": ["PCOS"],
+  "study_duration": "12 weeks",
+      "target": ["female"],
+      "target_age_distribution": {{
+        "adult": 30
+      }},
+      "num_of_participants": 30,
+      "intervention_type": ["food"],
+      "hormone_focus": ["insulin"],
+      "primary_outcome": ["Improved insulin sensitivity and reduced androgen levels after dietary changes"],
+      "target_symptoms": ["irregular periods", "weight gain", "bloating"]
+    }}
+  ]
 }}
-
-IMPORTANT: If a field is not found in the text, use empty string "" for text fields, empty list [] for list fields, and 0 for numeric fields. Do NOT use null or None values.
 '''
 
     @staticmethod
     async def tag_chunk_with_llm(chunk: ChunkedPaper, section_tags: Optional[Dict[str, Any]] = None) -> TaggedChunk:
         """
-        LLM을 이용해 chunk에 태깅 정보를 부여한다. (1차 태깅 결과를 컨텍스트로 활용)
+        LLM을 이용해 chunk에 태깅 정보를 부여한다. (문서 레벨 결과를 컨텍스트로 활용)
         """
         prompt = RAGService.suggest_tagging_prompt(chunk, section_tags)
         llm_response = await AIService.call_openai(prompt)
@@ -1022,74 +1083,108 @@ IMPORTANT: If a field is not found in the text, use empty string "" for text fie
                 
                 parsed = json.loads(json_str)
                 
-                # 청크별 정보만 처리 (1차 태깅에서 이미 추출된 필드들은 제외)
-                parsed = {
-                    # 1차 태깅에서 이미 추출된 필드들은 제외
-                    # "study_type": parsed.get('study_type') or "",
-                    # "is_human_study": parsed.get('is_human_study') or False,
-                    # "participant_count": parsed.get('participant_count') or 0,
-                    # "risk_of_bias": parsed.get('risk_of_bias') or "",
-                    # "study_duration": parsed.get('study_duration') or "",
-                    
-                    # 청크별 정보만 추출
-                    "intervention_type": RAGService.normalize_intervention_type(parsed.get('intervention_type') or []),
-                    "hormone_focus": parsed.get('hormone_focus') or [],
-                    "symptoms_focus": parsed.get('symptoms_focus') or [],
-                    "relevance_score": parsed.get('relevance_score') or 0,
-                    "menstrual_phase": parsed.get('menstrual_phase') or "",
-                    "citation_count": parsed.get('citation_count') or 0,
-                    "primary_outcome": parsed.get('primary_outcome') or ""
-                }
+                # 새로운 구조에 맞게 처리
+                section_type = parsed.get('section_type', '')
+                chunk_summary = parsed.get('chunk_summary', '')
+                study_arms = parsed.get('study_arms', [])
                 
-                logger.info(f"[LLM Tagging] Parsing successful: {chunk.chunk_id}")
-                logger.debug(f"  - study_type: {parsed.get('study_type')}")
-                logger.debug(f"  - is_human_study: {parsed.get('is_human_study')}")
-                logger.debug(f"  - published_year: {parsed.get('published_year')}")
-                logger.debug(f"  - participant_count: {parsed.get('participant_count')}")
-                logger.debug(f"  - intervention_type: {parsed.get('intervention_type')}")
-                logger.debug(f"  - relevance_score: {parsed.get('relevance_score')}")
+                # study_arms에서 필드 추출 및 중복 제거
+                all_intervention_types = []
+                all_symptoms_focus = []
+                all_hormone_focus = []
+                
+                for arm in study_arms:
+                    if arm.get('intervention_type'):
+                        all_intervention_types.extend(arm['intervention_type'])
+                    if arm.get('target_symptoms'):
+                        all_symptoms_focus.extend(arm['target_symptoms'])
+                    if arm.get('hormone_focus'):
+                        all_hormone_focus.extend(arm['hormone_focus'])
+                
+                # 중복 제거
+                all_intervention_types = list(set(all_intervention_types))
+                all_symptoms_focus = list(set(all_symptoms_focus))
+                all_hormone_focus = list(set(all_hormone_focus))
+                
+                # TaggedChunk 객체 생성 (study_arms는 그대로 유지)
+                tagged_chunk = TaggedChunk(
+                    chunk_id=chunk.chunk_id,
+                    text=chunk.text,
+                    # 새로운 필드들
+                    section_type=section_type,
+                    chunk_summary=chunk_summary,
+                    study_arms=study_arms,
+                    # 기존 필드들 (호환성을 위해 빈 값으로 설정)
+                    condition_disease=[],
+                    target=[],
+                    target_age_distribution={},
+                    num_of_participants=0,
+                    study_duration="",
+                    intervention_type=all_intervention_types,
+                    hormone_focus=all_hormone_focus,
+                    target_symptoms=all_symptoms_focus,
+                    primary_outcome=[],
+                    # 기존 필드들 (호환성을 위해 유지)
+                    symptoms_focus=all_symptoms_focus,
+                    relevance_score=0,  # 새로운 구조에서는 사용하지 않음
+                    primary_outcome_text="",
+                    menstrual_phase="",
+                    citation_count=0
+                )
+                
+                logger.debug(f"[Chunk Tagging] 청크 '{chunk.chunk_id}' 태깅 완료")
+                return tagged_chunk
+                
             else:
-                logger.warning(f"[LLM Tagging] JSON not found: {chunk.chunk_id}")
-                logger.debug(f"  - Original response: {llm_response[:300]}...")
-                parsed = {}
+                logger.warning(f"[Chunk Tagging] JSON을 찾을 수 없음: {chunk.chunk_id}")
+                # 기본값으로 TaggedChunk 생성
+                return TaggedChunk(
+                    chunk_id=chunk.chunk_id,
+                    text=chunk.text,
+                    section_type="",
+                    chunk_summary="",
+                    study_arms=[],
+                    condition_disease=[],
+                    target=[],
+                    target_age_distribution={},
+                    num_of_participants=0,
+                    study_duration="",
+                    intervention_category=[],
+                    hormone_focus=[],
+                    target_symptoms=[],
+                    primary_outcome=[],
+                    intervention_type=[],
+                    symptoms_focus=[],
+                    relevance_score=0,
+                    primary_outcome_text="",
+                    menstrual_phase="",
+                    citation_count=0
+                )
                 
-        except json.JSONDecodeError as e:
-            logger.error(f"[LLM Tagging] JSON parsing failed: {chunk.chunk_id}, error: {e}")
-            logger.debug(f"  - Original response: {llm_response[:300]}...")
-            parsed = {}
         except Exception as e:
-            logger.error(f"[LLM Tagging] Unexpected error: {chunk.chunk_id}, error: {e}")
-            parsed = {}
-        
-        return TaggedChunk(
-            chunk_id=chunk.chunk_id,
-            # 기본 정보
-            study_type=parsed.get("study_type"),
-            is_human_study=parsed.get("is_human_study"),
-            # published_year=parsed.get("published_year"),  # PubMed API 출판년도 우선 사용
-            participant_count=parsed.get("participant_count"),
-            
-            # 우선순위 기준 Level 1 (의학적 관련성)
-            hormone_focus=parsed.get("hormone_focus", []),
-            symptoms_focus=parsed.get("symptoms_focus", []),
-            relevance_score=parsed.get("relevance_score"),
-            
-            # 우선순위 기준 Level 2 (필터링)
-            intervention_type=parsed.get("intervention_type"),
-            
-            # 우선순위 기준 Level 3 (품질)
-            risk_of_bias=parsed.get("risk_of_bias"),
-            citation_count=parsed.get("citation_count"),
-            
-            # 추가 정보
-            menstrual_phase=parsed.get("menstrual_phase"),
-            study_duration=parsed.get("study_duration"),
-            primary_outcome=parsed.get("primary_outcome"),
-            
-            # 기존 필드 (하위 호환성)
-            tags=parsed.get("tags", []),
-            title=chunk.title,
-            url=chunk.source_url
+            logger.error(f"[Chunk Tagging] 청크 태깅 실패: {chunk.chunk_id}, 에러: {e}")
+            # 에러 시 기본값으로 TaggedChunk 생성
+            return TaggedChunk(
+                chunk_id=chunk.chunk_id,
+                text=chunk.text,
+                section_type="",
+                chunk_summary="",
+                study_arms=[],
+                condition_disease=[],
+                target=[],
+                target_age_distribution={},
+                num_of_participants=0,
+                study_duration="",
+                intervention_category=[],
+                hormone_focus=[],
+                target_symptoms=[],
+                primary_outcome=[],
+                intervention_type=[],
+                symptoms_focus=[],
+                relevance_score=0,
+                primary_outcome_text="",
+                menstrual_phase="",
+                citation_count=0
         )
 
     @staticmethod
@@ -1182,89 +1277,80 @@ IMPORTANT: If a field is not found in the text, use empty string "" for text fie
                 else:
                     metadata["overlapping_sections"] = []
                 
-                # 섹션 태그 또는 청킹 태그 추가
+                # 새로운 태깅 구조 처리
                 try:
-                    # 섹션 태그가 있으면 우선 사용
+                    # 문서 레벨 태그와 청크 태그 처리
                     if hasattr(chunk, 'source_paper') and chunk.source_paper and isinstance(chunk.source_paper, dict) and 'section_tags' in chunk.source_paper:
                         section_tags = chunk.source_paper['section_tags']
                         
-                        tagging_metadata = {
-                            "study_type": section_tags.get("study_type", {}).get("value", ""),
-                            "is_human_study": section_tags.get("is_human_study", {}).get("value", False),
-                            "study_duration": section_tags.get("study_duration", {}).get("value", ""),
-                            "risk_of_bias": section_tags.get("risk_of_bias", {}).get("value", ""),
-                            "hybrid": section_tags.get("hybrid", False),
-                            # 청킹 태그는 여전히 수행
-                            "participant_count": 0,
-                            "intervention_type": [],
-                            "hormone_focus": [],
-                            "symptoms_focus": [],
-                            "menstrual_phase": "",
-                            "relevance_score": 0,
-                            "citation_count": 0,
-                            "primary_outcome": ""
-                        }
+                        # 문서 레벨 태그 추가
+                        if section_tags.get("document_level"):
+                            doc_tags = section_tags["document_level"]
+                            metadata.update({
+                                # 문서 레벨 태그
+                                "doc_study_type": doc_tags.get("study_type", []),
+                                "doc_condition_disease": doc_tags.get("condition_disease", []),
+                                "doc_target": doc_tags.get("target", []),
+                                "doc_target_age_distribution": doc_tags.get("target_age_distribution", {}),
+                                "doc_num_of_participants": doc_tags.get("num_of_participants", 0),
+                                "doc_study_duration": doc_tags.get("study_duration", ""),
+                                "doc_intervention_type": doc_tags.get("intervention_type", []),
+                                "doc_hormone_focus": doc_tags.get("hormone_focus", []),
+                                "doc_target_symptoms": doc_tags.get("target_symptoms", []),
+                                "doc_risk_of_bias": doc_tags.get("risk_of_bias", ""),
+                                "doc_summary": doc_tags.get("summary", "")
+                            })
                         
-                        # 청킹 태그도 수행 (섹션 태그를 컨텍스트로 활용)
-                        chunk_tagged = await RAGService.hybrid_tagging(chunk, use_llm=True, section_tags=section_tags)
-                        tagging_metadata.update({
-                            "participant_count": chunk_tagged.participant_count or 0,
+                        # 청크 태깅 수행 (문서 레벨 태그를 컨텍스트로 활용)
+                        chunk_tagged = await RAGService.tag_chunk_with_llm(chunk, section_tags)
+                        
+                        # 청크 레벨 태그 추가
+                        metadata.update({
+                            "chunk_section_type": chunk_tagged.section_type or "",
+                            "chunk_summary": chunk_tagged.chunk_summary or "",
+                            "chunk_study_arms": chunk_tagged.study_arms or [],
+                            # study_arms에서 추출한 필드들 (중복 제거)
                             "intervention_type": chunk_tagged.intervention_type or [],
-                            "hormone_focus": chunk_tagged.hormone_focus or [],
                             "symptoms_focus": chunk_tagged.symptoms_focus or [],
-                            "menstrual_phase": chunk_tagged.menstrual_phase or "",
-                            "relevance_score": chunk_tagged.relevance_score or 0,
-                            "citation_count": chunk_tagged.citation_count or 0,
-                            "primary_outcome": chunk_tagged.primary_outcome or ""
+                            "hormone_focus": chunk_tagged.hormone_focus or []
                         })
                         
-                        logger.info(f"[Section Tagging] Using section tags: {chunk.chunk_id}")
-                        logger.debug(f"  - study_type: {tagging_metadata['study_type']}")
-                        logger.debug(f"  - is_human_study: {tagging_metadata['is_human_study']}")
-                        logger.debug(f"  - hybrid: {tagging_metadata['hybrid']}")
+                        # study_arms 구조 로깅
+                        if chunk_tagged.study_arms:
+                            logger.debug(f"[Embedding] Study arms structure for {chunk.chunk_id}:")
+                            for i, arm in enumerate(chunk_tagged.study_arms):
+                                logger.debug(f"  Study Arm {i+1}: {arm}")
+                        
+                        logger.info(f"[Embedding] Document and chunk tags processed: {chunk.chunk_id}")
                         
                     else:
-                        # 섹션 태그가 없으면 청킹 태깅만 수행 (fallback 태깅은 1차에서 이미 수행됨)
-                                logger.info(f"[Chunk Tagging] No section tags, performing chunk tagging only: {chunk.chunk_id}")
-        logger.debug(f"source_paper status: {getattr(chunk, 'source_paper', 'None')}")
-        if hasattr(chunk, 'source_paper') and chunk.source_paper:
-            logger.debug(f"source_paper keys: {list(chunk.source_paper.keys()) if isinstance(chunk.source_paper, dict) else 'Not a dict'}")
+                        # 문서 레벨 태그가 없으면 청크 태깅만 수행
+                        logger.info(f"[Embedding] No document-level tags, performing chunk tagging only: {chunk.chunk_id}")
                         
-                        # 청킹 태깅만 수행 (섹션 태그 없이)
-                        chunk_tagged = await RAGService.hybrid_tagging(chunk, use_llm=True, section_tags=None)
+                        # 청크 태깅만 수행
+                        chunk_tagged = await RAGService.tag_chunk_with_llm(chunk, None)
                         
-                        tagging_metadata = {
-                            # 섹션 태그는 없음 (1차에서 이미 처리됨)
-                            "study_type": "",
-                            "is_human_study": False,
-                            "study_duration": "",
-                            "risk_of_bias": "",
-                            "hybrid": False,
-                            # 청킹 태그 결과만 사용
-                            "participant_count": chunk_tagged.participant_count or 0,
+                        # 청크 레벨 태그만 추가
+                        metadata.update({
+                            "chunk_section_type": chunk_tagged.section_type or "",
+                            "chunk_summary": chunk_tagged.chunk_summary or "",
+                            "chunk_study_arms": chunk_tagged.study_arms or [],
+                            # study_arms에서 추출한 필드들 (중복 제거)
                             "intervention_type": chunk_tagged.intervention_type or [],
-                            "hormone_focus": chunk_tagged.hormone_focus or [],
                             "symptoms_focus": chunk_tagged.symptoms_focus or [],
-                            "menstrual_phase": chunk_tagged.menstrual_phase or "",
-                            "relevance_score": chunk_tagged.relevance_score or 0,
-                            "citation_count": chunk_tagged.citation_count or 0,
-                            "primary_outcome": chunk_tagged.primary_outcome or ""
-                        }
+                            "hormone_focus": chunk_tagged.hormone_focus or []
+                        })
                         
-                        logger.info(f"[Chunk Tagging] 청킹 태그만 사용: {chunk.chunk_id}")
-                        logger.debug(f"  - intervention_type: {tagging_metadata['intervention_type']}")
-                        logger.debug(f"  - hormone_focus: {tagging_metadata['hormone_focus']}")
-                    
-                    metadata.update(tagging_metadata)
+                        logger.info(f"[Embedding] Chunk tags only processed: {chunk.chunk_id}")
                     
                 except Exception as e:
-                    logger.warning(f"[Tagging] 태깅 실패, 기본 메타데이터만 사용: {chunk.chunk_id}, 에러: {e}")
+                    logger.warning(f"[Embedding] Tagging failed, using basic metadata only: {chunk.chunk_id}, error: {e}")
                 
-                logger.info(f"[OpenAI] 임베딩 생성 성공: {chunk.chunk_id}, 차원: {len(embedding_vector)}")
+                logger.info(f"[OpenAI] Embedding generation successful: {chunk.chunk_id}, dimensions: {len(embedding_vector)}")
                 return EmbeddingResult(id=chunk.chunk_id, values=embedding_vector, metadata=metadata)
                 
         except Exception as e:
-            raise RuntimeError(f"OpenAI 임베딩 생성 실패: {e}")
+            raise RuntimeError(f"OpenAI embedding generation failed: {e}")
 
     @staticmethod
     def get_pinecone_client():
@@ -1824,7 +1910,7 @@ IMPORTANT: If a field is not found in the text, use empty string "" for text fie
             
             # 5. 상위 결과만 반환
             return ranked_papers[:top_k]
-        except Exception as e:
+            except Exception as e:
             logger.error(f"논문 검색 및 우선순위 계산 실패: {e}")
             return []
 
@@ -2057,7 +2143,7 @@ IMPORTANT: If a field is not found in the text, use empty string "" for text fie
                 if sec_type in priority_map:
                     section_info["priority"] = priority_map[sec_type]
                     section_info["confidence"] = 0.9
-                else:
+        else:
                     # 제목 키워드 기반 우선순위
                     title_lower = section_info["title"].lower()
                     for keyword, priority in priority_map.items():
@@ -2081,7 +2167,7 @@ IMPORTANT: If a field is not found in the text, use empty string "" for text fie
     @staticmethod
     def create_section_tagging_prompt(section_title: str, section_content: str, section_type: str = "", paper_context: Dict[str, Any] = None) -> str:
         """
-        섹션별 LLM 태깅 프롬프트 생성 (문서 컨텍스트 포함)
+        Section-based LLM tagging prompt creation (with document context)
         """
         context_info = ""
         if paper_context:
@@ -2094,7 +2180,7 @@ PAPER CONTEXT:
 """
         
         return f'''
-Given the following research paper section, extract specific information with confidence scores (0-1). 
+Given the following research paper section, extract specific information. 
 Respond ONLY with valid JSON format.
 
 {context_info}SECTION INFO:
@@ -2102,39 +2188,69 @@ Respond ONLY with valid JSON format.
 - Type: {section_type}
 - Content: {section_content[:2000]}...
 
-REQUIRED FIELDS (with confidence scores):
-- study_type: [clinical_trial, systematic_review, meta_analysis, research_paper, case_study] with confidence (0-1)
-- is_human_study: [true, false] with confidence (0-1)
-- study_duration: total study duration as a single value (e.g., "12 weeks", "6 months", "2 years") with confidence (0-1)
-- risk_of_bias: [low, moderate, high] with confidence (0-1)
+REQUIRED FIELDS:
+- study_type: Options: clinical_trial, randomized controlled trial, systematic review, meta-analysis, review article, cohort study, case study, observational study
+- section_type: Options: method, abstract, introduction, method, results, discussion, conclusion, others
+- condition_disease: List of conditions/diseases mentioned ["PCOS", "PMS"]
+- target: Main research target of the entire paper
+- target_age_distribution: Age distribution of participants with counts
+  Options: children, teenager, young_adult, adult, middle_aged, aged, perimenopause, postmenopausal
+  Criteria: children (-12), teenager (13-18), young_adult (18-25), adult (26-44), middle_aged (45-64), aged (65+)
+  Format: {{"teenager": 10, "adult": 20}}
+- num_of_participants: Total number of participants
+- study_duration: Total study duration (not partial results duration)
+- intervention_type: List of main intervention/exposure categories covered in the entire paper
+- hormone_focus: List of hormones mentioned
+- target_symptoms: List of target symptoms mentioned
+- primary_outcome: Who did what for how long and what results were obtained
+- risk_of_bias: "low, reason" or "moderate, reason" or "high, reason"
+- section_summary: 2-3 line summary of this section
 
-If information is not available in this section, use empty string "" for value and 0.0 for confidence. Do NOT use null or None values.
+IMPORTANT: If information is not available in this section, use empty string "" for text fields, empty list [] for list fields, and 0 for numeric fields. Do NOT use null or None values.
 
 Respond with ONLY this JSON format (no additional text):
 {{
-  "study_type": {{
-    "value": "clinical_trial",
-    "confidence": 0.8
-  }},
-  "is_human_study": {{
-    "value": true,
-    "confidence": 0.9
-  }},
-  "study_duration": {{
-    "value": "12 weeks",
-    "confidence": 0.7
-  }},
-  "risk_of_bias": {{
-    "value": "low",
-    "confidence": 0.6
-  }}
+  "section_type": "method",
+  "section_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+  "study_type": "clinical_trial",
+  "study_arms": [
+    {{
+      "condition_disease": ["Polycystic Ovary Syndrome"],
+      "study_duration": "A continuous 12-week intervention period",
+      "target": ["Overweight adolescent and adult women diagnosed with PCOS"],
+      "target_age_distribution": {{
+        "teenager": 10,
+        "adult": 20
+      }},
+      "num_of_participants": 30,
+      "intervention_type": ["Moderate-intensity exercise program involving regular movement routines"],
+      "hormone_biomarker_focus": ["Fasting insulin", "Total androgen levels"],
+      "section_primary_outcome": [],
+      "target_symptoms": ["Unintended weight gain", "Irregular timing of menstrual cycles"],
+      "risk_of_bias": "Assessment suggests minimal bias risk due to proper randomization and adherence tracking"
+    }},
+    {{
+      "condition_disease": ["Premenstrual Syndrome"],
+      "study_duration": "12 weeks, including baseline and post-intervention assessments",
+      "target": ["Young adult females experiencing moderate PMS symptoms"],
+      "target_age_distribution": {{
+        "young_adult": 15
+      }},
+      "num_of_participants": 15,
+      "intervention_type": ["Guided mindfulness sessions focused on stress reduction and emotional regulation"],
+      "hormone_biomarker_focus": ["Salivary cortisol measured at morning and evening time points"],
+      "section_primary_outcome": [],
+      "target_symptoms": ["Fatigue during luteal phase", "Emotional instability and mood shifts"],
+      "risk_of_bias": "Low, with clearly documented protocol and high participant retention"
+    }}
+  ]
 }}
 '''
 
     @staticmethod
     async def tag_section_with_llm(section_title: str, section_content: str, section_type: str = "", paper_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        섹션별 LLM 태깅 수행 (문서 컨텍스트 포함)
+        Section-based LLM tagging execution (with document context)
         """
         prompt = RAGService.create_section_tagging_prompt(section_title, section_content, section_type, paper_context)
         llm_response = await AIService.call_openai(prompt)
@@ -2143,7 +2259,7 @@ Respond with ONLY this JSON format (no additional text):
             import json
             import re
             
-            # JSON 블록 찾기
+            # JSON block search
             json_match = re.search(r'```json\s*(\{.*?\})\s*```', llm_response, re.DOTALL)
             if not json_match:
                 json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
@@ -2154,235 +2270,157 @@ Respond with ONLY this JSON format (no additional text):
                 
                 parsed = json.loads(json_str)
                 
-                # 결과 정리
+                # Result organization
                 result = {
-                    "study_type": {
-                        "value": parsed.get("study_type", {}).get("value", ""),
-                        "confidence": parsed.get("study_type", {}).get("confidence", 0.0)
-                    },
-                    "is_human_study": {
-                        "value": parsed.get("is_human_study", {}).get("value", False),
-                        "confidence": parsed.get("is_human_study", {}).get("confidence", 0.0)
-                    },
-                    "study_duration": {
-                        "value": parsed.get("study_duration", {}).get("value", ""),
-                        "confidence": parsed.get("study_duration", {}).get("confidence", 0.0)
-                    },
-                    "risk_of_bias": {
-                        "value": parsed.get("risk_of_bias", {}).get("value", ""),
-                        "confidence": parsed.get("risk_of_bias", {}).get("confidence", 0.0)
-                    }
+                    "section_type": parsed.get("section_type", ""),
+                    "section_summary": parsed.get("section_summary", ""),
+                    "study_type": parsed.get("study_type", ""),
+                    "study_arms": parsed.get("study_arms", [])
                 }
                 
-                logger.debug(f"[Section Tagging] 섹션 '{section_title}' 태깅 완료")
+                logger.debug(f"[Section Tagging] Section '{section_title}' tagging completed")
                 return result
                 
             else:
-                logger.warning(f"[Section Tagging] JSON을 찾을 수 없음: {section_title}")
+                logger.warning(f"[Section Tagging] JSON not found: {section_title}")
                 return {
-                    "study_type": {"value": "", "confidence": 0.0},
-                    "is_human_study": {"value": False, "confidence": 0.0},
-                    "study_duration": {"value": "", "confidence": 0.0},
-                    "risk_of_bias": {"value": "", "confidence": 0.0}
+                    "section_type": "",
+                    "section_summary": "",
+                    "study_type": "",
+                    "study_arms": []
                 }
                 
         except Exception as e:
-            logger.error(f"[Section Tagging] 섹션 태깅 실패: {section_title}, 에러: {e}")
+            logger.error(f"[Section Tagging] Section tagging failed: {section_title}, error: {e}")
             return {
-                "study_type": {"value": "", "confidence": 0.0},
-                "is_human_study": {"value": False, "confidence": 0.0},
-                "study_duration": {"value": "", "confidence": 0.0},
-                "risk_of_bias": {"value": "", "confidence": 0.0}
+                "section_type": "",
+                "section_summary": "",
+                "study_type": "",
+                "study_arms": []
             }
 
     @staticmethod
-    async def aggregate_section_tags(sections: List[Dict[str, Any]], use_priority_order: bool = True) -> Dict[str, Any]:
+    async def aggregate_section_tags(sections: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        섹션별 태깅 결과를 종합하여 최종 태그 생성
-        :param use_priority_order: True면 우선순위 순서로, False면 신뢰도 기반으로 처리
+        Aggregate section tags from all sections (no priority order)
         """
-        final_tags = {
-            "study_type": {"value": "", "confidence": 0.0},
-            "is_human_study": {"value": False, "confidence": 0.0},
-            "study_duration": {"value": "", "confidence": 0.0},
-            "risk_of_bias": {"value": "", "confidence": 0.0},
-            "hybrid": False
-        }
+        if not sections:
+            return {
+                "section_type": "",
+                "section_summary": "",
+                "study_type": "",
+                "study_arms": []
+            }
         
-        if use_priority_order:
-            # Case 1: 우선순위 섹션별로 먼저 채워지는 것을 사용
-            for tag_name in ["study_type", "is_human_study", "study_duration"]:
-                # 우선순위 순서대로 섹션을 확인하여 첫 번째로 채워진 값을 사용
-                for section in sections:
-                    if "tags" in section:
-                        tag_data = section["tags"].get(tag_name, {})
-                        if tag_data.get("value"):  # 값이 있으면 사용
-                            final_tags[tag_name] = tag_data
-                            logger.debug(f"우선순위 기반 {tag_name}: {tag_data['value']} (섹션: {section['title']})")
-                            break  # 첫 번째로 찾은 값 사용
-            
-            # risk_of_bias는 모든 섹션의 결과를 종합
-            risk_scores = []
-            for section in sections:
-                if "tags" in section:
-                    risk_data = section["tags"].get("risk_of_bias", {})
-                    if risk_data.get("value") and risk_data.get("confidence", 0.0) > 0:
-                        risk_scores.append({
-                            "value": risk_data["value"],
-                            "confidence": risk_data["confidence"]
-                        })
-            
-            if risk_scores:
-                # 신뢰도 가중 평균으로 최종 risk_of_bias 결정
-                total_weight = sum(score["confidence"] for score in risk_scores)
-                if total_weight > 0:
-                    # 간단한 종합 로직
-                    high_count = sum(1 for score in risk_scores if score["value"] == "high")
-                    moderate_count = sum(1 for score in risk_scores if score["value"] == "moderate")
-                    low_count = sum(1 for score in risk_scores if score["value"] == "low")
-                    
-                    if high_count > moderate_count and high_count > low_count:
-                        final_risk = "high"
-                    elif moderate_count > low_count:
-                        final_risk = "moderate"
-                    else:
-                        final_risk = "low"
-                    
-                    final_tags["risk_of_bias"] = {
-                        "value": final_risk,
-                        "confidence": total_weight / len(risk_scores)
-                    }
-        else:
-            # Case 2 & 3: 신뢰도 기반으로 최고 값 선택
-            for tag_name in ["study_type", "is_human_study", "study_duration"]:
-                best_section = None
-                best_confidence = 0.0
-                
-                for section in sections:
-                    if "tags" in section:
-                        tag_data = section["tags"].get(tag_name, {})
-                        confidence = tag_data.get("confidence", 0.0)
-                        
-                        if confidence > best_confidence and tag_data.get("value"):
-                            best_confidence = confidence
-                            best_section = section
-                
-                if best_section:
-                    final_tags[tag_name] = best_section["tags"][tag_name]
-            
-            # risk_of_bias 종합 (동일)
-            risk_scores = []
-            for section in sections:
-                if "tags" in section:
-                    risk_data = section["tags"].get("risk_of_bias", {})
-                    if risk_data.get("value") and risk_data.get("confidence", 0.0) > 0:
-                        risk_scores.append({
-                            "value": risk_data["value"],
-                            "confidence": risk_data["confidence"]
-                        })
-            
-            if risk_scores:
-                total_weight = sum(score["confidence"] for score in risk_scores)
-                if total_weight > 0:
-                    high_count = sum(1 for score in risk_scores if score["value"] == "high")
-                    moderate_count = sum(1 for score in risk_scores if score["value"] == "moderate")
-                    low_count = sum(1 for score in risk_scores if score["value"] == "low")
-                    
-                    if high_count > moderate_count and high_count > low_count:
-                        final_risk = "high"
-                    elif moderate_count > low_count:
-                        final_risk = "moderate"
-                    else:
-                        final_risk = "low"
-                    
-                    final_tags["risk_of_bias"] = {
-                        "value": final_risk,
-                        "confidence": total_weight / len(risk_scores)
-                    }
-        
-        # hybrid 체크 (인간과 동물 혼합 연구)
-        human_sections = []
-        animal_sections = []
+        # Collect all study arms from all sections
+        all_study_arms = []
+        section_types = []
+        section_summaries = []
+        study_types = []
         
         for section in sections:
-            if "tags" in section:
-                is_human = section["tags"].get("is_human_study", {}).get("value", False)
-                if is_human:
-                    human_sections.append(section)
-                else:
-                    animal_sections.append(section)
+            if section.get("study_arms"):
+                all_study_arms.extend(section["study_arms"])
+            if section.get("section_type"):
+                section_types.append(section["section_type"])
+            if section.get("section_summary"):
+                section_summaries.append(section["section_summary"])
+            if section.get("study_type"):
+                study_types.append(section["study_type"])
         
-        if human_sections and animal_sections:
-            final_tags["hybrid"] = True
-            final_tags["is_human_study"]["value"] = True  # 혼합 연구는 human으로 분류
+        # Aggregate results
+        aggregated = {
+            "section_type": ", ".join(set(section_types)) if section_types else "",
+            "section_summary": " ".join(section_summaries) if section_summaries else "",
+            "study_type": ", ".join(set(study_types)) if study_types else "",
+            "study_arms": all_study_arms
+        }
         
-        return final_tags
+        logger.info(f"[Section Aggregation] Aggregated {len(sections)} sections with {len(all_study_arms)} study arms")
+        return aggregated
 
     @staticmethod
     async def process_paper_with_section_tagging(paper: Dict[str, Any]) -> Dict[str, Any]:
         """
-        PMC XML을 섹션별로 파싱하고 LLM 태깅을 수행
+        Process paper with section-based tagging (all sections, no priority) and create document-level tags
         """
         try:
-            # PMC XML에서 섹션 파싱
-            if "pmc_xml" in paper:
-                sections = RAGService.parse_pmc_sections(paper["pmc_xml"])
-                
-                if sections:
-                    # 우선순위 섹션들이 있는지 확인 (Methods, Discussion, Abstract, Introduction, Results, Conclusion)
-                    priority_sections = ["methods", "discussion", "abstract", "introduction", "results", "conclusion"]
-                    has_priority_sections = any(
-                        section["sec_type"] in priority_sections or 
-                        any(keyword in section["title"].lower() for keyword in priority_sections)
-                        for section in sections
-                    )
-                    
-                    if has_priority_sections:
-                        # 우선순위 섹션들이 있으면 섹션별 태깅 수행
-                        logger.info(f"우선순위 섹션 발견, 섹션별 태깅 수행: {len(sections)}개 섹션")
-                        
-                        # 논문 컨텍스트 준비
-                        paper_context = {
-                            "title": paper.get("title", ""),
-                            "abstract": paper.get("abstract", ""),
-                            "mesh_terms": paper.get("mesh_terms", [])
-                        }
-                        
-                        for i, section in enumerate(sections):
-                            logger.info(f"섹션 태깅 진행 중: {i+1}/{len(sections)} - {section['title'][:50]}...")
-                            section_tags = await RAGService.tag_section_with_llm(
-                                section["title"], 
-                                section["content"], 
-                                section["sec_type"],
-                                paper_context
-                            )
-                            section["tags"] = section_tags
-                            logger.info(f"섹션 태깅 완료: {i+1}/{len(sections)}")
-                        
-                        # 섹션 태그들을 종합 (우선순위 순서 사용)
-                        final_tags = await RAGService.aggregate_section_tags(sections, use_priority_order=True)
-                        
-                        # 논문에 최종 태그 추가
-                        paper["section_tags"] = final_tags
-                        paper["sections"] = sections
-                        
-                        logger.info(f"섹션별 태깅 완료: {len(sections)}개 섹션")
-                        return paper
-                    else:
-                        # 우선순위 섹션이 없으면 기존 섹션들을 사용하여 태깅
-                        logger.warning("우선순위 섹션 없음, 기존 섹션들로 태깅")
-                        return await RAGService.process_paper_with_non_priority_sections(paper, sections)
-                else:
-                    # 섹션이 전혀 없으면 Edge Case 처리
-                    logger.warning("섹션 파싱 실패 (섹션 없음), 전체 텍스트로 태깅")
-                    return await RAGService.process_paper_with_fallback_tagging(paper)
-            else:
-                logger.warning("PMC XML이 없음, 기존 방식 사용")
+            content = paper.get("content", "")
+            if not content:
+                logger.warning(f"No content available for section tagging: {paper.get('title', 'Unknown')}")
                 return paper
+            
+            # Parse sections from PMC XML
+            sections = RAGService.parse_pmc_sections(content)
+            
+            if sections:
+                logger.info(f"Found {len(sections)} sections for tagging: {paper.get('title', 'Unknown')}")
                 
+                # Tag all sections (no priority order)
+                tagged_sections = []
+                for section in sections:
+                    try:
+                        section_tags = await RAGService.tag_section_with_llm(
+                            section_title=section.get("title", ""),
+                            section_content=section.get("content", ""),
+                            section_type=section.get("type", ""),
+                            paper_context={
+                                "title": paper.get("title", ""),
+                                "abstract": paper.get("abstract", ""),
+                                "mesh_terms": paper.get("mesh_terms", [])
+                            }
+                        )
+                        
+                        tagged_sections.append({
+                            "title": section.get("title", ""),
+                            "type": section.get("type", ""),
+                            "content": section.get("content", ""),
+                            "tags": section_tags
+                        })
+                        
+                        logger.debug(f"Section tagged: {section.get('title', 'Unknown')}")
+                        
+                    except Exception as e:
+                        logger.error(f"Section tagging failed: {section.get('title', 'Unknown')}, error: {e}")
+                        continue
+                
+                # Create document-level tags from all section tags
+                if tagged_sections:
+                    # Prepare paper context for document-level tagging
+                    paper_context = {
+                        "title": paper.get("title", ""),
+                        "abstract": paper.get("abstract", ""),
+                        "mesh_terms": paper.get("mesh_terms", [])
+                    }
+                    
+                    # Create document-level tags
+                    document_tags = await RAGService.create_document_level_tags(paper_context, tagged_sections)
+                    
+                    # Store both section tags and document-level tags
+                    paper["section_tags"] = {
+                        "sections": tagged_sections,
+                        "document_level": document_tags
+                    }
+                    paper["sections"] = tagged_sections
+                    logger.info(f"Section and document-level tagging completed: {paper.get('title', 'Unknown')}")
+                else:
+                    logger.warning(f"No sections successfully tagged: {paper.get('title', 'Unknown')}")
+                    paper["section_tags"] = {
+                        "sections": [],
+                        "document_level": {}
+                    }
+                    paper["sections"] = []
+            
+            else:
+                logger.info(f"No sections found, using fallback tagging: {paper.get('title', 'Unknown')}")
+                # Fallback to chunk-based tagging
+                paper = await RAGService.process_paper_with_fallback_tagging(paper)
+            
+            return paper
+            
         except Exception as e:
-            logger.error(f"섹션별 태깅 실패: {e}")
-            return await RAGService.process_paper_with_fallback_tagging(paper)
+            logger.error(f"Section tagging process failed: {paper.get('title', 'Unknown')}, error: {e}")
+            return paper
 
     @staticmethod
     async def process_paper_with_fallback_tagging(paper: Dict[str, Any]) -> Dict[str, Any]:
@@ -2827,3 +2865,156 @@ Respond with ONLY this JSON format (no additional text):
         except Exception as e:
             logger.error(f"문서 완전 처리 실패: {paper.get('title', 'Unknown')}, 에러: {e}")
             return False
+
+    @staticmethod
+    def create_document_level_tagging_prompt(paper_context: Dict[str, Any], section_tags: List[Dict[str, Any]]) -> str:
+        """
+        Create prompt for document-level tagging by aggregating section tagging results
+        """
+        # Prepare section tags context
+        section_context = ""
+        for i, section in enumerate(section_tags):
+            section_context += f"Section {i+1}: {section.get('section_title', 'Unknown')}\n"
+            section_context += f"- Type: {section.get('section_type', 'unknown')}\n"
+            section_context += f"- Summary: {section.get('section_summary', '')}\n"
+            section_context += f"- Study Type: {section.get('study_type', '')}\n"
+            
+            if section.get('study_arms'):
+                section_context += f"- Study Arms:\n"
+                for j, arm in enumerate(section['study_arms']):
+                    section_context += f"  Arm {j+1}:\n"
+                    section_context += f"    - Conditions: {', '.join(arm.get('condition_disease', []))}\n"
+                    section_context += f"    - Target: {', '.join(arm.get('target', []))}\n"
+                    section_context += f"    - Participants: {arm.get('num_of_participants', 0)}\n"
+                    section_context += f"    - Duration: {arm.get('study_duration', '')}\n"
+                    section_context += f"    - Interventions: {', '.join(arm.get('intervention_category', []))}\n"
+                    section_context += f"    - Hormones: {', '.join(arm.get('hormone_biomarker_focus', []))}\n"
+                    section_context += f"    - Symptoms: {', '.join(arm.get('target_symptoms', []))}\n"
+                    section_context += f"    - Risk of Bias: {arm.get('risk_of_bias', '')}\n"
+            section_context += "\n"
+        
+        return f'''
+Given the following research paper and its section tagging results, create a comprehensive document-level summary.
+Aggregate all section information, remove duplicates, and normalize according to the specified options.
+
+PAPER CONTEXT:
+- Title: {paper_context.get('title', 'N/A')}
+- Abstract: {paper_context.get('abstract', 'N/A')[:500]}...
+- MeSH Terms: {', '.join(paper_context.get('mesh_terms', []))}
+
+SECTION TAGGING RESULTS:
+{section_context}
+
+REQUIRED FIELDS (with strict options):
+- study_type: Options: clinical_trial, randomized controlled trial, systematic review, meta-analysis, review article, cohort study, case study, observational study
+  (Can include multiple types, but focus on main types)
+- condition_disease: Options: PCOD, PCOS, endometriosis, dysmenorrhea, amenorrhea, menorrhagia, metrorrhagia, PMS, cushing's syndrome, others
+- target: Options: female, male, mixed, animal, not_specified
+- target_age_distribution: Options: children, teenager, young_adult, adult, middle_aged, aged, perimenopause, postmenopausal
+  Criteria: children (-12), teenager (13-18), young_adult (18-25), adult (26-44), middle_aged (45-64), aged (65+)
+  Format: {{"teenager": 10, "adult": 20}}
+- num_of_participants: Total number (only if study_type is NOT systematic review or meta-analysis)
+- study_duration: Total study duration (only if study_type is NOT systematic review or meta-analysis)
+- intervention_category: Options: food, movement, mindfulness, others
+- hormone_focus: Options: androgens, progesterone, estrogen, thyroid, cortisol, insulin, others
+- target_symptoms: Options: irregular periods, painful periods, light periods, spotting, heavy periods, bloating, hot flashes, nausea, difficulty losing weight, stubborn belly fat, weight gain, menstrual headaches, hirsutism, thinning of hair, adult acne, mood swings, stress, fatigue, others
+- risk_of_bias: Options: low, medium, high (aggregate from all sections)
+- summary: 4-5 line comprehensive summary
+
+IMPORTANT RULES:
+1. If study_type is systematic review or meta-analysis, do NOT include target_age_distribution, num_of_participants, study_duration
+2. Aggregate all values from sections, remove duplicates, and normalize to specified options
+3. For risk_of_bias, aggregate all section values and determine overall bias level
+4. For summary, create a comprehensive 4-5 line summary covering all aspects
+
+Respond with ONLY this JSON format (no additional text):
+{{
+  "study_type": ["clinical_trial"],
+  "condition_disease": ["PCOS", "PMS"],
+  "target": ["female"],
+  "target_age_distribution": {{
+    "teenager": 10,
+    "adult": 20
+  }},
+  "num_of_participants": 30,
+  "study_duration": "12 weeks",
+  "intervention_type": ["movement", "mindfulness"],
+  "hormone_focus": ["insulin", "androgens"],
+  "target_symptoms": ["weight gain", "irregular periods"],
+  "risk_of_bias": "low",
+  "summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked."
+}}
+'''
+
+    @staticmethod
+    async def create_document_level_tags(paper_context: Dict[str, Any], section_tags: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Create document-level tags by aggregating section tagging results
+        """
+        try:
+            prompt = RAGService.create_document_level_tagging_prompt(paper_context, section_tags)
+            llm_response = await AIService.call_openai(prompt)
+            
+            import json
+            import re
+            
+            # JSON block search
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', llm_response, re.DOTALL)
+            if not json_match:
+                json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+            
+            if json_match:
+                json_str = json_match.group(1) if json_match.groups() else json_match.group(0)
+                json_str = json_str.strip()
+                
+                parsed = json.loads(json_str)
+                
+                # Normalize and validate the response
+                result = {
+                    "study_type": parsed.get("study_type", []),
+                    "condition_disease": parsed.get("condition_disease", []),
+                    "target": parsed.get("target", []),
+                    "target_age_distribution": parsed.get("target_age_distribution", {}),
+                    "num_of_participants": parsed.get("num_of_participants", 0),
+                    "study_duration": parsed.get("study_duration", ""),
+                    "intervention_type": parsed.get("intervention_type", []),
+                    "hormone_focus": parsed.get("hormone_focus", []),
+                    "target_symptoms": parsed.get("target_symptoms", []),
+                    "risk_of_bias": parsed.get("risk_of_bias", ""),
+                    "summary": parsed.get("summary", "")
+                }
+                
+                logger.info(f"Document-level tagging completed with {len(section_tags)} sections")
+                return result
+                
+            else:
+                logger.warning("Document-level tagging: JSON not found")
+                return {
+                    "study_type": [],
+                    "condition_disease": [],
+                    "target": [],
+                    "target_age_distribution": {},
+                    "num_of_participants": 0,
+                    "study_duration": "",
+                    "intervention_category": [],
+                    "hormone_focus": [],
+                    "target_symptoms": [],
+                    "risk_of_bias": "",
+                    "summary": ""
+                }
+                
+        except Exception as e:
+            logger.error(f"Document-level tagging failed: {e}")
+            return {
+                "study_type": [],
+                "condition_disease": [],
+                "target": [],
+                "target_age_distribution": {},
+                "num_of_participants": 0,
+                "study_duration": "",
+                "intervention_category": [],
+                "hormone_focus": [],
+                "target_symptoms": [],
+                "risk_of_bias": "",
+                "summary": ""
+            }
