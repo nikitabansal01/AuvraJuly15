@@ -14,7 +14,7 @@ class QuestionValidators:
     ]
     
     BIRTH_CONTROL_OPTIONS = [
-        "Hormonal Birth Control Pills", "IUD (Intrauterine Device)"
+        "Hormonal Birth Control Pills", "IUD (Intrauterine Device)", "Copper IUD (Intrauterine Device)"
     ]
     
     PERIOD_CONCERNS_OPTIONS = [
@@ -27,7 +27,7 @@ class QuestionValidators:
     ]
     
     SKIN_HAIR_CONCERNS_OPTIONS = [
-        "Hirsutism (hair  growth on chin, nipples etc)", "Thinning of hair", "Adult Acne"
+        "Hirsutism (hair growth on chin, nipples etc)", "Thinning of hair", "Adult Acne"
     ]
     
     MENTAL_HEALTH_CONCERNS_OPTIONS = [
@@ -40,14 +40,32 @@ class QuestionValidators:
     ]
     
     DIAGNOSED_CONDITIONS_OPTIONS = [
-        "PCOS", "PCOD", "Endometriosis", "Dysmenorrhea (painful periods)",
-        "Amenorrhea (absence of periods)", "Menorrhagia (prolonged/heavy bleeding)",
-        "Metrorrhagia (irregular bleeding)", "Cushing's Syndrome (PMS)",
-        "Premenstrual Syndrome (PMS)", "None of the above", "Others (please specify)"
+        "PCOS", "PCOD", "Endometriosis", "Dysmenorrhea", "Amenorrhea", "Menorrhagia", 
+        "Metrorrhagia", "Cushing's Syndrome", "Premenstrual Syndrome", "Diabetes", "PMDD",
+        "None of the above", "Others (please specify)"
     ]
     
     OTHER_CONCERNS_OPTIONS = [
         "None of these", "Others (please specify)"
+    ]
+    
+    # 새로 추가된 필드들
+    FAMILY_HISTORY_OPTIONS = [
+        "PCOS", "PCOD", "Endometriosis", "Dysmenorrhea", "Amenorrhea", "Menorrhagia", 
+        "Metrorrhagia", "Cushing's Syndrome", "Premenstrual Syndrome", "Diabetes", "PMDD",
+        "None of the above", "Others (please specify)"
+    ]
+    
+    WORKOUT_INTENSITY_OPTIONS = [
+        "Low", "Moderate", "High"
+    ]
+    
+    SLEEP_DURATION_OPTIONS = [
+        "<6 hours", "6-7 hours", "7-8 hours", "8+ hours"
+    ]
+    
+    STRESS_LEVEL_OPTIONS = [
+        "Low", "Moderate", "High"
     ]
     
     @classmethod
@@ -125,4 +143,34 @@ class QuestionValidators:
         for value in values:
             if value not in cls.OTHER_CONCERNS_OPTIONS and not value.startswith("Others:"):
                 raise ValueError(f"Invalid other_concern: {value}. Allowed options: {cls.OTHER_CONCERNS_OPTIONS} or custom text starting with 'Others:'")
-        return values 
+        return values
+    
+    # 새로 추가된 검증 메서드들
+    @classmethod
+    def validate_family_history(cls, values: List[str]) -> List[str]:
+        """가족력 검증 - Others 텍스트 입력 허용"""
+        for value in values:
+            if value not in cls.FAMILY_HISTORY_OPTIONS and not value.startswith("Others:"):
+                raise ValueError(f"Invalid family_history: {value}. Allowed options: {cls.FAMILY_HISTORY_OPTIONS} or custom text starting with 'Others:'")
+        return values
+    
+    @classmethod
+    def validate_workout_intensity(cls, value: str) -> str:
+        """운동 강도 검증"""
+        if value not in cls.WORKOUT_INTENSITY_OPTIONS:
+            raise ValueError(f"Invalid workout_intensity: {value}. Allowed options: {cls.WORKOUT_INTENSITY_OPTIONS}")
+        return value
+    
+    @classmethod
+    def validate_sleep_duration(cls, value: str) -> str:
+        """수면 시간 검증"""
+        if value not in cls.SLEEP_DURATION_OPTIONS:
+            raise ValueError(f"Invalid sleep_duration: {value}. Allowed options: {cls.SLEEP_DURATION_OPTIONS}")
+        return value
+    
+    @classmethod
+    def validate_stress_level(cls, value: str) -> str:
+        """스트레스 수준 검증"""
+        if value not in cls.STRESS_LEVEL_OPTIONS:
+            raise ValueError(f"Invalid stress_level: {value}. Allowed options: {cls.STRESS_LEVEL_OPTIONS}")
+        return value 

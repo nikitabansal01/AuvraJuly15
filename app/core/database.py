@@ -96,6 +96,14 @@ class UserResponse(Base):
     # Diagnosed conditions
     diagnosed_conditions = Column(ARRAY(String), nullable=True)
     
+    # Family history
+    family_history = Column(ARRAY(String), nullable=True)
+    
+    # Lifestyle
+    workout_intensity = Column(String(50), nullable=True)
+    sleep_duration = Column(String(50), nullable=True)
+    stress_level = Column(String(50), nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

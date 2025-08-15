@@ -63,6 +63,14 @@ CREATE TABLE user_responses (
     -- Diagnosed conditions
     diagnosed_conditions TEXT[] NULL,
     
+    -- Family history
+    family_history TEXT[] NULL,
+    
+    -- Lifestyle
+    workout_intensity VARCHAR(50) NULL,
+    sleep_duration VARCHAR(50) NULL,
+    stress_level VARCHAR(50) NULL,
+    
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -125,7 +133,11 @@ Content-Type: application/json
         "mental_health_concerns": ["Mood swings"],
         "other_concerns": ["None of these"],
         "top_concern": "Painful Periods",
-        "diagnosed_conditions": ["PCOS"]
+        "diagnosed_conditions": ["PCOS"],
+        "family_history": ["PCOS", "Endometriosis"],
+        "workout_intensity": "Moderate",
+        "sleep_duration": "7-8 hours",
+        "stress_level": "High"
     }
 }
 ```
@@ -169,9 +181,9 @@ Authorization: Bearer {firebase_token}
 {
     "total_users": 150,
     "age_distribution": {
-        "20s": 45,
-        "30s": 67,
-        "40s": 38
+        "18-25": 45,
+        "26-35": 67,
+        "36-45": 38
     },
     "period_concerns_stats": {
         "Painful Periods": 89,
@@ -179,121 +191,158 @@ Authorization: Bearer {firebase_token}
         "Heavy periods": 34
     },
     "body_concerns_stats": {
-        "Bloating": 123,
-        "Recent weight gain": 78
+        "Bloating": 78,
+        "Recent weight gain": 56,
+        "Hot Flashes": 23
     },
     "top_concerns_stats": {
         "Painful Periods": 45,
-        "Bloating": 23
+        "Bloating": 34,
+        "Recent weight gain": 28
+    },
+    "diagnosed_conditions_stats": {
+        "PCOS": 67,
+        "Endometriosis": 23,
+        "None of the above": 60
+    },
+    "family_history_stats": {
+        "PCOS": 34,
+        "Endometriosis": 12,
+        "None of the above": 104
+    },
+    "workout_intensity_stats": {
+        "Low": 45,
+        "Moderate": 78,
+        "High": 27
+    },
+    "sleep_duration_stats": {
+        "<6 hours": 23,
+        "6-7 hours": 45,
+        "7-8 hours": 67,
+        "8+ hours": 15
+    },
+    "stress_level_stats": {
+        "Low": 34,
+        "Moderate": 67,
+        "High": 49
     }
 }
 ```
 
-## 🔄 **Usage Scenarios**
+## 📋 **Field Options**
 
-### **Scenario 1: Non-logged in User**
+### **Period Description**
+- `"Regular"`
+- `"Irregular"`
+- `"Occasional Skips"`
+- `"I don't get periods"`
+- `"I'm not sure"`
 
-```typescript
-// 1. Create session
-const sessionResponse = await fetch('/api/v1/questions/sessions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device_id: getDeviceId() })
-});
-const { session_id } = await sessionResponse.json();
+### **Cycle Length**
+- `"Less than 21 days"`
+- `"21-25 days"`
+- `"26-30 days"`
+- `"31-35 days"`
+- `"35+ days"`
+- `"I'm not sure"`
 
-// 2. Save question responses
-const responseData = {
-    session_id,
-    responses: {
-        name: "John Doe",
-        age: 25,
-        // ... other responses
-    }
-};
+### **Birth Control**
+- `"Hormonal Birth Control Pills"`
+- `"IUD (Intrauterine Device)"`
 
-await fetch(`/api/v1/questions/sessions/${session_id}/responses`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(responseData)
-});
-```
+### **Period Concerns**
+- `"Irregular Periods"`
+- `"Painful Periods"`
+- `"Light periods / Spotting"`
+- `"Heavy periods"`
 
-### **Scenario 2: Link after Login**
+### **Body Concerns**
+- `"Bloating"`
+- `"Hot Flashes"`
+- `"Nausea"`
+- `"Difficulty losing weight / stubborn belly fat"`
+- `"Recent weight gain"`
+- `"Menstrual headaches"`
 
-```typescript
-// 1. Link session after successful login
-const linkResponse = await fetch(`/api/v1/questions/sessions/${session_id}/link`, {
-    method: 'POST',
-    headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${firebaseToken}`
-    },
-    body: JSON.stringify({ uid: firebaseUid })
-});
+### **Skin & Hair Concerns**
+- `"Hirsutism (hair growth on chin, nipples etc)"`
+- `"Thinning of hair"`
+- `"Adult Acne"`
 
-// 2. Subsequent responses are automatically linked to the user
-```
+### **Mental Health Concerns**
+- `"Mood swings"`
+- `"Stress"`
+- `"Fatigue"`
 
-### **Scenario 3: Multiple Devices**
+### **Top Concern**
+- `"Painful Periods"`
+- `"Bloating"`
+- `"Recent weight gain"`
+- `"Hirsutism (hair growth on chin, nipples etc)"`
+- `"Adult Acne"`
+- `"Mood swings"`
 
-```typescript
-// Merge sessions from multiple devices into one
-const mergeResponse = await fetch(`/api/v1/questions/users/${uid}/merge-sessions`, {
-    method: 'POST',
-    headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${firebaseToken}`
-    },
-    body: JSON.stringify({ 
-        session_ids: ['session_1', 'session_2'] 
-    })
-});
-```
+### **Diagnosed Conditions**
+- `"PCOS"`
+- `"PCOD"`
+- `"Endometriosis"`
+- `"Dysmenorrhea (painful periods)"`
+- `"Amenorrhea (absence of periods)"`
+- `"Menorrhagia (prolonged/heavy bleeding)"`
+- `"Metrorrhagia (irregular bleeding)"`
+- `"Cushing's Syndrome (PMS)"`
+- `"Premenstrual Syndrome (PMS)"`
+- `"None of the above"`
+- `"Others (please specify)"`
 
-## 🔧 **Setup and Deployment**
+### **Family History**
+- `"PCOS"`
+- `"PCOD"`
+- `"Endometriosis"`
+- `"Dysmenorrhea (painful periods)"`
+- `"Amenorrhea (absence of periods)"`
+- `"Menorrhagia (prolonged/heavy bleeding)"`
+- `"Metrorrhagia (irregular bleeding)"`
+- `"Cushing's Syndrome (PMS)"`
+- `"Premenstrual Syndrome (PMS)"`
+- `"None of the above"`
+- `"Others (please specify)"`
 
-### **1. Environment Variables**
-```bash
-# .env 파일
-DATABASE_URL=postgresql://user:password@localhost/auvra_db
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_PRIVATE_KEY=your-private-key
-FIREBASE_CLIENT_EMAIL=your-client-email
-```
+### **Workout Intensity**
+- `"Low"`
+- `"Moderate"`
+- `"High"`
 
-### **2. Database Initialization**
-```bash
-# Create tables
-curl -X POST http://localhost:8000/api/v1/questions/init-database
+### **Sleep Duration**
+- `"<6 hours"`
+- `"6-7 hours"`
+- `"7-8 hours"`
+- `"8+ hours"`
 
-# Or use Alembic
-alembic upgrade head
-```
+### **Stress Level**
+- `"Low"`
+- `"Moderate"`
+- `"High"`
 
-### **3. Run Tests**
-```bash
-# API test
-python scripts/test_question_api.py
-```
+### **Other Concerns**
+- `"None of these"`
+- `"Others (please specify)"`
 
-## ⚠️ **Important Notes**
+## 🔧 **Error Handling**
 
-### **1. Security**
-- All APIs go through Firebase token verification
-- Users can only view/modify their own data
-- Identity verification required when linking sessions
+### **Validation Errors**
+If invalid values are provided, the API will return a 422 Unprocessable Entity error with details about which fields failed validation.
 
-### **2. Data Integrity**
-- Session IDs must be unique
-- Response data is stored in structured format
-- JSONB fields are stored as arrays
+### **Session Not Found**
+If a session ID doesn't exist, the API will return a 404 Not Found error.
 
-### **3. Performance**
-- Pagination recommended for large data queries
-- Consider caching for analytics data
-- Optimize query performance with index settings
+### **Authentication Errors**
+Protected endpoints require valid Firebase authentication tokens.
 
-## 📞 **Support**
+## 📝 **Notes**
 
-If you have problems or questions, please create an issue. 
+- All fields are optional except `session_id` when saving responses
+- Arrays can be empty or null
+- Date format should be MM/DD/YYYY for `last_period_date`
+- Age should be between 0 and 120
+- The API automatically validates all field values against the allowed options 

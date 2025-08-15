@@ -38,6 +38,14 @@ class UserResponseData(BaseModel):
     # 진단된 질환
     diagnosed_conditions: Optional[List[str]] = Field(None, description="진단된 건강 상태")
     
+    # 가족력
+    family_history: Optional[List[str]] = Field(None, description="가족력")
+    
+    # 라이프스타일
+    workout_intensity: Optional[str] = Field(None, description="운동 강도")
+    sleep_duration: Optional[str] = Field(None, description="수면 시간")
+    stress_level: Optional[str] = Field(None, description="스트레스 수준")
+    
     # 검증 메서드들
     @validator('period_description')
     def validate_period_description(cls, v):
@@ -98,6 +106,31 @@ class UserResponseData(BaseModel):
         if v is not None:
             return QuestionValidators.validate_other_concerns(v)
         return v
+    
+    # 새로 추가된 검증 메서드들
+    @validator('family_history')
+    def validate_family_history(cls, v):
+        if v is not None:
+            return QuestionValidators.validate_family_history(v)
+        return v
+    
+    @validator('workout_intensity')
+    def validate_workout_intensity(cls, v):
+        if v is not None:
+            return QuestionValidators.validate_workout_intensity(v)
+        return v
+    
+    @validator('sleep_duration')
+    def validate_sleep_duration(cls, v):
+        if v is not None:
+            return QuestionValidators.validate_sleep_duration(v)
+        return v
+    
+    @validator('stress_level')
+    def validate_stress_level(cls, v):
+        if v is not None:
+            return QuestionValidators.validate_stress_level(v)
+        return v
 
 class UserResponseCreate(BaseModel):
     session_id: str = Field(..., description="세션 ID")
@@ -123,6 +156,10 @@ class UserResponseFull(BaseModel):
     other_concerns: Optional[List[str]]
     top_concern: Optional[str]
     diagnosed_conditions: Optional[List[str]]
+    family_history: Optional[List[str]]
+    workout_intensity: Optional[str]
+    sleep_duration: Optional[str]
+    stress_level: Optional[str]
     created_at: datetime
     updated_at: datetime
 
@@ -134,4 +171,9 @@ class AnalyticsResponse(BaseModel):
     age_distribution: Dict[str, int]
     period_concerns_stats: Dict[str, int]
     body_concerns_stats: Dict[str, int]
-    top_concerns_stats: Dict[str, int] 
+    top_concerns_stats: Dict[str, int]
+    diagnosed_conditions_stats: Dict[str, int]
+    family_history_stats: Dict[str, int]
+    workout_intensity_stats: Dict[str, int]
+    sleep_duration_stats: Dict[str, int]
+    stress_level_stats: Dict[str, int] 

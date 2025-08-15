@@ -107,7 +107,11 @@ class QuestionService:
                     mental_health_concerns=responses.mental_health_concerns,
                     other_concerns=responses.other_concerns,
                     top_concern=responses.top_concern,
-                    diagnosed_conditions=responses.diagnosed_conditions
+                    diagnosed_conditions=responses.diagnosed_conditions,
+                    family_history=responses.family_history,
+                    workout_intensity=responses.workout_intensity,
+                    sleep_duration=responses.sleep_duration,
+                    stress_level=responses.stress_level
                 )
                 
                 self.db.add(new_response)
@@ -118,36 +122,44 @@ class QuestionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Response save failed: {str(e)}")
-            raise Exception(f"응답 저장 실패: {str(e)}")
-
-    def _update_response_fields(self, response: UserResponse, new_data: UserResponseData):
-        """응답 필드 업데이트 (None이 아닌 값만)"""
-        if new_data.name is not None:
-            response.name = new_data.name
-        if new_data.age is not None:
-            response.age = new_data.age
-        if new_data.period_description is not None:
-            response.period_description = new_data.period_description
-        if new_data.birth_control is not None:
-            response.birth_control = new_data.birth_control
-        if new_data.last_period_date is not None:
-            response.last_period_date = new_data.last_period_date
-        if new_data.cycle_length is not None:
-            response.cycle_length = new_data.cycle_length
-        if new_data.period_concerns is not None:
-            response.period_concerns = new_data.period_concerns
-        if new_data.body_concerns is not None:
-            response.body_concerns = new_data.body_concerns
-        if new_data.skin_hair_concerns is not None:
-            response.skin_hair_concerns = new_data.skin_hair_concerns
-        if new_data.mental_health_concerns is not None:
-            response.mental_health_concerns = new_data.mental_health_concerns
-        if new_data.other_concerns is not None:
-            response.other_concerns = new_data.other_concerns
-        if new_data.top_concern is not None:
-            response.top_concern = new_data.top_concern
-        if new_data.diagnosed_conditions is not None:
-            response.diagnosed_conditions = new_data.diagnosed_conditions
+            raise Exception(f"Response save failed: {str(e)}")
+    
+    def _update_response_fields(self, response: UserResponse, responses: UserResponseData):
+        """응답 필드 업데이트"""
+        if responses.name is not None:
+            response.name = responses.name
+        if responses.age is not None:
+            response.age = responses.age
+        if responses.period_description is not None:
+            response.period_description = responses.period_description
+        if responses.birth_control is not None:
+            response.birth_control = responses.birth_control
+        if responses.last_period_date is not None:
+            response.last_period_date = responses.last_period_date
+        if responses.cycle_length is not None:
+            response.cycle_length = responses.cycle_length
+        if responses.period_concerns is not None:
+            response.period_concerns = responses.period_concerns
+        if responses.body_concerns is not None:
+            response.body_concerns = responses.body_concerns
+        if responses.skin_hair_concerns is not None:
+            response.skin_hair_concerns = responses.skin_hair_concerns
+        if responses.mental_health_concerns is not None:
+            response.mental_health_concerns = responses.mental_health_concerns
+        if responses.other_concerns is not None:
+            response.other_concerns = responses.other_concerns
+        if responses.top_concern is not None:
+            response.top_concern = responses.top_concern
+        if responses.diagnosed_conditions is not None:
+            response.diagnosed_conditions = responses.diagnosed_conditions
+        if responses.family_history is not None:
+            response.family_history = responses.family_history
+        if responses.workout_intensity is not None:
+            response.workout_intensity = responses.workout_intensity
+        if responses.sleep_duration is not None:
+            response.sleep_duration = responses.sleep_duration
+        if responses.stress_level is not None:
+            response.stress_level = responses.stress_level
 
     def get_user_responses(self, uid: str) -> List[UserResponse]:
         """사용자의 모든 응답 조회"""

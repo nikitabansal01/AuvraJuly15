@@ -244,8 +244,8 @@ class RAGService:
                     if consecutive_empty_count >= 3:
                         logger.warning("3 consecutive empty results, stopping search.")
                         break
-                else:
-                    consecutive_empty_count = 0
+                    else:
+                        consecutive_empty_count = 0
             
             logger.info(f"PMC content processing completed: {len(enriched_papers)} papers (target: {target_papers})")
             
@@ -1286,12 +1286,16 @@ Respond with ONLY this JSON format (no additional text):
                         # 문서 레벨 태그 추가
                         if section_tags.get("document_level"):
                             doc_tags = section_tags["document_level"]
+                            # target_age_distribution을 배열로 변환
+                            age_distribution_dict = doc_tags.get("target_age_distribution", {})
+                            age_distribution_array = RAGService.convert_age_distribution_to_array(age_distribution_dict)
+                            
                             metadata.update({
                                 # 문서 레벨 태그
                                 "doc_study_type": doc_tags.get("study_type", []),
                                 "doc_condition_disease": doc_tags.get("condition_disease", []),
                                 "doc_target": doc_tags.get("target", []),
-                                "doc_target_age_distribution": doc_tags.get("target_age_distribution", {}),
+                                "doc_target_age_distribution": age_distribution_array,  # 배열로 변환
                                 "doc_num_of_participants": doc_tags.get("num_of_participants", 0),
                                 "doc_study_duration": doc_tags.get("study_duration", ""),
                                 "doc_intervention_type": doc_tags.get("intervention_type", []),
@@ -3061,6 +3065,19 @@ Respond with ONLY this JSON format (no additional text):
     #     """
     #     # PostgreSQL 조회 로직 제거 - Pinecone에서 study_arms_text로 조회
     #     return None
+
+    @staticmethod
+    def convert_age_distribution_to_array(age_distribution: Dict[str, int]) -> List[str]:
+        """
+        target_age_distribution 딕셔너리를 배열로 변환
+        :param age_distribution: {"teenager": 50, "adult": 100} 형태의 딕셔너리
+        :return: ["teenager", "adult"] 형태의 배열
+        """
+        if not age_distribution:
+            return []
+        
+        # 값이 있는 키들만 배열로 변환
+        return [age_group for age_group, count in age_distribution.items() if count > 0]
 
     @staticmethod
     def convert_study_arms_to_text(study_arms: List[Dict[str, Any]]) -> str:

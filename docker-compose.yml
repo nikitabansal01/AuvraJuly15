@@ -40,7 +40,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here-change-in-production}
       
       # CORS 설정 (환경변수 우선, 없으면 모든 호스트 허용)
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-["*"]}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
 
       
     depends_on:

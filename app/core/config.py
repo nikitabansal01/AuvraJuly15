@@ -41,7 +41,14 @@ class Settings(BaseSettings):
     PINECONE_ENVIRONMENT: str = ""
     PINECONE_INDEX: str = ""
     
-
+    # OpenAI 설정
+    OPENAI_API_KEY: str = ""
+    
+    # Groq 설정
+    GROQ_API_KEY: str = ""
+    
+    # Redis 설정
+    REDIS_URL: str = "redis://localhost:6379"
     
     # 로깅 설정
     LOG_LEVEL: str = "INFO"
@@ -54,9 +61,12 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     UPLOAD_DIR: str = "uploads"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "env_file_encoding": "utf-8",
+        "extra": "ignore"  # 추가 필드 무시
+    }
 
 
 # 환경별 설정
@@ -66,8 +76,6 @@ class DevelopmentSettings(Settings):
     ENVIRONMENT: str = "development"
     # 개발 환경: 모든 호스트 허용, 보안 완화
     ALLOWED_HOSTS: List[str] = ["*", "localhost", "127.0.0.1", "0.0.0.0"]
-    # 개발 환경: 환경변수 우선, 없으면 기본값
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/auvra_db")
 
 
 class ProductionSettings(Settings):
@@ -76,11 +84,6 @@ class ProductionSettings(Settings):
     ENVIRONMENT: str = "production"
     # 프로덕션 환경: 모든 호스트 허용 (Render용)
     ALLOWED_HOSTS: List[str] = ["*"]
-    # 프로덕션에서는 환경변수에서 가져와야 함
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/auvra_db")
-    FIREBASE_PROJECT_ID: str = os.getenv("FIREBASE_PROJECT_ID", "")
-    FIREBASE_PRIVATE_KEY: str = os.getenv("FIREBASE_PRIVATE_KEY", "")
-    FIREBASE_CLIENT_EMAIL: str = os.getenv("FIREBASE_CLIENT_EMAIL", "")
 
 
 # 환경에 따른 설정 선택
