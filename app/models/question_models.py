@@ -34,8 +34,7 @@ class SessionData(BaseModel):
 
     @validator('age')
     def validate_age(cls, v):
-        if v is not None and (v < 13 or v > 100):
-            raise ValueError("나이는 13세 이상 100세 이하여야 합니다")
+        # 나이 제한 없음 - 모든 나이 허용
         return v
 
     @validator('period_description')
@@ -142,8 +141,7 @@ class UserResponseData(BaseModel):
 
     @validator('age')
     def validate_age(cls, v):
-        if v is not None and (v < 13 or v > 100):
-            raise ValueError("나이는 13세 이상 100세 이하여야 합니다")
+        # 나이 제한 없음 - 모든 나이 허용
         return v
 
     # ... 기존 검증 로직들 유지 ...

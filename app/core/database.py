@@ -46,15 +46,6 @@ def generate_session_id():
     return f"session_{uuid.uuid4().hex[:12]}"
 
 # Model definitions
-class User(Base):
-    __tablename__ = "users"
-    
-    uid = Column(String(255), primary_key=True)
-    email = Column(String(255))
-    display_name = Column(String(255))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
 class QuestionSession(Base):
     __tablename__ = "question_sessions"
     
