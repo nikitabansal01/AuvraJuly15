@@ -123,7 +123,8 @@ async def link_session_to_user(
         service = QuestionService(db)
         
         # Check that only the user can link their own session
-        if current_user.get("uid") != link_data.user_profile.email:  # Firebase UID로 확인
+        # Firebase UID와 이메일이 일치하는지 확인
+        if current_user.get("email") != link_data.user_profile.email:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only link your own sessions"
