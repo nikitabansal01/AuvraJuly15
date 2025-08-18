@@ -1,10 +1,11 @@
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, ARRAY, JSON
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ARRAY, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
-from app.core.config import settings
 import uuid
+import hashlib
+from app.core.config import settings
 
 # Database engine creation
 # Render PostgreSQL requires SSL
@@ -57,49 +58,58 @@ class User(Base):
 class QuestionSession(Base):
     __tablename__ = "question_sessions"
     
-    session_id = Column(String(255), primary_key=True)
-    uid = Column(String(255), nullable=True)
-    device_id = Column(String(255))
+    session_id = Column(String(255), primary_key=True, index=True)
+    device_id = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
-    status = Column(String(50), default="in_progress")
-
-class UserResponse(Base):
-    __tablename__ = "user_responses"
+    expires_at = Column(DateTime, nullable=False)  # 세션 만료 시간 (24시간)
+    status = Column(String(50), default="active")  # active, completed, expired
     
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(255))
-    uid = Column(String(255), nullable=True)
-    
-    # Basic information
-    name = Column(String(255), nullable=True)
-    age = Column(Integer, nullable=True)
-    
-    # Menstrual related
+    # 임시 설문 데이터 (개인 식별 정보 제외)
+    age = Column(Integer, nullable=True)  # 숫자 그대로 저장
     period_description = Column(String(100), nullable=True)
     birth_control = Column(ARRAY(String), nullable=True)
-    
-    # Menstrual details
-    last_period_date = Column(String(50), nullable=True)  # MM/DD/YYYY format
+    last_period_date = Column(String(50), nullable=True)
     cycle_length = Column(String(50), nullable=True)
-    
-    # Health concerns (stored as JSONB)
     period_concerns = Column(JSONB, nullable=True)
     body_concerns = Column(JSONB, nullable=True)
     skin_hair_concerns = Column(JSONB, nullable=True)
     mental_health_concerns = Column(JSONB, nullable=True)
     other_concerns = Column(JSONB, nullable=True)
-    
-    # Top priority concern
     top_concern = Column(String(255), nullable=True)
-    
-    # Diagnosed conditions
     diagnosed_conditions = Column(ARRAY(String), nullable=True)
-    
-    # Family history
     family_history = Column(ARRAY(String), nullable=True)
+    workout_intensity = Column(String(50), nullable=True)
+    sleep_duration = Column(String(50), nullable=True)
+    stress_level = Column(String(50), nullable=True)
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
     
-    # Lifestyle
+    uid = Column(String(255), primary_key=True, index=True)  # Firebase UID
+    name = Column(String(255), nullable=True)  # Firebase Auth에서 가져옴
+    email = Column(String(255), nullable=True)  # Firebase Auth에서 가져옴
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class UserResponse(Base):
+    __tablename__ = "user_responses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), nullable=False, index=True)  # Firebase UID
+    
+    # 익명화된 설문 데이터 (개인 식별 정보 제거)
+    age = Column(Integer, nullable=True)  # 실제 나이 (숫자)
+    period_description = Column(String(100), nullable=True)
+    birth_control = Column(ARRAY(String), nullable=True)
+    cycle_length = Column(String(50), nullable=True)
+    period_concerns = Column(JSONB, nullable=True)
+    body_concerns = Column(JSONB, nullable=True)
+    skin_hair_concerns = Column(JSONB, nullable=True)
+    mental_health_concerns = Column(JSONB, nullable=True)
+    other_concerns = Column(JSONB, nullable=True)
+    top_concern = Column(String(255), nullable=True)
+    diagnosed_conditions = Column(ARRAY(String), nullable=True)
+    family_history = Column(ARRAY(String), nullable=True)
     workout_intensity = Column(String(50), nullable=True)
     sleep_duration = Column(String(50), nullable=True)
     stress_level = Column(String(50), nullable=True)

@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from app.core.database import QuestionSession, UserResponse, generate_session_id
-from app.models.question_models import UserResponseData, SessionCreate
+from app.core.database import QuestionSession, UserResponse, UserProfile, generate_session_id
+from app.models.question_models import SessionData, UserResponseData, SessionDataCreate, UserProfileCreate
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,16 +12,17 @@ class QuestionService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_session(self, device_id: str, uid: Optional[str] = None) -> str:
-        """Create new question session"""
+    def create_session(self, device_id: str) -> str:
+        """Create new question session with 24-hour expiration"""
         try:
             session_id = generate_session_id()
+            expires_at = datetime.utcnow() + timedelta(hours=24)
             
             session = QuestionSession(
                 session_id=session_id,
-                uid=uid,
                 device_id=device_id,
-                status="in_progress"
+                expires_at=expires_at,
+                status="active"
             )
             
             self.db.add(session)
@@ -36,130 +37,157 @@ class QuestionService:
             raise Exception(f"Session creation failed: {str(e)}")
 
     def get_session(self, session_id: str) -> Optional[QuestionSession]:
-        """Get session"""
+        """Get active session"""
         try:
-            return self.db.query(QuestionSession).filter(
-                QuestionSession.session_id == session_id
+            session = self.db.query(QuestionSession).filter(
+                QuestionSession.session_id == session_id,
+                QuestionSession.status == "active",
+                QuestionSession.expires_at > datetime.utcnow()
             ).first()
+            
+            if not session:
+                logger.warning(f"Session not found or expired: {session_id}")
+                return None
+                
+            return session
         except Exception as e:
             logger.error(f"Session retrieval failed: {str(e)}")
             raise Exception(f"Session retrieval failed: {str(e)}")
 
-    def link_session_to_user(self, session_id: str, uid: str) -> bool:
-        """세션을 사용자와 연결"""
+    def save_session_data(self, session_id: str, data: SessionData) -> bool:
+        """Save survey data to session"""
         try:
             session = self.get_session(session_id)
             if not session:
-                raise Exception("세션을 찾을 수 없습니다")
+                raise Exception("세션을 찾을 수 없거나 만료되었습니다")
             
-            # Update uid of existing session
-            session.uid = uid
-            session.status = "linked"
-            session.completed_at = datetime.utcnow()
-            
-            # 관련된 응답들도 uid 업데이트
-            responses = self.db.query(UserResponse).filter(
-                UserResponse.session_id == session_id
-            ).all()
-            
-            for response in responses:
-                response.uid = uid
+            # Update session with survey data
+            if data.age is not None:
+                session.age = data.age
+            if data.period_description is not None:
+                session.period_description = data.period_description
+            if data.birth_control is not None:
+                session.birth_control = data.birth_control
+            if data.last_period_date is not None:
+                session.last_period_date = data.last_period_date
+            if data.cycle_length is not None:
+                session.cycle_length = data.cycle_length
+            if data.period_concerns is not None:
+                session.period_concerns = data.period_concerns
+            if data.body_concerns is not None:
+                session.body_concerns = data.body_concerns
+            if data.skin_hair_concerns is not None:
+                session.skin_hair_concerns = data.skin_hair_concerns
+            if data.mental_health_concerns is not None:
+                session.mental_health_concerns = data.mental_health_concerns
+            if data.other_concerns is not None:
+                session.other_concerns = data.other_concerns
+            if data.top_concern is not None:
+                session.top_concern = data.top_concern
+            if data.diagnosed_conditions is not None:
+                session.diagnosed_conditions = data.diagnosed_conditions
+            if data.family_history is not None:
+                session.family_history = data.family_history
+            if data.workout_intensity is not None:
+                session.workout_intensity = data.workout_intensity
+            if data.sleep_duration is not None:
+                session.sleep_duration = data.sleep_duration
+            if data.stress_level is not None:
+                session.stress_level = data.stress_level
             
             self.db.commit()
-            logger.info(f"Session {session_id} linked to user {uid}")
+            logger.info(f"Session data saved: {session_id}")
+            return True
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Session data save failed: {str(e)}")
+            raise Exception(f"Session data save failed: {str(e)}")
+
+    def create_user_profile(self, uid: str, name: str, email: str) -> UserProfile:
+        """Create user profile"""
+        try:
+            profile = UserProfile(
+                uid=uid,
+                name=name,
+                email=email
+            )
+            
+            self.db.add(profile)
+            self.db.commit()
+            
+            logger.info(f"User profile created: {uid}")
+            return profile
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"User profile creation failed: {str(e)}")
+            raise Exception(f"User profile creation failed: {str(e)}")
+
+    def _convert_session_to_response_data(self, session: QuestionSession) -> UserResponseData:
+        """세션 데이터를 익명화된 응답 데이터로 변환"""
+        return UserResponseData(
+            age=session.age,  # 그대로 복사
+            period_description=session.period_description,
+            birth_control=session.birth_control,
+            cycle_length=session.cycle_length,
+            period_concerns=session.period_concerns,
+            body_concerns=session.body_concerns,
+            skin_hair_concerns=session.skin_hair_concerns,
+            mental_health_concerns=session.mental_health_concerns,
+            other_concerns=session.other_concerns,
+            top_concern=session.top_concern,
+            diagnosed_conditions=session.diagnosed_conditions,
+            family_history=session.family_history,
+            workout_intensity=session.workout_intensity,
+            sleep_duration=session.sleep_duration,
+            stress_level=session.stress_level
+        )
+
+    def link_session_to_user(self, session_id: str, uid: str, name: str, email: str) -> bool:
+        """세션을 사용자와 연결하고 세션 삭제"""
+        try:
+            session = self.get_session(session_id)
+            if not session:
+                raise Exception("세션을 찾을 수 없거나 만료되었습니다")
+            
+            # 1. 사용자 프로필 생성
+            self.create_user_profile(uid, name, email)
+            
+            # 2. 세션 데이터를 익명화하여 영구 저장
+            response_data = self._convert_session_to_response_data(session)
+            new_response = UserResponse(
+                uid=uid,
+                age=response_data.age,
+                period_description=response_data.period_description,
+                birth_control=response_data.birth_control,
+                cycle_length=response_data.cycle_length,
+                period_concerns=response_data.period_concerns,
+                body_concerns=response_data.body_concerns,
+                skin_hair_concerns=response_data.skin_hair_concerns,
+                mental_health_concerns=response_data.mental_health_concerns,
+                other_concerns=response_data.other_concerns,
+                top_concern=response_data.top_concern,
+                diagnosed_conditions=response_data.diagnosed_conditions,
+                family_history=response_data.family_history,
+                workout_intensity=response_data.workout_intensity,
+                sleep_duration=response_data.sleep_duration,
+                stress_level=response_data.stress_level
+            )
+            
+            self.db.add(new_response)
+            
+            # 3. 세션 삭제
+            self.db.delete(session)
+            
+            self.db.commit()
+            logger.info(f"Session {session_id} linked to user {uid} and deleted")
             return True
             
         except Exception as e:
             self.db.rollback()
             logger.error(f"Session linking failed: {str(e)}")
             raise Exception(f"세션 연결 실패: {str(e)}")
-
-    def save_user_responses(self, session_id: str, responses: UserResponseData, uid: Optional[str] = None) -> UserResponse:
-        """사용자 응답 저장"""
-        try:
-            # 기존 응답이 있는지 확인
-            existing_response = self.db.query(UserResponse).filter(
-                UserResponse.session_id == session_id
-            ).first()
-            
-            if existing_response:
-                # 기존 응답 업데이트
-                self._update_response_fields(existing_response, responses)
-                existing_response.uid = uid or existing_response.uid
-                existing_response.updated_at = datetime.utcnow()
-                self.db.commit()
-                logger.info(f"Response updated: session {session_id}")
-                return existing_response
-            else:
-                # 새 응답 생성
-                new_response = UserResponse(
-                    session_id=session_id,
-                    uid=uid,
-                    name=responses.name,
-                    age=responses.age,
-                    period_description=responses.period_description,
-                    birth_control=responses.birth_control,
-                    last_period_date=responses.last_period_date,
-                    cycle_length=responses.cycle_length,
-                    period_concerns=responses.period_concerns,
-                    body_concerns=responses.body_concerns,
-                    skin_hair_concerns=responses.skin_hair_concerns,
-                    mental_health_concerns=responses.mental_health_concerns,
-                    other_concerns=responses.other_concerns,
-                    top_concern=responses.top_concern,
-                    diagnosed_conditions=responses.diagnosed_conditions,
-                    family_history=responses.family_history,
-                    workout_intensity=responses.workout_intensity,
-                    sleep_duration=responses.sleep_duration,
-                    stress_level=responses.stress_level
-                )
-                
-                self.db.add(new_response)
-                self.db.commit()
-                logger.info(f"New response saved: session {session_id}")
-                return new_response
-                
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Response save failed: {str(e)}")
-            raise Exception(f"Response save failed: {str(e)}")
-    
-    def _update_response_fields(self, response: UserResponse, responses: UserResponseData):
-        """응답 필드 업데이트"""
-        if responses.name is not None:
-            response.name = responses.name
-        if responses.age is not None:
-            response.age = responses.age
-        if responses.period_description is not None:
-            response.period_description = responses.period_description
-        if responses.birth_control is not None:
-            response.birth_control = responses.birth_control
-        if responses.last_period_date is not None:
-            response.last_period_date = responses.last_period_date
-        if responses.cycle_length is not None:
-            response.cycle_length = responses.cycle_length
-        if responses.period_concerns is not None:
-            response.period_concerns = responses.period_concerns
-        if responses.body_concerns is not None:
-            response.body_concerns = responses.body_concerns
-        if responses.skin_hair_concerns is not None:
-            response.skin_hair_concerns = responses.skin_hair_concerns
-        if responses.mental_health_concerns is not None:
-            response.mental_health_concerns = responses.mental_health_concerns
-        if responses.other_concerns is not None:
-            response.other_concerns = responses.other_concerns
-        if responses.top_concern is not None:
-            response.top_concern = responses.top_concern
-        if responses.diagnosed_conditions is not None:
-            response.diagnosed_conditions = responses.diagnosed_conditions
-        if responses.family_history is not None:
-            response.family_history = responses.family_history
-        if responses.workout_intensity is not None:
-            response.workout_intensity = responses.workout_intensity
-        if responses.sleep_duration is not None:
-            response.sleep_duration = responses.sleep_duration
-        if responses.stress_level is not None:
-            response.stress_level = responses.stress_level
 
     def get_user_responses(self, uid: str) -> List[UserResponse]:
         """사용자의 모든 응답 조회"""
@@ -171,148 +199,51 @@ class QuestionService:
             logger.error(f"User response retrieval failed: {str(e)}")
             raise Exception(f"사용자 응답 조회 실패: {str(e)}")
 
-    def get_session_responses(self, session_id: str) -> Optional[UserResponse]:
-        """세션의 응답 조회"""
+    def get_session_data(self, session_id: str) -> Optional[SessionData]:
+        """세션 데이터 조회"""
         try:
-            return self.db.query(UserResponse).filter(
-                UserResponse.session_id == session_id
-            ).first()
+            session = self.get_session(session_id)
+            if not session:
+                return None
+            
+            return SessionData(
+                age=session.age,
+                period_description=session.period_description,
+                birth_control=session.birth_control,
+                last_period_date=session.last_period_date,
+                cycle_length=session.cycle_length,
+                period_concerns=session.period_concerns,
+                body_concerns=session.body_concerns,
+                skin_hair_concerns=session.skin_hair_concerns,
+                mental_health_concerns=session.mental_health_concerns,
+                other_concerns=session.other_concerns,
+                top_concern=session.top_concern,
+                diagnosed_conditions=session.diagnosed_conditions,
+                family_history=session.family_history,
+                workout_intensity=session.workout_intensity,
+                sleep_duration=session.sleep_duration,
+                stress_level=session.stress_level
+            )
         except Exception as e:
-            logger.error(f"Session response retrieval failed: {str(e)}")
-            raise Exception(f"세션 응답 조회 실패: {str(e)}")
+            logger.error(f"Session data retrieval failed: {str(e)}")
+            raise Exception(f"세션 데이터 조회 실패: {str(e)}")
 
-    def merge_user_sessions(self, uid: str, session_ids: List[str]) -> bool:
-        """여러 세션을 하나의 사용자로 병합"""
+    def cleanup_expired_sessions(self) -> int:
+        """만료된 세션 정리"""
         try:
-            # Collect response data from all sessions
-            all_responses = []
-            for session_id in session_ids:
-                response = self.get_session_responses(session_id)
-                if response:
-                    all_responses.append(response)
+            expired_sessions = self.db.query(QuestionSession).filter(
+                QuestionSession.expires_at <= datetime.utcnow()
+            ).all()
             
-            if not all_responses:
-                return False
-            
-            # 가장 최신 응답을 기준으로 병합
-            latest_response = max(all_responses, key=lambda x: x.created_at)
-            
-            # Merge data from other sessions into the latest response
-            for response in all_responses:
-                if response.id != latest_response.id:
-                    self._merge_response_data(latest_response, response)
-            
-            # 최신 응답의 uid 업데이트
-            latest_response.uid = uid
-            latest_response.updated_at = datetime.utcnow()
-            
-            # Delete other sessions
-            for session_id in session_ids:
-                if session_id != latest_response.session_id:
-                    self.db.query(UserResponse).filter(
-                        UserResponse.session_id == session_id
-                    ).delete()
+            count = len(expired_sessions)
+            for session in expired_sessions:
+                self.db.delete(session)
             
             self.db.commit()
-            logger.info(f"Session merge completed: user {uid}")
-            return True
+            logger.info(f"Cleaned up {count} expired sessions")
+            return count
             
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Session merge failed: {str(e)}")
-            raise Exception(f"세션 병합 실패: {str(e)}")
-
-    def _merge_response_data(self, target: UserResponse, source: UserResponse):
-        """응답 데이터 병합 (None이 아닌 값만)"""
-        if source.name and not target.name:
-            target.name = source.name
-        if source.age and not target.age:
-            target.age = source.age
-        if source.period_description and not target.period_description:
-            target.period_description = source.period_description
-        if source.birth_control and not target.birth_control:
-            target.birth_control = source.birth_control
-        if source.last_period_date and not target.last_period_date:
-            target.last_period_date = source.last_period_date
-        if source.cycle_length and not target.cycle_length:
-            target.cycle_length = source.cycle_length
-        if source.period_concerns and not target.period_concerns:
-            target.period_concerns = source.period_concerns
-        if source.body_concerns and not target.body_concerns:
-            target.body_concerns = source.body_concerns
-        if source.skin_hair_concerns and not target.skin_hair_concerns:
-            target.skin_hair_concerns = source.skin_hair_concerns
-        if source.mental_health_concerns and not target.mental_health_concerns:
-            target.mental_health_concerns = source.mental_health_concerns
-        if source.other_concerns and not target.other_concerns:
-            target.other_concerns = source.other_concerns
-        if source.top_concern and not target.top_concern:
-            target.top_concern = source.top_concern
-        if source.diagnosed_conditions and not target.diagnosed_conditions:
-            target.diagnosed_conditions = source.diagnosed_conditions
-
-    def get_analytics(self) -> Dict[str, Any]:
-        """분석 데이터 조회"""
-        try:
-            # 총 사용자 수
-            total_users = self.db.query(UserResponse).filter(
-                UserResponse.uid.isnot(None)
-            ).distinct(UserResponse.uid).count()
-            
-            # 나이 분포
-            age_distribution = {}
-            age_responses = self.db.query(UserResponse.age).filter(
-                and_(UserResponse.age.isnot(None), UserResponse.uid.isnot(None))
-            ).all()
-            
-            for age_response in age_responses:
-                age = age_response[0]
-                if age:
-                    age_group = f"{(age // 10) * 10}대"
-                    age_distribution[age_group] = age_distribution.get(age_group, 0) + 1
-            
-            # 건강 문제 통계
-            period_concerns_stats = self._get_concerns_stats("period_concerns")
-            body_concerns_stats = self._get_concerns_stats("body_concerns")
-            top_concerns_stats = self._get_top_concerns_stats()
-            
-            return {
-                "total_users": total_users,
-                "age_distribution": age_distribution,
-                "period_concerns_stats": period_concerns_stats,
-                "body_concerns_stats": body_concerns_stats,
-                "top_concerns_stats": top_concerns_stats
-            }
-            
-        except Exception as e:
-            logger.error(f"Analytics data retrieval failed: {str(e)}")
-            raise Exception(f"분석 데이터 조회 실패: {str(e)}")
-
-    def _get_concerns_stats(self, field_name: str) -> Dict[str, int]:
-        """특정 건강 문제 필드의 통계"""
-        stats = {}
-        responses = self.db.query(getattr(UserResponse, field_name)).filter(
-            and_(getattr(UserResponse, field_name).isnot(None), UserResponse.uid.isnot(None))
-        ).all()
-        
-        for response in responses:
-            concerns = response[0]
-            if concerns:
-                for concern in concerns:
-                    stats[concern] = stats.get(concern, 0) + 1
-        
-        return stats
-
-    def _get_top_concerns_stats(self) -> Dict[str, int]:
-        """최우선 문제 통계"""
-        stats = {}
-        responses = self.db.query(UserResponse.top_concern).filter(
-            and_(UserResponse.top_concern.isnot(None), UserResponse.uid.isnot(None))
-        ).all()
-        
-        for response in responses:
-            concern = response[0]
-            if concern:
-                stats[concern] = stats.get(concern, 0) + 1
-        
-        return stats 
+            logger.error(f"Session cleanup failed: {str(e)}")
+            raise Exception(f"세션 정리 실패: {str(e)}") 
