@@ -275,16 +275,32 @@ async def _generate_recommendations_background(session_id: str, service, db) -> 
                 "stress_level": session_data.stress_level
             }
             
-            # 각 카테고리별 추천 생성 (임시 세션용)
+            # 각 카테고리별 추천 생성 (에러 핸들링 개선)
             categories = ["food", "movement", "mindfulness"]
+            successful_categories = []
+            failed_categories = []
+            
             for category in categories:
-                await recommendation_service.generate_and_save_session_recommendations(
-                    session_id=session_id,
-                    user_profile=temp_user_profile,
-                    category=category
-                )
+                try:
+                    success = await recommendation_service.generate_and_save_session_recommendations(
+                        session_id=session_id,
+                        user_profile=temp_user_profile,
+                        category=category
+                    )
+                    if success:
+                        successful_categories.append(category)
+                        logger.info(f"카테고리 추천 생성 성공: {session_id}, {category}")
+                    else:
+                        failed_categories.append(category)
+                        logger.error(f"카테고리 추천 생성 실패: {session_id}, {category}")
+                except Exception as e:
+                    failed_categories.append(category)
+                    logger.error(f"카테고리 추천 생성 중 예외: {session_id}, {category}, error={str(e)}")
             
             logger.info(f"백그라운드 세션 추천 생성 완료: {session_id}")
+            logger.info(f"성공한 카테고리: {successful_categories}")
+            logger.info(f"실패한 카테고리: {failed_categories}")
+            
         else:
             logger.warning(f"세션 데이터를 찾을 수 없음: {session_id}")
             
@@ -502,11 +518,6 @@ async def get_session_recommendations_status(
     try:
         from app.core.database import RecommendationRecord
         
-        # 세션 연결된 추천들 개수 확인
-        recommendations_count = db.query(RecommendationRecord).filter(
-            RecommendationRecord.session_id == session_id
-        ).count()
-        
         # 세션 존재 여부 확인
         service = QuestionService(db)
         session = service.get_session(session_id)
@@ -517,19 +528,40 @@ async def get_session_recommendations_status(
                 detail="Session not found or expired"
             )
         
-        # 상태 판단
-        if recommendations_count >= 3:  # food, movement, mindfulness
-            status = "completed"
-        elif recommendations_count > 0:
+        # 카테고리별 추천 개수 확인
+        categories = ["food", "movement", "mindfulness"]
+        category_counts = {}
+        total_recommendations = 0
+        
+        for category in categories:
+            count = db.query(RecommendationRecord).filter(
+                RecommendationRecord.session_id == session_id,
+                RecommendationRecord.category == category
+            ).count()
+            category_counts[category] = count
+            total_recommendations += count
+        
+        # 더 정교한 상태 판단
+        completed_categories = [cat for cat, count in category_counts.items() if count > 0]
+        
+        if len(completed_categories) == 3:  # 모든 카테고리 완료
+            # 추가로 최소 추천 수 확인 (각 카테고리당 최소 1개)
+            if all(count > 0 for count in category_counts.values()):
+                status = "completed"
+            else:
+                status = "in_progress"
+        elif len(completed_categories) > 0:  # 일부 카테고리 완료
             status = "in_progress"
-        else:
+        else:  # 아직 시작 안됨
             status = "pending"
         
         return {
             "session_id": session_id,
             "status": status,
-            "recommendations_count": recommendations_count,
-            "expected_count": 3
+            "recommendations_count": total_recommendations,
+            "expected_count": 3,
+            "category_breakdown": category_counts,
+            "completed_categories": completed_categories
         }
         
     except HTTPException:

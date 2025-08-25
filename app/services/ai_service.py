@@ -304,7 +304,7 @@ class AIService:
             return ''
 
     @staticmethod
-    def parse_recommendations_from_llm(llm_response: str) -> List[Dict[str, Any]]:
+    def parse_recommendations_from_llm(llm_response: str, category: str) -> List[Dict[str, Any]]:
         try:
             import re
             
@@ -313,24 +313,24 @@ class AIService:
             if match:
                 parsed = json.loads(match.group(0))
                 if isinstance(parsed, list):
-                    # 기본값 보장
+                    # 기본값 보장 (일관된 처리)
                     for rec in parsed:
+                        # 필수 필드 기본값 설정
                         rec.setdefault('researchBacking', {'summary': 'Based on current research', 'studies': []})
                         rec.setdefault('contraindications', [])
                         rec.setdefault('frequency', 'Daily')
                         rec.setdefault('expectedTimeline', '4-6 weeks')
                         rec.setdefault('priority', 'medium')
-                        # 새로운 태그 필드들의 기본값
                         rec.setdefault('conditions', [])
                         rec.setdefault('symptoms', [])
                         rec.setdefault('hormones', [])
                         rec.setdefault('frequency_detail', None)
                         rec.setdefault('duration_weeks', None)
-                        rec.setdefault('purpose', None)  # 목적 필드 기본값
-                        # optimal_times는 연구에 언급된 경우에만 포함되므로 기본값 설정하지 않음
+                        rec.setdefault('purpose', None)
+                        # optimal_times는 프롬프트에서 명시적으로 "omit entirely"라고 했으므로 기본값 설정하지 않음
                         
-                        # 카테고리별 필드 정리 및 배열 변환
-                        AIService._process_category_specific_fields(rec)
+                        # 카테고리별 필드 정리 및 배열 변환 (함수 파라미터 사용)
+                        AIService._process_category_specific_fields(rec, category)
                     
                     # 태그 정규화
                     normalized_parsed = AIService.normalize_tags(parsed)
@@ -343,21 +343,22 @@ class AIService:
                 if isinstance(parsed, dict):
                     # 단일 객체를 배열로 변환
                     rec = parsed
+                    # 필수 필드 기본값 설정 (일관된 처리)
                     rec.setdefault('researchBacking', {'summary': 'Based on current research', 'studies': []})
                     rec.setdefault('contraindications', [])
                     rec.setdefault('frequency', 'Daily')
                     rec.setdefault('expectedTimeline', '4-6 weeks')
                     rec.setdefault('priority', 'medium')
-                    # 새로운 태그 필드들의 기본값
                     rec.setdefault('conditions', [])
                     rec.setdefault('symptoms', [])
                     rec.setdefault('hormones', [])
                     rec.setdefault('frequency_detail', None)
                     rec.setdefault('duration_weeks', None)
-                    rec.setdefault('purpose', None)  # 목적 필드 기본값
+                    rec.setdefault('purpose', None)
+                    # optimal_times는 프롬프트에서 명시적으로 "omit entirely"라고 했으므로 기본값 설정하지 않음
                     
-                    # 카테고리별 필드 정리 및 배열 변환
-                    AIService._process_category_specific_fields(rec)
+                    # 카테고리별 필드 정리 및 배열 변환 (함수 파라미터 사용)
+                    AIService._process_category_specific_fields(rec, category)
                     
                     # 태그 정규화
                     normalized_parsed = AIService.normalize_tags([rec])
@@ -371,39 +372,35 @@ class AIService:
 
     
     @staticmethod
-    def _process_category_specific_fields(rec: Dict[str, Any]) -> None:
+    def _process_category_specific_fields(rec: Dict[str, Any], category: str) -> None:
         """
-        카테고리별 필드 정리 및 배열 변환
+        카테고리별 필드 보완 (AI 응답을 수정하지 않고 누락된 필드만 보완)
         """
-        # 기존 필드들 제거
-        fields_to_remove = [
-            'food_amount', 'food_item', 'exercise_duration', 'exercise_type', 
-            'exercise_intensity', 'mindfulness_duration', 'mindfulness_technique'
-        ]
+        category_lower = category.lower()
         
-        for field in fields_to_remove:
-            if field in rec:
-                del rec[field]
-        
-        # 카테고리별 필드 추가
-        if 'category' in rec:
-            category = rec['category'].lower()
+        # AI 응답을 수정하지 않고, 누락된 필드만 기본값으로 보완
+        if category_lower == 'food':
+            # 음식 관련 필드가 없으면 빈 배열로 보완
+            if 'food_amounts' not in rec:
+                rec['food_amounts'] = []
+            if 'food_items' not in rec:
+                rec['food_items'] = []
             
-            if category == 'food':
-                # 음식 관련 필드만 추가
-                rec['food_amounts'] = []  # ["150g", "100g"]
-                rec['food_items'] = []    # ["oats", "lentils"]
-                
-            elif category == 'movement':
-                # 운동 관련 필드만 추가
-                rec['exercise_durations'] = []  # ["30 minutes", "45 minutes"]
-                rec['exercise_types'] = []      # ["yoga", "walking"]
-                rec['exercise_intensities'] = [] # ["moderate", "low"]
-                
-            elif category == 'mindfulness':
-                # 마음챙김 관련 필드만 추가
-                rec['mindfulness_durations'] = []  # ["15 minutes", "20 minutes"]
-                rec['mindfulness_techniques'] = [] # ["meditation", "deep breathing"]
+        elif category_lower == 'movement':
+            # 운동 관련 필드가 없으면 빈 배열로 보완
+            if 'exercise_durations' not in rec:
+                rec['exercise_durations'] = []
+            if 'exercise_types' not in rec:
+                rec['exercise_types'] = []
+            if 'exercise_intensities' not in rec:
+                rec['exercise_intensities'] = []
+            
+        elif category_lower == 'mindfulness':
+            # 마음챙김 관련 필드가 없으면 빈 배열로 보완
+            if 'mindfulness_durations' not in rec:
+                rec['mindfulness_durations'] = []
+            if 'mindfulness_techniques' not in rec:
+                rec['mindfulness_techniques'] = []
     
     @staticmethod
     def normalize_tags(recommendations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -559,6 +556,54 @@ class AIService:
             f"Symptoms: {', '.join(up.symptoms)}" if up.symptoms else None
         ]))
         secondary_imbalances_text = f", Secondary: {', '.join(up.secondaryImbalances)}" if up.secondaryImbalances else ''
+        
+        # JSON 예시들을 미리 정의
+        example_study = {
+            "title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS",
+            "authors": ["Lee J", "Kim S", "Park M"],
+            "journal": "Diabetes Research",
+            "publicationYear": 2023,
+            "participantCount": 130,
+            "results": "Improved insulin sensitivity by 25% and reduced fasting glucose"
+        }
+        
+        example_recommendation = {
+            "title": "Cinnamon Supplementation",
+            "purpose": "Cinnamon helps improve insulin sensitivity and reduce blood sugar levels",
+            "specificAction": "Take 1.5g of cinnamon powder daily for 12 weeks",
+            "frequency": "Daily",
+            "intensity": "Moderate",
+            "expectedTimeline": "12 weeks",
+            "priority": "high",
+            "contraindications": ["Not recommended during pregnancy"],
+            "conditions": ["PCOS"],
+            "symptoms": ["weight gain"],
+            "hormones": ["insulin"],
+            "food_amounts": ["1.5g"],
+            "food_items": ["cinnamon powder"],
+            "frequency_detail": "daily:1",
+            "duration_weeks": 12,
+            "researchBacking": {
+                "summary": "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose",
+                "studies": [example_study]
+            }
+        }
+        
+        # researchBacking 구조 예시
+        research_backing_structure = {
+            "summary": "Based on [YEAR] study with [NUMBER] women showing [SPECIFIC RESULTS]",
+            "studies": [
+                {
+                    "title": "Study Title",
+                    "authors": ["Author1", "Author2"],
+                    "journal": "Journal Name",
+                    "publicationYear": 2023,
+                    "participantCount": 130,
+                    "results": "Specific results description"
+                }
+            ]
+        }
+        
         prompt = f'''
 You are a medical AI assistant specializing in women's hormone health. Your task is to generate HIGHLY SPECIFIC, SCIENTIFICALLY-BASED recommendations with exact amounts, durations, and frequencies.
 
@@ -601,7 +646,7 @@ RESEARCH BACKING FORMAT:
 - Summary: "Based on [YEAR] study with [NUMBER] women showing [SPECIFIC RESULTS]"
 - Example: "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose"
 - Studies must include: title, authors (array), journal, publicationYear, participantCount, results
-- Example study: {{"title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS", "authors": ["Lee J", "Kim S", "Park M"], "journal": "Diabetes Research", "publicationYear": 2023, "participantCount": 130, "results": "Improved insulin sensitivity by 25% and reduced fasting glucose"}}
+- Example study: {json.dumps(example_study, ensure_ascii=False)}
 
 TAGGING REQUIREMENTS:
 - Each recommendation must include tags for related conditions, symptoms, and hormones
@@ -611,7 +656,7 @@ CONDITIONS/DISEASES (use exact terms):
 - PCOD, PCOS, Endometriosis, Dysmenorrhea, Amenorrhea, Cushing's syndrome, Menorrhagia, Metrorrhagia, PMS, Diabetes, PMDD, Perimenopause, Menopause, Postmenopausal
 
 HORMONES/BIOMARKERS (use exact terms):
-- androgens, progesterone, estrogen, thyroid, insulin, cortisol, FSH, LH, PROLACTIN, Hunger hormone (Ghrelin)
+- androgens, progesterone, estrogen, thyroid, insulin, cortisol, FSH, LH, prolactin, ghrelin
 
 TARGET SYMPTOMS (use exact terms):
 - irregular periods, painful periods, light periods, spotting, heavy periods, bloating, hot flashes (during the day), nausea, difficulty losing weight, stubborn belly fat, weight gain, menstrual headaches, hirsutism, thinning of hair/ hairloss, adult acne, mood swings, stress, fatigue, night sweats
@@ -624,34 +669,49 @@ TITLE AND PURPOSE FORMAT:
 - title: 1-2 words describing the specific method/technique (e.g., "Cinnamon Supplementation", "Yoga Practice", "Meditation")
 - purpose: Natural, descriptive sentence explaining what the recommendation does and its benefits (e.g., "Cinnamon helps improve insulin sensitivity and reduce blood sugar levels", "Yoga practice helps reduce stress and balance cortisol levels", "Meditation helps calm the mind and reduce anxiety")
 
-Output format: Return a JSON array of recommendation cards. Each card must include: title (1-2 words), purpose (target benefit), specificAction (with exact amounts/duration), frequency, intensity, expectedTimeline, priority (high/medium/low), contraindications (array), conditions (array of related conditions), symptoms (array of related symptoms), hormones (array of related hormones), and researchBacking object with: summary (string) and studies (array of objects with: title, authors (array), journal, publicationYear, participantCount, results). 
+CRITICAL OUTPUT FORMAT REQUIREMENTS:
+Return a JSON array of recommendation cards. Each card must include EXACTLY these fields:
 
-Additionally, include the following separated fields based on category:
+REQUIRED FIELDS (all categories):
+- title: 1-2 words describing the specific method/technique
+- purpose: Natural, descriptive sentence explaining what the recommendation does and its benefits
+- specificAction: Exact action with amounts/duration (e.g., "Take 1.5g of cinnamon powder daily for 12 weeks")
+- frequency: "Daily", "Weekly", etc.
+- intensity: "Low", "Moderate", "High"
+- expectedTimeline: "12 weeks", "8 weeks", etc.
+- priority: "high", "medium", or "low"
+- contraindications: Array of contraindications (e.g., ["Not recommended during pregnancy"])
+- conditions: Array of related medical conditions (e.g., ["PCOS", "Endometriosis"])
+- symptoms: Array of related symptoms (e.g., ["irregular periods", "weight gain"])
+- hormones: Array of related hormones (e.g., ["insulin", "androgens"])
+- frequency_detail: Structured format (e.g., "daily:1", "weekly:3")
+- duration_weeks: Number only (e.g., 12, 8, 16)
+- researchBacking: Object with EXACTLY this structure:
+{json.dumps(research_backing_structure, ensure_ascii=False, indent=2)}
 
-FOOD recommendations: 
-- food_amounts: Array of exact amounts (e.g., ["150g", "100g", "2 tablespoons"])
-- food_items: Array of food items (e.g., ["oats", "lentils", "flaxseed"])
-- frequency_detail, duration_weeks
-- optimal_times: ONLY include if research specifically mentions timing. If included, use ONLY the single best time from research (e.g., ["morning"] or ["afternoon"] or ["night"]). If research doesn't mention timing, omit this field entirely.
+CATEGORY-SPECIFIC FIELDS (use EXACT field names):
 
-MOVEMENT recommendations: 
-- exercise_durations: Array of durations (e.g., ["30 minutes", "45 minutes"])
-- exercise_types: Array of exercise types (e.g., ["yoga", "walking"])
-- exercise_intensities: Array of intensities (e.g., ["moderate", "low"])
-- frequency_detail, duration_weeks
-- optimal_times: ONLY include if research specifically mentions timing. If included, use ONLY the single best time from research (e.g., ["morning"] or ["afternoon"] or ["night"]). If research doesn't mention timing, omit this field entirely.
+FOOD recommendations (MUST include):
+- food_amounts: Array of exact amounts (e.g., ["150g", "100g", "2 tablespoons"]) - DO NOT use "food_amount"
+- food_items: Array of food items (e.g., ["oats", "lentils", "flaxseed"]) - DO NOT use "food_item"
+- optimal_times: Array with single time (e.g., ["morning"]) - ONLY if research mentions timing, otherwise OMIT entirely
 
-MINDFULNESS recommendations: 
-- mindfulness_durations: Array of durations (e.g., ["15 minutes", "20 minutes"])
-- mindfulness_techniques: Array of techniques (e.g., ["meditation", "deep breathing"])
-- frequency_detail, duration_weeks
-- optimal_times: ONLY include if research specifically mentions timing. If included, use ONLY the single best time from research (e.g., ["morning"] or ["afternoon"] or ["night"]). If research doesn't mention timing, omit this field entirely.
+MOVEMENT recommendations (MUST include):
+- exercise_durations: Array of durations (e.g., ["30 minutes", "45 minutes"]) - DO NOT use "exercise_duration"
+- exercise_types: Array of exercise types (e.g., ["yoga", "walking"]) - DO NOT use "exercise_type"
+- exercise_intensities: Array of intensities (e.g., ["moderate", "low"]) - DO NOT use "exercise_intensity"
+- optimal_times: Array with single time (e.g., ["morning"]) - ONLY if research mentions timing, otherwise OMIT entirely
+
+MINDFULNESS recommendations (MUST include):
+- mindfulness_durations: Array of durations (e.g., ["15 minutes", "20 minutes"]) - DO NOT use "mindfulness_duration"
+- mindfulness_techniques: Array of techniques (e.g., ["meditation", "deep breathing"]) - DO NOT use "mindfulness_technique"
+- optimal_times: Array with single time (e.g., ["morning"]) - ONLY if research mentions timing, otherwise OMIT entirely
 
 Generate as many relevant cards as possible.
 
-Example structure: [{{"title": "Cinnamon Supplementation", "purpose": "Cinnamon helps improve insulin sensitivity and reduce blood sugar levels", "specificAction": "Take 1.5g of cinnamon powder daily for 12 weeks", "frequency": "Daily", "intensity": "Moderate", "expectedTimeline": "12 weeks", "priority": "high", "contraindications": ["Not recommended during pregnancy"], "conditions": ["PCOS"], "symptoms": ["weight gain"], "hormones": ["insulin"], "food_amounts": ["1.5g"], "food_items": ["cinnamon powder"], "optimal_times": ["morning"], "frequency_detail": "daily:1", "duration_weeks": 12, "researchBacking": {{"summary": "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose", "studies": [{{"title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS", "authors": ["Lee J", "Kim S", "Park M"], "journal": "Diabetes Research", "publicationYear": 2023, "participantCount": 130, "results": "Improved insulin sensitivity by 25% and reduced fasting glucose"}}]}}}}]
+Example structure: {json.dumps([example_recommendation], ensure_ascii=False)}
 
-Note: In the example above, "optimal_times": ["morning"] is included because the research specifically mentioned morning timing. If research doesn't mention timing, omit the "optimal_times" field entirely.
+Note: The example above does NOT include "optimal_times" because the research doesn't specifically mention timing. Only include "optimal_times" if research explicitly mentions timing.
 
 CONFIDENCE ASSESSMENT:
 - If you are highly confident in your recommendations (based on strong research evidence), include "confidence: 90" in your response
@@ -688,6 +748,34 @@ CONFIDENCE ASSESSMENT:
         # 연구 텍스트 결합
         research_context = "\n\n".join([f"Research Text {i+1}:\n{text}" for i, text in enumerate(research_texts)])
         
+        # JSON 예시들을 미리 정의
+        example_study = {
+            "title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS",
+            "authors": ["Lee J", "Kim S", "Park M"],
+            "journal": "Diabetes Research",
+            "publicationYear": 2023,
+            "participantCount": 130,
+            "results": "Improved insulin sensitivity by 25% and reduced fasting glucose"
+        }
+        
+        example_recommendation = {
+            "title": "Cinnamon Supplementation for Insulin Sensitivity",
+            "specificAction": "Take 1.5g of cinnamon powder daily for 12 weeks",
+            "frequency": "Daily",
+            "intensity": "Moderate",
+            "expectedTimeline": "12 weeks",
+            "priority": "high",
+            "contraindications": ["Not recommended during pregnancy"],
+            "food_amount": "1.5g",
+            "food_item": "cinnamon powder",
+            "frequency_detail": "daily",
+            "duration_weeks": 12,
+            "researchBacking": {
+                "summary": "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose",
+                "studies": [example_study]
+            }
+        }
+        
         prompt = f'''
 You are a medical AI assistant specializing in women's hormone health. Your task is to generate HIGHLY SPECIFIC, SCIENTIFICALLY-BASED recommendations with exact amounts, durations, and frequencies based on the provided research texts.
 
@@ -721,7 +809,7 @@ RESEARCH BACKING FORMAT:
 - Summary: "Based on [YEAR] study with [NUMBER] women showing [SPECIFIC RESULTS]"
 - Example: "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose"
 - Studies must include: title, authors (array), journal, publicationYear, participantCount, results
-- Example study: {{"title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS", "authors": ["Lee J", "Kim S", "Park M"], "journal": "Diabetes Research", "publicationYear": 2023, "participantCount": 130, "results": "Improved insulin sensitivity by 25% and reduced fasting glucose"}}
+- Example study: {json.dumps(example_study, ensure_ascii=False)}
 
 Output format: Return a JSON array of recommendation cards. Each card must include: title, specificAction (with exact amounts/duration), frequency, intensity, expectedTimeline, priority (high/medium/low), contraindications (array), and researchBacking object with: summary (string) and studies (array of objects with: title, authors (array), journal, publicationYear, participantCount, results). 
 
@@ -733,7 +821,7 @@ MINDFULNESS recommendations: mindfulness_duration, mindfulness_technique, freque
 
 Generate as many relevant cards as possible.
 
-Example structure: [{{"title": "Cinnamon Supplementation for Insulin Sensitivity", "specificAction": "Take 1.5g of cinnamon powder daily for 12 weeks", "frequency": "Daily", "intensity": "Moderate", "expectedTimeline": "12 weeks", "priority": "high", "contraindications": ["Not recommended during pregnancy"], "food_amount": "1.5g", "food_item": "cinnamon powder", "frequency_detail": "daily", "duration_weeks": 12, "researchBacking": {{"summary": "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose", "studies": [{{"title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS", "authors": ["Lee J", "Kim S", "Park M"], "journal": "Diabetes Research", "publicationYear": 2023, "participantCount": 130, "results": "Improved insulin sensitivity by 25% and reduced fasting glucose"}}]}}}}]
+Example structure: {json.dumps([example_recommendation], ensure_ascii=False)}
 
 CONFIDENCE ASSESSMENT:
 - If you are highly confident in your recommendations (based on strong research evidence), include "confidence: 90" in your response
@@ -769,7 +857,7 @@ CONFIDENCE ASSESSMENT:
                 llm_response, actual_model = await AIService.call_ai_model(enhanced_prompt)
                 
                 # 5. 결과 파싱
-                recommendations = AIService.parse_recommendations_from_llm(llm_response)
+                recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
                 
                 results[category] = recommendations
                 
@@ -935,7 +1023,7 @@ CONFIDENCE ASSESSMENT:
             logger.info(f"신뢰도 평가 완료: category={category}, confidence={confidence}")
             
             # 응답 파싱
-            recommendations = AIService.parse_recommendations_from_llm(llm_response)
+            recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
             logger.info(f"응답 파싱 완료: category={category}, recommendations_count={len(recommendations) if recommendations else 0}")
             logger.info(f"AI 응답 내용 (처음 200자): {llm_response[:200] if llm_response else 'None'}")
             
@@ -955,7 +1043,7 @@ CONFIDENCE ASSESSMENT:
                     return recommendations
                 
                 fallback_confidence = AIService.evaluate_llm_confidence(fallback_response)
-                fallback_recommendations = AIService.parse_recommendations_from_llm(fallback_response)
+                fallback_recommendations = AIService.parse_recommendations_from_llm(fallback_response, category)
                 if fallback_recommendations and fallback_confidence > confidence:
                     recommendations = fallback_recommendations
             

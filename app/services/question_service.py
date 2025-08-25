@@ -292,40 +292,78 @@ class QuestionService:
                     RecommendationRecord.session_id == session_id
                 ).all()
                 
+                # 추천별로 개별 업데이트 및 즉시 커밋
+                updated_recommendations = []
+                failed_recommendations = []
+                
                 for rec in session_recommendations:
-                    rec.uid = uid
-                    rec.session_id = None  # 세션 ID 제거
-                    logger.info(f"추천 영구 저장 이전: recommendation_id={rec.id}")
+                    # 각 추천을 독립적인 서브트랜잭션으로 처리
+                    savepoint = self.db.begin_nested()  # 서브트랜잭션 시작
+                    try:
+                        rec.uid = uid
+                        rec.session_id = None  # 세션 ID 제거
+                        savepoint.commit()  # 서브트랜잭션 커밋
+                        updated_recommendations.append(rec.id)
+                        logger.info(f"추천 영구 저장 이전 성공: recommendation_id={rec.id}")
+                    except Exception as e:
+                        logger.error(f"추천 영구 저장 이전 실패: recommendation_id={rec.id}, error={str(e)}")
+                        failed_recommendations.append(rec.id)
+                        savepoint.rollback()  # 개별 서브트랜잭션만 롤백
+                        continue
                 
                 # 세션 연결된 조언들도 uid로 업데이트
                 session_advices = self.db.query(RecommendationAdvice).filter(
                     RecommendationAdvice.session_id == session_id
                 ).all()
                 
+                updated_advices = []
+                failed_advices = []
+                
                 for advice in session_advices:
-                    advice.uid = uid
-                    advice.session_id = None  # 세션 ID 제거
-                    logger.info(f"조언 영구 저장 이전: advice_id={advice.id}")
+                    # 각 조언을 독립적인 서브트랜잭션으로 처리
+                    savepoint = self.db.begin_nested()  # 서브트랜잭션 시작
+                    try:
+                        advice.uid = uid
+                        advice.session_id = None  # 세션 ID 제거
+                        savepoint.commit()  # 서브트랜잭션 커밋
+                        updated_advices.append(advice.id)
+                        logger.info(f"조언 영구 저장 이전 성공: advice_id={advice.id}")
+                    except Exception as e:
+                        logger.error(f"조언 영구 저장 이전 실패: advice_id={advice.id}, error={str(e)}")
+                        failed_advices.append(advice.id)
+                        savepoint.rollback()  # 개별 서브트랜잭션만 롤백
+                        continue
                 
-                logger.info(f"세션 추천 영구 저장 이전 완료: {len(session_recommendations)}개 추천, {len(session_advices)}개 조언")
+                logger.info(f"세션 추천 영구 저장 이전 완료: {len(updated_recommendations)}개 추천 성공, {len(failed_recommendations)}개 실패")
+                logger.info(f"세션 조언 영구 저장 이전 완료: {len(updated_advices)}개 조언 성공, {len(failed_advices)}개 실패")
                 
-                # 5. 자동 스케줄 생성
-                logger.info(f"자동 스케줄 생성 시작: {len(session_recommendations)}개 추천")
+                # 성공한 추천들만 스케줄 생성에 사용
+                successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
+                
+                # 5. 자동 스케줄 생성 (성공한 추천들만)
+                logger.info(f"자동 스케줄 생성 시작: {len(successful_recommendations)}개 추천")
                 try:
                     from app.services.new_scheduling_service import NewSchedulingService
                     scheduling_service = NewSchedulingService(self.db)
                     
                     created_schedules = []
-                    for rec in session_recommendations:
+                    failed_schedules = []
+                    
+                    for rec in successful_recommendations:
+                        # 각 스케줄을 독립적인 서브트랜잭션으로 처리
+                        savepoint = self.db.begin_nested()  # 서브트랜잭션 시작
                         try:
                             # 현재 사용자 시간대로 스케줄 생성
                             schedule = scheduling_service.create_schedule_from_recommendation(rec, current_timezone)
+                            savepoint.commit()  # 서브트랜잭션 커밋
                             created_schedules.append(schedule.id)
                             logger.info(f"스케줄 생성 완료: recommendation_id={rec.id}, schedule_id={schedule.id}, timezone={current_timezone}")
                         except Exception as e:
                             logger.error(f"개별 스케줄 생성 실패: recommendation_id={rec.id}, error={str(e)}")
+                            failed_schedules.append(rec.id)
+                            savepoint.rollback()  # 개별 서브트랜잭션만 롤백
                     
-                    logger.info(f"자동 스케줄 생성 완료: {len(created_schedules)}개 스케줄 생성됨")
+                    logger.info(f"자동 스케줄 생성 완료: {len(created_schedules)}개 스케줄 생성됨, {len(failed_schedules)}개 실패")
                     
                 except Exception as e:
                     logger.error(f"자동 스케줄 생성 실패: {str(e)}", exc_info=True)
@@ -336,8 +374,20 @@ class QuestionService:
                 
                 # 7. 커밋
                 self.db.commit()
+                
+                # 결과 요약 로깅
+                total_recommendations = len(session_recommendations)
+                total_advices = len(session_advices)
+                success_rate_rec = len(updated_recommendations) / total_recommendations * 100 if total_recommendations > 0 else 0
+                success_rate_adv = len(updated_advices) / total_advices * 100 if total_advices > 0 else 0
+                
                 logger.info(f"세션 연결 완료: session_id={session_id}, uid={uid}")
-                return True
+                logger.info(f"추천 연결 성공률: {success_rate_rec:.1f}% ({len(updated_recommendations)}/{total_recommendations})")
+                logger.info(f"조언 연결 성공률: {success_rate_adv:.1f}% ({len(updated_advices)}/{total_advices})")
+                logger.info(f"스케줄 생성 성공률: {len(created_schedules)}/{len(successful_recommendations)} 개")
+                
+                # 일부라도 성공했으면 True 반환
+                return len(updated_recommendations) > 0 or len(updated_advices) > 0
                 
             except Exception as e:
                 logger.error(f"세션 추천 영구 저장 이전 실패: {str(e)}", exc_info=True)

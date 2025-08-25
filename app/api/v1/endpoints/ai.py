@@ -33,7 +33,7 @@ async def generate_recommendations(
         prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile_obj, category)
         llm_response, actual_model = await AIService.call_ai_model(prompt)
         confidence = AIService.evaluate_llm_confidence(llm_response)
-        recommendations = AIService.parse_recommendations_from_llm(llm_response)
+        recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
         # Fallback: 신뢰도 낮거나 추천 없음 → Fallback 모델 사용
         if confidence < 60 or not recommendations:
             fallback_config = AIService.get_fallback_model_config()
@@ -50,7 +50,7 @@ async def generate_recommendations(
                 continue
             
             fallback_confidence = AIService.evaluate_llm_confidence(fallback_response)
-            fallback_recommendations = AIService.parse_recommendations_from_llm(fallback_response)
+            fallback_recommendations = AIService.parse_recommendations_from_llm(fallback_response, category)
             if fallback_recommendations and fallback_confidence > confidence:
                 llm_response = fallback_response
                 confidence = fallback_confidence

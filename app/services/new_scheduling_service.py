@@ -66,13 +66,12 @@ class NewSchedulingService:
             )
             
             self.db.add(schedule)
-            self.db.commit()
+            self.db.flush()  # ID 생성을 위해 flush만 수행
             
             logger.info(f"스케줄 생성 완료: schedule_id={schedule.id}, timezone={tzid}")
             return schedule
             
         except Exception as e:
-            self.db.rollback()
             logger.error(f"스케줄 생성 실패: {str(e)}")
             raise Exception(f"스케줄 생성 실패: {str(e)}")
     
