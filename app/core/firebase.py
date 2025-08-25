@@ -52,7 +52,7 @@ def initialize_firebase():
 def verify_firebase_token(token: str) -> dict:
     """Verify Firebase ID token"""
     try:
-        decoded_token = auth.verify_id_token(token)
+        decoded_token = auth.verify_id_token(token, clock_skew_seconds=10)
         return decoded_token
     except Exception as e:
         raise Exception(f"Invalid Firebase token: {str(e)}")

@@ -109,17 +109,18 @@ async def search_rag_endpoint(request: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=f"RAG 검색 실패: {str(e)}") 
 
 @router.post("/fetch-and-process", response_model=RAGResponse)
-async def fetch_and_process_endpoint():
+async def fetch_and_process_endpoint(resume_from_checkpoint: bool = False):
     """
     PCOS 관련 논문을 수집하고 처리하여 Pinecone에 저장
             기본 설정: 최대 50개 논문, 2015년 이후, LLM 태깅 사용
+    :param resume_from_checkpoint: 체크포인트에서 재시작할지 여부 (기본값: False)
     """
     start_time = time.time()
-    logger.info("PCOS paper collection and processing started")
+    logger.info(f"PCOS paper collection and processing started (resume_from_checkpoint: {resume_from_checkpoint})")
     
     try:
         # 1. PubMed Central에서 논문 수집 (기본 설정)
-        all_papers = await RAGService.fetch_pcos_papers_from_pubmed_api()
+        all_papers = await RAGService.fetch_pcos_papers_from_pubmed_api(resume_from_checkpoint)
         logger.info(f"PubMed Central paper collection completed: {len(all_papers)} papers")
         
         if not all_papers:

@@ -85,21 +85,33 @@ class RAGService:
     }
 
     @staticmethod
-    async def fetch_pcos_papers_from_pubmed_api() -> List[Dict[str, Any]]:
+    async def fetch_pcos_papers_from_pubmed_api(resume_from_checkpoint: bool = False) -> List[Dict[str, Any]]:
         """
         Collect PCOS-related papers from PubMed using MeSH-based search, 
         continue searching until 50 papers with PMC IDs are found
+        :param resume_from_checkpoint: 체크포인트에서 재시작할지 여부 (기본값: False)
         :return: List of paper metadata
         """
         logger.info("PubMed paper collection started - searching for 50 papers with PMC IDs")
         
-        target_papers = 50  # Target number of papers
+        target_papers = 100  # Target number of papers
         all_papers = []
         enriched_papers = []
         batch_size = 50  # Number of papers to search at once
         processed_pmids = set()  # Track already processed PMIDs
         webenv = None  # PubMed session management
         query_key = None  # PubMed query key
+        
+        # 체크포인트 로드
+        checkpoint = None
+        if resume_from_checkpoint:
+            checkpoint = RAGService.load_checkpoint()
+            if checkpoint:
+                logger.info(f"체크포인트에서 재시작: {checkpoint.get('papers_processed', 0)}개 논문 처리됨")
+                processed_pmids = set(checkpoint.get("processed_pmids", []))
+                enriched_papers = checkpoint.get("enriched_papers", [])
+                webenv = checkpoint.get("webenv")
+                query_key = checkpoint.get("query_key")
         
         try:
             import requests
@@ -204,6 +216,17 @@ class RAGService:
                                     paper["content"] = pmc_content
                                     logger.info(f"PMC content extraction successful: {paper['pmcid']} ({len(enriched_papers)+1}/{target_papers})")
                                     enriched_papers.append(paper)
+                                    
+                                    # 체크포인트 저장
+                                    checkpoint_data = {
+                                        "processed_pmids": list(processed_pmids),
+                                        "enriched_papers": enriched_papers,
+                                        "webenv": webenv,
+                                        "query_key": query_key,
+                                        "papers_processed": len(enriched_papers),
+                                        "target_papers": target_papers
+                                    }
+                                    RAGService.save_checkpoint(checkpoint_data)
                                 else:
                                     logger.warning(f"PMC XML content extraction failed: {paper['pmcid']}")
                             else:
@@ -253,14 +276,31 @@ class RAGService:
             logger.info("Starting complete document-by-document flow for collected papers")
             processed_papers = []
             
-            for i, paper in enumerate(enriched_papers):
+            # 체크포인트에서 재시작 시 이미 처리된 논문 건너뛰기
+            start_index = 0
+            if checkpoint and "processed_papers" in checkpoint:
+                processed_paper_pmids = set(checkpoint.get("processed_papers", []))
+                for i, paper in enumerate(enriched_papers):
+                    if paper.get("pmid") in processed_paper_pmids:
+                        start_index = i + 1
+                        processed_papers.append(paper)
+                        logger.info(f"이미 처리된 논문 건너뛰기: {paper.get('title', 'Unknown')[:50]}...")
+                    # else: break 제거 - 미완료 논문도 처리하도록
+            
+            for i, paper in enumerate(enriched_papers[start_index:], start=start_index):
                 try:
                     # Execute complete flow for each document
-                    success = await RAGService.process_paper_complete_pipeline(paper)
+                    success = await RAGService.process_paper_complete_pipeline(paper, checkpoint)
                     
                     if success:
                         processed_papers.append(paper)
                         logger.info(f"Document complete processing finished: {paper.get('title', 'Unknown')[:50]}... ({len(processed_papers)}/{len(enriched_papers)})")
+                        
+                        # 논문 처리 완료 시 체크포인트 업데이트
+                        if checkpoint:
+                            checkpoint["processed_papers"] = [p.get("pmid") for p in processed_papers if p.get("pmid")]
+                            checkpoint["papers_processed"] = len(processed_papers)
+                            RAGService.save_checkpoint(checkpoint)
                     else:
                         logger.warning(f"Document processing failed: {paper.get('title', 'Unknown')}")
                     
@@ -269,6 +309,12 @@ class RAGService:
                     continue
             
             logger.info(f"Document-by-document complete flow finished: {len(processed_papers)} papers processed")
+            
+            # 모든 처리 완료 시 체크포인트 정리
+            if checkpoint:
+                RAGService.clear_checkpoint()
+                logger.info("모든 처리 완료, 체크포인트 정리됨")
+            
             return processed_papers
         
         except Exception as e:
@@ -876,7 +922,9 @@ class RAGService:
         
         result = []
         for idx, chunk_info in enumerate(semantic_chunks):
-            chunk_id = f"chunk-{uuid.uuid4().hex[:8]}"
+            # 결정적 청크 ID 생성 (논문 ID + 청크 인덱스)
+            paper_id = getattr(paper, 'pmid', paper.title.replace(' ', '_')[:20])
+            chunk_id = f"paper_{paper_id}_chunk_{idx+1}"
             chunk = ChunkedPaper(
                 chunk_id=chunk_id,
                 text=chunk_info['text'],
@@ -1060,7 +1108,7 @@ Respond with ONLY this JSON format (no additional text):
         LLM을 이용해 chunk에 태깅 정보를 부여한다. (문서 레벨 결과를 컨텍스트로 활용)
         """
         prompt = RAGService.suggest_tagging_prompt(chunk, section_tags)
-        llm_response = await AIService.call_openai(prompt)
+        llm_response, actual_model = await AIService.call_ai_model(prompt)
         
         # LLM 응답에서 JSON 파싱
         try:
@@ -1188,7 +1236,28 @@ Respond with ONLY this JSON format (no additional text):
         )
 
     @staticmethod
-    async def embed_chunk(chunk: ChunkedPaper) -> EmbeddingResult:
+    def get_current_model_version() -> str:
+        """
+        현재 사용 중인 모델 버전을 반환
+        """
+        # 환경변수에서 모델 설정 확인
+        model_from_env = os.getenv("CURRENT_MODEL", "gpt-4o")
+        return model_from_env
+    
+    @staticmethod
+    def get_actual_model_version(used_model: str = None) -> str:
+        """
+        실제 사용된 모델 버전을 반환 (fallback 고려)
+        """
+        if used_model:
+            return used_model
+        else:
+            # 환경변수에서 모델 설정 확인
+            model_from_env = os.getenv("CURRENT_MODEL", "gpt-4o")
+            return model_from_env
+    
+    @staticmethod
+    async def embed_chunk(chunk: ChunkedPaper, actual_model: str = None) -> EmbeddingResult:
         """
         OpenAI Embedding API를 이용해 chunk 텍스트를 임베딩 벡터로 변환한다.
         :return: EmbeddingResult(id, values, metadata)
@@ -1224,7 +1293,10 @@ Respond with ONLY this JSON format (no additional text):
                     "url": chunk.source_url[:200] if chunk.source_url else "",  # 크기 제한
                     "text": chunk.text[:1000] if chunk.text else "",  # 원문 텍스트 저장 (RAG 필수, 크기 제한)
                     "start_idx": chunk.start_idx,
-                    "end_idx": chunk.end_idx
+                    "end_idx": chunk.end_idx,
+                    # 모델 정보 추가
+                    "model_version": RAGService.get_actual_model_version(actual_model),  # 실제 사용된 모델
+                    "tagging_timestamp": datetime.now().isoformat()  # 태깅 시간
                 }
                 
                 # 논문 식별자 추가 (비어있어도 키는 저장)
@@ -1363,6 +1435,9 @@ Respond with ONLY this JSON format (no additional text):
                     logger.warning(f"[Embedding] Tagging failed, using basic metadata only: {chunk.chunk_id}, error: {e}")
                 
                 logger.info(f"[OpenAI] Embedding generation successful: {chunk.chunk_id}, dimensions: {len(embedding_vector)}")
+                # chunk_id를 metadata에서 제거하여 중복 방지
+                if "chunk_id" in metadata:
+                    del metadata["chunk_id"]
                 return EmbeddingResult(id=chunk.chunk_id, values=embedding_vector, metadata=metadata)
                 
         except Exception as e:
@@ -1388,14 +1463,18 @@ Respond with ONLY this JSON format (no additional text):
             raise RuntimeError(f"Pinecone 클라이언트 초기화 실패: {e}")
 
     @staticmethod
-    async def check_paper_exists_in_pinecone(paper_url: str, namespace: str = "pcos-rag") -> bool:
+    async def check_paper_exists_in_pinecone(paper_url: str, namespace: str = None) -> bool:
         """
         논문이 이미 Pinecone에 저장되어 있는지 확인
         :param paper_url: 논문 URL
-        :param namespace: Pinecone 네임스페이스
+        :param namespace: Pinecone 네임스페이스 (None이면 모델별 네임스페이스 사용)
         :return: 존재 여부
         """
         try:
+            # 네임스페이스가 지정되지 않으면 모델별 네임스페이스 사용
+            if namespace is None:
+                namespace = RAGService.get_model_namespace()
+            
             index = RAGService.get_pinecone_client()
             
             # URL로 메타데이터 검색
@@ -1477,13 +1556,17 @@ Respond with ONLY this JSON format (no additional text):
         return None
 
     @staticmethod
-    async def get_existing_papers_from_pinecone(namespace: str = "pcos-rag") -> Dict[str, List[str]]:
+    async def get_existing_papers_from_pinecone(namespace: str = None) -> Dict[str, List[str]]:
         """
         Pinecone에 이미 저장된 논문 정보 가져오기 (URL, DOI, ID 기반)
-        :param namespace: Pinecone 네임스페이스
+        :param namespace: Pinecone 네임스페이스 (None이면 모델별 네임스페이스 사용)
         :return: 저장된 논문 정보 딕셔너리
         """
         try:
+            # 네임스페이스가 지정되지 않으면 모델별 네임스페이스 사용
+            if namespace is None:
+                namespace = RAGService.get_model_namespace()
+            
             index = RAGService.get_pinecone_client()
             
             # 전체 벡터 조회 (최대 10000개)
@@ -1523,14 +1606,21 @@ Respond with ONLY this JSON format (no additional text):
             return {"urls": [], "dois": [], "ids": []}
 
     @staticmethod
-    async def filter_new_papers(papers: List[Dict[str, Any]], namespace: str = "pcos-rag") -> List[Dict[str, Any]]:
+    async def filter_new_papers(papers: List[Dict[str, Any]], namespace: str = None) -> List[Dict[str, Any]]:
         """
         이미 Pinecone에 저장된 논문을 필터링하여 새로운 논문만 반환 (URL, DOI, ID 기반)
         :param papers: 원본 논문 리스트
-        :param namespace: Pinecone 네임스페이스
+        :param namespace: Pinecone 네임스페이스 (None이면 모델별 네임스페이스 사용)
         :return: 새로운 논문만 필터링된 리스트
         """
         if not papers:
+            return []
+        
+        # 네임스페이스가 지정되지 않으면 모델별 네임스페이스 사용
+        if namespace is None:
+            namespace = RAGService.get_model_namespace()
+        
+        # 기존 논문 정보 가져오기
             return []
         
         # 기존 논문 정보 가져오기
@@ -1580,14 +1670,24 @@ Respond with ONLY this JSON format (no additional text):
         return new_papers
 
     @staticmethod
-    async def save_embedding_to_pinecone(embedding: EmbeddingResult, namespace: str = "pcos-rag") -> bool:
+    def get_model_namespace() -> str:
+        """현재 모델에 따른 네임스페이스 반환"""
+        model_name = os.getenv("CURRENT_MODEL", "gpt-4o")
+        return f"pcos-rag-{model_name.replace('-', '_')}"
+    
+    @staticmethod
+    async def save_embedding_to_pinecone(embedding: EmbeddingResult, namespace: str = None) -> bool:
         """
         Pinecone에 임베딩 결과를 저장한다.
         :param embedding: EmbeddingResult
-        :param namespace: Pinecone 네임스페이스
+        :param namespace: Pinecone 네임스페이스 (None이면 모델별 네임스페이스 사용)
         :return: 성공 여부
         """
         try:
+            # 네임스페이스가 지정되지 않으면 모델별 네임스페이스 사용
+            if namespace is None:
+                namespace = RAGService.get_model_namespace()
+            
             index = RAGService.get_pinecone_client()
             
             # 메타데이터 크기 확인
@@ -1631,7 +1731,7 @@ Respond with ONLY this JSON format (no additional text):
         chunks = RAGService.chunk_paper(paper)
         for chunk in chunks:
             tagged = await RAGService.hybrid_tagging(chunk)
-            embedding = await RAGService.embed_chunk(chunk)
+            embedding = await RAGService.embed_chunk(chunk, actual_model)
             pinecone_ok = await RAGService.save_embedding_to_pinecone(embedding)
             results.append({
                 "chunk_id": chunk.chunk_id,
@@ -1903,7 +2003,7 @@ Respond with ONLY this JSON format (no additional text):
                 vector=query_embedding,
                 top_k=top_k * 2,  # 더 많은 결과를 가져와서 필터링
                 include_metadata=True,
-                namespace="pcos-rag"
+                namespace=RAGService.get_model_namespace()
             )
             
             # 3. 검색 결과 처리
@@ -2306,7 +2406,7 @@ Respond with ONLY this JSON format (no additional text):
         Section-based LLM tagging execution (with document context)
         """
         prompt = RAGService.create_section_tagging_prompt(section_title, section_content, section_type, paper_context)
-        llm_response = await AIService.call_openai(prompt)
+        llm_response, actual_model = await AIService.call_ai_model(prompt)
         
         try:
             import json
@@ -2820,7 +2920,7 @@ Respond with ONLY this JSON format (no additional text):
         return normalized_types
 
     @staticmethod
-    async def process_paper_complete_pipeline(paper: Dict[str, Any]) -> bool:
+    async def process_paper_complete_pipeline(paper: Dict[str, Any], checkpoint: Dict[str, Any] = None) -> bool:
         """
         문서 하나에 대해 완전한 플로우 실행
         1차 태깅 → 청킹 → 2차 태깅 → 임베딩 → 저장
@@ -2866,7 +2966,23 @@ Respond with ONLY this JSON format (no additional text):
             
             # 4. 각 청크별 2차 태깅 및 저장
             saved_chunks = 0
+            
+            # 체크포인트에서 재시작 시 이미 처리된 청크 건너뛰기
+            processed_chunks = set()
+            paper_pmid = paper.get("pmid", "unknown")
+            
+            if checkpoint and "paper_progress" in checkpoint:
+                paper_progress = checkpoint["paper_progress"].get(paper_pmid, {})
+                processed_chunks = set(paper_progress.get("processed_chunks", []))
+                total_chunks = paper_progress.get("total_chunks", len(chunks))
+                logger.info(f"논문 {paper_pmid}의 이미 처리된 청크 {len(processed_chunks)}/{total_chunks}개 건너뛰기")
+            
             for i, chunk in enumerate(chunks):
+                # 이미 처리된 청크는 건너뛰기
+                if chunk.chunk_id in processed_chunks:
+                    logger.info(f"이미 처리된 청크 건너뛰기: {chunk.chunk_id}")
+                    saved_chunks += 1
+                    continue
                 try:
                     # 2차 태깅 (1차 결과를 컨텍스트로 사용)
                     tagged = await RAGService.hybrid_tagging(
@@ -2883,6 +2999,22 @@ Respond with ONLY this JSON format (no additional text):
                     if success:
                         saved_chunks += 1
                         logger.info(f"청크 저장 성공: {chunk.chunk_id} ({i+1}/{len(chunks)})")
+                        
+                        # 청크 처리 완료 시 체크포인트 업데이트
+                        if checkpoint:
+                            if "paper_progress" not in checkpoint:
+                                checkpoint["paper_progress"] = {}
+                            
+                            paper_pmid = paper.get("pmid", "unknown")
+                            if paper_pmid not in checkpoint["paper_progress"]:
+                                checkpoint["paper_progress"][paper_pmid] = {
+                                    "total_chunks": len(chunks),
+                                    "processed_chunks": [],
+                                    "paper_title": paper.get("title", "Unknown")
+                                }
+                            
+                            checkpoint["paper_progress"][paper_pmid]["processed_chunks"].append(chunk.chunk_id)
+                            RAGService.save_checkpoint(checkpoint)
                     else:
                         logger.error(f"Pinecone 저장 실패: {chunk.chunk_id}")
                         
@@ -2984,7 +3116,7 @@ Respond with ONLY this JSON format (no additional text):
         """
         try:
             prompt = RAGService.create_document_level_tagging_prompt(paper_context, section_tags)
-            llm_response = await AIService.call_openai(prompt)
+            llm_response, actual_model = await AIService.call_ai_model(prompt)
             
             import json
             import re
@@ -3125,3 +3257,50 @@ Respond with ONLY this JSON format (no additional text):
             text_parts.append(arm_text)
         
         return " | ".join(text_parts)
+
+    @staticmethod
+    def save_checkpoint(checkpoint_data: Dict[str, any], checkpoint_file: str = "rag_checkpoint.json") -> bool:
+        """
+        체크포인트를 파일에 저장
+        """
+        try:
+            checkpoint_data["timestamp"] = datetime.now().isoformat()
+            with open(checkpoint_file, "w", encoding="utf-8") as f:
+                json.dump(checkpoint_data, f, indent=2, ensure_ascii=False)
+            logger.info(f"체크포인트 저장 완료: {checkpoint_file}")
+            return True
+        except Exception as e:
+            logger.error(f"체크포인트 저장 실패: {e}")
+            return False
+    
+    @staticmethod
+    def load_checkpoint(checkpoint_file: str = "rag_checkpoint.json") -> Optional[Dict[str, any]]:
+        """
+        체크포인트를 파일에서 로드
+        """
+        try:
+            if os.path.exists(checkpoint_file):
+                with open(checkpoint_file, "r", encoding="utf-8") as f:
+                    checkpoint = json.load(f)
+                logger.info(f"체크포인트 로드 완료: {checkpoint_file}")
+                return checkpoint
+            else:
+                logger.info(f"체크포인트 파일 없음: {checkpoint_file}")
+                return None
+        except Exception as e:
+            logger.error(f"체크포인트 로드 실패: {e}")
+            return None
+    
+    @staticmethod
+    def clear_checkpoint(checkpoint_file: str = "rag_checkpoint.json") -> bool:
+        """
+        체크포인트 파일 삭제
+        """
+        try:
+            if os.path.exists(checkpoint_file):
+                os.remove(checkpoint_file)
+                logger.info(f"체크포인트 삭제 완료: {checkpoint_file}")
+            return True
+        except Exception as e:
+            logger.error(f"체크포인트 삭제 실패: {e}")
+            return False

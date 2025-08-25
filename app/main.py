@@ -82,8 +82,30 @@ def create_application() -> FastAPI:
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         start_time = time.time()
+        
+        # 모든 요청에 대한 기본 로깅
+        logger.info(f"=== 요청 수신 ===")
+        logger.info(f"URL: {request.url.path}")
+        logger.info(f"Method: {request.method}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        logger.info(f"Client IP: {request.client.host if request.client else 'Unknown'}")
+        
+        # 요청 본문 로깅 (400 오류 디버깅용) - body 읽기 제거
+        if request.method == "POST" and "/link" in request.url.path:
+            logger.info(f"=== 요청 로깅 ===")
+            logger.info(f"URL: {request.url.path}")
+            logger.info(f"Headers: {dict(request.headers)}")
+            logger.info(f"Content-Type: {request.headers.get('content-type', 'None')}")
+        
         response = await call_next(request)
         process_time = time.time() - start_time
+        
+        # 400 오류 상세 로깅
+        if response.status_code == 400:
+            logger.error(f"=== 400 오류 발생 ===")
+            logger.error(f"URL: {request.url.path}")
+            logger.error(f"Method: {request.method}")
+            logger.error(f"Status: {response.status_code}")
         
         logger.info(
             f"{request.method} {request.url.path} - "

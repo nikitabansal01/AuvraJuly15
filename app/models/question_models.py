@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from datetime import datetime
 from app.core.validators import QuestionValidators
@@ -18,7 +18,7 @@ class SessionData(BaseModel):
     age: Optional[int] = Field(None, description="나이 (숫자)")
     period_description: Optional[str] = Field(None, description="생리 상태")
     birth_control: Optional[List[str]] = Field(None, description="피임 방법")
-    last_period_date: Optional[str] = Field(None, description="마지막 생리 시작일")
+    last_period_date: Optional[datetime] = Field(None, description="마지막 생리 시작일 (UTC datetime)")
     cycle_length: Optional[str] = Field(None, description="생리 주기")
     period_concerns: Optional[List[str]] = Field(None, description="생리 관련 우려")
     body_concerns: Optional[List[str]] = Field(None, description="신체 관련 우려")
@@ -31,94 +31,133 @@ class SessionData(BaseModel):
     workout_intensity: Optional[str] = Field(None, description="운동 강도")
     sleep_duration: Optional[str] = Field(None, description="수면 시간")
     stress_level: Optional[str] = Field(None, description="스트레스 수준")
+    survey_timezone: Optional[str] = Field("Asia/Seoul", description="설문 입력 시점 시간대")
 
-    @validator('age')
+    @field_validator('age')
+    @classmethod
     def validate_age(cls, v):
         # 나이 제한 없음 - 모든 나이 허용
         return v
 
-    @validator('period_description')
+    @field_validator('period_description')
+    @classmethod
     def validate_period_description(cls, v):
         if v is not None:
             return QuestionValidators.validate_period_description(v)
         return v
 
-    @validator('birth_control')
+    @field_validator('birth_control')
+    @classmethod
     def validate_birth_control(cls, v):
         if v is not None:
             return QuestionValidators.validate_birth_control(v)
         return v
 
-    @validator('cycle_length')
+    @field_validator('cycle_length')
+    @classmethod
     def validate_cycle_length(cls, v):
         if v is not None:
             return QuestionValidators.validate_cycle_length(v)
         return v
 
-    @validator('period_concerns')
+    @field_validator('period_concerns')
+    @classmethod
     def validate_period_concerns(cls, v):
         if v is not None:
             return QuestionValidators.validate_period_concerns(v)
         return v
 
-    @validator('body_concerns')
+    @field_validator('body_concerns')
+    @classmethod
     def validate_body_concerns(cls, v):
         if v is not None:
             return QuestionValidators.validate_body_concerns(v)
         return v
 
-    @validator('skin_hair_concerns')
+    @field_validator('skin_hair_concerns')
+    @classmethod
     def validate_skin_hair_concerns(cls, v):
         if v is not None:
             return QuestionValidators.validate_skin_hair_concerns(v)
         return v
 
-    @validator('mental_health_concerns')
+    @field_validator('mental_health_concerns')
+    @classmethod
     def validate_mental_health_concerns(cls, v):
         if v is not None:
             return QuestionValidators.validate_mental_health_concerns(v)
         return v
 
-    @validator('other_concerns')
+    @field_validator('other_concerns')
+    @classmethod
     def validate_other_concerns(cls, v):
         if v is not None:
             return QuestionValidators.validate_other_concerns(v)
         return v
 
-    @validator('top_concern')
+    @field_validator('top_concern')
+    @classmethod
     def validate_top_concern(cls, v):
         if v is not None:
             return QuestionValidators.validate_top_concern(v)
         return v
 
-    @validator('diagnosed_conditions')
+    @field_validator('diagnosed_conditions')
+    @classmethod
     def validate_diagnosed_conditions(cls, v):
         if v is not None:
             return QuestionValidators.validate_diagnosed_conditions(v)
         return v
 
-    @validator('family_history')
+    @field_validator('family_history')
+    @classmethod
     def validate_family_history(cls, v):
         if v is not None:
             return QuestionValidators.validate_family_history(v)
         return v
 
-    @validator('workout_intensity')
+    @field_validator('workout_intensity')
+    @classmethod
     def validate_workout_intensity(cls, v):
         if v is not None:
             return QuestionValidators.validate_workout_intensity(v)
         return v
 
-    @validator('sleep_duration')
+    @field_validator('sleep_duration')
+    @classmethod
     def validate_sleep_duration(cls, v):
         if v is not None:
             return QuestionValidators.validate_sleep_duration(v)
         return v
 
-    @validator('stress_level')
+    @field_validator('stress_level')
+    @classmethod
     def validate_stress_level(cls, v):
         if v is not None:
             return QuestionValidators.validate_stress_level(v)
+        return v
+
+    @field_validator('last_period_date', mode='before')
+    @classmethod
+    def validate_last_period_date(cls, v):
+        """문자열을 datetime으로 변환"""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            try:
+                from datetime import datetime
+                # ISO 8601 형식 시도
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except ValueError:
+                try:
+                    # YYYY-MM-DD 형식 시도
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    try:
+                        # MM/DD/YYYY 형식 시도 (프론트엔드 형식)
+                        return datetime.strptime(v, '%m/%d/%Y')
+                    except ValueError:
+                        raise ValueError(f"Invalid date format: {v}. Supported formats: YYYY-MM-DD, MM/DD/YYYY, ISO 8601")
         return v
 
 class UserResponseData(BaseModel):
@@ -126,6 +165,7 @@ class UserResponseData(BaseModel):
     age: Optional[int] = Field(None, description="나이 (숫자)")
     period_description: Optional[str] = Field(None, description="생리 상태")
     birth_control: Optional[List[str]] = Field(None, description="피임 방법")
+    last_period_date_utc: Optional[datetime] = Field(None, description="마지막 생리 시작일 (UTC)")
     cycle_length: Optional[str] = Field(None, description="생리 주기")
     period_concerns: Optional[List[str]] = Field(None, description="생리 관련 우려")
     body_concerns: Optional[List[str]] = Field(None, description="신체 관련 우려")
@@ -138,8 +178,10 @@ class UserResponseData(BaseModel):
     workout_intensity: Optional[str] = Field(None, description="운동 강도")
     sleep_duration: Optional[str] = Field(None, description="수면 시간")
     stress_level: Optional[str] = Field(None, description="스트레스 수준")
+    survey_timezone: Optional[str] = Field("Asia/Seoul", description="설문 입력 시점 시간대")
 
-    @validator('age')
+    @field_validator('age')
+    @classmethod
     def validate_age(cls, v):
         # 나이 제한 없음 - 모든 나이 허용
         return v
@@ -155,8 +197,8 @@ class UserProfileCreate(BaseModel):
     email: str = Field(..., description="사용자 이메일")
 
 class SessionLinkRequest(BaseModel):
-    session_id: str = Field(..., description="세션 ID")
-    user_profile: UserProfileCreate
+    user_profile: UserProfileCreate = Field(..., description="사용자 프로필")
+    current_timezone: str = Field("Asia/Seoul", description="현재 사용자 시간대 (IANA 형식)")
 
 class UserResponseFull(BaseModel):
     id: int
@@ -164,6 +206,7 @@ class UserResponseFull(BaseModel):
     age: Optional[int]
     period_description: Optional[str]
     birth_control: Optional[List[str]]
+    last_period_date_utc: Optional[datetime]
     cycle_length: Optional[str]
     period_concerns: Optional[List[str]]
     body_concerns: Optional[List[str]]
@@ -176,11 +219,13 @@ class UserResponseFull(BaseModel):
     workout_intensity: Optional[str]
     sleep_duration: Optional[str]
     stress_level: Optional[str]
+    survey_timezone: Optional[str]
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class AnalyticsResponse(BaseModel):
     total_responses: int
@@ -192,3 +237,12 @@ class AnalyticsResponse(BaseModel):
     workout_intensity_stats: dict
     sleep_duration_stats: dict
     stress_level_stats: dict 
+
+class TimezoneUpdateRequest(BaseModel):
+    new_timezone: str = Field(..., description="새로운 시간대 (IANA 형식)")
+
+class TimezoneUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    old_timezone: Optional[str] = None
+    new_timezone: Optional[str] = None 

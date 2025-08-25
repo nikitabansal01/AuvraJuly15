@@ -130,3 +130,7 @@ nginx/ssl/
 
 #Firebase Admin SDK
 auvra-adf59-firebase-adminsdk-fbsvc-f60acd9df3.json
+
+app_logs.txt
+app_logs_utf8.txt
+rag_checkpoints.json
