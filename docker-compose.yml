@@ -24,7 +24,7 @@ services:
       # AI 설정
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
-      - CURRENT_MODEL=${CURRENT_MODEL:-gpt-3.5-turbo}
+      - CURRENT_MODEL=${CURRENT_MODEL:-gpt-4o}
       - FALLBACK_MODEL=${FALLBACK_MODEL:-gpt-4o}
       
       # RAG 설정
