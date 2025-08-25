@@ -26,13 +26,13 @@ class AIService:
         elif model_name_lower.startswith(("llama-", "mixtral-", "gemma-", "qwen-", "codellama-")):
             return "groq"
         
-        # Anthropic 모델들
-        elif model_name_lower.startswith(("claude-", "sonnet-", "opus-", "haiku-")):
-            return "anthropic"
-        
         # Perplexity 모델들
         elif model_name_lower.startswith(("llama-3.1-", "mixtral-8x7b-", "codellama-", "mistral-7b-", "gemma-2b-", "gemma-7b-")):
             return "perplexity"
+        
+        # Anthropic 모델들
+        elif model_name_lower.startswith(("claude-", "sonnet-", "opus-", "haiku-")):
+            return "anthropic"
         
         # 기본값
         else:
@@ -307,11 +307,42 @@ class AIService:
     def parse_recommendations_from_llm(llm_response: str) -> List[Dict[str, Any]]:
         try:
             import re
+            
+            # 1. JSON 배열 형식 찾기 [...]
             match = re.search(r'\[.*\]', llm_response, re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
-                # 기본값 보장
-                for rec in parsed:
+                if isinstance(parsed, list):
+                    # 기본값 보장
+                    for rec in parsed:
+                        rec.setdefault('researchBacking', {'summary': 'Based on current research', 'studies': []})
+                        rec.setdefault('contraindications', [])
+                        rec.setdefault('frequency', 'Daily')
+                        rec.setdefault('expectedTimeline', '4-6 weeks')
+                        rec.setdefault('priority', 'medium')
+                        # 새로운 태그 필드들의 기본값
+                        rec.setdefault('conditions', [])
+                        rec.setdefault('symptoms', [])
+                        rec.setdefault('hormones', [])
+                        rec.setdefault('frequency_detail', None)
+                        rec.setdefault('duration_weeks', None)
+                        rec.setdefault('purpose', None)  # 목적 필드 기본값
+                        # optimal_times는 연구에 언급된 경우에만 포함되므로 기본값 설정하지 않음
+                        
+                        # 카테고리별 필드 정리 및 배열 변환
+                        AIService._process_category_specific_fields(rec)
+                    
+                    # 태그 정규화
+                    normalized_parsed = AIService.normalize_tags(parsed)
+                    return normalized_parsed
+            
+            # 2. 단일 JSON 객체 형식 찾기 {...}
+            match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+            if match:
+                parsed = json.loads(match.group(0))
+                if isinstance(parsed, dict):
+                    # 단일 객체를 배열로 변환
+                    rec = parsed
                     rec.setdefault('researchBacking', {'summary': 'Based on current research', 'studies': []})
                     rec.setdefault('contraindications', [])
                     rec.setdefault('frequency', 'Daily')
@@ -324,16 +355,17 @@ class AIService:
                     rec.setdefault('frequency_detail', None)
                     rec.setdefault('duration_weeks', None)
                     rec.setdefault('purpose', None)  # 목적 필드 기본값
-                    # optimal_times는 연구에 언급된 경우에만 포함되므로 기본값 설정하지 않음
                     
                     # 카테고리별 필드 정리 및 배열 변환
                     AIService._process_category_specific_fields(rec)
-                
-                # 태그 정규화
-                normalized_parsed = AIService.normalize_tags(parsed)
-                return normalized_parsed
+                    
+                    # 태그 정규화
+                    normalized_parsed = AIService.normalize_tags([rec])
+                    return normalized_parsed
+            
             return []
-        except Exception:
+        except Exception as e:
+            logger.error(f"추천 파싱 실패: {str(e)}, 응답: {llm_response[:200]}...")
             return []
 
 
@@ -892,18 +924,22 @@ CONFIDENCE ASSESSMENT:
         try:
             # 프롬프트 생성
             prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile, category)
+            logger.info(f"세션 추천 프롬프트 생성 완료: category={category}")
             
             # OpenAI API 호출
             llm_response, actual_model = await AIService.call_ai_model(prompt)
+            logger.info(f"AI 모델 호출 완료: category={category}, model={actual_model}, response_length={len(llm_response) if llm_response else 0}")
             
             # 신뢰도 평가
             confidence = AIService.evaluate_llm_confidence(llm_response)
+            logger.info(f"신뢰도 평가 완료: category={category}, confidence={confidence}")
             
             # 응답 파싱
             recommendations = AIService.parse_recommendations_from_llm(llm_response)
+            logger.info(f"응답 파싱 완료: category={category}, recommendations_count={len(recommendations) if recommendations else 0}")
+            logger.info(f"AI 응답 내용 (처음 200자): {llm_response[:200] if llm_response else 'None'}")
             
             # Fallback: 신뢰도 낮거나 추천 없음 → Fallback 모델 사용
-            actual_model_used = model_config["model"]  # 기본적으로 현재 모델
             if confidence < 60 or not recommendations:
                 fallback_config = AIService.get_fallback_model_config()
                 if fallback_config["provider"] == "openai":
@@ -916,15 +952,14 @@ CONFIDENCE ASSESSMENT:
                     fallback_response = await AIService.call_perplexity(prompt, fallback_config["model"])
                 else:
                     logger.error(f"지원하지 않는 fallback 모델 프로바이더: {fallback_config['provider']}")
-                    return recommendations, actual_model_used
+                    return recommendations
                 
                 fallback_confidence = AIService.evaluate_llm_confidence(fallback_response)
                 fallback_recommendations = AIService.parse_recommendations_from_llm(fallback_response)
                 if fallback_recommendations and fallback_confidence > confidence:
                     recommendations = fallback_recommendations
-                    actual_model_used = fallback_config["model"]  # 실제 사용된 모델 업데이트
             
-            return recommendations if recommendations else [], actual_model_used
+            return recommendations if recommendations else []
             
         except Exception as e:
             logger.error(f"세션 추천 생성 실패 (category={category}): {str(e)}")
