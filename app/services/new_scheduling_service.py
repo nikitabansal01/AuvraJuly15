@@ -274,6 +274,9 @@ class NewSchedulingService:
                 if not recommendation:
                     continue
                 
+                # 디버깅: 추천 데이터 확인
+                logger.debug(f"추천 데이터 확인: id={recommendation.id}, specific_action={recommendation.specific_action}, research_summary={recommendation.research_summary}")
+                
                 # 조언 정보 가져오기
                 advices = self.db.query(RecommendationAdvice).filter(
                     RecommendationAdvice.recommendation_id == recommendation.id
@@ -285,10 +288,13 @@ class NewSchedulingService:
                     "recommendation_id": recommendation.id,
                     "title": recommendation.title,
                     "purpose": recommendation.purpose,
+                    "specific_action": recommendation.specific_action or "",
                     "category": recommendation.category,
                     "conditions": recommendation.conditions or [],
                     "symptoms": recommendation.symptoms or [],
                     "hormones": recommendation.hormones or [],
+                    "research_summary": recommendation.research_summary or "",
+                    "research_studies": recommendation.research_studies or [],
                     "is_completed": assignment.is_completed,
                     "completed_at": assignment.completed_at.isoformat() if assignment.completed_at else None,
                     "advices": [

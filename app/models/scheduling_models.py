@@ -39,10 +39,13 @@ class AssignmentInfo(BaseModel):
     recommendation_id: int
     title: str
     purpose: Optional[str] = None
+    specific_action: Optional[str] = None
     category: str
     conditions: List[str] = []
     symptoms: List[str] = []
     hormones: List[str] = []
+    research_summary: Optional[str] = None
+    research_studies: Optional[List[Dict[str, Any]]] = []
     is_completed: bool
     completed_at: Optional[str] = None
     advices: List[Dict[str, str]] = []
