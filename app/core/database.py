@@ -5,8 +5,11 @@ from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, date
 import uuid
 import hashlib
+import logging
 from app.core.config import settings
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 # Database engine creation
 # Render PostgreSQL requires SSL
@@ -23,10 +26,22 @@ if settings.ENVIRONMENT == "production":
         max_overflow=10,       # 적절한 오버플로우
         pool_pre_ping=False,   # Session Pooler가 관리하므로 비활성화
         pool_recycle=300,      # 5분마다 연결 재생성
+        pool_timeout=30,       # 연결 대기 시간 (초) - 최대치 초과 시 30초 대기
+        pool_reset_on_return='commit',  # 연결 반환 시 커밋으로 리셋
         echo=False             # 프로덕션에서는 SQL 로그 비활성화
     )
 else:
-    engine = create_engine(settings.DATABASE_URL)
+    # 개발 환경에서도 연결 풀링 설정
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_size=5,              # 기본 연결 풀 크기
+        max_overflow=10,          # 최대 추가 연결 수
+        pool_pre_ping=True,       # 연결 상태 확인 (개발 환경에서 유용)
+        pool_recycle=3600,        # 1시간마다 연결 재생성
+        pool_timeout=30,          # 연결 대기 시간 (초) - 최대치 초과 시 30초 대기
+        pool_reset_on_return='commit',  # 연결 반환 시 커밋으로 리셋
+        echo=False                 # SQL 쿼리 로그 비활성화 (성능 향상)
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -41,6 +56,8 @@ def get_db():
         raise e
     finally:
         db.close()
+        # 연결 풀 상태 로깅 비활성화 (성능 향상)
+        pass
 
 def generate_session_id():
     """Generate session ID"""
@@ -74,6 +91,44 @@ class QuestionSession(Base):
     sleep_duration = Column(String(50), nullable=True)
     stress_level = Column(String(50), nullable=True)
     survey_timezone = Column(String(50), nullable=True, default="Asia/Seoul")  # 설문 입력 시점 시간대
+
+class SessionProcessingStatus(Base):
+    """세션별 AI 추천 생성 진행상황 추적"""
+    __tablename__ = "session_processing_status"
+    
+    session_id = Column(String(255), primary_key=True, index=True)
+    processing_status = Column(String(50), default="queued")  # queued, in_progress, completed, failed, canceled, stalled
+    phase = Column(String(100), nullable=True)  # 사람이 읽을 수 있는 단계 이름
+    progress = Column(Integer, default=0)  # 0-100
+    message = Column(Text, nullable=True)  # UI용 짧은 상태 메시지
+    
+    # 카테고리별 처리 상태
+    food_status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    movement_status = Column(String(50), default="pending")
+    mindfulness_status = Column(String(50), default="pending")
+    
+    # 요청/결과 데이터
+    request_payload = Column(JSONB, nullable=True)  # UserProfile 데이터
+    result = Column(JSONB, nullable=True)  # 생성된 추천 요약
+    error = Column(JSONB, nullable=True)  # 에러 정보
+    
+    # 시간 정보
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    heartbeat_at = Column(DateTime, nullable=True)  # 마지막 업데이트 시간
+    
+    # 재시도 정보
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 인덱스
+    __table_args__ = (
+        Index('idx_processing_status', 'processing_status'),
+        Index('idx_heartbeat_at', 'heartbeat_at'),
+    )
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"

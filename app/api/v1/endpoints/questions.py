@@ -224,14 +224,62 @@ async def start_session_recommendations_generation(
                 "recommendations_count": existing_recommendations
             }
         
+        # Check if already processing
+        from app.services.processing_status_service import ProcessingStatusService
+        processing_service = ProcessingStatusService(db)
+        existing_processing = processing_service.get_processing_status(session_id)
+        if existing_processing and existing_processing.processing_status in ["queued", "in_progress"]:
+            logger.info(f"이미 처리 중: {session_id}, status={existing_processing.processing_status}")
+            return {
+                "message": "Recommendation generation already in progress",
+                "status": existing_processing.processing_status,
+                "session_id": session_id
+            }
+        
+        # 세션 데이터로 UserProfile 생성 (임시)
+        session_data = service.get_session_data(session_id)
+        if not session_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session data not found"
+            )
+        
+        # 임시 UserProfile 생성
+        temp_user_profile = {
+            "age": session_data.age,
+            "period_description": session_data.period_description,
+            "birth_control": session_data.birth_control,
+            "cycle_length": session_data.cycle_length,
+            "period_concerns": session_data.period_concerns,
+            "body_concerns": session_data.body_concerns,
+            "skin_hair_concerns": session_data.skin_hair_concerns,
+            "mental_health_concerns": session_data.mental_health_concerns,
+            "other_concerns": session_data.other_concerns,
+            "top_concern": session_data.top_concern,
+            "diagnosed_conditions": session_data.diagnosed_conditions,
+            "family_history": session_data.family_history,
+            "workout_intensity": session_data.workout_intensity,
+            "sleep_duration": session_data.sleep_duration,
+            "stress_level": session_data.stress_level
+        }
+        
+        # Root cause engine을 사용하여 호르몬 불균형 분석 및 추가
+        from app.services.root_cause_engine import RootCauseEngine
+        root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
+        temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
+        temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
+        
+        # 처리 상태 레코드 생성
+        processing_status = processing_service.create_processing_status(session_id, temp_user_profile)
+        
         # Start recommendation generation in background
         import asyncio
-        asyncio.create_task(_generate_recommendations_background(session_id, service, db))
+        asyncio.create_task(_generate_recommendations_background(session_id, service, processing_service, db))
         
         logger.info(f"세션 추천 생성 시작됨: {session_id}")
         return {
             "message": "Recommendation generation started",
-            "status": "started",
+            "status": "queued",
             "session_id": session_id
         }
         
@@ -244,12 +292,15 @@ async def start_session_recommendations_generation(
             detail=f"Failed to start recommendation generation: {str(e)}"
         )
 
-async def _generate_recommendations_background(session_id: str, service, db) -> None:
+async def _generate_recommendations_background(session_id: str, service, processing_service, db) -> None:
     """
     백그라운드에서 세션 추천 생성
     """
     try:
         logger.info(f"백그라운드 추천 생성 시작: {session_id}")
+        
+        # 처리 시작 상태로 업데이트
+        processing_service.update_processing_started(session_id)
         
         recommendation_service = RecommendationService(db)
         
@@ -275,6 +326,12 @@ async def _generate_recommendations_background(session_id: str, service, db) -> 
                 "stress_level": session_data.stress_level
             }
             
+            # Root cause engine을 사용하여 호르몬 불균형 분석 및 추가
+            from app.services.root_cause_engine import RootCauseEngine
+            root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
+            temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
+            temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
+            
             # 각 카테고리별 추천 생성 (에러 핸들링 개선)
             categories = ["food", "movement", "mindfulness"]
             successful_categories = []
@@ -282,20 +339,40 @@ async def _generate_recommendations_background(session_id: str, service, db) -> 
             
             for category in categories:
                 try:
+                    # 카테고리 처리 시작
+                    processing_service.update_category_status(session_id, category, "processing", f"{category} recommendation generation in progress")
+                    
                     success = await recommendation_service.generate_and_save_session_recommendations(
                         session_id=session_id,
                         user_profile=temp_user_profile,
                         category=category
                     )
+                    
                     if success:
                         successful_categories.append(category)
+                        processing_service.update_category_status(session_id, category, "completed", f"{category} recommendation completed")
                         logger.info(f"카테고리 추천 생성 성공: {session_id}, {category}")
                     else:
                         failed_categories.append(category)
+                        processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation failed")
                         logger.error(f"카테고리 추천 생성 실패: {session_id}, {category}")
+                        
                 except Exception as e:
                     failed_categories.append(category)
+                    processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation error")
                     logger.error(f"카테고리 추천 생성 중 예외: {session_id}, {category}, error={str(e)}")
+                
+                # 하트비트 업데이트
+                processing_service.update_heartbeat(session_id)
+            
+            # 전체 처리 완료 (성공/실패 관계없이)
+            result_summary = {
+                "successful_categories": successful_categories,
+                "failed_categories": failed_categories,
+                "total_categories": len(categories)
+            }
+            
+            processing_service.update_processing_completed(session_id, result_summary)
             
             logger.info(f"백그라운드 세션 추천 생성 완료: {session_id}")
             logger.info(f"성공한 카테고리: {successful_categories}")
@@ -303,9 +380,11 @@ async def _generate_recommendations_background(session_id: str, service, db) -> 
             
         else:
             logger.warning(f"세션 데이터를 찾을 수 없음: {session_id}")
+            processing_service.update_processing_failed(session_id, {"error": "Session data not found"})
             
     except Exception as e:
         logger.error(f"백그라운드 세션 추천 생성 실패: {str(e)}", exc_info=True)
+        processing_service.update_processing_failed(session_id, {"error": str(e)})
         # 백그라운드 실패는 사용자에게 영향을 주지 않음
 
 @router.post("/sessions/{session_id}/link")
@@ -517,6 +596,7 @@ async def get_session_recommendations_status(
     """Get session recommendations generation status"""
     try:
         from app.core.database import RecommendationRecord
+        from app.services.processing_status_service import ProcessingStatusService
         
         # 세션 존재 여부 확인
         service = QuestionService(db)
@@ -528,41 +608,67 @@ async def get_session_recommendations_status(
                 detail="Session not found or expired"
             )
         
-        # 카테고리별 추천 개수 확인
-        categories = ["food", "movement", "mindfulness"]
-        category_counts = {}
-        total_recommendations = 0
+        # 처리 상태 확인
+        processing_service = ProcessingStatusService(db)
+        processing_status = processing_service.get_processing_status(session_id)
         
-        for category in categories:
-            count = db.query(RecommendationRecord).filter(
-                RecommendationRecord.session_id == session_id,
-                RecommendationRecord.category == category
-            ).count()
-            category_counts[category] = count
-            total_recommendations += count
-        
-        # 더 정교한 상태 판단
-        completed_categories = [cat for cat, count in category_counts.items() if count > 0]
-        
-        if len(completed_categories) == 3:  # 모든 카테고리 완료
-            # 추가로 최소 추천 수 확인 (각 카테고리당 최소 1개)
-            if all(count > 0 for count in category_counts.values()):
-                status = "completed"
-            else:
+        if processing_status:
+            # 처리 상태가 있으면 그것을 우선 사용
+            return {
+                "session_id": session_id,
+                "status": processing_status.processing_status,
+                "phase": processing_status.phase,
+                "progress": processing_status.progress,
+                "message": processing_status.message,
+                "category_breakdown": {
+                    "food": processing_status.food_status,
+                    "movement": processing_status.movement_status,
+                    "mindfulness": processing_status.mindfulness_status
+                },
+                "started_at": processing_status.started_at.isoformat() if processing_status.started_at else None,
+                "finished_at": processing_status.finished_at.isoformat() if processing_status.finished_at else None,
+                "result": processing_status.result,
+                "error": processing_status.error
+            }
+        else:
+            # 처리 상태가 없으면 기존 방식으로 확인
+            categories = ["food", "movement", "mindfulness"]
+            category_counts = {}
+            total_recommendations = 0
+            
+            for category in categories:
+                count = db.query(RecommendationRecord).filter(
+                    RecommendationRecord.session_id == session_id,
+                    RecommendationRecord.category == category
+                ).count()
+                category_counts[category] = count
+                total_recommendations += count
+            
+            # 더 정교한 상태 판단
+            completed_categories = [cat for cat, count in category_counts.items() if count > 0]
+            
+            if len(completed_categories) == 3:  # 모든 카테고리 완료
+                # 추가로 최소 추천 수 확인 (각 카테고리당 최소 1개)
+                if all(count > 0 for count in category_counts.values()):
+                    status = "completed"
+                else:
+                    status = "in_progress"
+            elif len(completed_categories) > 0:  # 일부 카테고리 완료
                 status = "in_progress"
-        elif len(completed_categories) > 0:  # 일부 카테고리 완료
-            status = "in_progress"
-        else:  # 아직 시작 안됨
-            status = "pending"
-        
-        return {
-            "session_id": session_id,
-            "status": status,
-            "recommendations_count": total_recommendations,
-            "expected_count": 3,
-            "category_breakdown": category_counts,
-            "completed_categories": completed_categories
-        }
+            else:  # 아직 시작 안됨
+                status = "pending"
+            
+            return {
+                "session_id": session_id,
+                "status": status,
+                "phase": "Legacy Mode",
+                "progress": len(completed_categories) * 33,
+                "message": f"{len(completed_categories)}/3 categories completed",
+                "recommendations_count": total_recommendations,
+                "expected_count": 3,
+                "category_breakdown": category_counts,
+                "completed_categories": completed_categories
+            }
         
     except HTTPException:
         raise

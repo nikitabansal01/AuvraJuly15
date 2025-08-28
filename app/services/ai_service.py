@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 from app.models.ai_models import UserProfile
+from app.services.root_cause_engine import RootCauseEngine
 
 logger = logging.getLogger(__name__)
 
@@ -547,6 +548,12 @@ class AIService:
     @staticmethod
     def suggest_llm_prompt_for_recommendations(user_profile: UserProfile, category: str) -> str:
         up = user_profile
+        
+        # Root cause engine을 사용하여 호르몬 불균형 분석
+        root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(user_profile.dict())
+        imbalance_text = RootCauseEngine.get_formatted_imbalance_text(root_cause_analysis)
+        related_hormones = RootCauseEngine.get_related_hormones(root_cause_analysis)
+        
         user_health_profile = ', '.join(filter(None, [
             f"Age: {up.age}" if up.age else None,
             f"Ethnicity: {up.ethnicity}" if up.ethnicity else None,
@@ -555,7 +562,6 @@ class AIService:
             f"Diagnosis: {', '.join(up.conditions)}" if up.conditions else None,
             f"Symptoms: {', '.join(up.symptoms)}" if up.symptoms else None
         ]))
-        secondary_imbalances_text = f", Secondary: {', '.join(up.secondaryImbalances)}" if up.secondaryImbalances else ''
         
         # JSON 예시들을 미리 정의
         example_study = {
@@ -608,8 +614,14 @@ class AIService:
 You are a medical AI assistant specializing in women's hormone health. Your task is to generate HIGHLY SPECIFIC, SCIENTIFICALLY-BASED recommendations with exact amounts, durations, and frequencies.
 
 Category: {category}
-Root cause (hormones out of balance): {up.primaryImbalance}{secondary_imbalances_text}
+Root cause (hormones out of balance): {imbalance_text}
 User health profile: {user_health_profile}
+
+CRITICAL HORMONE FOCUS REQUIREMENT:
+- You MUST focus ONLY on recommendations related to the identified hormone imbalances: {', '.join(related_hormones)}
+- All recommendations must directly address these specific hormone imbalances
+- Do NOT include recommendations for other hormones not identified in the root cause analysis
+- The hormones field in each recommendation must ONLY contain hormones from the root cause analysis: {', '.join(related_hormones)}
 
 SCIENTIFIC REQUIREMENTS:
 - Use ONLY research studies from the last 10 years on women's hormonal health
@@ -627,6 +639,12 @@ CRITICAL REQUIREMENTS FOR SPECIFIC ACTIONS:
 - ALL recommendations must include: exact duration (weeks only, as number), frequency (daily/weekly), and specific amounts/times
 - Base ALL recommendations on actual research studies from the last 10 years
 - If research mentions specific supplements/nutrients, you may reference additional studies for food sources and amounts
+
+TIME UNIT STANDARDIZATION FOR DURATION ARRAYS:
+- exercise_durations: Use "min" instead of "minutes" or "minute" (e.g., ["30 min", "45 min"] not ["30 minutes", "45 minutes"])
+- mindfulness_durations: Use "min" instead of "minutes" or "minute" (e.g., ["15 min", "20 min"] not ["15 minutes", "20 minutes"])
+- For hours, use "h" instead of "hours" or "hour" (e.g., ["1.5 h", "2 h"] not ["1.5 hours", "2 hours"])
+- This standardization applies ONLY to the exercise_durations and mindfulness_durations array fields
 
 FREQUENCY DETAIL FORMAT (for scheduling):
 - Use structured format: "frequency_detail": "daily:1" or "frequency_detail": "weekly:3" or "frequency_detail": "daily:2"
@@ -664,6 +682,8 @@ TARGET SYMPTOMS (use exact terms):
 - conditions: Array of related medical conditions (e.g., ["PCOS", "Endometriosis"])
 - symptoms: Array of related symptoms (e.g., ["irregular periods", "weight gain", "adult acne"])
 - hormones: Array of related hormones (e.g., ["insulin", "androgens", "cortisol"])
+  IMPORTANT: Only include hormones from the root cause analysis: {', '.join(related_hormones)}
+  Do NOT include other hormones not identified in the root cause analysis
 
 TITLE AND PURPOSE FORMAT:
 - title: 1-2 words describing the specific method/technique (e.g., "Cinnamon Supplementation", "Yoga Practice", "Meditation")
@@ -684,6 +704,8 @@ REQUIRED FIELDS (all categories):
 - conditions: Array of related medical conditions (e.g., ["PCOS", "Endometriosis"])
 - symptoms: Array of related symptoms (e.g., ["irregular periods", "weight gain"])
 - hormones: Array of related hormones (e.g., ["insulin", "androgens"])
+  IMPORTANT: Only include hormones from the root cause analysis: {', '.join(related_hormones)}
+  Do NOT include other hormones not identified in the root cause analysis
 - frequency_detail: Structured format (e.g., "daily:1", "weekly:3")
 - duration_weeks: Number only (e.g., 12, 8, 16)
 - researchBacking: Object with EXACTLY this structure:
@@ -697,13 +719,13 @@ FOOD recommendations (MUST include):
 - optimal_times: Array with single time (e.g., ["morning"]) - ONLY if research mentions timing, otherwise OMIT entirely
 
 MOVEMENT recommendations (MUST include):
-- exercise_durations: Array of durations (e.g., ["30 minutes", "45 minutes"]) - DO NOT use "exercise_duration"
+- exercise_durations: Array of durations (e.g., ["30 min", "45 min"]) - DO NOT use "exercise_duration"
 - exercise_types: Array of exercise types (e.g., ["yoga", "walking"]) - DO NOT use "exercise_type"
 - exercise_intensities: Array of intensities (e.g., ["moderate", "low"]) - DO NOT use "exercise_intensity"
 - optimal_times: Array with single time (e.g., ["morning"]) - ONLY if research mentions timing, otherwise OMIT entirely
 
 MINDFULNESS recommendations (MUST include):
-- mindfulness_durations: Array of durations (e.g., ["15 minutes", "20 minutes"]) - DO NOT use "mindfulness_duration"
+- mindfulness_durations: Array of durations (e.g., ["15 min", "20 min"]) - DO NOT use "mindfulness_duration"
 - mindfulness_techniques: Array of techniques (e.g., ["meditation", "deep breathing"]) - DO NOT use "mindfulness_technique"
 - optimal_times: Array with single time (e.g., ["morning"]) - ONLY if research mentions timing, otherwise OMIT entirely
 
@@ -728,6 +750,12 @@ CONFIDENCE ASSESSMENT:
         RAG 검색 결과를 포함한 강화된 프롬프트 생성
         """
         up = user_profile
+        
+        # Root cause engine을 사용하여 호르몬 불균형 분석
+        root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(user_profile.dict())
+        imbalance_text = RootCauseEngine.get_formatted_imbalance_text(root_cause_analysis)
+        related_hormones = RootCauseEngine.get_related_hormones(root_cause_analysis)
+        
         user_health_profile = ', '.join(filter(None, [
             f"Age: {up.age}" if up.age else None,
             f"Ethnicity: {up.ethnicity}" if up.ethnicity else None,
@@ -736,7 +764,6 @@ CONFIDENCE ASSESSMENT:
             f"Diagnosis: {', '.join(up.conditions)}" if up.conditions else None,
             f"Symptoms: {', '.join(up.symptoms)}" if up.symptoms else None
         ]))
-        secondary_imbalances_text = f", Secondary: {', '.join(up.secondaryImbalances)}" if up.secondaryImbalances else ''
         
         # 카테고리별 특화 지시사항
         category_instructions = {
@@ -766,8 +793,8 @@ CONFIDENCE ASSESSMENT:
             "expectedTimeline": "12 weeks",
             "priority": "high",
             "contraindications": ["Not recommended during pregnancy"],
-            "food_amount": "1.5g",
-            "food_item": "cinnamon powder",
+            "food_amounts": ["1.5g"],
+            "food_items": ["cinnamon powder"],
             "frequency_detail": "daily",
             "duration_weeks": 12,
             "researchBacking": {
@@ -780,8 +807,14 @@ CONFIDENCE ASSESSMENT:
 You are a medical AI assistant specializing in women's hormone health. Your task is to generate HIGHLY SPECIFIC, SCIENTIFICALLY-BASED recommendations with exact amounts, durations, and frequencies based on the provided research texts.
 
 Category: {category}
-Root cause (hormones out of balance): {up.primaryImbalance}{secondary_imbalances_text}
+Root cause (hormones out of balance): {imbalance_text}
 User health profile: {user_health_profile}
+
+CRITICAL HORMONE FOCUS REQUIREMENT:
+- You MUST focus ONLY on recommendations related to the identified hormone imbalances: {', '.join(related_hormones)}
+- All recommendations must directly address these specific hormone imbalances
+- Do NOT include recommendations for other hormones not identified in the root cause analysis
+- The hormones field in each recommendation must ONLY contain hormones from the root cause analysis: {', '.join(related_hormones)}
 
 CATEGORY-SPECIFIC FOCUS:
 {category_instructions.get(category, "")}
@@ -805,19 +838,29 @@ CRITICAL REQUIREMENTS FOR SPECIFIC ACTIONS:
 - MINDFULNESS: Specify exact duration, technique, and frequency. Example: "Practice 15-minute daily meditation for 12 weeks" or "Perform 20-minute deep breathing exercises twice daily for 8 weeks"
 - ALL recommendations must include: exact duration (weeks only, as number), frequency (daily/weekly), and specific amounts/times
 
+TIME UNIT STANDARDIZATION FOR DURATION ARRAYS:
+- exercise_durations: Use "min" instead of "minutes" or "minute" (e.g., ["30 min", "45 min"] not ["30 minutes", "45 minutes"])
+- mindfulness_durations: Use "min" instead of "minutes" or "minute" (e.g., ["15 min", "20 min"] not ["15 minutes", "20 minutes"])
+- For hours, use "h" instead of "hours" or "hour" (e.g., ["1.5 h", "2 h"] not ["1.5 hours", "2 hours"])
+- This standardization applies ONLY to the exercise_durations and mindfulness_durations array fields
+
 RESEARCH BACKING FORMAT:
 - Summary: "Based on [YEAR] study with [NUMBER] women showing [SPECIFIC RESULTS]"
 - Example: "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose"
 - Studies must include: title, authors (array), journal, publicationYear, participantCount, results
 - Example study: {json.dumps(example_study, ensure_ascii=False)}
 
-Output format: Return a JSON array of recommendation cards. Each card must include: title, specificAction (with exact amounts/duration), frequency, intensity, expectedTimeline, priority (high/medium/low), contraindications (array), and researchBacking object with: summary (string) and studies (array of objects with: title, authors (array), journal, publicationYear, participantCount, results). 
+Output format: Return a JSON array of recommendation cards. Each card must include: title, specificAction (with exact amounts/duration), frequency, intensity, expectedTimeline, priority (high/medium/low), contraindications (array), conditions (array), symptoms (array), hormones (array), and researchBacking object with: summary (string) and studies (array of objects with: title, authors (array), journal, publicationYear, participantCount, results).
+
+IMPORTANT HORMONE REQUIREMENT:
+- The hormones field must ONLY contain hormones from the root cause analysis: {', '.join(related_hormones)}
+- Do NOT include other hormones not identified in the root cause analysis 
 
 Additionally, include the following separated fields based on category:
 
-FOOD recommendations: food_amount, food_item, frequency_detail, duration_weeks
-MOVEMENT recommendations: exercise_duration, exercise_type, exercise_intensity, frequency_detail, duration_weeks  
-MINDFULNESS recommendations: mindfulness_duration, mindfulness_technique, frequency_detail, duration_weeks
+FOOD recommendations: food_amounts, food_items, frequency_detail, duration_weeks
+MOVEMENT recommendations: exercise_durations, exercise_types, exercise_intensities, frequency_detail, duration_weeks  
+MINDFULNESS recommendations: mindfulness_durations, mindfulness_techniques, frequency_detail, duration_weeks
 
 Generate as many relevant cards as possible.
 

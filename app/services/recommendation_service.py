@@ -177,14 +177,14 @@ class RecommendationService:
                 symptoms=rec.symptoms,
                 hormones=rec.hormones,
                 
-                # 분리된 구체적 행동 필드들
-                food_amount=rec.food_amount,
-                food_item=rec.food_item,
-                exercise_duration=rec.exercise_duration,
-                exercise_type=rec.exercise_type,
-                exercise_intensity=rec.exercise_intensity,
-                mindfulness_duration=rec.mindfulness_duration,
-                mindfulness_technique=rec.mindfulness_technique,
+                # 카테고리별 구체적 행동 필드들 (복수형)
+                food_amounts=rec.food_amounts,
+                food_items=rec.food_items,
+                exercise_durations=rec.exercise_durations,
+                exercise_types=rec.exercise_types,
+                exercise_intensities=rec.exercise_intensities,
+                mindfulness_durations=rec.mindfulness_durations,
+                mindfulness_techniques=rec.mindfulness_techniques,
                 frequency_detail=rec.frequency_detail,
                 duration_weeks=rec.duration_weeks,
                 
@@ -304,16 +304,17 @@ class RecommendationService:
             "symptoms": record.symptoms,
             "hormones": record.hormones,
             
-            # 분리된 구체적 행동 필드들
-            "food_amount": record.food_amount,
-            "food_item": record.food_item,
-            "exercise_duration": record.exercise_duration,
-            "exercise_type": record.exercise_type,
-            "exercise_intensity": record.exercise_intensity,
-            "mindfulness_duration": record.mindfulness_duration,
-            "mindfulness_technique": record.mindfulness_technique,
+            # 카테고리별 구체적 행동 필드들 (프롬프트와 일치하는 복수형 사용)
+            "food_amounts": record.food_amounts,
+            "food_items": record.food_items,
+            "exercise_durations": record.exercise_durations,
+            "exercise_types": record.exercise_types,
+            "exercise_intensities": record.exercise_intensities,
+            "mindfulness_durations": record.mindfulness_durations,
+            "mindfulness_techniques": record.mindfulness_techniques,
             "frequency_detail": record.frequency_detail,
             "duration_weeks": record.duration_weeks,
+            "optimal_times": record.optimal_times,
             
             # 연구 근거
             "research_summary": record.research_summary,
