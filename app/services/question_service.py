@@ -277,7 +277,9 @@ class QuestionService:
                 workout_intensity=response_data.workout_intensity,
                 sleep_duration=response_data.sleep_duration,
                 stress_level=response_data.stress_level,
-                survey_timezone=response_data.survey_timezone
+                survey_timezone=response_data.survey_timezone,
+                primary_hormone=session.primary_hormone,
+                secondary_hormones=session.secondary_hormones
             )
             self.db.add(user_response)
             logger.info(f"Session data saved for user {uid}")

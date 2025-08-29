@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import health, users, auth, questions
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import rag
+from app.api.v1.endpoints import hybrid_search
 from app.api.v1.endpoints import scheduling
 from app.api.v1.endpoints import progress
 from app.api.v1.endpoints import new_scheduling
@@ -27,6 +28,9 @@ api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 
 # RAG 파이프라인 라우터
 api_router.include_router(rag.router, prefix="/rag", tags=["rag"])
+
+# 하이브리드 검색 라우터 (BM25 + Pinecone)
+api_router.include_router(hybrid_search.router, prefix="/hybrid-search", tags=["hybrid-search"])
 
 # 스케줄링 라우터
 api_router.include_router(scheduling.router, prefix="/scheduling", tags=["scheduling"])

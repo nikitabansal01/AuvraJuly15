@@ -62,7 +62,7 @@ class AssignmentInfo(BaseModel):
 class AssignmentResponse(BaseModel):
     """과제 응답 모델 (새로운 스케줄링 시스템)"""
     date: str
-    assignments: Dict[str, List[AssignmentInfo]]  # time_group별 과제들
+    assignments: Dict[str, List[AssignmentInfo]]  # completed + time_group별 과제들
     total_assignments: int
     completed_assignments: int
     completion_rate: float

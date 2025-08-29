@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from app.core.database import (
     RecommendationSchedule, ScheduleRedistribution, DailyAssignment,
-    RecommendationRecord, RecommendationAdvice, UserProfile
+    RecommendationRecord, RecommendationAdvice, UserProfile, UserResponse
 )
 from app.utils.timezone_utils import (
     compute_next_fire_at_utc, get_local_date, should_emit_for_date,
@@ -241,10 +241,13 @@ class NewSchedulingService:
             과제 정보
         """
         try:
-            # 1. 활성 스케줄들 확인 및 보정
+            # 1. 어제 미완료 과제 재배치 처리
+            self._handle_uncompleted_assignments(uid, target_date)
+            
+            # 2. 활성 스케줄들 확인 및 보정
             self._ensure_schedules_emitted_for_date(uid, target_date, tzid)
             
-            # 2. 기존 과제 정리 및 새로운 선별 로직 적용
+            # 3. 기존 과제 정리 및 새로운 선별 로직 적용
             self._cleanup_and_reselect_assignments(uid, target_date, tzid)
             
             # 3. 해당 날짜의 과제들 조회
@@ -255,7 +258,7 @@ class NewSchedulingService:
                 )
             ).all()
             
-            # 3. 시간대별로 그룹화
+            # 3. 시간대별로 그룹화 및 완료된 과제 분리
             time_groups = {
                 "morning": [],
                 "afternoon": [],
@@ -263,6 +266,7 @@ class NewSchedulingService:
                 "anytime": []
             }
             
+            completed_group = []  # 완료된 과제들을 별도로 저장
             completed_count = 0
             
             for assignment in assignments:
@@ -335,16 +339,21 @@ class NewSchedulingService:
                 if assignment.is_completed:
                     completed_count += 1
             
-            # 4. 완료된 과제들을 맨 앞으로 정렬
-            for time_group in time_groups.values():
-                time_group.sort(key=lambda x: (not x["is_completed"], x["id"]))
+            # 4. 완료된 과제를 별도 섹션으로 분리
+            completed_group, reorganized_time_groups = self._reorganize_assignments_with_completed_group(time_groups)
             
             # 5. 호르몬별 통계 계산
             hormone_stats = self._calculate_hormone_stats(assignments)
             
+            # completed 섹션을 assignments 내에서 최상단에 배치
+            assignments_with_completed = {
+                "completed": completed_group,
+                **reorganized_time_groups
+            }
+            
             return {
                 "date": target_date.isoformat(),
-                "assignments": time_groups,
+                "assignments": assignments_with_completed,
                 "total_assignments": len(assignments),
                 "completed_assignments": completed_count,
                 "completion_rate": (completed_count / len(assignments) * 100) if assignments else 0,
@@ -355,7 +364,13 @@ class NewSchedulingService:
             logger.error(f"사용자 과제 조회 실패: {str(e)}")
             return {
                 "date": target_date.isoformat(),
-                "assignments": {"morning": [], "afternoon": [], "night": [], "anytime": []},
+                "assignments": {
+                    "completed": [],
+                    "morning": [],
+                    "afternoon": [],
+                    "night": [],
+                    "anytime": []
+                },
                 "total_assignments": 0,
                 "completed_assignments": 0,
                 "completion_rate": 0,
@@ -378,12 +393,11 @@ class NewSchedulingService:
                 RecommendationSchedule.uid == uid
             ).all()
             
-            # 해당 날짜에 발행해야 하는 스케줄들 필터링
+            # 해당 날짜에 발행해야 하는 스케줄들 필터링 (재배치 고려)
             eligible_schedules = []
             for schedule in schedules:
-                should_emit = should_emit_for_date(
-                    schedule.id, target_date, schedule.rrule,
-                    schedule.start_date_utc.date(), schedule.end_date_utc.date() if schedule.end_date_utc else None, self.db
+                should_emit = self._should_emit_for_date_with_redistribution(
+                    schedule, target_date
                 )
                 
                 if should_emit:
@@ -490,6 +504,7 @@ class NewSchedulingService:
     def _select_daily_assignments(self, eligible_schedules: List[RecommendationSchedule], target_date: date) -> List[RecommendationSchedule]:
         """
         하루에 표시할 과제들을 선별 (3-4개)
+        Primary/Secondary hormone 기반 균등 선택, 홀수일 때 primary 우선
         
         Args:
             eligible_schedules: 선별 대상 스케줄들
@@ -518,11 +533,20 @@ class NewSchedulingService:
             # 추가로 생성할 수 있는 과제 수
             max_new_assignments = 4 - current_assignments
             
-            # 우선순위에 따라 정렬
-            sorted_schedules = self._prioritize_schedules(eligible_schedules, target_date)
+            # UserResponse에서 primary/secondary hormone 정보 가져오기
+            uid = eligible_schedules[0].uid
+            user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
             
-            # 상위 3-4개만 선택
-            selected_schedules = sorted_schedules[:max_new_assignments]
+            if user_response and user_response.primary_hormone:
+                # Primary/Secondary hormone 기반 균등 선택
+                selected_schedules = self._select_balanced_hormone_assignments(
+                    eligible_schedules, target_date, max_new_assignments, 
+                    user_response.primary_hormone, user_response.secondary_hormones
+                )
+            else:
+                # 기존 우선순위 방식 fallback
+                sorted_schedules = self._prioritize_schedules(eligible_schedules, target_date)
+                selected_schedules = sorted_schedules[:max_new_assignments]
             
             logger.info(f"과제 선별 완료: {len(selected_schedules)}개 선택 (기존 {current_assignments}개 + 신규 {len(selected_schedules)}개)")
             return selected_schedules
@@ -566,7 +590,7 @@ class NewSchedulingService:
     
     def _calculate_priority_score(self, recommendation: RecommendationRecord, schedule: RecommendationSchedule, target_date: date) -> float:
         """
-        우선순위 점수 계산
+        우선순위 점수 계산 (Primary/Secondary hormone 기반)
         
         Args:
             recommendation: 추천 정보
@@ -591,13 +615,29 @@ class NewSchedulingService:
             # 3. 카테고리 다양성 (food, movement, mindfulness 균형)
             # 이는 이미 생성된 과제들과 비교하여 계산
             
-            # 4. 호르몬 중요도 (insulin, cortisol 등이 더 중요)
-            hormone_importance = {
-                "insulin": 20, "cortisol": 20, "estrogen": 15, 
-                "progesterone": 15, "androgens": 10, "thyroid": 10
-            }
+            # 4. 호르몬 중요도 (UserResponse의 primary/secondary hormone 기반)
+            user_response = self.db.query(UserResponse).filter(
+                UserResponse.uid == schedule.uid
+            ).first()
             
-            if recommendation.hormones:
+            if user_response and recommendation.hormones:
+                for hormone in recommendation.hormones:
+                    hormone_lower = hormone.lower()
+                    # Primary hormone은 최고 점수 (50점)
+                    if user_response.primary_hormone and hormone_lower == user_response.primary_hormone.lower():
+                        score += 50
+                    # Secondary hormone은 중간 점수 (30점)
+                    elif user_response.secondary_hormones and hormone_lower in [h.lower() for h in user_response.secondary_hormones]:
+                        score += 30
+                    # 기타 호르몬은 기본 점수 (5점)
+                    else:
+                        score += 5
+            elif recommendation.hormones:
+                # UserResponse가 없으면 기존 하드코딩 방식 fallback
+                hormone_importance = {
+                    "insulin": 20, "cortisol": 20, "estrogen": 15, 
+                    "progesterone": 15, "androgens": 10, "thyroid": 10
+                }
                 for hormone in recommendation.hormones:
                     score += hormone_importance.get(hormone.lower(), 5)
             
@@ -606,6 +646,145 @@ class NewSchedulingService:
         except Exception as e:
             logger.error(f"우선순위 점수 계산 실패: {str(e)}")
             return 25.0  # 기본값
+    
+    def _select_balanced_hormone_assignments(self, schedules: List[RecommendationSchedule], target_date: date, 
+                                           max_count: int, primary_hormone: str, secondary_hormones: List[str]) -> List[RecommendationSchedule]:
+        """
+        Primary/Secondary hormone 기반 균등 선택
+        홀수 개수일 때는 primary hormone 우선
+        
+        Args:
+            schedules: 선별 대상 스케줄들
+            target_date: 대상 날짜  
+            max_count: 최대 선택 개수
+            primary_hormone: 주요 호르몬
+            secondary_hormones: 보조 호르몬들
+        
+        Returns:
+            선별된 스케줄들
+        """
+        try:
+            # 호르몬별로 추천 분류
+            primary_schedules = []
+            secondary_schedules = []
+            other_schedules = []
+            
+            for schedule in schedules:
+                recommendation = self.db.query(RecommendationRecord).filter(
+                    RecommendationRecord.id == schedule.recommendation_id
+                ).first()
+                
+                if not recommendation or not recommendation.hormones:
+                    other_schedules.append(schedule)
+                    continue
+                
+                # 추천의 호르몬들을 소문자로 변환하여 비교
+                rec_hormones = [h.lower() for h in recommendation.hormones]
+                
+                # Primary hormone 관련 추천인지 확인
+                if primary_hormone.lower() in rec_hormones:
+                    primary_schedules.append(schedule)
+                # Secondary hormone 관련 추천인지 확인
+                elif secondary_hormones and any(sh.lower() in rec_hormones for sh in secondary_hormones):
+                    secondary_schedules.append(schedule)
+                else:
+                    other_schedules.append(schedule)
+            
+            # 각 카테고리별로 우선순위 정렬
+            primary_schedules = self._prioritize_schedules(primary_schedules, target_date)
+            secondary_schedules = self._prioritize_schedules(secondary_schedules, target_date)
+            other_schedules = self._prioritize_schedules(other_schedules, target_date)
+            
+            # 균등 선택 로직
+            selected = []
+            
+            if max_count <= 0:
+                return selected
+            
+            # Primary와 Secondary 호르몬 관련 추천이 각각 최소 1개씩 포함되도록 보장
+            if primary_schedules and len(selected) < max_count:
+                selected.append(primary_schedules[0])
+                primary_schedules = primary_schedules[1:]
+            
+            if secondary_schedules and len(selected) < max_count:
+                selected.append(secondary_schedules[0])
+                secondary_schedules = secondary_schedules[1:]
+            
+            # 나머지 자리는 균등하게 배분
+            # 홀수 개가 남으면 primary 우선
+            remaining_count = max_count - len(selected)
+            
+            while remaining_count > 0:
+                added_in_round = False
+                
+                # Primary 추가 (홀수일 때 우선)
+                if primary_schedules and remaining_count > 0:
+                    selected.append(primary_schedules[0])
+                    primary_schedules = primary_schedules[1:]
+                    remaining_count -= 1
+                    added_in_round = True
+                
+                # Secondary 추가
+                if secondary_schedules and remaining_count > 0:
+                    selected.append(secondary_schedules[0])
+                    secondary_schedules = secondary_schedules[1:]
+                    remaining_count -= 1
+                    added_in_round = True
+                
+                # 기타 추가
+                if other_schedules and remaining_count > 0:
+                    selected.append(other_schedules[0])
+                    other_schedules = other_schedules[1:]
+                    remaining_count -= 1
+                    added_in_round = True
+                
+                # 더 이상 추가할 추천이 없으면 종료
+                if not added_in_round:
+                    break
+            
+            logger.info(f"균등 선택 완료: primary={len([s for s in selected if self._is_primary_hormone_schedule(s, primary_hormone)])}, " +
+                       f"secondary={len([s for s in selected if self._is_secondary_hormone_schedule(s, secondary_hormones)])}, " +
+                       f"total={len(selected)}")
+            
+            return selected
+            
+        except Exception as e:
+            logger.error(f"균등 선택 실패: {str(e)}")
+            # 에러 시 기본 우선순위 방식으로 fallback
+            sorted_schedules = self._prioritize_schedules(schedules, target_date)
+            return sorted_schedules[:max_count]
+    
+    def _is_primary_hormone_schedule(self, schedule: RecommendationSchedule, primary_hormone: str) -> bool:
+        """스케줄이 primary hormone 관련인지 확인"""
+        try:
+            recommendation = self.db.query(RecommendationRecord).filter(
+                RecommendationRecord.id == schedule.recommendation_id
+            ).first()
+            
+            if not recommendation or not recommendation.hormones:
+                return False
+                
+            return primary_hormone.lower() in [h.lower() for h in recommendation.hormones]
+        except:
+            return False
+    
+    def _is_secondary_hormone_schedule(self, schedule: RecommendationSchedule, secondary_hormones: List[str]) -> bool:
+        """스케줄이 secondary hormone 관련인지 확인"""
+        try:
+            if not secondary_hormones:
+                return False
+                
+            recommendation = self.db.query(RecommendationRecord).filter(
+                RecommendationRecord.id == schedule.recommendation_id
+            ).first()
+            
+            if not recommendation or not recommendation.hormones:
+                return False
+                
+            rec_hormones = [h.lower() for h in recommendation.hormones]
+            return any(sh.lower() in rec_hormones for sh in secondary_hormones)
+        except:
+            return False
     
     def _create_selected_assignments(self, uid: str, target_date: date, tzid: str):
         """
@@ -682,6 +861,64 @@ class NewSchedulingService:
         except Exception as e:
             logger.error(f"호르몬 통계 계산 실패: {str(e)}")
             return {}
+    
+    def _reorganize_assignments_with_completed_group(self, time_groups: Dict[str, List[Dict[str, Any]]]) -> tuple:
+        """
+        과제를 재구성하여 완료된 과제들을 별도 그룹으로 분리
+        - 시간대 내에서 완료된 과제들은 맨 앞에 유지
+        - 이전 시간대가 미완료인데 다음 시간대가 완료된 과제들만 completed 섹션으로 이동
+        
+        Args:
+            time_groups: 시간대별 과제 그룹
+            
+        Returns:
+            (completed_group, reorganized_time_groups)
+        """
+        try:
+            completed_group = []
+            reorganized_time_groups = {
+                "morning": [],
+                "afternoon": [], 
+                "night": [],
+                "anytime": []
+            }
+            
+            # 시간대 순서 정의
+            time_order = ['morning', 'afternoon', 'night', 'anytime']
+            
+            # 각 시간대별로 미완료 과제가 있는지 확인
+            has_incomplete_before = {}  # 이전 시간대에 미완료 과제가 있는지
+            current_has_incomplete = False
+            
+            for time_group in time_order:
+                items = time_groups[time_group]
+                has_incomplete_before[time_group] = current_has_incomplete
+                
+                # 현재 시간대에 미완료 과제가 있는지 확인
+                has_incomplete_in_current = any(not item["is_completed"] for item in items)
+                current_has_incomplete = current_has_incomplete or has_incomplete_in_current
+            
+            # 과제 재구성
+            for time_group in time_order:
+                items = time_groups[time_group]
+                
+                for item in items:
+                    if item["is_completed"]:
+                        # 이전 시간대에 미완료 과제가 있고, 현재 시간대가 완료된 경우만 completed 섹션으로 이동
+                        if has_incomplete_before[time_group]:
+                            completed_group.append(item)
+                        else:
+                            # 그 외의 경우는 원래 시간대에 유지 (맨 앞에 정렬됨)
+                            reorganized_time_groups[time_group].append(item)
+                    else:
+                        # 미완료 과제는 원래 시간대에 추가
+                        reorganized_time_groups[time_group].append(item)
+            
+            return completed_group, reorganized_time_groups
+            
+        except Exception as e:
+            logger.error(f"과제 재구성 실패: {str(e)}")
+            return [], time_groups
     
     def mark_assignment_completed(self, assignment_id: int, uid: str, 
                                 notes: Optional[str] = None) -> bool:
@@ -792,4 +1029,282 @@ class NewSchedulingService:
         except Exception as e:
             logger.error(f"RRULE 생성 실패: {str(e)}")
             return "FREQ=DAILY;INTERVAL=1"
+    
+    def _handle_uncompleted_assignments(self, uid: str, target_date: date):
+        """
+        어제 미완료된 과제들을 재배치
+        
+        Args:
+            uid: 사용자 ID
+            target_date: 대상 날짜 (오늘)
+        """
+        try:
+            # 어제 날짜 계산
+            yesterday = target_date - timedelta(days=1)
+            
+            # 어제 미완료된 과제들 찾기
+            yesterday_assignments = self.db.query(DailyAssignment).filter(
+                and_(
+                    DailyAssignment.uid == uid,
+                    DailyAssignment.assignment_date == yesterday,
+                    DailyAssignment.is_completed == False
+                )
+            ).all()
+            
+            if not yesterday_assignments:
+                return  # 어제 미완료 과제가 없음
+            
+            logger.info(f"어제 미완료 과제 {len(yesterday_assignments)}개 발견: uid={uid}, date={yesterday}")
+            
+            # 각 미완료 과제에 대해 재배치 로직 적용
+            for assignment in yesterday_assignments:
+                self._redistribute_uncompleted_assignment(assignment, target_date)
+                
+        except Exception as e:
+            logger.error(f"미완료 과제 재배치 실패: {str(e)}")
+    
+    def _redistribute_uncompleted_assignment(self, assignment: DailyAssignment, target_date: date):
+        """
+        특정 미완료 과제를 재배치
+        
+        Args:
+            assignment: 미완료 과제
+            target_date: 재배치 대상 날짜
+        """
+        try:
+            # 추천 정보 가져오기
+            recommendation = self.db.query(RecommendationRecord).filter(
+                RecommendationRecord.id == assignment.recommendation_id
+            ).first()
+            
+            if not recommendation:
+                logger.warning(f"추천 정보 없음: recommendation_id={assignment.recommendation_id}")
+                return
+            
+            # frequency_detail 파싱
+            frequency_info = self._parse_frequency_detail(recommendation.frequency_detail)
+            if not frequency_info:
+                logger.warning(f"frequency_detail 파싱 실패: {recommendation.frequency_detail}")
+                return
+            
+            # daily 추천은 재배치하지 않음 (매일 나타나므로)
+            if frequency_info.get('type') == 'daily':
+                logger.info(f"Daily 과제는 재배치하지 않음: assignment_id={assignment.id}")
+                return
+            
+            # 남은 기간 계산
+            remaining_days = self._calculate_remaining_days(recommendation, target_date)
+            if remaining_days <= 0:
+                logger.info(f"기간 만료된 과제: assignment_id={assignment.id}")
+                return
+            
+            # 재배치된 날짜들 계산
+            redistributed_dates = self._calculate_redistributed_dates(
+                recommendation, frequency_info, target_date, remaining_days
+            )
+            
+            if not redistributed_dates:
+                logger.warning(f"재배치 날짜 계산 실패: assignment_id={assignment.id}")
+                return
+            
+            # 재배치 정보 저장
+            self._save_redistribution_info(assignment, redistributed_dates)
+            
+            logger.info(f"과제 재배치 완료: assignment_id={assignment.id}, dates={[d.isoformat() for d in redistributed_dates]}")
+            
+        except Exception as e:
+            logger.error(f"과제 재배치 실패: assignment_id={assignment.id}, error={str(e)}")
+    
+    def _parse_frequency_detail(self, frequency_detail: str) -> Optional[Dict[str, Any]]:
+        """
+        frequency_detail을 파싱
+        
+        Args:
+            frequency_detail: 빈도 상세 정보 (예: "daily:1", "weekly:3")
+            
+        Returns:
+            파싱된 빈도 정보
+        """
+        if not frequency_detail or ':' not in frequency_detail:
+            return None
+        
+        try:
+            freq_type, times_str = frequency_detail.split(':', 1)
+            times = int(times_str)
+            
+            return {
+                'type': freq_type.lower(),
+                'times': times,
+                'description': frequency_detail
+            }
+        except (ValueError, AttributeError):
+            return None
+    
+    def _calculate_remaining_days(self, recommendation: RecommendationRecord, target_date: date) -> int:
+        """
+        추천의 남은 기간을 계산
+        
+        Args:
+            recommendation: 추천 정보
+            target_date: 기준 날짜
+            
+        Returns:
+            남은 일수
+        """
+        try:
+            if not recommendation.duration_weeks:
+                return 365  # duration이 없으면 1년으로 가정
+                
+            created_date = recommendation.created_at.date()
+            end_date = created_date + timedelta(weeks=recommendation.duration_weeks)
+            
+            # target_date가 end_date를 넘어가면 0 반환
+            if target_date >= end_date:
+                return 0
+            
+            return (end_date - target_date).days
+            
+        except Exception as e:
+            logger.error(f"남은 기간 계산 실패: {str(e)}")
+            return 0
+    
+    def _calculate_redistributed_dates(self, recommendation: RecommendationRecord, frequency_info: Dict[str, Any], 
+                                     target_date: date, remaining_days: int) -> List[date]:
+        """
+        재배치된 날짜들을 계산
+        
+        Args:
+            recommendation: 추천 정보
+            frequency_info: 빈도 정보
+            target_date: 시작 날짜
+            remaining_days: 남은 일수
+            
+        Returns:
+            재배치 날짜 리스트
+        """
+        try:
+            freq_type = frequency_info['type']
+            times = frequency_info['times']
+            
+            if freq_type == 'weekly':
+                # 주 단위: 남은 기간을 times개로 나누어 균등 분배
+                if remaining_days < times:
+                    # 남은 일수가 times보다 적으면 매일
+                    return [target_date + timedelta(days=i) for i in range(remaining_days)]
+                else:
+                    # 균등 분배
+                    interval = remaining_days // times
+                    dates = []
+                    for i in range(times):
+                        day_offset = i * interval
+                        if day_offset < remaining_days:
+                            dates.append(target_date + timedelta(days=day_offset))
+                    return dates
+                    
+            elif freq_type == 'monthly':
+                # 월 단위: 남은 기간을 times개로 나누어 균등 분배
+                if remaining_days < times:
+                    # 남은 일수가 times보다 적으면 매일
+                    return [target_date + timedelta(days=i) for i in range(remaining_days)]
+                else:
+                    # 균등 분배
+                    interval = remaining_days // times
+                    dates = []
+                    for i in range(times):
+                        day_offset = i * interval
+                        if day_offset < remaining_days:
+                            dates.append(target_date + timedelta(days=day_offset))
+                    return dates
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"재배치 날짜 계산 실패: {str(e)}")
+            return []
+    
+    def _save_redistribution_info(self, assignment: DailyAssignment, redistributed_dates: List[date]):
+        """
+        재배치 정보를 저장
+        
+        Args:
+            assignment: 원본 과제
+            redistributed_dates: 재배치 날짜들
+        """
+        try:
+            # 각 재배치 날짜마다 ScheduleRedistribution 레코드 생성
+            for redistributed_date in redistributed_dates:
+                redistribution = ScheduleRedistribution(
+                    schedule_id=assignment.schedule_id,
+                    original_date=assignment.assignment_date,
+                    override_date=redistributed_date,
+                    reason="uncompleted",
+                    source="system"
+                )
+                
+                self.db.add(redistribution)
+            
+            self.db.commit()
+            logger.info(f"재배치 정보 저장 완료: schedule_id={assignment.schedule_id}, dates={len(redistributed_dates)}개")
+            
+        except Exception as e:
+            logger.error(f"재배치 정보 저장 실패: {str(e)}")
+            self.db.rollback()
+    
+    def _should_emit_for_date_with_redistribution(self, schedule: RecommendationSchedule, target_date: date) -> bool:
+        """
+        재배치 정보를 고려하여 해당 날짜에 스케줄을 실행해야 하는지 확인
+        
+        Args:
+            schedule: 스케줄 정보
+            target_date: 확인할 날짜
+            
+        Returns:
+            실행 여부
+        """
+        try:
+            # 1. 기본 RRULE 확인
+            should_emit_original = should_emit_for_date(
+                schedule.id, target_date, schedule.rrule,
+                schedule.start_date_utc.date(), 
+                schedule.end_date_utc.date() if schedule.end_date_utc else None, 
+                self.db
+            )
+            
+            # 2. 재배치 정보 확인
+            redistribution = self.db.query(ScheduleRedistribution).filter(
+                and_(
+                    ScheduleRedistribution.schedule_id == schedule.id,
+                    ScheduleRedistribution.override_date == target_date
+                )
+            ).first()
+            
+            # 재배치 정보가 있으면 해당 날짜에 실행
+            if redistribution:
+                logger.info(f"재배치된 과제 발견: schedule_id={schedule.id}, date={target_date}, original_date={redistribution.original_date}")
+                return True
+            
+            # 원래 날짜에서 재배치된 경우 원래 날짜에서는 실행하지 않음
+            if should_emit_original:
+                redistributed_from_today = self.db.query(ScheduleRedistribution).filter(
+                    and_(
+                        ScheduleRedistribution.schedule_id == schedule.id,
+                        ScheduleRedistribution.original_date == target_date
+                    )
+                ).first()
+                
+                if redistributed_from_today:
+                    logger.info(f"오늘 날짜에서 재배치된 과제: schedule_id={schedule.id}, date={target_date}")
+                    return False
+            
+            return should_emit_original
+            
+        except Exception as e:
+            logger.error(f"재배치 고려 실행 여부 확인 실패: {str(e)}")
+            # 에러 시 기본 RRULE로 fallback
+            return should_emit_for_date(
+                schedule.id, target_date, schedule.rrule,
+                schedule.start_date_utc.date(), 
+                schedule.end_date_utc.date() if schedule.end_date_utc else None, 
+                self.db
+            )
 

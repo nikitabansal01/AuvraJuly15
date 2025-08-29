@@ -554,6 +554,10 @@ class AIService:
         imbalance_text = RootCauseEngine.get_formatted_imbalance_text(root_cause_analysis)
         related_hormones = RootCauseEngine.get_related_hormones(root_cause_analysis)
         
+        # Primary/Secondary hormone 정보 추출
+        primary_hormone = root_cause_analysis.get("primary_imbalance", "")
+        secondary_hormones = root_cause_analysis.get("secondary_imbalances", [])
+        
         user_health_profile = ', '.join(filter(None, [
             f"Age: {up.age}" if up.age else None,
             f"Ethnicity: {up.ethnicity}" if up.ethnicity else None,
@@ -576,7 +580,7 @@ class AIService:
         example_recommendation = {
             "title": "Cinnamon Supplementation",
             "purpose": "Cinnamon helps improve insulin sensitivity and reduce blood sugar levels",
-            "specificAction": "Take 1.5g of cinnamon powder daily for 12 weeks",
+            "specificAction": "Take 1.5g of cinnamon powder daily",
             "frequency": "Daily",
             "intensity": "Moderate",
             "expectedTimeline": "12 weeks",
@@ -623,6 +627,12 @@ CRITICAL HORMONE FOCUS REQUIREMENT:
 - Do NOT include recommendations for other hormones not identified in the root cause analysis
 - The hormones field in each recommendation must ONLY contain hormones from the root cause analysis: {', '.join(related_hormones)}
 
+PRIMARY/SECONDARY HORMONE BALANCE REQUIREMENT:
+- Primary hormone ({primary_hormone}): You MUST include at least 1 recommendation specifically targeting this hormone
+- Secondary hormones ({', '.join(secondary_hormones)}): You MUST include at least 1 recommendation specifically targeting these hormones
+- Ensure balanced coverage of both primary and secondary hormone imbalances
+- If you have limited recommendations, prioritize primary hormone first, then secondary hormones
+
 SCIENTIFIC REQUIREMENTS:
 - Use ONLY research studies from the last 10 years on women's hormonal health
 - Medical accuracy is CRITICAL - every recommendation must be based on actual clinical studies
@@ -633,10 +643,10 @@ SCIENTIFIC REQUIREMENTS:
 - ALL recommendations must be actionable with specific amounts, durations, and frequencies
 
 CRITICAL REQUIREMENTS FOR SPECIFIC ACTIONS:
-- FOOD: Specify exact amounts (grams, cups, servings) and frequency. Example: "Consume 2 tablespoons of ground flaxseed daily for 12 weeks" or "Eat 100g of salmon 3 times per week for 8 weeks"
-- MOVEMENT: Specify exact duration, intensity, and frequency. Example: "Perform 30-minute moderate-intensity yoga sessions 4 times per week for 12 weeks" or "Walk briskly for 45 minutes daily for 8 weeks"
-- MINDFULNESS: Specify exact duration, technique, and frequency. Example: "Practice 15-minute daily meditation for 12 weeks" or "Perform 20-minute deep breathing exercises twice daily for 8 weeks"
-- ALL recommendations must include: exact duration (weeks only, as number), frequency (daily/weekly), and specific amounts/times
+- FOOD: Specify exact amounts (grams, cups, servings) and frequency. Example: "Consume 2 tablespoons of ground flaxseed daily" or "Eat 100g of salmon 3 times per week"
+- MOVEMENT: Specify exact duration, intensity, and frequency. Example: "Perform 30-minute moderate-intensity yoga sessions 4 times per week" or "Walk briskly for 45 minutes daily"
+- MINDFULNESS: Specify exact duration, technique, and frequency. Example: "Practice 15-minute daily meditation" or "Perform 20-minute deep breathing exercises twice daily"
+- ALL recommendations must include: exact amounts/times and frequency (daily/weekly)
 - Base ALL recommendations on actual research studies from the last 10 years
 - If research mentions specific supplements/nutrients, you may reference additional studies for food sources and amounts
 
@@ -695,7 +705,7 @@ Return a JSON array of recommendation cards. Each card must include EXACTLY thes
 REQUIRED FIELDS (all categories):
 - title: 1-2 words describing the specific method/technique
 - purpose: Natural, descriptive sentence explaining what the recommendation does and its benefits
-- specificAction: Exact action with amounts/duration (e.g., "Take 1.5g of cinnamon powder daily for 12 weeks")
+- specificAction: Exact action with amounts/duration (e.g., "Take 1.5g of cinnamon powder daily")
 - frequency: "Daily", "Weekly", etc.
 - intensity: "Low", "Moderate", "High"
 - expectedTimeline: "12 weeks", "8 weeks", etc.
@@ -756,6 +766,10 @@ CONFIDENCE ASSESSMENT:
         imbalance_text = RootCauseEngine.get_formatted_imbalance_text(root_cause_analysis)
         related_hormones = RootCauseEngine.get_related_hormones(root_cause_analysis)
         
+        # Primary/Secondary hormone 정보 추출
+        primary_hormone = root_cause_analysis.get("primary_imbalance", "")
+        secondary_hormones = root_cause_analysis.get("secondary_imbalances", [])
+        
         user_health_profile = ', '.join(filter(None, [
             f"Age: {up.age}" if up.age else None,
             f"Ethnicity: {up.ethnicity}" if up.ethnicity else None,
@@ -787,7 +801,7 @@ CONFIDENCE ASSESSMENT:
         
         example_recommendation = {
             "title": "Cinnamon Supplementation for Insulin Sensitivity",
-            "specificAction": "Take 1.5g of cinnamon powder daily for 12 weeks",
+            "specificAction": "Take 1.5g of cinnamon powder daily",
             "frequency": "Daily",
             "intensity": "Moderate",
             "expectedTimeline": "12 weeks",
@@ -816,6 +830,12 @@ CRITICAL HORMONE FOCUS REQUIREMENT:
 - Do NOT include recommendations for other hormones not identified in the root cause analysis
 - The hormones field in each recommendation must ONLY contain hormones from the root cause analysis: {', '.join(related_hormones)}
 
+PRIMARY/SECONDARY HORMONE BALANCE REQUIREMENT:
+- Primary hormone ({primary_hormone}): You MUST include at least 1 recommendation specifically targeting this hormone
+- Secondary hormones ({', '.join(secondary_hormones)}): You MUST include at least 1 recommendation specifically targeting these hormones
+- Ensure balanced coverage of both primary and secondary hormone imbalances
+- If you have limited recommendations, prioritize primary hormone first, then secondary hormones
+
 CATEGORY-SPECIFIC FOCUS:
 {category_instructions.get(category, "")}
 
@@ -833,10 +853,10 @@ CRITICAL REQUIREMENTS:
 - ALL recommendations must be actionable with specific amounts, durations, and frequencies
 
 CRITICAL REQUIREMENTS FOR SPECIFIC ACTIONS:
-- FOOD: Specify exact amounts (grams, cups, servings) and frequency. Example: "Consume 2 tablespoons of ground flaxseed daily for 12 weeks" or "Eat 100g of salmon 3 times per week for 8 weeks"
-- MOVEMENT: Specify exact duration, intensity, and frequency. Example: "Perform 30-minute moderate-intensity yoga sessions 4 times per week for 12 weeks" or "Walk briskly for 45 minutes daily for 8 weeks"
-- MINDFULNESS: Specify exact duration, technique, and frequency. Example: "Practice 15-minute daily meditation for 12 weeks" or "Perform 20-minute deep breathing exercises twice daily for 8 weeks"
-- ALL recommendations must include: exact duration (weeks only, as number), frequency (daily/weekly), and specific amounts/times
+- FOOD: Specify exact amounts (grams, cups, servings) and frequency. Example: "Consume 2 tablespoons of ground flaxseed daily" or "Eat 100g of salmon 3 times per week"
+- MOVEMENT: Specify exact duration, intensity, and frequency. Example: "Perform 30-minute moderate-intensity yoga sessions 4 times per week" or "Walk briskly for 45 minutes daily"
+- MINDFULNESS: Specify exact duration, technique, and frequency. Example: "Practice 15-minute daily meditation" or "Perform 20-minute deep breathing exercises twice daily"
+- ALL recommendations must include: exact amounts/times and frequency (daily/weekly)
 
 TIME UNIT STANDARDIZATION FOR DURATION ARRAYS:
 - exercise_durations: Use "min" instead of "minutes" or "minute" (e.g., ["30 min", "45 min"] not ["30 minutes", "45 minutes"])

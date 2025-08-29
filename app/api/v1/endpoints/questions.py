@@ -269,6 +269,11 @@ async def start_session_recommendations_generation(
         temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
         temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
         
+        # QuestionSession에 root cause 결과 저장
+        session.primary_hormone = root_cause_analysis["primary_imbalance"]
+        session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
+        db.commit()
+        
         # 처리 상태 레코드 생성
         processing_status = processing_service.create_processing_status(session_id, temp_user_profile)
         
@@ -331,6 +336,13 @@ async def _generate_recommendations_background(session_id: str, service, process
             root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
             temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
             temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
+            
+            # QuestionSession에 root cause 결과 저장 (이미 저장되어 있지 않은 경우만)
+            session = service.get_session(session_id)
+            if session and not session.primary_hormone:
+                session.primary_hormone = root_cause_analysis["primary_imbalance"]
+                session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
+                db.commit()
             
             # 각 카테고리별 추천 생성 (에러 핸들링 개선)
             categories = ["food", "movement", "mindfulness"]

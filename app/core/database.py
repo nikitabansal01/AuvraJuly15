@@ -91,6 +91,10 @@ class QuestionSession(Base):
     sleep_duration = Column(String(50), nullable=True)
     stress_level = Column(String(50), nullable=True)
     survey_timezone = Column(String(50), nullable=True, default="Asia/Seoul")  # 설문 입력 시점 시간대
+    
+    # Root cause analysis 결과
+    primary_hormone = Column(String(50), nullable=True)  # 주요 호르몬 불균형 (예: "progesterone")
+    secondary_hormones = Column(ARRAY(String), nullable=True)  # 보조 호르몬 불균형 (예: ["testosterone"])
 
 class SessionProcessingStatus(Base):
     """세션별 AI 추천 생성 진행상황 추적"""
@@ -164,6 +168,10 @@ class UserResponse(Base):
     sleep_duration = Column(String(50), nullable=True)
     stress_level = Column(String(50), nullable=True)
     survey_timezone = Column(String(50), nullable=True)  # 설문 입력 시점 시간대 (참고용)
+    
+    # Root cause analysis 결과
+    primary_hormone = Column(String(50), nullable=True)  # 주요 호르몬 불균형 (예: "progesterone")
+    secondary_hormones = Column(ARRAY(String), nullable=True)  # 보조 호르몬 불균형 (예: ["testosterone"])
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
