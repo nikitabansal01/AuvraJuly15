@@ -59,7 +59,7 @@ class QuestionService:
         try:
             session = self.get_session(session_id)
             if not session:
-                raise Exception("세션을 찾을 수 없거나 만료되었습니다")
+                raise Exception("Session not found or expired")
             
             # Update session with survey data
             if data.age is not None:
@@ -69,16 +69,16 @@ class QuestionService:
             if data.birth_control is not None:
                 session.birth_control = data.birth_control
             if data.last_period_date is not None and data.survey_timezone is not None:
-                # last_period_date가 이미 datetime 객체인 경우
+                # If last_period_date is already a datetime object
                 if isinstance(data.last_period_date, datetime):
-                    # datetime을 해당 시간대의 자정으로 설정
+                    # Set datetime to midnight in the timezone
                     from app.utils.timezone_utils import ZoneInfo
                     tz = ZoneInfo(data.survey_timezone)
                     local_datetime = data.last_period_date.replace(tzinfo=tz)
                     utc_datetime = local_datetime.astimezone(ZoneInfo("UTC"))
                     session.last_period_date_utc = utc_datetime
                 else:
-                    # 문자열인 경우 기존 로직 사용
+                    # Use existing logic for string
                     from app.utils.timezone_utils import convert_to_utc
                     utc_datetime = convert_to_utc(data.last_period_date, data.survey_timezone)
                     session.last_period_date_utc = utc_datetime
@@ -121,17 +121,17 @@ class QuestionService:
     def create_user_profile(self, uid: str, name: str, email: str) -> UserProfile:
         """Create user profile (get or create)"""
         try:
-            logger.info(f"=== create_user_profile 시작 ===")
-            logger.info(f"매개변수: uid={uid}, name={name}, email={email}")
+            logger.info(f"=== create_user_profile started ===")
+            logger.info(f"Parameters: uid={uid}, name={name}, email={email}")
             
-            # 기존 프로필이 있는지 확인
-            logger.info(f"기존 프로필 조회: uid={uid}")
+            # Check if profile exists
+            logger.info(f"Checking existing profile: uid={uid}")
             existing_profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
-            logger.info(f"기존 프로필 조회 결과: {existing_profile}")
+            logger.info(f"Existing profile check result: {existing_profile}")
             
             if existing_profile:
-                # 기존 프로필 업데이트
-                logger.info(f"기존 프로필 업데이트: uid={uid}")
+                # Update existing profile
+                logger.info(f"Updating existing profile: uid={uid}")
                 existing_profile.name = name
                 existing_profile.email = email
                 existing_profile.updated_at = datetime.utcnow()
@@ -139,8 +139,8 @@ class QuestionService:
                 logger.info(f"User profile updated: {uid}")
                 return existing_profile
             else:
-                # 새 프로필 생성
-                logger.info(f"새 프로필 생성: uid={uid}")
+                # Create new profile
+                logger.info(f"Creating new profile: uid={uid}")
                 profile = UserProfile(
                     uid=uid,
                     name=name,
@@ -159,12 +159,12 @@ class QuestionService:
             raise Exception(f"User profile creation/update failed: {str(e)}")
 
     def _convert_session_to_response_data(self, session: QuestionSession) -> UserResponseData:
-        """세션 데이터를 익명화된 응답 데이터로 변환"""
+        """Convert session data to anonymized response data"""
         return UserResponseData(
-            age=session.age,  # 그대로 복사
+            age=session.age,  # Copy as is
             period_description=session.period_description,
             birth_control=session.birth_control,
-            last_period_date_utc=session.last_period_date_utc,  # UTC 그대로 복사
+            last_period_date_utc=session.last_period_date_utc,  # Copy UTC as is
             cycle_length=session.cycle_length,
             period_concerns=session.period_concerns,
             body_concerns=session.body_concerns,
@@ -182,19 +182,19 @@ class QuestionService:
 
     def _convert_session_data_with_timezone(self, session: QuestionSession, survey_timezone: str, current_timezone: str) -> UserResponseData:
         """
-        세션 데이터를 시간대 변환하여 익명화된 응답 데이터로 변환
+        Convert session data with timezone conversion to anonymized response data
         
         Args:
-            session: 세션 데이터
-            survey_timezone: 설문 입력 시점 시간대
-            current_timezone: 현재 사용자 시간대
+            session: Session data
+            survey_timezone: Timezone when survey was taken
+            current_timezone: Current user timezone
         
         Returns:
-            변환된 응답 데이터
+            Converted response data
         """
         from app.utils.timezone_utils import convert_date_between_timezones
         
-        # 날짜 변환 (last_period_date만 변환)
+        # Convert date (only last_period_date)
         converted_last_period_date = session.last_period_date
         if session.last_period_date and survey_timezone != current_timezone:
             converted_last_period_date = convert_date_between_timezones(
@@ -207,7 +207,7 @@ class QuestionService:
             age=session.age,
             period_description=session.period_description,
             birth_control=session.birth_control,
-            last_period_date=converted_last_period_date,  # 변환된 날짜
+            last_period_date=converted_last_period_date,  # Converted date
             cycle_length=session.cycle_length,
             period_concerns=session.period_concerns,
             body_concerns=session.body_concerns,
@@ -225,38 +225,38 @@ class QuestionService:
 
     def link_session_to_user(self, session_id: str, uid: str, name: str, email: str, current_timezone: str = "Asia/Seoul") -> bool:
         """
-        세션을 사용자에게 연결하고 영구 저장
+        Link session to user and save permanently
         
         Args:
-            session_id: 세션 ID
-            uid: 사용자 ID
-            name: 사용자 이름
-            email: 사용자 이메일
-            current_timezone: 현재 사용자 시간대
+            session_id: Session ID
+            uid: User ID
+            name: User name
+            email: User email
+            current_timezone: Current user timezone
         
         Returns:
-            성공 여부
+            Success status
         """
         try:
-            logger.info(f"=== QuestionService.link_session_to_user 시작 ===")
-            logger.info(f"매개변수: session_id={session_id}, uid={uid}, name={name}, email={email}, current_timezone={current_timezone}")
+            logger.info(f"=== QuestionService.link_session_to_user started ===")
+            logger.info(f"Parameters: session_id={session_id}, uid={uid}, name={name}, email={email}, current_timezone={current_timezone}")
             
-            # 1. 세션 데이터 조회
+            # 1. Get session data
             session = self.get_session(session_id)
-            logger.info(f"세션 조회 결과: session={session}")
+            logger.info(f"Session retrieval result: session={session}")
             if not session:
-                logger.error(f"세션을 찾을 수 없음: session_id={session_id}")
-                raise Exception("세션을 찾을 수 없거나 만료되었습니다")
+                logger.error(f"Session not found: session_id={session_id}")
+                raise Exception("Session not found or expired")
             
-            # 2. 사용자 프로필 생성 (현재 시간대 저장)
-            logger.info(f"사용자 프로필 생성 시작: uid={uid}")
+            # 2. Create user profile (save current timezone)
+            logger.info(f"Creating user profile: uid={uid}")
             user_profile = self.create_user_profile(uid, name, email)
-            # UserProfile에 current_timezone 저장
+            # Save current_timezone to UserProfile
             user_profile.current_timezone = current_timezone
             self.db.commit()
-            logger.info(f"사용자 프로필 생성 완료: uid={uid}, timezone={current_timezone}")
+            logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}")
             
-            # 3. UserResponse 생성 (UTC 데이터 그대로 저장)
+            # 3. Create UserResponse (save UTC data as is)
             response_data = self._convert_session_to_response_data(session)
             
             user_response = UserResponse(
@@ -264,7 +264,7 @@ class QuestionService:
                 age=response_data.age,
                 period_description=response_data.period_description,
                 birth_control=response_data.birth_control,
-                last_period_date_utc=response_data.last_period_date_utc,  # UTC 그대로 저장
+                last_period_date_utc=response_data.last_period_date_utc,  # Save UTC as is
                 cycle_length=response_data.cycle_length,
                 period_concerns=response_data.period_concerns,
                 body_concerns=response_data.body_concerns,
@@ -284,36 +284,36 @@ class QuestionService:
             self.db.add(user_response)
             logger.info(f"Session data saved for user {uid}")
             
-            # 4. 세션 연결된 추천을 영구 저장으로 이전
-            logger.info(f"세션 추천 영구 저장 이전 시작: session_id={session_id}")
+            # 4. Migrate session-linked recommendations to permanent storage
+            logger.info(f"Session recommendation permanent storage migration started: session_id={session_id}")
             try:
                 from app.core.database import RecommendationRecord, RecommendationAdvice
                 
-                # 세션 연결된 추천들을 찾아서 uid로 업데이트
+                # Find session-linked recommendations and update with uid
                 session_recommendations = self.db.query(RecommendationRecord).filter(
                     RecommendationRecord.session_id == session_id
                 ).all()
                 
-                # 추천별로 개별 업데이트 및 즉시 커밋
+                # Update each recommendation individually and commit immediately
                 updated_recommendations = []
                 failed_recommendations = []
                 
                 for rec in session_recommendations:
-                    # 각 추천을 독립적인 서브트랜잭션으로 처리
-                    savepoint = self.db.begin_nested()  # 서브트랜잭션 시작
+                    # Process each recommendation as independent sub-transaction
+                    savepoint = self.db.begin_nested()  # Start sub-transaction
                     try:
                         rec.uid = uid
-                        rec.session_id = None  # 세션 ID 제거
-                        savepoint.commit()  # 서브트랜잭션 커밋
+                        rec.session_id = None  # Remove session ID
+                        savepoint.commit()  # Commit sub-transaction
                         updated_recommendations.append(rec.id)
-                        logger.info(f"추천 영구 저장 이전 성공: recommendation_id={rec.id}")
+                        logger.info(f"Recommendation permanent storage migration successful: recommendation_id={rec.id}")
                     except Exception as e:
-                        logger.error(f"추천 영구 저장 이전 실패: recommendation_id={rec.id}, error={str(e)}")
+                        logger.error(f"Recommendation permanent storage migration failed: recommendation_id={rec.id}, error={str(e)}")
                         failed_recommendations.append(rec.id)
-                        savepoint.rollback()  # 개별 서브트랜잭션만 롤백
+                        savepoint.rollback()  # Rollback only individual sub-transaction
                         continue
                 
-                # 세션 연결된 조언들도 uid로 업데이트
+                # Update session-linked advice with uid
                 session_advices = self.db.query(RecommendationAdvice).filter(
                     RecommendationAdvice.session_id == session_id
                 ).all()
@@ -322,28 +322,28 @@ class QuestionService:
                 failed_advices = []
                 
                 for advice in session_advices:
-                    # 각 조언을 독립적인 서브트랜잭션으로 처리
-                    savepoint = self.db.begin_nested()  # 서브트랜잭션 시작
+                    # Process each advice as independent sub-transaction
+                    savepoint = self.db.begin_nested()  # Start sub-transaction
                     try:
                         advice.uid = uid
-                        advice.session_id = None  # 세션 ID 제거
-                        savepoint.commit()  # 서브트랜잭션 커밋
+                        advice.session_id = None  # Remove session ID
+                        savepoint.commit()  # Commit sub-transaction
                         updated_advices.append(advice.id)
-                        logger.info(f"조언 영구 저장 이전 성공: advice_id={advice.id}")
+                        logger.info(f"Advice permanent storage migration successful: advice_id={advice.id}")
                     except Exception as e:
-                        logger.error(f"조언 영구 저장 이전 실패: advice_id={advice.id}, error={str(e)}")
+                        logger.error(f"Advice permanent storage migration failed: advice_id={advice.id}, error={str(e)}")
                         failed_advices.append(advice.id)
-                        savepoint.rollback()  # 개별 서브트랜잭션만 롤백
+                        savepoint.rollback()  # Rollback only individual sub-transaction
                         continue
                 
-                logger.info(f"세션 추천 영구 저장 이전 완료: {len(updated_recommendations)}개 추천 성공, {len(failed_recommendations)}개 실패")
-                logger.info(f"세션 조언 영구 저장 이전 완료: {len(updated_advices)}개 조언 성공, {len(failed_advices)}개 실패")
+                logger.info(f"Session recommendation permanent storage migration completed: {len(updated_recommendations)} successful, {len(failed_recommendations)} failed")
+                logger.info(f"Session advice permanent storage migration completed: {len(updated_advices)} successful, {len(failed_advices)} failed")
                 
-                # 성공한 추천들만 스케줄 생성에 사용
+                # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 5. 자동 스케줄 생성 (성공한 추천들만)
-                logger.info(f"자동 스케줄 생성 시작: {len(successful_recommendations)}개 추천")
+                # 5. Create automatic schedules (only successful recommendations)
+                logger.info(f"Automatic schedule creation started: {len(successful_recommendations)} recommendations")
                 try:
                     from app.services.new_scheduling_service import NewSchedulingService
                     scheduling_service = NewSchedulingService(self.db)
@@ -352,67 +352,67 @@ class QuestionService:
                     failed_schedules = []
                     
                     for rec in successful_recommendations:
-                        # 각 스케줄을 독립적인 서브트랜잭션으로 처리
-                        savepoint = self.db.begin_nested()  # 서브트랜잭션 시작
+                        # Process each schedule as independent sub-transaction
+                        savepoint = self.db.begin_nested()  # Start sub-transaction
                         try:
-                            # 현재 사용자 시간대로 스케줄 생성
+                            # Create schedule in current user timezone
                             schedule = scheduling_service.create_schedule_from_recommendation(rec, current_timezone)
-                            savepoint.commit()  # 서브트랜잭션 커밋
+                            savepoint.commit()  # Commit sub-transaction
                             created_schedules.append(schedule.id)
-                            logger.info(f"스케줄 생성 완료: recommendation_id={rec.id}, schedule_id={schedule.id}, timezone={current_timezone}")
+                            logger.info(f"Schedule creation completed: recommendation_id={rec.id}, schedule_id={schedule.id}, timezone={current_timezone}")
                         except Exception as e:
-                            logger.error(f"개별 스케줄 생성 실패: recommendation_id={rec.id}, error={str(e)}")
+                            logger.error(f"Individual schedule creation failed: recommendation_id={rec.id}, error={str(e)}")
                             failed_schedules.append(rec.id)
-                            savepoint.rollback()  # 개별 서브트랜잭션만 롤백
+                            savepoint.rollback()  # Rollback only individual sub-transaction
                     
-                    logger.info(f"자동 스케줄 생성 완료: {len(created_schedules)}개 스케줄 생성됨, {len(failed_schedules)}개 실패")
+                    logger.info(f"Automatic schedule creation completed: {len(created_schedules)} schedules created, {len(failed_schedules)} failed")
                     
                 except Exception as e:
-                    logger.error(f"자동 스케줄 생성 실패: {str(e)}", exc_info=True)
+                    logger.error(f"Automatic schedule creation failed: {str(e)}", exc_info=True)
                 
-                # 6. 세션 삭제
+                # 6. Delete session
                 self.db.delete(session)
-                logger.info(f"세션 삭제 완료: {session_id}")
+                logger.info(f"Session deletion completed: {session_id}")
                 
-                # 7. 커밋
+                # 7. Commit
                 self.db.commit()
                 
-                # 결과 요약 로깅
+                # Log result summary
                 total_recommendations = len(session_recommendations)
                 total_advices = len(session_advices)
                 success_rate_rec = len(updated_recommendations) / total_recommendations * 100 if total_recommendations > 0 else 0
                 success_rate_adv = len(updated_advices) / total_advices * 100 if total_advices > 0 else 0
                 
-                logger.info(f"세션 연결 완료: session_id={session_id}, uid={uid}")
-                logger.info(f"추천 연결 성공률: {success_rate_rec:.1f}% ({len(updated_recommendations)}/{total_recommendations})")
-                logger.info(f"조언 연결 성공률: {success_rate_adv:.1f}% ({len(updated_advices)}/{total_advices})")
-                logger.info(f"스케줄 생성 성공률: {len(created_schedules)}/{len(successful_recommendations)} 개")
+                logger.info(f"Session linking completed: session_id={session_id}, uid={uid}")
+                logger.info(f"Recommendation linking success rate: {success_rate_rec:.1f}% ({len(updated_recommendations)}/{total_recommendations})")
+                logger.info(f"Advice linking success rate: {success_rate_adv:.1f}% ({len(updated_advices)}/{total_advices})")
+                logger.info(f"Schedule creation success rate: {len(created_schedules)}/{len(successful_recommendations)} items")
                 
-                # 일부라도 성공했으면 True 반환
+                # Return True if at least some succeeded
                 return len(updated_recommendations) > 0 or len(updated_advices) > 0
                 
             except Exception as e:
-                logger.error(f"세션 추천 영구 저장 이전 실패: {str(e)}", exc_info=True)
+                logger.error(f"Session recommendation permanent storage migration failed: {str(e)}", exc_info=True)
                 self.db.rollback()
                 return False
                 
         except Exception as e:
-            logger.error(f"세션 연결 실패: {str(e)}", exc_info=True)
+            logger.error(f"Session linking failed: {str(e)}", exc_info=True)
             self.db.rollback()
             return False
 
     def get_user_responses(self, uid: str) -> List[UserResponse]:
-        """사용자의 모든 응답 조회"""
+        """Get all user responses"""
         try:
             return self.db.query(UserResponse).filter(
                 UserResponse.uid == uid
             ).order_by(UserResponse.created_at.desc()).all()
         except Exception as e:
             logger.error(f"User response retrieval failed: {str(e)}")
-            raise Exception(f"사용자 응답 조회 실패: {str(e)}")
+            raise Exception(f"User response retrieval failed: {str(e)}")
 
     def get_session_data(self, session_id: str) -> Optional[SessionData]:
-        """세션 데이터 조회"""
+        """Get session data"""
         try:
             session = self.get_session(session_id)
             if not session:
@@ -438,10 +438,10 @@ class QuestionService:
             )
         except Exception as e:
             logger.error(f"Session data retrieval failed: {str(e)}")
-            raise Exception(f"세션 데이터 조회 실패: {str(e)}")
+            raise Exception(f"Session data retrieval failed: {str(e)}")
 
     def cleanup_expired_sessions(self) -> int:
-        """만료된 세션 정리 (연결된 추천도 함께 삭제)"""
+        """Clean up expired sessions (also delete linked recommendations)"""
         try:
             expired_sessions = self.db.query(QuestionSession).filter(
                 QuestionSession.expires_at <= datetime.utcnow()
@@ -449,17 +449,17 @@ class QuestionService:
             
             count = len(expired_sessions)
             for session in expired_sessions:
-                # 세션 연결된 추천과 조언도 함께 삭제
+                # Also delete session-linked recommendations and advice
                 try:
                     from app.core.database import RecommendationRecord, RecommendationAdvice
                     
-                    # 세션 연결된 추천들 삭제
+                    # Delete session-linked recommendations
                     session_recommendations = self.db.query(RecommendationRecord).filter(
                         RecommendationRecord.session_id == session.session_id
                     ).all()
                     
                     for rec in session_recommendations:
-                        # 추천에 연결된 조언들도 삭제
+                        # Delete advice linked to recommendation
                         rec_advices = self.db.query(RecommendationAdvice).filter(
                             RecommendationAdvice.recommendation_id == rec.id
                         ).all()
@@ -468,12 +468,12 @@ class QuestionService:
                         
                         self.db.delete(rec)
                     
-                    logger.info(f"세션 {session.session_id} 연결된 추천 {len(session_recommendations)}개 삭제")
+                    logger.info(f"Session {session.session_id} linked recommendations {len(session_recommendations)} deleted")
                     
                 except Exception as e:
-                    logger.error(f"세션 추천 삭제 실패: {str(e)}", exc_info=True)
+                    logger.error(f"Session recommendation deletion failed: {str(e)}", exc_info=True)
                 
-                # 세션 삭제
+                # Delete session
                 self.db.delete(session)
             
             self.db.commit()
@@ -483,32 +483,32 @@ class QuestionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Session cleanup failed: {str(e)}")
-            raise Exception(f"세션 정리 실패: {str(e)}") 
+            raise Exception(f"Session cleanup failed: {str(e)}") 
 
     def update_user_timezone(self, uid: str, new_timezone: str) -> bool:
-        """사용자 시간대 업데이트"""
+        """Update user timezone"""
         try:
-            logger.info(f"시간대 업데이트 시작: uid={uid}, new_timezone={new_timezone}")
+            logger.info(f"Timezone update started: uid={uid}, new_timezone={new_timezone}")
             
-            # UserProfile 조회
+            # Get UserProfile
             user_profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
             if not user_profile:
-                logger.error(f"사용자 프로필 없음: uid={uid}")
+                logger.error(f"User profile not found: uid={uid}")
                 return False
             
-            # 기존 시간대 저장
+            # Save old timezone
             old_timezone = user_profile.current_timezone
             
-            # 시간대 업데이트
+            # Update timezone
             user_profile.current_timezone = new_timezone
             user_profile.updated_at = datetime.utcnow()
             
             self.db.commit()
             
-            logger.info(f"시간대 변경 완료: {uid}, {old_timezone} → {new_timezone}")
+            logger.info(f"Timezone change completed: {uid}, {old_timezone} → {new_timezone}")
             return True
             
         except Exception as e:
             self.db.rollback()
-            logger.error(f"시간대 업데이트 실패: {str(e)}")
+            logger.error(f"Timezone update failed: {str(e)}")
             return False 

@@ -15,39 +15,39 @@ class AIService:
     @staticmethod
     def determine_provider_from_model_name(model_name: str) -> str:
         """
-        모델명에서 provider 자동 결정 (확장 가능)
+        Automatically determine provider from model name (extensible)
         """
         model_name_lower = model_name.lower()
         
-        # OpenAI 모델들
+        # OpenAI models
         if model_name_lower.startswith(("gpt-", "text-embedding-", "dall-e-", "whisper-")):
             return "openai"
         
-        # Groq 모델들
+        # Groq models
         elif model_name_lower.startswith(("llama-", "mixtral-", "gemma-", "qwen-", "codellama-")):
             return "groq"
         
-        # Perplexity 모델들
+        # Perplexity models
         elif model_name_lower.startswith(("llama-3.1-", "mixtral-8x7b-", "codellama-", "mistral-7b-", "gemma-2b-", "gemma-7b-")):
             return "perplexity"
         
-        # Anthropic 모델들
+        # Anthropic models
         elif model_name_lower.startswith(("claude-", "sonnet-", "opus-", "haiku-")):
             return "anthropic"
         
-        # 기본값
+        # Default
         else:
             return "unknown"
     
     @staticmethod
     def get_current_model_config() -> Dict[str, str]:
         """
-        현재 환경변수에 따라 사용할 모델 설정을 반환 (확장 가능)
+        Return model configuration to use based on current environment variables (extensible)
         """
         model_version = os.getenv("CURRENT_MODEL", "gpt-4o")
         provider = AIService.determine_provider_from_model_name(model_version)
         
-        # Provider별 기본 설정
+        # Default configuration by provider
         provider_configs = {
             "openai": {
                 "provider": "openai",
@@ -80,12 +80,12 @@ class AIService:
     @staticmethod
     def get_fallback_model_config() -> Dict[str, str]:
         """
-        Fallback 모델 설정을 반환 (확장 가능)
+        Return fallback model configuration (extensible)
         """
         fallback_model = os.getenv("FALLBACK_MODEL", "llama-3.3-70b")
         provider = AIService.determine_provider_from_model_name(fallback_model)
         
-        # Provider별 기본 설정
+        # Default configuration by provider
         provider_configs = {
             "openai": {
                 "provider": "openai",
@@ -118,7 +118,7 @@ class AIService:
     @staticmethod
     async def call_ai_model(prompt: str) -> tuple[str, str]:
         """
-        환경변수에 따라 적절한 AI 모델을 호출 (확장 가능)
+        Call appropriate AI model based on environment variables (extensible)
         """
         model_config = AIService.get_current_model_config()
         
@@ -135,18 +135,18 @@ class AIService:
             response = await AIService.call_perplexity(prompt, model_config["model"])
             return response, model_config["model"]
         else:
-            logger.error(f"지원하지 않는 모델 프로바이더: {model_config['provider']}")
+            logger.error(f"Unsupported model provider: {model_config['provider']}")
             return '', ''
     
     @staticmethod
     async def call_openai(prompt: str, model_name: str = None) -> str:
         """
-        OpenAI API 호출 (공식 라이브러리 사용)
+        OpenAI API call (using official library)
         """
         if not prompt:
             return ''
         
-        # 모델명이 없으면 환경변수에서 가져오기
+        # Get model name from environment variables if not provided
         if model_name is None:
             model_config = AIService.get_current_model_config()
             model_name = model_config["model"]
@@ -156,7 +156,7 @@ class AIService:
             
             client = AsyncOpenAI(api_key=OPENAI_API_KEY)
             
-            # 재시도 로직
+            # Retry logic
             max_retries = 3
             for attempt in range(max_retries):
                 try:
@@ -175,14 +175,14 @@ class AIService:
                 except Exception as e:
                     if attempt < max_retries - 1:
                         import asyncio
-                        await asyncio.sleep(2 ** attempt)  # 지수 백오프
+                        await asyncio.sleep(2 ** attempt)  # Exponential backoff
                         continue
                     else:
-                        logger.error(f"OpenAI API 호출 실패 (시도 {attempt + 1}/{max_retries}): {e}")
+                        logger.error(f"OpenAI API call failed (attempt {attempt + 1}/{max_retries}): {e}")
                         raise e
                         
         except Exception as e:
-            logger.error(f"OpenAI API 초기화 실패: {e}")
+            logger.error(f"OpenAI API initialization failed: {e}")
             return ''
 
     @staticmethod
@@ -190,7 +190,7 @@ class AIService:
         if not prompt:
             return ''
         
-        # 모델명이 없으면 환경변수에서 가져오기
+        # Get model name from environment variables if not provided
         if model_name is None:
             model_config = AIService.get_current_model_config()
             model_name = model_config["model"]
@@ -215,19 +215,19 @@ class AIService:
     @staticmethod
     async def call_anthropic(prompt: str, model_name: str = None) -> str:
         """
-        Anthropic Claude API 호출
+        Anthropic Claude API call
         """
         if not prompt:
             return ''
         
-        # 모델명이 없으면 환경변수에서 가져오기
+        # Get model name from environment variables if not provided
         if model_name is None:
             model_config = AIService.get_current_model_config()
             model_name = model_config["model"]
         
         ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
         if not ANTHROPIC_API_KEY:
-            logger.error("ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.")
+            logger.error("ANTHROPIC_API_KEY environment variable is not set.")
             return ''
         
         headers = {
@@ -250,30 +250,30 @@ class AIService:
                     json=body
                 )
                 if response.status_code != 200:
-                    logger.error(f"Anthropic API 호출 실패: {response.status_code}")
+                    logger.error(f"Anthropic API call failed: {response.status_code}")
                     return ''
                 data = response.json()
                 return data.get('content', [{}])[0].get('text', '')
         except Exception as e:
-            logger.error(f"Anthropic API 호출 중 오류: {e}")
+            logger.error(f"Error during Anthropic API call: {e}")
             return ''
 
     @staticmethod
     async def call_perplexity(prompt: str, model_name: str = None) -> str:
         """
-        Perplexity API 호출
+        Perplexity API call
         """
         if not prompt:
             return ''
         
-        # 모델명이 없으면 환경변수에서 가져오기
+        # Get model name from environment variables if not provided
         if model_name is None:
             model_config = AIService.get_current_model_config()
             model_name = model_config["model"]
         
         PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
         if not PERPLEXITY_API_KEY:
-            logger.error("PERPLEXITY_API_KEY 환경변수가 설정되지 않았습니다.")
+            logger.error("PERPLEXITY_API_KEY environment variable is not set.")
             return ''
         
         headers = {
@@ -296,12 +296,12 @@ class AIService:
                     json=body
                 )
                 if response.status_code != 200:
-                    logger.error(f"Perplexity API 호출 실패: {response.status_code}")
+                    logger.error(f"Perplexity API call failed: {response.status_code}")
                     return ''
                 data = response.json()
                 return data.get('choices', [{}])[0].get('message', {}).get('content', '')
         except Exception as e:
-            logger.error(f"Perplexity API 호출 중 오류: {e}")
+            logger.error(f"Error during Perplexity API call: {e}")
             return ''
 
     @staticmethod
@@ -309,14 +309,14 @@ class AIService:
         try:
             import re
             
-            # 1. JSON 배열 형식 찾기 [...]
+            # 1. Find JSON array format [...]
             match = re.search(r'\[.*\]', llm_response, re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
                 if isinstance(parsed, list):
-                    # 기본값 보장 (일관된 처리)
+                    # Ensure default values (consistent processing)
                     for rec in parsed:
-                        # 필수 필드 기본값 설정
+                        # Set default values for required fields
                         rec.setdefault('researchBacking', {'summary': 'Based on current research', 'studies': []})
                         rec.setdefault('contraindications', [])
                         rec.setdefault('frequency', 'Daily')
@@ -328,23 +328,23 @@ class AIService:
                         rec.setdefault('frequency_detail', None)
                         rec.setdefault('duration_weeks', None)
                         rec.setdefault('purpose', None)
-                        # optimal_times는 프롬프트에서 명시적으로 "omit entirely"라고 했으므로 기본값 설정하지 않음
+                        # optimal_times is explicitly set to "omit entirely" in the prompt, so don't set default value
                         
-                        # 카테고리별 필드 정리 및 배열 변환 (함수 파라미터 사용)
+                        # Process category-specific fields and convert arrays (using function parameters)
                         AIService._process_category_specific_fields(rec, category)
                     
-                    # 태그 정규화
+                    # Normalize tags
                     normalized_parsed = AIService.normalize_tags(parsed)
                     return normalized_parsed
             
-            # 2. 단일 JSON 객체 형식 찾기 {...}
+            # 2. Find single JSON object format {...}
             match = re.search(r'\{.*\}', llm_response, re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
                 if isinstance(parsed, dict):
-                    # 단일 객체를 배열로 변환
+                    # Convert single object to array
                     rec = parsed
-                    # 필수 필드 기본값 설정 (일관된 처리)
+                    # Set default values for required fields (consistent processing)
                     rec.setdefault('researchBacking', {'summary': 'Based on current research', 'studies': []})
                     rec.setdefault('contraindications', [])
                     rec.setdefault('frequency', 'Daily')
@@ -356,18 +356,18 @@ class AIService:
                     rec.setdefault('frequency_detail', None)
                     rec.setdefault('duration_weeks', None)
                     rec.setdefault('purpose', None)
-                    # optimal_times는 프롬프트에서 명시적으로 "omit entirely"라고 했으므로 기본값 설정하지 않음
+                    # optimal_times is explicitly set to "omit entirely" in the prompt, so don't set default value
                     
-                    # 카테고리별 필드 정리 및 배열 변환 (함수 파라미터 사용)
+                    # Process category-specific fields and convert arrays (using function parameters)
                     AIService._process_category_specific_fields(rec, category)
                     
-                    # 태그 정규화
+                    # Normalize tags
                     normalized_parsed = AIService.normalize_tags([rec])
                     return normalized_parsed
             
             return []
         except Exception as e:
-            logger.error(f"추천 파싱 실패: {str(e)}, 응답: {llm_response[:200]}...")
+            logger.error(f"Recommendation parsing failed: {str(e)}, response: {llm_response[:200]}...")
             return []
 
 
@@ -375,20 +375,20 @@ class AIService:
     @staticmethod
     def _process_category_specific_fields(rec: Dict[str, Any], category: str) -> None:
         """
-        카테고리별 필드 보완 (AI 응답을 수정하지 않고 누락된 필드만 보완)
+        Supplement category-specific fields (don't modify AI response, only supplement missing fields)
         """
         category_lower = category.lower()
         
-        # AI 응답을 수정하지 않고, 누락된 필드만 기본값으로 보완
+        # Don't modify AI response, only supplement missing fields with default values
         if category_lower == 'food':
-            # 음식 관련 필드가 없으면 빈 배열로 보완
+            # Supplement with empty arrays if food-related fields are missing
             if 'food_amounts' not in rec:
                 rec['food_amounts'] = []
             if 'food_items' not in rec:
                 rec['food_items'] = []
             
         elif category_lower == 'movement':
-            # 운동 관련 필드가 없으면 빈 배열로 보완
+            # Supplement with empty arrays if exercise-related fields are missing
             if 'exercise_durations' not in rec:
                 rec['exercise_durations'] = []
             if 'exercise_types' not in rec:
@@ -397,7 +397,7 @@ class AIService:
                 rec['exercise_intensities'] = []
             
         elif category_lower == 'mindfulness':
-            # 마음챙김 관련 필드가 없으면 빈 배열로 보완
+            # Supplement with empty arrays if mindfulness-related fields are missing
             if 'mindfulness_durations' not in rec:
                 rec['mindfulness_durations'] = []
             if 'mindfulness_techniques' not in rec:
@@ -406,9 +406,9 @@ class AIService:
     @staticmethod
     def normalize_tags(recommendations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        추천의 태그들을 정규화하는 함수
+        Function to normalize tags in recommendations
         """
-        # 정규화할 태그 매핑
+        # Tag mapping for normalization
         condition_mapping = {
             'pcos': 'PCOS',
             'polycystic ovary syndrome': 'PCOS',
@@ -485,7 +485,7 @@ class AIService:
         for rec in recommendations:
             normalized_rec = rec.copy()
             
-            # conditions 정규화
+            # Normalize conditions
             if 'conditions' in normalized_rec:
                 normalized_conditions = []
                 for condition in normalized_rec['conditions']:
@@ -495,7 +495,7 @@ class AIService:
                         normalized_conditions.append(normalized_condition)
                 normalized_rec['conditions'] = normalized_conditions
             
-            # hormones 정규화
+            # Normalize hormones
             if 'hormones' in normalized_rec:
                 normalized_hormones = []
                 for hormone in normalized_rec['hormones']:
@@ -505,7 +505,7 @@ class AIService:
                         normalized_hormones.append(normalized_hormone)
                 normalized_rec['hormones'] = normalized_hormones
             
-            # symptoms 정규화
+            # Normalize symptoms
             if 'symptoms' in normalized_rec:
                 normalized_symptoms = []
                 for symptom in normalized_rec['symptoms']:
@@ -549,12 +549,12 @@ class AIService:
     def suggest_llm_prompt_for_recommendations(user_profile: UserProfile, category: str) -> str:
         up = user_profile
         
-        # Root cause engine을 사용하여 호르몬 불균형 분석
+        # Use root cause engine to analyze hormone imbalance
         root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(user_profile.dict())
         imbalance_text = RootCauseEngine.get_formatted_imbalance_text(root_cause_analysis)
         related_hormones = RootCauseEngine.get_related_hormones(root_cause_analysis)
         
-        # Primary/Secondary hormone 정보 추출
+        # Extract Primary/Secondary hormone information
         primary_hormone = root_cause_analysis.get("primary_imbalance", "")
         secondary_hormones = root_cause_analysis.get("secondary_imbalances", [])
         
@@ -567,7 +567,7 @@ class AIService:
             f"Symptoms: {', '.join(up.symptoms)}" if up.symptoms else None
         ]))
         
-        # JSON 예시들을 미리 정의
+        # Pre-define JSON examples
         example_study = {
             "title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS",
             "authors": ["Lee J", "Kim S", "Park M"],
@@ -599,7 +599,7 @@ class AIService:
             }
         }
         
-        # researchBacking 구조 예시
+        # researchBacking structure example
         research_backing_structure = {
             "summary": "Based on [YEAR] study with [NUMBER] women showing [SPECIFIC RESULTS]",
             "studies": [
@@ -757,16 +757,16 @@ CONFIDENCE ASSESSMENT:
     @staticmethod
     def create_rag_enhanced_prompt(user_profile: UserProfile, category: str, research_texts: List[str]) -> str:
         """
-        RAG 검색 결과를 포함한 강화된 프롬프트 생성
+        Create enhanced prompt including RAG search results
         """
         up = user_profile
         
-        # Root cause engine을 사용하여 호르몬 불균형 분석
+        # Use root cause engine to analyze hormone imbalance
         root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(user_profile.dict())
         imbalance_text = RootCauseEngine.get_formatted_imbalance_text(root_cause_analysis)
         related_hormones = RootCauseEngine.get_related_hormones(root_cause_analysis)
         
-        # Primary/Secondary hormone 정보 추출
+        # Extract Primary/Secondary hormone information
         primary_hormone = root_cause_analysis.get("primary_imbalance", "")
         secondary_hormones = root_cause_analysis.get("secondary_imbalances", [])
         
@@ -779,17 +779,17 @@ CONFIDENCE ASSESSMENT:
             f"Symptoms: {', '.join(up.symptoms)}" if up.symptoms else None
         ]))
         
-        # 카테고리별 특화 지시사항
+        # Category-specific instructions
         category_instructions = {
             "food": "Focus on dietary interventions, nutrition, and food-based treatments. Base recommendations on specific foods, nutrients, and dietary patterns.",
             "movement": "Focus on exercise interventions, physical activity, and movement-based treatments. Base recommendations on specific exercise types, duration, and intensity.",
             "mindfulness": "Focus on stress reduction, meditation, and mindfulness-based treatments. Base recommendations on specific techniques, duration, and frequency."
         }
         
-        # 연구 텍스트 결합
+        # Combine research texts
         research_context = "\n\n".join([f"Research Text {i+1}:\n{text}" for i, text in enumerate(research_texts)])
         
-        # JSON 예시들을 미리 정의
+        # Pre-define JSON examples
         example_study = {
             "title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS",
             "authors": ["Lee J", "Kim S", "Park M"],
@@ -898,7 +898,7 @@ CONFIDENCE ASSESSMENT:
     @staticmethod
     async def generate_rag_recommendations(user_profile: UserProfile) -> Dict[str, List]:
         """
-        RAG 기반 추천 생성
+        Generate RAG-based recommendations
         """
         from app.services.rag_service import RAGService
         
@@ -907,19 +907,19 @@ CONFIDENCE ASSESSMENT:
         
         for category in categories:
             try:
-                # 1. RAG 검색으로 관련 연구 찾기
+                # 1. Find relevant research through RAG search
                 search_results = await AIService.search_relevant_research_by_category(user_profile, category)
                 
-                # 2. 연구 텍스트 추출 (원문)
+                # 2. Extract research texts (original)
                 research_texts = AIService.extract_research_texts(search_results)
                 
-                # 3. 강화된 프롬프트 생성
+                # 3. Create enhanced prompt
                 enhanced_prompt = AIService.create_rag_enhanced_prompt(user_profile, category, research_texts)
                 
-                # 4. LLM 호출
+                # 4. Call LLM
                 llm_response, actual_model = await AIService.call_ai_model(enhanced_prompt)
                 
-                # 5. 결과 파싱
+                # 5. Parse results
                 recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
                 
                 results[category] = recommendations
@@ -933,17 +933,17 @@ CONFIDENCE ASSESSMENT:
     @staticmethod
     async def search_relevant_research_by_category(user_profile: UserProfile, category: str) -> List[Dict]:
         """
-        카테고리별로 관련 연구 검색
+        Search relevant research by category
         """
         from app.services.rag_service import RAGService
         
-        # 검색 쿼리 생성
+        # Create search query
         query = AIService.create_category_search_query(user_profile, category)
         
-        # 카테고리별 필터 생성
+        # Create category-specific filter
         filter_conditions = AIService.create_category_filter(category)
         
-        # Pinecone 검색
+        # Pinecone search
         search_results = await RAGService.search_and_rank_papers(
             query=query,
             user_profile=user_profile.dict(),
@@ -956,14 +956,14 @@ CONFIDENCE ASSESSMENT:
     @staticmethod
     def create_category_search_query(user_profile: UserProfile, category: str) -> str:
         """
-        카테고리별 검색 쿼리 생성
+        Create category-specific search query
         """
         query_parts = []
         
-        # 1. 기본 PCOS 키워드
+        # 1. Basic PCOS keywords
         query_parts.append("PCOS polycystic ovary syndrome")
         
-        # 2. 카테고리별 정확한 키워드
+        # 2. Category-specific accurate keywords
         if category == "food":
             query_parts.append("diet nutrition food meal dietary intervention")
         elif category == "movement":
@@ -971,11 +971,11 @@ CONFIDENCE ASSESSMENT:
         elif category == "mindfulness":
             query_parts.append("mindfulness meditation stress relaxation mental health intervention")
         
-        # 3. 사용자 호르몬 불균형
+        # 3. User hormone imbalance
         if user_profile.primaryImbalance:
             query_parts.append(user_profile.primaryImbalance)
         
-        # 4. 사용자 증상 (카테고리와 관련된 것만)
+        # 4. User symptoms (only those related to category)
         if user_profile.symptoms:
             relevant_symptoms = AIService.filter_symptoms_by_category(user_profile.symptoms, category)
             query_parts.extend(relevant_symptoms)
@@ -985,7 +985,7 @@ CONFIDENCE ASSESSMENT:
     @staticmethod
     def create_category_filter(category: str) -> Dict:
         """
-        카테고리별 필터 생성
+        Create category-specific filter
         """
         if category == "food":
             return {"intervention_type": {"$in": ["food"]}}
@@ -999,21 +999,21 @@ CONFIDENCE ASSESSMENT:
     @staticmethod
     def filter_symptoms_by_category(symptoms: List[str], category: str) -> List[str]:
         """
-        사용자가 입력한 증상을 그대로 사용 (카테고리 분류 없음)
+        Use user-entered symptoms as-is (no category classification)
         """
-        # 사용자가 입력한 증상을 그대로 반환
-        # 각 증상마다 food, movement, mindfulness 해결법이 모두 존재할 수 있음
+        # Return user-entered symptoms as-is
+        # Each symptom can have food, movement, mindfulness solutions
         return symptoms
 
     @staticmethod
     def extract_research_texts(search_results: List[Dict]) -> List[str]:
         """
-        검색 결과에서 연구 텍스트 추출
+        Extract research texts from search results
         """
         research_texts = []
         
         for result in search_results:
-            # 원문 텍스트 추출
+            # Extract original text
             text = result.get("content", "")
             title = result.get("title", "")
             study_arms_text = result.get("study_arms_text", "")
@@ -1021,14 +1021,14 @@ CONFIDENCE ASSESSMENT:
             chunk_summary = result.get("chunk_summary", "")
             
             if text and title:
-                # 제목과 내용을 결합
-                research_text = f"Title: {title}\n\nContent: {text[:2000]}"  # 2000자로 제한
+                # Combine title and content
+                research_text = f"Title: {title}\n\nContent: {text[:2000]}"  # Limit to 2000 characters
                 
-                # study_arms 정보 추가
+                # Add study_arms information
                 if study_arms_text:
                     research_text += f"\n\nStudy Arms: {study_arms_text}"
                 
-                # 섹션 정보 추가
+                # Add section information
                 if section_type:
                     research_text += f"\n\nSection Type: {section_type}"
                 
@@ -1037,12 +1037,12 @@ CONFIDENCE ASSESSMENT:
                 
                 research_texts.append(research_text)
         
-        return research_texts[:5]  # 상위 5개 연구만 사용
+        return research_texts[:5]  # Use only top 5 studies
 
     @staticmethod
     def parse_frequency_detail(frequency_detail: str) -> dict:
         """
-        구조화된 frequency_detail을 스케줄링 가능한 형태로 파싱
+        Parse structured frequency_detail into schedulable format
         Format: "type:times" (e.g., "daily:1", "weekly:3", "monthly:1")
         """
         if not frequency_detail:
@@ -1050,7 +1050,7 @@ CONFIDENCE ASSESSMENT:
         
         try:
             if ":" not in frequency_detail:
-                # 기존 형식 호환성을 위한 fallback
+                # Fallback for existing format compatibility
                 return {"type": "custom", "times": 0, "description": frequency_detail}
             
             freq_type, times_str = frequency_detail.split(":", 1)
@@ -1063,34 +1063,34 @@ CONFIDENCE ASSESSMENT:
             }
             
         except (ValueError, AttributeError) as e:
-            logger.warning(f"frequency_detail 파싱 실패: {frequency_detail}, 오류: {str(e)}")
+            logger.warning(f"frequency_detail parsing failed: {frequency_detail}, error: {str(e)}")
             return {"type": "custom", "times": 0, "description": frequency_detail}
 
     @staticmethod
     async def generate_session_recommendations(user_profile: UserProfile, category: str) -> List[Dict[str, Any]]:
         """
-        세션용 추천 생성 (백그라운드 처리용)
-        기존 일반 추천 생성 로직과 동일하지만 세션 플로우에 최적화
+        Generate session recommendations (for background processing)
+        Same logic as general recommendation generation but optimized for session flow
         """
         try:
-            # 프롬프트 생성
+            # Create prompt
             prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile, category)
-            logger.info(f"세션 추천 프롬프트 생성 완료: category={category}")
+            logger.info(f"Session recommendation prompt creation completed: category={category}")
             
-            # OpenAI API 호출
+            # Call OpenAI API
             llm_response, actual_model = await AIService.call_ai_model(prompt)
-            logger.info(f"AI 모델 호출 완료: category={category}, model={actual_model}, response_length={len(llm_response) if llm_response else 0}")
+            logger.info(f"AI model call completed: category={category}, model={actual_model}, response_length={len(llm_response) if llm_response else 0}")
             
-            # 신뢰도 평가
+            # Evaluate confidence
             confidence = AIService.evaluate_llm_confidence(llm_response)
-            logger.info(f"신뢰도 평가 완료: category={category}, confidence={confidence}")
+            logger.info(f"Confidence evaluation completed: category={category}, confidence={confidence}")
             
-            # 응답 파싱
+            # Parse response
             recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
-            logger.info(f"응답 파싱 완료: category={category}, recommendations_count={len(recommendations) if recommendations else 0}")
-            logger.info(f"AI 응답 내용 (처음 200자): {llm_response[:200] if llm_response else 'None'}")
+            logger.info(f"Response parsing completed: category={category}, recommendations_count={len(recommendations) if recommendations else 0}")
+            logger.info(f"AI response content (first 200 chars): {llm_response[:200] if llm_response else 'None'}")
             
-            # Fallback: 신뢰도 낮거나 추천 없음 → Fallback 모델 사용
+            # Fallback: low confidence or no recommendations → use fallback model
             if confidence < 60 or not recommendations:
                 fallback_config = AIService.get_fallback_model_config()
                 if fallback_config["provider"] == "openai":
@@ -1102,7 +1102,7 @@ CONFIDENCE ASSESSMENT:
                 elif fallback_config["provider"] == "perplexity":
                     fallback_response = await AIService.call_perplexity(prompt, fallback_config["model"])
                 else:
-                    logger.error(f"지원하지 않는 fallback 모델 프로바이더: {fallback_config['provider']}")
+                    logger.error(f"Unsupported fallback model provider: {fallback_config['provider']}")
                     return recommendations
                 
                 fallback_confidence = AIService.evaluate_llm_confidence(fallback_response)
@@ -1113,5 +1113,5 @@ CONFIDENCE ASSESSMENT:
             return recommendations if recommendations else []
             
         except Exception as e:
-            logger.error(f"세션 추천 생성 실패 (category={category}): {str(e)}")
+            logger.error(f"Session recommendation generation failed (category={category}): {str(e)}")
             return [] 

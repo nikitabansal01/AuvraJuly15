@@ -7,13 +7,13 @@ from app.core.database import SessionProcessingStatus
 logger = logging.getLogger(__name__)
 
 class ProcessingStatusService:
-    """세션 처리 상태 관리 서비스"""
+    """Session processing status management service"""
     
     def __init__(self, db: Session):
         self.db = db
     
     def create_processing_status(self, session_id: str, request_payload: Dict[str, Any]) -> SessionProcessingStatus:
-        """처리 상태 레코드 생성"""
+        """Create processing status record"""
         processing_status = SessionProcessingStatus(
             session_id=session_id,
             processing_status="queued",
@@ -27,11 +27,11 @@ class ProcessingStatusService:
         self.db.commit()
         self.db.refresh(processing_status)
         
-        logger.info(f"처리 상태 생성: {session_id}, status=queued")
+        logger.info(f"Processing status created: {session_id}, status=queued")
         return processing_status
     
     def update_processing_started(self, session_id: str) -> bool:
-        """처리 시작 상태로 업데이트"""
+        """Update to processing started status"""
         try:
             processing_status = self.db.query(SessionProcessingStatus).filter(
                 SessionProcessingStatus.session_id == session_id
@@ -46,23 +46,23 @@ class ProcessingStatusService:
                 processing_status.heartbeat_at = datetime.utcnow()
                 
                 self.db.commit()
-                logger.info(f"처리 시작: {session_id}, status=in_progress")
+                logger.info(f"Processing started: {session_id}, status=in_progress")
                 return True
             return False
         except Exception as e:
-            logger.error(f"처리 시작 업데이트 실패: {session_id}, error={str(e)}")
+            logger.error(f"Failed to update processing started: {session_id}, error={str(e)}")
             self.db.rollback()
             return False
     
     def update_category_status(self, session_id: str, category: str, status: str, phase: str = None, progress: int = None) -> bool:
-        """카테고리별 처리 상태 업데이트"""
+        """Update processing status by category"""
         try:
             processing_status = self.db.query(SessionProcessingStatus).filter(
                 SessionProcessingStatus.session_id == session_id
             ).first()
             
             if processing_status:
-                # 카테고리별 상태 업데이트
+                # Update status by category
                 if category == "food":
                     processing_status.food_status = status
                 elif category == "movement":
@@ -70,14 +70,14 @@ class ProcessingStatusService:
                 elif category == "mindfulness":
                     processing_status.mindfulness_status = status
                 
-                # 전체 진행률 계산
+                # Calculate overall progress
                 completed_categories = sum([
                     1 if processing_status.food_status == "completed" else 0,
                     1 if processing_status.movement_status == "completed" else 0,
                     1 if processing_status.mindfulness_status == "completed" else 0
                 ])
                 
-                # 진행률 업데이트 (각 카테고리당 약 33%)
+                # Update progress (approximately 33% per category)
                 if progress is None:
                     progress = min(100, 5 + (completed_categories * 30))
                 
@@ -87,7 +87,7 @@ class ProcessingStatusService:
                 if phase:
                     processing_status.phase = phase
                 
-                # 메시지 업데이트
+                # Update message
                 if status == "processing":
                     processing_status.message = f"{category} recommendation generation in progress..."
                 elif status == "completed":
@@ -96,16 +96,16 @@ class ProcessingStatusService:
                     processing_status.message = f"{category} recommendation generation failed"
                 
                 self.db.commit()
-                logger.info(f"카테고리 상태 업데이트: {session_id}, {category}={status}, progress={progress}")
+                logger.info(f"Category status updated: {session_id}, {category}={status}, progress={progress}")
                 return True
             return False
         except Exception as e:
-            logger.error(f"카테고리 상태 업데이트 실패: {session_id}, {category}, error={str(e)}")
+            logger.error(f"Failed to update category status: {session_id}, {category}, error={str(e)}")
             self.db.rollback()
             return False
     
     def update_processing_completed(self, session_id: str, result: Dict[str, Any] = None) -> bool:
-        """처리 완료 상태로 업데이트"""
+        """Update to processing completed status"""
         try:
             processing_status = self.db.query(SessionProcessingStatus).filter(
                 SessionProcessingStatus.session_id == session_id
@@ -123,16 +123,16 @@ class ProcessingStatusService:
                     processing_status.result = result
                 
                 self.db.commit()
-                logger.info(f"처리 완료: {session_id}, status=completed")
+                logger.info(f"Processing completed: {session_id}, status=completed")
                 return True
             return False
         except Exception as e:
-            logger.error(f"처리 완료 업데이트 실패: {session_id}, error={str(e)}")
+            logger.error(f"Failed to update processing completed: {session_id}, error={str(e)}")
             self.db.rollback()
             return False
     
     def update_processing_failed(self, session_id: str, error: Dict[str, Any] = None) -> bool:
-        """처리 실패 상태로 업데이트"""
+        """Update to processing failed status"""
         try:
             processing_status = self.db.query(SessionProcessingStatus).filter(
                 SessionProcessingStatus.session_id == session_id
@@ -149,16 +149,16 @@ class ProcessingStatusService:
                     processing_status.error = error
                 
                 self.db.commit()
-                logger.error(f"처리 실패: {session_id}, status=failed")
+                logger.error(f"Processing failed: {session_id}, status=failed")
                 return True
             return False
         except Exception as e:
-            logger.error(f"처리 실패 업데이트 실패: {session_id}, error={str(e)}")
+            logger.error(f"Failed to update processing failed: {session_id}, error={str(e)}")
             self.db.rollback()
             return False
     
     def update_heartbeat(self, session_id: str) -> bool:
-        """하트비트 업데이트"""
+        """Update heartbeat"""
         try:
             processing_status = self.db.query(SessionProcessingStatus).filter(
                 SessionProcessingStatus.session_id == session_id
@@ -170,18 +170,18 @@ class ProcessingStatusService:
                 return True
             return False
         except Exception as e:
-            logger.error(f"하트비트 업데이트 실패: {session_id}, error={str(e)}")
+            logger.error(f"Failed to update heartbeat: {session_id}, error={str(e)}")
             self.db.rollback()
             return False
     
     def get_processing_status(self, session_id: str) -> Optional[SessionProcessingStatus]:
-        """처리 상태 조회"""
+        """Get processing status"""
         return self.db.query(SessionProcessingStatus).filter(
             SessionProcessingStatus.session_id == session_id
         ).first()
     
     def cleanup_stalled_processing(self, timeout_minutes: int = 30) -> int:
-        """정체된 처리 상태 정리"""
+        """Clean up stalled processing status"""
         try:
             from datetime import timedelta
             cutoff_time = datetime.utcnow() - timedelta(minutes=timeout_minutes)
@@ -196,9 +196,9 @@ class ProcessingStatusService:
             })
             
             self.db.commit()
-            logger.info(f"정체된 처리 상태 정리: {stalled_count}개")
+            logger.info(f"Stalled processing status cleaned up: {stalled_count} records")
             return stalled_count
         except Exception as e:
-            logger.error(f"정체된 처리 상태 정리 실패: {str(e)}")
+            logger.error(f"Failed to cleanup stalled processing: {str(e)}")
             self.db.rollback()
             return 0

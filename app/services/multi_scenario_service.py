@@ -1,6 +1,6 @@
 """
-다중 시나리오 하이브리드 검색 서비스
-Scenario A, B, C를 모두 지원하는 통합 서비스
+Multi-scenario hybrid search service
+Integrated service supporting Scenario A, B, C
 """
 import logging
 import asyncio
@@ -19,66 +19,66 @@ class MultiScenarioSearchService:
         self.is_initialized = False
         
     def initialize_all_services(self) -> Dict[str, bool]:
-        """모든 시나리오용 서비스 초기화"""
+        """Initialize services for all scenarios"""
         results = {}
         
         try:
-            # Scenario A용: HQ 전용 서비스
-            logger.info("=== Scenario A: HQ 전용 서비스 초기화 ===")
+            # Scenario A: HQ-only service
+            logger.info("=== Scenario A: HQ-only service initialization ===")
             self.services["hq"] = HybridSearchService(self.data_dir, "hq_only")
             hq_files = list(Path(self.data_dir).glob("hq_documents_*.json"))
             if hq_files:
                 hq_file = str(sorted(hq_files)[-1])
                 results["hq"] = self.services["hq"].initialize(hq_file)
-                logger.info(f"HQ 서비스 초기화: {'성공' if results['hq'] else '실패'}")
+                logger.info(f"HQ service initialization: {'Success' if results['hq'] else 'Failed'}")
             else:
-                logger.error("HQ 데이터 파일을 찾을 수 없음")
+                logger.error("HQ data file not found")
                 results["hq"] = False
             
-            # Scenario A용: LQ 전용 서비스
-            logger.info("=== Scenario A: LQ 전용 서비스 초기화 ===")
+            # Scenario A: LQ-only service
+            logger.info("=== Scenario A: LQ-only service initialization ===")
             self.services["lq"] = HybridSearchService(self.data_dir, "lq_only")
             lq_files = list(Path(self.data_dir).glob("lq_documents_*.json"))
             if lq_files:
                 lq_file = str(sorted(lq_files)[-1])
                 results["lq"] = self.services["lq"].initialize(lq_file)
-                logger.info(f"LQ 서비스 초기화: {'성공' if results['lq'] else '실패'}")
+                logger.info(f"LQ service initialization: {'Success' if results['lq'] else 'Failed'}")
             else:
-                logger.error("LQ 데이터 파일을 찾을 수 없음")
+                logger.error("LQ data file not found")
                 results["lq"] = False
             
-            # Scenario B, C용: Combined 서비스
-            logger.info("=== Scenario B/C: Combined 서비스 초기화 ===")
+            # Scenario B, C: Combined service
+            logger.info("=== Scenario B/C: Combined service initialization ===")
             self.services["combined"] = HybridSearchService(self.data_dir, "combined")
             combined_files = list(Path(self.data_dir).glob("combined_documents_*.json"))
             if combined_files:
                 combined_file = str(sorted(combined_files)[-1])
                 results["combined"] = self.services["combined"].initialize(combined_file)
-                logger.info(f"Combined 서비스 초기화: {'성공' if results['combined'] else '실패'}")
+                logger.info(f"Combined service initialization: {'Success' if results['combined'] else 'Failed'}")
             else:
-                logger.error("Combined 데이터 파일을 찾을 수 없음")
+                logger.error("Combined data file not found")
                 results["combined"] = False
             
             self.is_initialized = all(results.values())
-            logger.info(f"전체 서비스 초기화: {'성공' if self.is_initialized else '실패'}")
+            logger.info(f"Overall service initialization: {'Success' if self.is_initialized else 'Failed'}")
             
             return results
             
         except Exception as e:
-            logger.error(f"서비스 초기화 실패: {e}")
+            logger.error(f"Service initialization failed: {e}")
             return {"hq": False, "lq": False, "combined": False}
     
     async def scenario_a_comparison(self, query: str, top_k: int = 10) -> Dict[str, Any]:
         """
-        Scenario A: 순수 모델 성능 비교
-        HQ 환경 (HQ BM25 + HQ Dense) vs LQ 환경 (LQ BM25 + LQ Dense)
+        Scenario A: Pure model performance comparison
+        HQ environment (HQ BM25 + HQ Dense) vs LQ environment (LQ BM25 + LQ Dense)
         """
         if not self.is_initialized:
-            raise Exception("서비스가 초기화되지 않음")
+            raise Exception("Service not initialized")
         
-        logger.info(f"Scenario A 비교 시작: '{query}'")
+        logger.info(f"Scenario A comparison started: '{query}'")
         
-        # 병렬로 HQ/LQ 환경에서 검색
+        # Parallel search in HQ/LQ environments
         hq_task = asyncio.create_task(
             self.services["hq"].hybrid_search(
                 query=query,
@@ -97,21 +97,21 @@ class MultiScenarioSearchService:
         
         hq_results, lq_results = await asyncio.gather(hq_task, lq_task)
         
-        # 분석
+        # Analysis
         hq_ids = set(r["id"] for r in hq_results["results"])
         lq_ids = set(r["id"] for r in lq_results["results"])
         
         return {
-            "scenario": "A - 순수 모델 성능 비교",
+            "scenario": "A - Pure model performance comparison",
             "query": query,
             "hq_environment": {
-                "bm25": "HQ 전용",
+                "bm25": "HQ-only",
                 "dense": "pcos-rag-gpt_4o",
                 "results": hq_results["results"],
                 "stats": hq_results["stats"]
             },
             "lq_environment": {
-                "bm25": "LQ 전용", 
+                "bm25": "LQ-only", 
                 "dense": "pcos-rag-gpt_3.5_turbo",
                 "results": lq_results["results"],
                 "stats": lq_results["stats"]
@@ -128,15 +128,15 @@ class MultiScenarioSearchService:
     
     async def scenario_b_comparison(self, query: str, top_k: int = 10) -> Dict[str, Any]:
         """
-        Scenario B: 혼합 환경에서의 경쟁
+        Scenario B: Competition in mixed environment
         Combined BM25 + HQ Dense vs Combined BM25 + LQ Dense
         """
         if not self.is_initialized:
-            raise Exception("서비스가 초기화되지 않음")
+            raise Exception("Service not initialized")
         
-        logger.info(f"Scenario B 비교 시작: '{query}'")
+        logger.info(f"Scenario B comparison started: '{query}'")
         
-        # Combined BM25 + 각각 Dense 검색
+        # Combined BM25 + each Dense search
         hq_task = asyncio.create_task(
             self.services["combined"].hybrid_search(
                 query=query,
@@ -155,12 +155,12 @@ class MultiScenarioSearchService:
         
         hq_results, lq_results = await asyncio.gather(hq_task, lq_task)
         
-        # 분석
+        # Analysis
         hq_ids = set(r["id"] for r in hq_results["results"])
         lq_ids = set(r["id"] for r in lq_results["results"])
         
         return {
-            "scenario": "B - 혼합 환경에서의 경쟁",
+            "scenario": "B - Competition in mixed environment",
             "query": query,
             "hq_mixed": {
                 "bm25": "Combined (HQ+LQ)",
@@ -186,17 +186,17 @@ class MultiScenarioSearchService:
     
     async def scenario_c_comparison(self, query: str, top_k: int = 10) -> Dict[str, Any]:
         """
-        Scenario C: 완전 통합 비교
-        Combined BM25 + Combined Dense → model_version 필터링
+        Scenario C: Complete integration comparison
+        Combined BM25 + Combined Dense → model_version filtering
         """
         if not self.is_initialized:
-            raise Exception("서비스가 초기화되지 않음")
+            raise Exception("Service not initialized")
         
-        logger.info(f"Scenario C 비교 시작: '{query}'")
+        logger.info(f"Scenario C comparison started: '{query}'")
         
         combined_namespace = "pcos-rag-combined"
         
-        # 통합 환경에서 모델별 필터링
+        # Model-specific filtering in unified environment
         hq_task = asyncio.create_task(
             self.services["combined"].hybrid_search(
                 query=query,
@@ -225,15 +225,15 @@ class MultiScenarioSearchService:
         
         hq_results, lq_results, all_results = await asyncio.gather(hq_task, lq_task, all_task)
         
-        # 상위 결과만
+        # Top results only
         hq_final = hq_results["results"][:top_k]
         lq_final = lq_results["results"][:top_k]
         
-        # 분석
+        # Analysis
         hq_ids = set(r["id"] for r in hq_final)
         lq_ids = set(r["id"] for r in lq_final)
         
-        # 순위 분석
+        # Rank analysis
         hq_ranks = []
         lq_ranks = []
         
@@ -245,7 +245,7 @@ class MultiScenarioSearchService:
                 lq_ranks.append(i + 1)
         
         return {
-            "scenario": "C - 완전 통합 비교",
+            "scenario": "C - Complete integration comparison",
             "query": query,
             "namespace": combined_namespace,
             "hq_unified": {
@@ -277,13 +277,13 @@ class MultiScenarioSearchService:
         }
     
     async def comprehensive_comparison(self, query: str, top_k: int = 10) -> Dict[str, Any]:
-        """모든 시나리오 (A, B, C) 통합 비교"""
+        """Comprehensive comparison of all scenarios (A, B, C)"""
         if not self.is_initialized:
-            raise Exception("서비스가 초기화되지 않음")
+            raise Exception("Service not initialized")
         
-        logger.info(f"종합 비교 시작: '{query}'")
+        logger.info(f"Comprehensive comparison started: '{query}'")
         
-        # 병렬로 모든 시나리오 실행
+        # Execute all scenarios in parallel
         scenario_a_task = asyncio.create_task(self.scenario_a_comparison(query, top_k))
         scenario_b_task = asyncio.create_task(self.scenario_b_comparison(query, top_k))
         scenario_c_task = asyncio.create_task(self.scenario_c_comparison(query, top_k))
@@ -292,7 +292,7 @@ class MultiScenarioSearchService:
             scenario_a_task, scenario_b_task, scenario_c_task
         )
         
-        # 시나리오 간 비교 분석
+        # Cross-scenario comparison analysis
         scenarios_analysis = {
             "consistency": {
                 "a_vs_b_hq_overlap": len(
@@ -322,7 +322,7 @@ class MultiScenarioSearchService:
             },
             "cross_scenario_analysis": scenarios_analysis,
             "summary": {
-                "most_consistent_scenario": "분석 필요",
+                "most_consistent_scenario": "Analysis required",
                 "hq_performance": {
                     "scenario_a": len(scenario_a["hq_environment"]["results"]),
                     "scenario_b": len(scenario_b["hq_mixed"]["results"]),
@@ -336,11 +336,11 @@ class MultiScenarioSearchService:
             }
         }
 
-# 전역 인스턴스
+# Global instance
 _multi_scenario_service = None
 
 def get_multi_scenario_service() -> MultiScenarioSearchService:
-    """다중 시나리오 서비스 인스턴스 반환"""
+    """Return multi-scenario service instance"""
     global _multi_scenario_service
     
     if _multi_scenario_service is None:

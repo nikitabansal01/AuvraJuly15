@@ -14,15 +14,15 @@ class AdviceService:
     
     async def generate_and_save_advices(self, recommendation_id: int, uid: str, rec: RecommendationCard, category: str) -> bool:
         """
-        추천에 대한 조언들을 생성하고 저장
+        Generate and save advice for recommendations
         """
         try:
-            logger.info(f"조언 생성 시작: recommendation_id={recommendation_id}, category={category}")
+            logger.info(f"Advice generation started: recommendation_id={recommendation_id}, category={category}")
             
-            # 추천 컨텍스트 생성
+            # Create recommendation context
             recommendation_context = self._create_recommendation_context(rec)
             
-            # 카테고리별 조언 생성
+            # Generate advice by category
             if category == "food":
                 advices = await self._generate_food_advices(rec, recommendation_context)
             elif category == "movement":
@@ -30,45 +30,45 @@ class AdviceService:
             elif category == "mindfulness":
                 advices = await self._generate_mindfulness_advices(rec, recommendation_context)
             else:
-                logger.error(f"지원하지 않는 카테고리: {category}")
+                logger.error(f"Unsupported category: {category}")
                 return False
             
-            # 조언들을 DB에 저장 (병렬 처리)
+            # Save advice to DB (parallel processing)
             import asyncio
             save_tasks = []
             for advice in advices:
-                # _save_advice는 동기 함수이므로 asyncio.to_thread로 래핑
+                # _save_advice is a synchronous function, so wrap with asyncio.to_thread
                 task = asyncio.to_thread(self._save_advice, recommendation_id, uid, advice, category, recommendation_context)
                 save_tasks.append(task)
             
-            # 모든 조언 저장을 병렬로 처리
+            # Process all advice saving in parallel
             save_results = await asyncio.gather(*save_tasks, return_exceptions=True)
             saved_count = sum(1 for result in save_results if result is True)
             
-            # DB 커밋
+            # Commit to DB
             if saved_count > 0:
                 self.db.commit()
-                logger.info(f"조언 생성 완료: {saved_count}개 저장됨")
+                logger.info(f"Advice generation completed: {saved_count} saved")
                 return True
             else:
-                logger.warning("AI 조언 생성 실패로 저장된 조언이 없습니다")
+                logger.warning("No advice saved due to AI advice generation failure")
                 return False
             
         except Exception as e:
-            logger.error(f"조언 생성 실패: {str(e)}")
+            logger.error(f"Advice generation failed: {str(e)}")
             return False
     
     async def generate_and_save_session_advices(self, recommendation_id: int, session_id: str, recommendation_data: Dict[str, Any], category: str) -> bool:
         """
-        세션용 조언 생성 및 저장 (임시 세션용)
+        Generate and save session advice (for temporary sessions)
         """
         try:
-            logger.info(f"세션 조언 생성 시작: recommendation_id={recommendation_id}, session_id={session_id}, category={category}")
+            logger.info(f"Session advice generation started: recommendation_id={recommendation_id}, session_id={session_id}, category={category}")
             
-            # 추천 컨텍스트 생성
+            # Create recommendation context
             recommendation_context = self._create_session_recommendation_context(recommendation_data)
             
-            # 카테고리별 조언 생성
+            # Generate advice by category
             if category == "food":
                 advices = await self._generate_food_advices_from_dict(recommendation_data, recommendation_context)
             elif category == "movement":
@@ -76,37 +76,37 @@ class AdviceService:
             elif category == "mindfulness":
                 advices = await self._generate_mindfulness_advices_from_dict(recommendation_data, recommendation_context)
             else:
-                logger.error(f"지원하지 않는 카테고리: {category}")
+                logger.error(f"Unsupported category: {category}")
                 return False
             
-            # 조언들을 DB에 저장 (병렬 처리)
+            # Save advice to DB (parallel processing)
             import asyncio
             save_tasks = []
             for advice in advices:
-                # _save_session_advice는 동기 함수이므로 asyncio.to_thread로 래핑
+                # _save_session_advice is a synchronous function, so wrap with asyncio.to_thread
                 task = asyncio.to_thread(self._save_session_advice, recommendation_id, session_id, advice, category, recommendation_context)
                 save_tasks.append(task)
             
-            # 모든 조언 저장을 병렬로 처리
+            # Process all advice saving in parallel
             save_results = await asyncio.gather(*save_tasks, return_exceptions=True)
             saved_count = sum(1 for result in save_results if result is True)
             
-            # DB 커밋
+            # Commit to DB
             if saved_count > 0:
                 self.db.commit()
-                logger.info(f"세션 조언 생성 완료: {saved_count}개 저장됨")
+                logger.info(f"Session advice generation completed: {saved_count} saved")
                 return True
             else:
-                logger.warning("AI 조언 생성 실패로 저장된 조언이 없습니다")
+                logger.warning("No advice saved due to AI advice generation failure")
                 return False
             
         except Exception as e:
-            logger.error(f"세션 조언 생성 실패: {str(e)}")
+            logger.error(f"Session advice generation failed: {str(e)}")
             return False
     
     def _create_recommendation_context(self, rec: RecommendationCard) -> Dict[str, Any]:
         """
-        추천 컨텍스트 생성
+        Create recommendation context
         """
         return {
             "title": rec.title,
@@ -128,7 +128,7 @@ class AdviceService:
     
     def _create_session_recommendation_context(self, rec: Dict[str, Any]) -> Dict[str, Any]:
         """
-        세션 추천 컨텍스트 생성 (배열 필드 사용)
+        Create session recommendation context (using array fields)
         """
         return {
             "title": rec.get('title'),
@@ -150,7 +150,7 @@ class AdviceService:
     
     async def _generate_food_advices(self, rec: RecommendationCard, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        음식 추천에 대한 조언 생성 (easy, tasty, healthy)
+        Generate advice for food recommendations (easy, tasty, healthy)
         """
         prompt = f"""
 You are a nutrition expert helping women with hormone health. Based on the following food recommendation, generate 3 practical advice items:
@@ -181,15 +181,15 @@ Return as JSON array:
             if parsed_advices:
                 return parsed_advices
             else:
-                logger.warning("AI 응답 파싱 실패")
+                logger.warning("AI response parsing failed")
                 return []
         except Exception as e:
-            logger.error(f"음식 조언 생성 실패: {str(e)}")
+            logger.error(f"Food advice generation failed: {str(e)}")
             return []
     
     async def _generate_movement_advices(self, rec: RecommendationCard, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        운동 추천에 대한 조언 생성 (3가지 쉬운 방법)
+        Generate advice for movement recommendations (3 easy methods)
         """
         prompt = f"""
 You are a fitness expert helping women with hormone health. Based on the following movement recommendation, generate 3 practical tips for easy implementation:
@@ -225,15 +225,15 @@ Return as JSON array:
             if parsed_advices:
                 return parsed_advices
             else:
-                logger.warning("AI 응답 파싱 실패")
+                logger.warning("AI response parsing failed")
                 return []
         except Exception as e:
-            logger.error(f"운동 조언 생성 실패: {str(e)}")
+            logger.error(f"Movement advice generation failed: {str(e)}")
             return []
     
     async def _generate_mindfulness_advices(self, rec: RecommendationCard, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        마음챙김 추천에 대한 조언 생성 (3가지 쉬운 방법)
+        Generate advice for mindfulness recommendations (3 easy methods)
         """
         prompt = f"""
 You are a mindfulness expert helping women with hormone health. Based on the following mindfulness recommendation, generate 3 practical tips for easy implementation:
@@ -269,15 +269,15 @@ Return as JSON array:
             if parsed_advices:
                 return parsed_advices
             else:
-                logger.warning("AI 응답 파싱 실패")
+                logger.warning("AI response parsing failed")
                 return []
         except Exception as e:
-            logger.error(f"마음챙김 조언 생성 실패: {str(e)}")
+            logger.error(f"Mindfulness advice generation failed: {str(e)}")
             return []
     
     async def _generate_food_advices_from_dict(self, rec: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        음식 추천에 대한 조언 생성 (dict 기반)
+        Generate advice for food recommendations (dict-based)
         """
         prompt = f"""
 You are a nutrition expert helping women with hormone health. Based on the following food recommendation, generate 3 practical advice items.
@@ -312,27 +312,27 @@ Remember: Return ONLY the JSON array, no other text.
             
             if response and response.strip():
                 try:
-                    # JSON 파싱 시도
+                    # Try JSON parsing
                     advices = json.loads(response)
                     if isinstance(advices, list):
                         return advices
                     else:
-                        logger.warning(f"AI 응답이 리스트가 아님: {type(advices)}")
+                        logger.warning(f"AI response is not a list: {type(advices)}")
                         return []
                 except json.JSONDecodeError as e:
-                    logger.warning(f"AI 응답 JSON 파싱 실패: {str(e)}, 응답: {response[:200]}")
+                    logger.warning(f"AI response JSON parsing failed: {str(e)}, response: {response[:200]}")
                     return []
             else:
-                logger.warning("AI 조언 생성 실패 - 빈 응답")
+                logger.warning("AI advice generation failed - empty response")
                 return []
                 
         except Exception as e:
-            logger.error(f"음식 조언 생성 실패: {str(e)}")
+            logger.error(f"Food advice generation failed: {str(e)}")
             return []
     
     async def _generate_movement_advices_from_dict(self, rec: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        운동 추천에 대한 조언 생성 (dict 기반)
+        Generate advice for movement recommendations (dict-based)
         """
         prompt = f"""
 You are a fitness expert helping women with hormone health. Based on the following movement recommendation, generate 3 practical advice items.
@@ -367,27 +367,27 @@ Remember: Return ONLY the JSON array, no other text.
             
             if response and response.strip():
                 try:
-                    # JSON 파싱 시도
+                    # Try JSON parsing
                     advices = json.loads(response)
                     if isinstance(advices, list):
                         return advices
                     else:
-                        logger.warning(f"AI 응답이 리스트가 아님: {type(advices)}")
+                        logger.warning(f"AI response is not a list: {type(advices)}")
                         return []
                 except json.JSONDecodeError as e:
-                    logger.warning(f"AI 응답 JSON 파싱 실패: {str(e)}, 응답: {response[:200]}")
+                    logger.warning(f"AI response JSON parsing failed: {str(e)}, response: {response[:200]}")
                     return []
             else:
-                logger.warning("AI 조언 생성 실패 - 빈 응답")
+                logger.warning("AI advice generation failed - empty response")
                 return []
                 
         except Exception as e:
-            logger.error(f"운동 조언 생성 실패: {str(e)}")
+            logger.error(f"Movement advice generation failed: {str(e)}")
             return []
     
     async def _generate_mindfulness_advices_from_dict(self, rec: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        마음챙김 추천에 대한 조언 생성 (dict 기반)
+        Generate advice for mindfulness recommendations (dict-based)
         """
         prompt = f"""
 You are a mindfulness expert helping women with hormone health. Based on the following mindfulness recommendation, generate 3 practical advice items.
@@ -422,45 +422,45 @@ Remember: Return ONLY the JSON array, no other text.
             
             if response and response.strip():
                 try:
-                    # JSON 파싱 시도
+                    # Try JSON parsing
                     advices = json.loads(response)
                     if isinstance(advices, list):
                         return advices
                     else:
-                        logger.warning(f"AI 응답이 리스트가 아님: {type(advices)}")
+                        logger.warning(f"AI response is not a list: {type(advices)}")
                         return []
                 except json.JSONDecodeError as e:
-                    logger.warning(f"AI 응답 JSON 파싱 실패: {str(e)}, 응답: {response[:200]}")
+                    logger.warning(f"AI response JSON parsing failed: {str(e)}, response: {response[:200]}")
                     return []
             else:
-                logger.warning("AI 조언 생성 실패 - 빈 응답")
+                logger.warning("AI advice generation failed - empty response")
                 return []
                 
         except Exception as e:
-            logger.error(f"마음챙김 조언 생성 실패: {str(e)}")
+            logger.error(f"Mindfulness advice generation failed: {str(e)}")
             return []
     
     def _parse_advice_response(self, response: str) -> List[Dict[str, Any]]:
         """
-        AI 응답을 파싱하여 조언 리스트로 변환
+        Parse AI response to convert to advice list
         """
         try:
             import re
             
-            # 1. 마크다운 코드 블록 제거
+            # 1. Remove markdown code blocks
             response = response.strip()
             if response.startswith('```'):
-                # ```json\n[...]\n``` 형식 제거
+                # Remove ```json\n[...]\n``` format
                 response = re.sub(r'^```(?:json)?\n', '', response)
                 response = re.sub(r'\n```$', '', response)
             
-            # 2. JSON 배열 찾기
+            # 2. Find JSON array
             match = re.search(r'\[.*\]', response, re.DOTALL)
             if match:
                 json_str = match.group(0)
                 return json.loads(json_str)
             
-            # 3. 전체 응답이 JSON 배열인 경우
+            # 3. If entire response is JSON array
             try:
                 return json.loads(response)
             except:
@@ -468,13 +468,13 @@ Remember: Return ONLY the JSON array, no other text.
                 
             return []
         except Exception as e:
-            logger.error(f"조언 응답 파싱 실패: {str(e)}, 응답: {response[:200]}...")
+            logger.error(f"Advice response parsing failed: {str(e)}, response: {response[:200]}...")
             return []
     
     def _save_advice(self, recommendation_id: int, uid: str, advice: Dict[str, Any], 
                     category: str, recommendation_context: Dict[str, Any]) -> bool:
         """
-        개별 조언을 DB에 저장
+        Save individual advice to DB
         """
         try:
             db_advice = RecommendationAdvice(
@@ -491,18 +491,18 @@ Remember: Return ONLY the JSON array, no other text.
             return True
             
         except Exception as e:
-            logger.error(f"조언 저장 실패: {str(e)}")
+            logger.error(f"Advice saving failed: {str(e)}")
             return False
     
     def _save_session_advice(self, recommendation_id: int, session_id: str, advice: Dict[str, Any], category: str, recommendation_context: Dict[str, Any]) -> bool:
         """
-        세션 조언을 DB에 저장 (임시 세션용)
+        Save session advice to DB (for temporary sessions)
         """
         try:
             db_advice = RecommendationAdvice(
                 recommendation_id=recommendation_id,
                 session_id=session_id,
-                uid=None,  # 임시 세션이므로 NULL
+                uid=None,  # NULL for temporary sessions
                 advice_type=advice.get('advice_type'),
                 category=category,
                 title=advice.get('title'),
@@ -514,12 +514,12 @@ Remember: Return ONLY the JSON array, no other text.
             return True
             
         except Exception as e:
-            logger.error(f"세션 조언 저장 실패: {str(e)}")
+            logger.error(f"Session advice saving failed: {str(e)}")
             return False
     
     def delete_advices_by_recommendation(self, recommendation_id: int) -> bool:
         """
-        추천이 삭제될 때 관련 조언들도 삭제
+        Delete related advice when recommendation is deleted
         """
         try:
             self.db.query(RecommendationAdvice)\
@@ -527,12 +527,12 @@ Remember: Return ONLY the JSON array, no other text.
                 .delete()
             return True
         except Exception as e:
-            logger.error(f"조언 삭제 실패: {str(e)}")
+            logger.error(f"Advice deletion failed: {str(e)}")
             return False
     
     def get_advices_by_recommendation(self, recommendation_id: int) -> List[Dict[str, Any]]:
         """
-        특정 추천의 조언들 조회
+        Get advice for a specific recommendation
         """
         try:
             advices = self.db.query(RecommendationAdvice)\
@@ -542,12 +542,12 @@ Remember: Return ONLY the JSON array, no other text.
             
             return [self._advice_to_dict(advice) for advice in advices]
         except Exception as e:
-            logger.error(f"조언 조회 실패: {str(e)}")
+            logger.error(f"Advice retrieval failed: {str(e)}")
             return []
     
     def _advice_to_dict(self, advice: RecommendationAdvice) -> Dict[str, Any]:
         """
-        DB 조언 객체를 딕셔너리로 변환
+        Convert DB advice object to dictionary
         """
         return {
             "id": advice.id,

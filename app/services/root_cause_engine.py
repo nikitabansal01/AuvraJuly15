@@ -2,27 +2,27 @@ from typing import Dict, List, Tuple
 
 class RootCauseEngine:
     """
-    호르몬 불균형 root cause 분석 엔진
-    현재는 하드코딩된 결과를 반환
+    Hormone imbalance root cause analysis engine
+    Currently returns hardcoded results
     """
     
     @staticmethod
     def analyze_hormone_imbalance(user_data: Dict) -> Dict[str, any]:
         """
-        사용자 데이터를 기반으로 호르몬 불균형을 분석
-        현재는 하드코딩된 결과 반환
+        Analyze hormone imbalance based on user data
+        Currently returns hardcoded results
         
         Args:
-            user_data: 사용자 설문 데이터
+            user_data: User survey data
             
         Returns:
             Dict containing:
-            - primary_imbalance: 주요 호르몬 불균형 (예: "progesterone")
-            - primary_level: 주요 호르몬 수준 (예: "low")
-            - secondary_imbalances: 보조 호르몬 불균형 리스트 (예: ["testosterone"])
-            - secondary_levels: 보조 호르몬 수준 리스트 (예: ["low"])
+            - primary_imbalance: Primary hormone imbalance (e.g., "progesterone")
+            - primary_level: Primary hormone level (e.g., "low")
+            - secondary_imbalances: List of secondary hormone imbalances (e.g., ["testosterone"])
+            - secondary_levels: List of secondary hormone levels (e.g., ["low"])
         """
-        # 하드코딩된 결과
+        # Hardcoded results
         return {
             "primary_imbalance": "progesterone",
             "primary_level": "low",
@@ -33,13 +33,13 @@ class RootCauseEngine:
     @staticmethod
     def get_formatted_imbalance_text(analysis_result: Dict) -> str:
         """
-        분석 결과를 프롬프트용 텍스트로 포맷팅
+        Format analysis result into text for prompts
         
         Args:
-            analysis_result: analyze_hormone_imbalance의 결과
+            analysis_result: Result from analyze_hormone_imbalance
             
         Returns:
-            포맷팅된 텍스트 (예: "progesterone (low), Secondary: testosterone (low)")
+            Formatted text (e.g., "progesterone (low), Secondary: testosterone (low)")
         """
         primary = f"{analysis_result['primary_imbalance']} ({analysis_result['primary_level']})"
         
@@ -57,13 +57,13 @@ class RootCauseEngine:
     @staticmethod
     def get_related_hormones(analysis_result: Dict) -> List[str]:
         """
-        분석 결과에서 관련 호르몬들만 추출
+        Extract related hormones from analysis result
         
         Args:
-            analysis_result: analyze_hormone_imbalance의 결과
+            analysis_result: Result from analyze_hormone_imbalance
             
         Returns:
-            관련 호르몬 리스트 (예: ["progesterone", "testosterone"])
+            List of related hormones (e.g., ["progesterone", "testosterone"])
         """
         hormones = [analysis_result['primary_imbalance']]
         hormones.extend(analysis_result['secondary_imbalances'])

@@ -27,4 +27,4 @@ pytz==2023.3
 # Hybrid search dependencies
 rank-bm25>=0.2.2
 nltk>=3.8.1
-# firecrawl-py==2.16.2  # 현재 비활성화됨 
+# firecrawl-py==2.16.2  # Currently disabled 
