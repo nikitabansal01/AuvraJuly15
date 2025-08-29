@@ -11,21 +11,21 @@ from app.core.database import RecommendationSchedule
 logger = logging.getLogger(__name__)
 
 class ScheduleWorker:
-    """스케줄 배치 워커"""
+    """Schedule batch worker"""
     
     def __init__(self, batch_size: int = 500, sleep_seconds: int = 300):
         """
         Args:
-            batch_size: 한 번에 처리할 최대 스케줄 수
-            sleep_seconds: 처리 간격 (초)
+            batch_size: Maximum number of schedules to process at once
+            sleep_seconds: Processing interval in seconds
         """
         self.batch_size = batch_size
         self.sleep_seconds = sleep_seconds
         self.is_running = False
     
     def start(self):
-        """워커 시작"""
-        logger.info("스케줄 워커 시작")
+        """Start the worker"""
+        logger.info("Schedule worker started")
         self.is_running = True
         
         while self.is_running:
@@ -34,33 +34,33 @@ class ScheduleWorker:
                 time.sleep(self.sleep_seconds)
                 
             except KeyboardInterrupt:
-                logger.info("워커 중단 요청 받음")
+                logger.info("Worker stop request received")
                 break
             except Exception as e:
-                logger.error(f"워커 실행 중 오류: {str(e)}")
-                time.sleep(60)  # 오류 시 1분 대기
+                logger.error(f"Error during worker execution: {str(e)}")
+                time.sleep(60)  # Wait 1 minute on error
         
-        logger.info("스케줄 워커 종료")
+        logger.info("Schedule worker stopped")
     
     def stop(self):
-        """워커 중지"""
-        logger.info("워커 중지 요청")
+        """Stop the worker"""
+        logger.info("Worker stop request")
         self.is_running = False
     
     def _process_batch(self):
-        """배치 처리"""
+        """Process batch of schedules"""
         db = SessionLocal()
         try:
             service = NewSchedulingService(db)
             
-            # 실행 예정인 스케줄들 조회
+            # Get schedules due for execution
             due_schedules = service.get_due_schedules(self.batch_size)
             
             if not due_schedules:
-                logger.debug("처리할 스케줄 없음")
+                logger.debug("No schedules to process")
                 return
             
-            logger.info(f"배치 처리 시작: {len(due_schedules)}개 스케줄")
+            logger.info(f"Batch processing started: {len(due_schedules)} schedules")
             
             success_count = 0
             error_count = 0
@@ -74,18 +74,18 @@ class ScheduleWorker:
                         error_count += 1
                         
                 except Exception as e:
-                    logger.error(f"스케줄 처리 실패 (ID: {schedule.id}): {str(e)}")
+                    logger.error(f"Schedule processing failed (ID: {schedule.id}): {str(e)}")
                     error_count += 1
             
-            logger.info(f"배치 처리 완료: 성공={success_count}, 실패={error_count}")
+            logger.info(f"Batch processing completed: success={success_count}, failed={error_count}")
             
         except Exception as e:
-            logger.error(f"배치 처리 중 오류: {str(e)}")
+            logger.error(f"Error during batch processing: {str(e)}")
         finally:
             db.close()
 
 def run_worker():
-    """워커 실행 함수"""
+    """Worker execution function"""
     worker = ScheduleWorker()
     worker.start()
 

@@ -11,7 +11,7 @@ from app.api.v1.api import api_router
 from app.core.logging import setup_logging
 from app.core.firebase import initialize_firebase
 
-# 로깅 설정
+# Setup logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -83,16 +83,16 @@ def create_application() -> FastAPI:
     async def log_requests(request: Request, call_next):
         start_time = time.time()
         
-        # 모든 요청에 대한 기본 로깅
-        logger.info(f"=== 요청 수신 ===")
+        # Basic logging for all requests
+        logger.info(f"=== Request Received ===")
         logger.info(f"URL: {request.url.path}")
         logger.info(f"Method: {request.method}")
         logger.info(f"Headers: {dict(request.headers)}")
         logger.info(f"Client IP: {request.client.host if request.client else 'Unknown'}")
         
-        # 요청 본문 로깅 (400 오류 디버깅용) - body 읽기 제거
+        # Request body logging for debugging 400 errors - removed body reading
         if request.method == "POST" and "/link" in request.url.path:
-            logger.info(f"=== 요청 로깅 ===")
+            logger.info(f"=== Request Logging ===")
             logger.info(f"URL: {request.url.path}")
             logger.info(f"Headers: {dict(request.headers)}")
             logger.info(f"Content-Type: {request.headers.get('content-type', 'None')}")
@@ -100,9 +100,9 @@ def create_application() -> FastAPI:
         response = await call_next(request)
         process_time = time.time() - start_time
         
-        # 400 오류 상세 로깅
+        # Detailed logging for 400 errors
         if response.status_code == 400:
-            logger.error(f"=== 400 오류 발생 ===")
+            logger.error(f"=== 400 Error Occurred ===")
             logger.error(f"URL: {request.url.path}")
             logger.error(f"Method: {request.method}")
             logger.error(f"Status: {response.status_code}")
@@ -127,7 +127,7 @@ def create_application() -> FastAPI:
     # API router registration
     app.include_router(api_router, prefix="/api/v1")
 
-    # 헬스체크 엔드포인트
+    # Health check endpoint
     @app.get("/health")
     async def health_check():
         return {

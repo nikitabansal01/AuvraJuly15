@@ -4,42 +4,42 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # 환경 설정 (개발/배포 모두 지원)
+      # Environment settings (supports both development and production)
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       
-      # 서버 설정
+      # Server settings
       - HOST=0.0.0.0
       - PORT=8000
       
-      # 데이터베이스 설정 (환경변수 우선, 없으면 기본값)
+      # Database settings (environment variables take precedence, fallback to defaults)
       - DATABASE_URL=${DATABASE_URL:-postgresql://auvra_user:auvra_password@db:5432/auvra_db}
       
-      # Firebase 설정 (환경변수 우선)
+      # Firebase settings (environment variables take precedence)
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-auvra-adf59}
       - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY:-}
       - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL:-}
       
-      # AI 설정
+      # AI settings
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - CURRENT_MODEL=${CURRENT_MODEL:-gpt-4o}
       - FALLBACK_MODEL=${FALLBACK_MODEL:-gpt-4o}
       
-      # RAG 설정
+      # RAG settings
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
       - FIRECRAWL_BASE_URL=${FIRECRAWL_BASE_URL:-https://api.firecrawl.dev/v0/scrape}
       
-      # Pinecone 설정
+      # Pinecone settings
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
       - PINECONE_INDEX=${PINECONE_INDEX}
       
-      # 보안 설정
+      # Security settings
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here-change-in-production}
       
-      # CORS 설정 (환경변수 우선, 없으면 모든 호스트 허용)
+      # CORS settings (environment variables take precedence, fallback to allow all hosts)
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
 
       

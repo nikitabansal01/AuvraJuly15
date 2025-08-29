@@ -9,45 +9,45 @@ logger = logging.getLogger(__name__)
 
 def compute_next_fire_at_utc(tzid: str, hour: int = 0, minute: int = 0) -> datetime:
     """
-    사용자 시간대에서 지정된 HH:MM의 다음 실행 시각을 UTC로 계산
+    Calculate the next execution time in UTC for a specified HH:MM in user's timezone
     
     Args:
-        tzid: IANA 시간대 ID (예: "Asia/Seoul")
-        hour: 로컬 시간 (0-23)
-        minute: 로컬 분 (0-59)
+        tzid: IANA timezone ID (e.g., "Asia/Seoul")
+        hour: Local hour (0-23)
+        minute: Local minute (0-59)
     
     Returns:
-        UTC 기준 다음 실행 시각
+        Next execution time in UTC
     """
     try:
         now_utc = datetime.utcnow().replace(tzinfo=ZoneInfo("UTC"))
         now_local = now_utc.astimezone(ZoneInfo(tzid))
         
-        # 오늘의 목표 시각
+        # Target time for today
         target = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
         
-        # 현재 시각이 목표 시각을 지났으면 내일로
+        # If current time has passed target time, move to tomorrow
         if now_local >= target:
             target = target + timedelta(days=1)
         
-        # UTC로 변환
+        # Convert to UTC
         return target.astimezone(ZoneInfo("UTC"))
         
     except Exception as e:
-        logger.error(f"다음 실행 시각 계산 실패: {str(e)}")
-        # 기본값: 1시간 후
+        logger.error(f"Failed to calculate next execution time: {str(e)}")
+        # Default: 1 hour later
         return datetime.utcnow() + timedelta(hours=1)
 
 def get_local_date(tzid: str, utc_datetime: Optional[datetime] = None) -> date:
     """
-    UTC 시각을 사용자 로컬 날짜로 변환
+    Convert UTC time to user's local date
     
     Args:
-        tzid: IANA 시간대 ID
-        utc_datetime: UTC 시각 (None이면 현재 시각)
+        tzid: IANA timezone ID
+        utc_datetime: UTC time (None for current time)
     
     Returns:
-        사용자 로컬 날짜
+        User's local date
     """
     try:
         if utc_datetime is None:
@@ -60,56 +60,56 @@ def get_local_date(tzid: str, utc_datetime: Optional[datetime] = None) -> date:
         return local_datetime.date()
         
     except Exception as e:
-        logger.error(f"로컬 날짜 변환 실패: {str(e)}")
+        logger.error(f"Failed to convert to local date: {str(e)}")
         return date.today()
 
 def parse_rrule(rrule_str: str) -> Optional[rrule.rrule]:
     """
-    RRULE 문자열을 파싱하여 rrule 객체 생성
+    Parse RRULE string to create rrule object
     
     Args:
-        rrule_str: RRULE 문자열 (예: "FREQ=DAILY;" 또는 "FREQ=WEEKLY;BYDAY=MO,WE,FR")
+        rrule_str: RRULE string (e.g., "FREQ=DAILY;" or "FREQ=WEEKLY;BYDAY=MO,WE,FR")
     
     Returns:
-        rrule 객체 또는 None
+        rrule object or None
     """
     try:
-        # RRULE 문자열을 파싱
+        # Parse RRULE string
         return rrule.rrulestr(rrule_str)
     except Exception as e:
-        logger.error(f"RRULE 파싱 실패: {str(e)}")
+        logger.error(f"Failed to parse RRULE: {str(e)}")
         return None
 
 def is_date_in_rrule(target_date: date, rrule_str: str, start_date: date, end_date: Optional[date] = None) -> bool:
     """
-    특정 날짜가 RRULE에 포함되는지 확인
+    Check if a specific date is included in RRULE
     
     Args:
-        target_date: 확인할 날짜
-        rrule_str: RRULE 문자열
-        start_date: 시작 날짜
-        end_date: 종료 날짜 (None이면 무제한)
+        target_date: Date to check
+        rrule_str: RRULE string
+        start_date: Start date
+        end_date: End date (None for unlimited)
     
     Returns:
-        포함 여부
+        Whether the date is included
     """
     try:
-        # RRULE 파싱
+        # Parse RRULE
         rule = parse_rrule(rrule_str)
         if not rule:
             return False
         
-        # 시작 날짜 설정
+        # Set start date
         rule.dtstart = start_date
         
-        # 종료 날짜 설정
+        # Set end date
         if end_date:
             rule.until = end_date
         
-        # target_date가 rule에 포함되는지 확인
+        # Check if target_date is included in rule
         target_datetime = datetime.combine(target_date, datetime.min.time())
         
-        # 다음 발생 시각이 target_date와 같은지 확인
+        # Check if next occurrence is the same as target_date
         next_occurrence = rule.after(target_datetime - timedelta(days=1))
         
         if next_occurrence:
@@ -118,31 +118,31 @@ def is_date_in_rrule(target_date: date, rrule_str: str, start_date: date, end_da
         return False
         
     except Exception as e:
-        logger.error(f"RRULE 날짜 확인 실패: {str(e)}")
+        logger.error(f"Failed to check date in RRULE: {str(e)}")
         return False
 
 def get_redistribution_overrides(schedule_id: int, target_date: date, db_session) -> tuple[List[date], List[date]]:
     """
-    재배치 정보에서 제외/포함 날짜들 가져오기
+    Get exclusion and inclusion dates from redistribution information
     
     Args:
-        schedule_id: 스케줄 ID
-        target_date: 확인할 날짜
-        db_session: 데이터베이스 세션
+        schedule_id: Schedule ID
+        target_date: Date to check
+        db_session: Database session
     
     Returns:
-        (제외할 날짜들, 포함할 날짜들)
+        Tuple of (exclusion dates, inclusion dates)
     """
     try:
         from app.core.database import ScheduleRedistribution
         
-        # 제외할 날짜들 (original_date = target_date)
+        # Dates to exclude (original_date = target_date)
         exclusions = db_session.query(ScheduleRedistribution.original_date).filter(
             ScheduleRedistribution.schedule_id == schedule_id,
             ScheduleRedistribution.original_date == target_date
         ).all()
         
-        # 포함할 날짜들 (override_date = target_date)
+        # Dates to include (override_date = target_date)
         inclusions = db_session.query(ScheduleRedistribution.override_date).filter(
             ScheduleRedistribution.schedule_id == schedule_id,
             ScheduleRedistribution.override_date == target_date
@@ -154,55 +154,55 @@ def get_redistribution_overrides(schedule_id: int, target_date: date, db_session
         return exclusion_dates, inclusion_dates
         
     except Exception as e:
-        logger.error(f"재배치 정보 조회 실패: {str(e)}")
+        logger.error(f"Failed to retrieve redistribution information: {str(e)}")
         return [], []
 
 def should_emit_for_date(schedule_id: int, target_date: date, rrule_str: str, 
                         start_date: date, end_date: Optional[date], db_session) -> bool:
     """
-    특정 날짜에 스케줄을 발행해야 하는지 확인
+    Check if schedule should be emitted for a specific date
     
     Args:
-        schedule_id: 스케줄 ID
-        target_date: 확인할 날짜
-        rrule_str: RRULE 문자열
-        start_date: 시작 날짜
-        end_date: 종료 날짜
-        db_session: 데이터베이스 세션
+        schedule_id: Schedule ID
+        target_date: Date to check
+        rrule_str: RRULE string
+        start_date: Start date
+        end_date: End date
+        db_session: Database session
     
     Returns:
-        발행 여부
+        Whether to emit the schedule
     """
     try:
-        # 1. 기본 RRULE 확인
+        # 1. Check basic RRULE
         base_included = is_date_in_rrule(target_date, rrule_str, start_date, end_date)
         
-        # 2. 재배치 정보 확인
+        # 2. Check redistribution information
         exclusions, inclusions = get_redistribution_overrides(schedule_id, target_date, db_session)
         
-        # 3. 최종 판단
+        # 3. Final decision
         if target_date in exclusions:
-            return False  # 제외됨
+            return False  # Excluded
         
         if target_date in inclusions:
-            return True   # 명시적으로 포함됨
+            return True   # Explicitly included
         
-        return base_included  # 기본 RRULE 결과
+        return base_included  # Basic RRULE result
         
     except Exception as e:
-        logger.error(f"발행 여부 확인 실패: {str(e)}")
+        logger.error(f"Failed to check emission status: {str(e)}")
         return False
 
 def convert_frequency_detail_to_rrule(frequency_detail: str, duration_weeks: int) -> str:
     """
-    기존 frequency_detail을 RRULE 형식으로 변환
+    Convert existing frequency_detail to RRULE format
     
     Args:
-        frequency_detail: 기존 형식 (예: "daily:1", "weekly:3")
-        duration_weeks: 기간 (주)
+        frequency_detail: Existing format (e.g., "daily:1", "weekly:3")
+        duration_weeks: Duration in weeks
     
     Returns:
-        RRULE 문자열
+        RRULE string
     """
     try:
         if not frequency_detail or ':' not in frequency_detail:
@@ -218,17 +218,17 @@ def convert_frequency_detail_to_rrule(frequency_detail: str, duration_weeks: int
             if times >= 7:
                 return "FREQ=DAILY;"
             elif times == 1:
-                return "FREQ=WEEKLY;BYDAY=WE;"  # 수요일
+                return "FREQ=WEEKLY;BYDAY=WE;"  # Wednesday
             elif times == 2:
-                return "FREQ=WEEKLY;BYDAY=MO,TH;"  # 월, 목
+                return "FREQ=WEEKLY;BYDAY=MO,TH;"  # Monday, Thursday
             elif times == 3:
-                return "FREQ=WEEKLY;BYDAY=MO,WE,FR;"  # 월, 수, 금
+                return "FREQ=WEEKLY;BYDAY=MO,WE,FR;"  # Monday, Wednesday, Friday
             elif times == 4:
-                return "FREQ=WEEKLY;BYDAY=MO,TU,TH,FR;"  # 월, 화, 목, 금
+                return "FREQ=WEEKLY;BYDAY=MO,TU,TH,FR;"  # Monday, Tuesday, Thursday, Friday
             elif times == 5:
-                return "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;"  # 월-금
+                return "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;"  # Monday-Friday
             elif times == 6:
-                return "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA;"  # 월-토
+                return "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA;"  # Monday-Saturday
             else:
                 return "FREQ=DAILY;"
         
@@ -236,32 +236,32 @@ def convert_frequency_detail_to_rrule(frequency_detail: str, duration_weeks: int
             if times >= 30:
                 return "FREQ=DAILY;"
             elif times == 1:
-                return "FREQ=MONTHLY;BYMONTHDAY=15;"  # 매월 15일
+                return "FREQ=MONTHLY;BYMONTHDAY=15;"  # 15th of every month
             elif times == 2:
-                return "FREQ=MONTHLY;BYMONTHDAY=1,15;"  # 매월 1일, 15일
+                return "FREQ=MONTHLY;BYMONTHDAY=1,15;"  # 1st and 15th of every month
             else:
                 return "FREQ=DAILY;"
         
         return "FREQ=DAILY;"
         
     except Exception as e:
-        logger.error(f"frequency_detail 변환 실패: {str(e)}")
+        logger.error(f"Failed to convert frequency_detail: {str(e)}")
         return "FREQ=DAILY;"
 
 def convert_date_between_timezones(date_str: str, from_tzid: str, to_tzid: str) -> str:
     """
-    날짜 문자열을 한 시간대에서 다른 시간대로 변환
+    Convert date string from one timezone to another
     
     Args:
-        date_str: 날짜 문자열 (YYYY-MM-DD 또는 MM/DD/YYYY 형식)
-        from_tzid: 원본 시간대 ID
-        to_tzid: 대상 시간대 ID
+        date_str: Date string (YYYY-MM-DD or MM/DD/YYYY format)
+        from_tzid: Source timezone ID
+        to_tzid: Target timezone ID
     
     Returns:
-        변환된 날짜 문자열 (YYYY-MM-DD 형식)
+        Converted date string (YYYY-MM-DD format)
     """
     try:
-        # 날짜 파싱
+        # Parse date
         from datetime import datetime
         formats = ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"]
         
@@ -274,68 +274,68 @@ def convert_date_between_timezones(date_str: str, from_tzid: str, to_tzid: str) 
                 continue
         
         if not parsed_date:
-            logger.error(f"날짜 파싱 실패: {date_str}")
+            logger.error(f"Failed to parse date: {date_str}")
             return date_str
         
-        # 원본 시간대에서 자정으로 datetime 생성
+        # Create datetime at midnight in source timezone
         from_tz = ZoneInfo(from_tzid)
         from_datetime = datetime.combine(parsed_date, datetime.min.time())
         from_datetime = from_datetime.replace(tzinfo=from_tz)
         
-        # 대상 시간대로 변환
+        # Convert to target timezone
         to_tz = ZoneInfo(to_tzid)
         to_datetime = from_datetime.astimezone(to_tz)
         
-        # 날짜만 반환
+        # Return only the date
         converted_date = to_datetime.date()
         
-        logger.info(f"날짜 변환: {date_str} ({from_tzid}) → {converted_date} ({to_tzid})")
+        logger.info(f"Date conversion: {date_str} ({from_tzid}) → {converted_date} ({to_tzid})")
         return converted_date.strftime("%Y-%m-%d")
         
     except Exception as e:
-        logger.error(f"날짜 변환 실패: {str(e)}")
+        logger.error(f"Failed to convert date: {str(e)}")
         return date_str
 
 def convert_to_utc(date_str: str, timezone: str) -> datetime:
     """
-    날짜 문자열을 UTC로 변환
+    Convert date string to UTC
     
     Args:
-        date_str: 날짜 문자열 (YYYY-MM-DD 형식)
-        timezone: 원본 시간대 ID
+        date_str: Date string (YYYY-MM-DD format)
+        timezone: Source timezone ID
     
     Returns:
         UTC datetime
     """
     try:
-        # 날짜 파싱
+        # Parse date
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         
-        # 해당 시간대의 자정으로 datetime 생성
+        # Create datetime at midnight in the timezone
         tz = ZoneInfo(timezone)
         local_datetime = datetime.combine(parsed_date, datetime.min.time())
         local_datetime = local_datetime.replace(tzinfo=tz)
         
-        # UTC로 변환
+        # Convert to UTC
         utc_datetime = local_datetime.astimezone(ZoneInfo("UTC"))
         
-        logger.info(f"UTC 변환: {date_str} ({timezone}) → {utc_datetime} (UTC)")
+        logger.info(f"UTC conversion: {date_str} ({timezone}) → {utc_datetime} (UTC)")
         return utc_datetime
         
     except Exception as e:
-        logger.error(f"UTC 변환 실패: {str(e)}")
+        logger.error(f"Failed to convert to UTC: {str(e)}")
         return datetime.utcnow()
 
 def convert_from_utc(utc_datetime: datetime, target_timezone: str) -> date:
     """
-    UTC를 특정 시간대의 날짜로 변환
+    Convert UTC to date in specific timezone
     
     Args:
         utc_datetime: UTC datetime
-        target_timezone: 대상 시간대 ID
+        target_timezone: Target timezone ID
     
     Returns:
-        대상 시간대의 날짜
+        Date in target timezone
     """
     try:
         if utc_datetime.tzinfo is None:
@@ -344,23 +344,23 @@ def convert_from_utc(utc_datetime: datetime, target_timezone: str) -> date:
         target_tz = ZoneInfo(target_timezone)
         local_datetime = utc_datetime.astimezone(target_tz)
         
-        logger.info(f"시간대 변환: {utc_datetime} (UTC) → {local_datetime.date()} ({target_timezone})")
+        logger.info(f"Timezone conversion: {utc_datetime} (UTC) → {local_datetime.date()} ({target_timezone})")
         return local_datetime.date()
         
     except Exception as e:
-        logger.error(f"시간대 변환 실패: {str(e)}")
+        logger.error(f"Failed to convert timezone: {str(e)}")
         return date.today()
 
 def get_user_current_date(uid: str, db_session) -> date:
     """
-    사용자의 현재 시간대 기준 날짜 반환
+    Get current date in user's timezone
     
     Args:
-        uid: 사용자 ID
-        db_session: 데이터베이스 세션
+        uid: User ID
+        db_session: Database session
     
     Returns:
-        사용자 현재 시간대의 날짜
+        Current date in user's timezone
     """
     try:
         from app.core.database import UserProfile
@@ -374,6 +374,6 @@ def get_user_current_date(uid: str, db_session) -> date:
         return current_date
         
     except Exception as e:
-        logger.error(f"사용자 현재 날짜 조회 실패: {str(e)}")
+        logger.error(f"Failed to get user current date: {str(e)}")
         return date.today()
 
