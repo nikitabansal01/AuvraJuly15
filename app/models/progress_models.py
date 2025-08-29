@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from datetime import date
 
 class PeriodInfo(BaseModel):
-    """기간 정보"""
+    """Period information"""
     week_start: Optional[str] = None
     week_end: Optional[str] = None
     month_start: Optional[str] = None
@@ -11,7 +11,7 @@ class PeriodInfo(BaseModel):
     current_date: str
 
 class OverallProgress(BaseModel):
-    """전체 진행상황"""
+    """Overall progress"""
     total_recommendations: int
     completed_recommendations: int
     completion_rate: float
@@ -19,23 +19,23 @@ class OverallProgress(BaseModel):
     total_completions: Optional[int] = None
 
 class StreakInfo(BaseModel):
-    """연속성 정보"""
+    """Streak information"""
     current_streak: int
     longest_streak: int
 
 class DailyCompletion(BaseModel):
-    """일일 완료 통계"""
+    """Daily completion statistics"""
     date: str
     completions: int
 
 class WeeklyStats(BaseModel):
-    """주별 통계"""
+    """Weekly statistics"""
     week_start: str
     week_end: str
     completions: int
 
 class RecommendationProgress(BaseModel):
-    """추천 진행상황"""
+    """Recommendation progress"""
     id: int
     title: str
     category: str
@@ -43,19 +43,19 @@ class RecommendationProgress(BaseModel):
     duration_weeks: Optional[int] = None
 
 class ProgressInfo(BaseModel):
-    """진행 정보"""
+    """Progress information"""
     total_completions: int
     current_streak: int
     longest_streak: int
 
 class RecentCompletion(BaseModel):
-    """최근 완료 기록"""
+    """Recent completion record"""
     completion_date: str
     completed_at: Optional[str] = None
     notes: Optional[str] = None
 
 class WeeklyProgressResponse(BaseModel):
-    """주간 진행상황 응답"""
+    """Weekly progress response"""
     period: PeriodInfo
     overall: OverallProgress
     streak: StreakInfo
@@ -63,7 +63,7 @@ class WeeklyProgressResponse(BaseModel):
     hormone_stats: Dict[str, int]
 
 class MonthlyProgressResponse(BaseModel):
-    """월간 진행상황 응답"""
+    """Monthly progress response"""
     period: PeriodInfo
     overall: OverallProgress
     weekly_stats: List[WeeklyStats]
@@ -71,13 +71,13 @@ class MonthlyProgressResponse(BaseModel):
     best_day: str
 
 class RecommendationProgressResponse(BaseModel):
-    """추천 진행상황 응답"""
+    """Recommendation progress response"""
     recommendation: RecommendationProgress
     progress: ProgressInfo
     recent_completions: List[RecentCompletion]
 
 class OverallProgressResponse(BaseModel):
-    """전체 진행상황 응답"""
+    """Overall progress response"""
     overall: OverallProgress
     hormone_stats: Dict[str, int]
 

@@ -7,7 +7,7 @@ router = APIRouter()
 
 @router.get("/")
 async def health_check():
-    """애플리케이션 상태를 확인합니다."""
+    """Check application health status."""
     return {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
@@ -17,7 +17,7 @@ async def health_check():
 
 @router.get("/detailed")
 async def detailed_health_check():
-    """상세한 애플리케이션 상태를 확인합니다."""
+    """Check detailed application health status."""
     return {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,

@@ -3,18 +3,18 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 class CompletionRequest(BaseModel):
-    """추천 완료 요청 모델"""
+    """Recommendation completion request model"""
     recommendation_id: int
-    completion_date: Optional[date] = None  # 기본값: 오늘
+    completion_date: Optional[date] = None  # Default: today
     notes: Optional[str] = None
 
 class StreakInfo(BaseModel):
-    """연속성 정보"""
+    """Streak information"""
     current_streak: int
     longest_streak: int
 
 class ScheduleResponse(BaseModel):
-    """스케줄 응답 모델"""
+    """Schedule response model"""
     date: str
     completed: List[Dict[str, Any]]
     morning: List[Dict[str, Any]]
@@ -25,16 +25,16 @@ class ScheduleResponse(BaseModel):
     streak_info: StreakInfo
 
 class ScheduleStats(BaseModel):
-    """스케줄 통계 모델"""
+    """Schedule statistics model"""
     date: str
     total_recommendations: int
     completed_recommendations: int
     completion_rate: float
     hormone_completion_stats: Dict[str, Any]
 
-# 새로운 스케줄링 시스템 모델들
+# New scheduling system models
 class AssignmentInfo(BaseModel):
-    """과제 정보"""
+    """Assignment information"""
     id: int
     recommendation_id: int
     title: str
@@ -50,7 +50,7 @@ class AssignmentInfo(BaseModel):
     completed_at: Optional[str] = None
     advices: List[Dict[str, str]] = []
     
-    # 카테고리별 세부 정보
+    # Category-specific details
     food_amounts: Optional[List[str]] = None
     food_items: Optional[List[str]] = None
     exercise_durations: Optional[List[str]] = None
@@ -60,14 +60,14 @@ class AssignmentInfo(BaseModel):
     mindfulness_techniques: Optional[List[str]] = None
 
 class AssignmentResponse(BaseModel):
-    """과제 응답 모델 (새로운 스케줄링 시스템)"""
+    """Assignment response model (new scheduling system)"""
     date: str
-    assignments: Dict[str, List[AssignmentInfo]]  # completed + time_group별 과제들
+    assignments: Dict[str, List[AssignmentInfo]]  # completed + time_group assignments
     total_assignments: int
     completed_assignments: int
     completion_rate: float
     hormone_stats: Dict[str, Dict[str, int]]
 
 class AssignmentCompletionRequest(BaseModel):
-    """과제 완료 요청 모델"""
+    """Assignment completion request model"""
     notes: Optional[str] = None

@@ -345,4 +345,4 @@ Protected endpoints require valid Firebase authentication tokens.
 - Arrays can be empty or null
 - Date format should be MM/DD/YYYY for `last_period_date`
 - Age should be between 0 and 120
-- The API automatically validates all field values against the allowed options 
+- The API automatically validates all field values against the allowed options

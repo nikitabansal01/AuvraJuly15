@@ -1,46 +1,46 @@
-하이브리드 검색 시스템 사용 가이드
+# Hybrid Search System Usage Guide
 
-BM25 + Pinecone Vector 하이브리드 검색을 통한 HQ vs LQ 모델 성능 비교
+BM25 + Pinecone Vector Hybrid Search for HQ vs LQ Model Performance Comparison
 
-## 🚀 빠른 시작
+## 🚀 Quick Start
 
-### 1. 패키지 설치
+### 1. Package Installation
 ```bash
 pip install rank-bm25 nltk
-# 또는
+# or
 pip install -r requirements.txt
 ```
 
-### 2. Pinecone 데이터 덤프
+### 2. Pinecone Data Dump
 ```bash
 cd scripts
 python dump_pinecone_for_bm25.py
 ```
 
-이 스크립트는 다음 파일들을 생성합니다:
-- `data/bm25/hq_documents_YYYYMMDD_HHMMSS.json` - HQ 모델 (gpt-4o) 데이터
-- `data/bm25/lq_documents_YYYYMMDD_HHMMSS.json` - LQ 모델 (gpt-3.5-turbo) 데이터  
-- `data/bm25/combined_documents_YYYYMMDD_HHMMSS.json` - 통합 데이터
+This script generates the following files:
+- `data/bm25/hq_documents_YYYYMMDD_HHMMSS.json` - HQ model (gpt-4o) data
+- `data/bm25/lq_documents_YYYYMMDD_HHMMSS.json` - LQ model (gpt-3.5-turbo) data  
+- `data/bm25/combined_documents_YYYYMMDD_HHMMSS.json` - Combined data
 
-### 3. 서비스 초기화
+### 3. Service Initialization
 ```bash
-# FastAPI 서버 실행
+# Start FastAPI server
 uvicorn app.main:app --reload
 
-# 하이브리드 검색 서비스 초기화
+# Initialize hybrid search service
 curl -X POST "http://localhost:8000/api/v1/hybrid-search/initialize"
 ```
 
-## 📡 API 엔드포인트
+## 📡 API Endpoints
 
-### 기본 검색
+### Basic Search
 
-#### 하이브리드 검색 (GET)
+#### Hybrid Search (GET)
 ```bash
 curl "http://localhost:8000/api/v1/hybrid-search/search?q=PCOS+diet+treatment&top_k=10"
 ```
 
-#### 하이브리드 검색 (POST)
+#### Hybrid Search (POST)
 ```bash
 curl -X POST "http://localhost:8000/api/v1/hybrid-search/search" \
 -H "Content-Type: application/json" \
@@ -56,17 +56,17 @@ curl -X POST "http://localhost:8000/api/v1/hybrid-search/search" \
 }'
 ```
 
-#### 렉시컬 검색만 (BM25)
+#### Lexical Search Only (BM25)
 ```bash
 curl "http://localhost:8000/api/v1/hybrid-search/lexical-only?q=PCOS+exercise&top_k=10"
 ```
 
-#### 벡터 검색만 (Pinecone)
+#### Vector Search Only (Pinecone)
 ```bash
 curl "http://localhost:8000/api/v1/hybrid-search/dense-only?q=PCOS+mindfulness&top_k=10"
 ```
 
-### HQ vs LQ 모델 비교
+### HQ vs LQ Model Comparison
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/hybrid-search/compare-models" \
@@ -77,14 +77,14 @@ curl -X POST "http://localhost:8000/api/v1/hybrid-search/compare-models" \
 }'
 ```
 
-### 가중치 관리
+### Weight Management
 
-#### 현재 가중치 조회
+#### Get Current Weights
 ```bash
 curl "http://localhost:8000/api/v1/hybrid-search/field-weights"
 ```
 
-#### 가중치 업데이트
+#### Update Weights
 ```bash
 curl -X POST "http://localhost:8000/api/v1/hybrid-search/field-weights" \
 -H "Content-Type: application/json" \
@@ -96,52 +96,52 @@ curl -X POST "http://localhost:8000/api/v1/hybrid-search/field-weights" \
 }'
 ```
 
-#### 서비스 상태 및 통계
+#### Service Status and Statistics
 ```bash
 curl "http://localhost:8000/api/v1/hybrid-search/health"
 curl "http://localhost:8000/api/v1/hybrid-search/stats"
 ```
 
-## 🎯 필드별 가중치 시스템
+## 🎯 Field-based Weight System
 
-### 기본 텍스트 필드
-- `title`: 4.0 - 논문 제목
-- `abstract`: 3.0 - 초록
-- `text`: 1.0 - 본문 (기준값)
-- `section_title`: 2.0 - 섹션 제목
-- `chunk_summary`: 2.5 - 청크 요약
-- `study_arms_text`: 2.0 - 연구 팔 정보
+### Basic Text Fields
+- `title`: 4.0 - Paper title
+- `abstract`: 3.0 - Abstract
+- `text`: 1.0 - Main text (baseline)
+- `section_title`: 2.0 - Section title
+- `chunk_summary`: 2.5 - Chunk summary
+- `study_arms_text`: 2.0 - Study arms information
 
-### 태그 기반 필드 (리스트 → 텍스트 변환)
-- `intervention_type_text`: 3.0 - 개입 유형
-- `hormone_focus_text`: 3.0 - 호르몬 포커스
-- `symptoms_focus_text`: 3.0 - 증상 포커스
-- `doc_condition_disease_text`: 3.5 - 질병/상태
-- `doc_target_symptoms_text`: 3.0 - 대상 증상
-- `mesh_terms_text`: 1.5 - MeSH 용어
+### Tag-based Fields (List → Text conversion)
+- `intervention_type_text`: 3.0 - Intervention type
+- `hormone_focus_text`: 3.0 - Hormone focus
+- `symptoms_focus_text`: 3.0 - Symptom focus
+- `doc_condition_disease_text`: 3.5 - Disease/condition
+- `doc_target_symptoms_text`: 3.0 - Target symptoms
+- `mesh_terms_text`: 1.5 - MeSH terms
 
-### 섹션별 가중치
-- `methods_text`: 0.5 - 연구방법
-- `results_text`: 1.5 - 결과
-- `discussion_text`: 1.3 - 토론
-- `conclusion_text`: 1.4 - 결론
-- `introduction_text`: 0.8 - 도입
+### Section-based Weights
+- `methods_text`: 0.5 - Research methods
+- `results_text`: 1.5 - Results
+- `discussion_text`: 1.3 - Discussion
+- `conclusion_text`: 1.4 - Conclusion
+- `introduction_text`: 0.8 - Introduction
 
-## 🔬 A/B 테스트 시나리오
+## 🔬 A/B Testing Scenarios
 
-### 1. 가중치 실험
+### 1. Weight Experiments
 ```python
-# 시나리오 A: 제목과 초록 강조
+# Scenario A: Emphasize title and abstract
 weights_a = {"title": 6.0, "abstract": 5.0, "text": 1.0}
 
-# 시나리오 B: 의학적 태그 강조  
+# Scenario B: Emphasize medical tags  
 weights_b = {
     "doc_condition_disease_text": 5.0,
     "intervention_type_text": 4.5,
     "hormone_focus_text": 4.0
 }
 
-# 시나리오 C: 연구 결과 강조
+# Scenario C: Emphasize research results
 weights_c = {
     "results_text": 3.0,
     "conclusion_text": 2.5,
@@ -149,35 +149,35 @@ weights_c = {
 }
 ```
 
-### 2. 모델 품질 비교
+### 2. Model Quality Comparison
 ```bash
-# HQ 모델 (50개 문서, 500개 청크)
+# HQ model (50 documents, 500 chunks)
 curl -X POST ".../compare-models" -d '{"query": "PCOS metformin", "top_k": 20}'
 
-# 결과 분석:
-# - 공통 결과 개수 (common_results)
-# - 각 모델별 고유 결과
-# - RRF 점수 분포
+# Result analysis:
+# - Number of common results (common_results)
+# - Unique results for each model
+# - RRF score distribution
 ```
 
-### 3. 검색 방법 비교
+### 3. Search Method Comparison
 ```bash
-# 같은 쿼리로 세 가지 방법 비교
+# Compare three methods with the same query
 query="PCOS lifestyle intervention"
 
-# 1) 렉시컬만
+# 1) Lexical only
 curl ".../lexical-only?q=$query"
 
-# 2) 벡터만  
+# 2) Vector only  
 curl ".../dense-only?q=$query"
 
-# 3) 하이브리드
+# 3) Hybrid
 curl ".../search?q=$query"
 ```
 
-## 📊 응답 형식
+## 📊 Response Format
 
-### 하이브리드 검색 응답
+### Hybrid Search Response
 ```json
 {
   "query": "PCOS diet treatment",
@@ -207,7 +207,7 @@ curl ".../search?q=$query"
 }
 ```
 
-### 모델 비교 응답
+### Model Comparison Response
 ```json
 {
   "query": "PCOS insulin resistance",
@@ -229,51 +229,51 @@ curl ".../search?q=$query"
 }
 ```
 
-## 🛠️ 고급 사용법
+## 🛠️ Advanced Usage
 
-### 1. 캐시 관리
+### 1. Cache Management
 ```bash
-# 강제 재빌드 (새로운 데이터 반영)
+# Force rebuild (reflect new data)
 curl -X POST ".../initialize?force_rebuild=true"
 
-# 특정 JSON 파일 사용
+# Use specific JSON file
 curl -X POST ".../initialize" \
 -d '{"json_file": "data/bm25/custom_data.json"}'
 ```
 
-### 2. 커스텀 토크나이저
+### 2. Custom Tokenizer
 ```python
-# hybrid_search_service.py에서 수정
+# Modify in hybrid_search_service.py
 def tokenize_text(self, text: str) -> List[str]:
-    # 한국어 형태소 분석기 추가 가능
-    # konlpy, mecab 등 활용
+    # Can add Korean morphological analyzer
+    # Utilize konlpy, mecab, etc.
     pass
 ```
 
-### 3. 성능 최적화
-- BM25 인덱스는 pickle로 캐시됨 (`data/bm25/bm25_indexes.pkl`)
-- 초기 로딩 후 인메모리에서 빠른 검색
-- 1,500개 문서 기준 초기화 시간: ~30초, 검색 시간: ~100ms
+### 3. Performance Optimization
+- BM25 indexes are cached with pickle (`data/bm25/bm25_indexes.pkl`)
+- Fast in-memory search after initial loading
+- For 1,500 documents: initialization time ~30s, search time ~100ms
 
-## 📈 실험 결과 측정
+## 📈 Experimental Result Measurement
 
-### 주요 메트릭
-1. **검색 품질**
-   - Precision@K (상위 K개 결과의 정확도)
-   - Recall (전체 관련 문서 중 검색된 비율)
+### Key Metrics
+1. **Search Quality**
+   - Precision@K (accuracy of top K results)
+   - Recall (ratio of retrieved relevant documents)
    - MRR (Mean Reciprocal Rank)
 
-2. **하이브리드 효과**
-   - Dense-only vs Lexical-only vs Hybrid 성능 비교
-   - RRF 파라미터 (k값) 최적화
+2. **Hybrid Effect**
+   - Dense-only vs Lexical-only vs Hybrid performance comparison
+   - RRF parameter (k value) optimization
 
-3. **모델 품질**
-   - HQ (gpt-4o) vs LQ (gpt-3.5-turbo) 태깅 품질 차이
-   - 공통 결과 vs 모델별 고유 결과 분석
+3. **Model Quality**
+   - HQ (gpt-4o) vs LQ (gpt-3.5-turbo) tagging quality differences
+   - Common results vs model-specific unique results analysis
 
-### 평가 방법
-1. **수동 평가**: 의료진이 검색 결과의 관련성 평가
-2. **자동 평가**: 기존 RAG 시스템과 성능 비교  
-3. **사용자 평가**: A/B 테스트를 통한 사용자 만족도
+### Evaluation Methods
+1. **Manual Evaluation**: Medical professionals evaluate relevance of search results
+2. **Automatic Evaluation**: Performance comparison with existing RAG system  
+3. **User Evaluation**: User satisfaction through A/B testing
 
-이제 `python dump_pinecone_for_bm25.py` 실행 → 서비스 초기화 → API 테스트 순으로 진행하면 됩니다!
+Now proceed with: `python dump_pinecone_for_bm25.py` execution → Service initialization → API testing!

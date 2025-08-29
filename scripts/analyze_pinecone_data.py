@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pinecone 인덱스의 데이터를 namespace별로 분석하는 스크립트
+Pinecone index data analysis script by namespace
 """
 
 import asyncio
@@ -29,36 +29,36 @@ class PineconeAnalyzer:
         self.index = RAGService.get_pinecone_client()
         
     def get_all_namespaces(self) -> List[str]:
-        """모든 네임스페이스 목록 반환"""
+        """Return all namespace list"""
         try:
             stats = self.index.describe_index_stats()
             if hasattr(stats, 'namespaces') and stats.namespaces:
                 return list(stats.namespaces.keys())
             else:
-                return ["", "pcos-rag"]  # 기본 네임스페이스들
+                return ["", "pcos-rag"]  # Default namespaces
         except Exception as e:
-            logger.error(f"네임스페이스 목록 조회 실패: {e}")
+            logger.error(f"Failed to retrieve namespace list: {e}")
             return []
     
     def analyze_namespace(self, namespace: str = "") -> Dict[str, Any]:
-        """특정 네임스페이스 분석"""
+        """Analyze specific namespace"""
         try:
-            logger.info(f"네임스페이스 '{namespace}' 분석 중...")
+            logger.info(f"Analyzing namespace '{namespace}'...")
             
-            # 기본 통계
+            # Basic statistics
             stats = self.index.describe_index_stats()
             namespace_stats = stats.namespaces.get(namespace) if hasattr(stats, 'namespaces') and stats.namespaces else None
             
-            # 모든 벡터 조회
+            # Retrieve all vectors
             sample_vectors = self.get_sample_vectors(namespace, limit=-1)
             
-            # 메타데이터 분석
+            # Metadata analysis
             metadata_analysis = self.analyze_metadata(sample_vectors)
             
-            # 모델 버전 분석
+            # Model version analysis
             model_analysis = self.analyze_model_versions(sample_vectors)
             
-            # 논문별 청크 분석
+            # Paper chunk analysis
             paper_analysis = self.analyze_papers(sample_vectors)
             
             result = {
@@ -68,13 +68,13 @@ class PineconeAnalyzer:
                 "metadata_analysis": metadata_analysis,
                 "model_analysis": model_analysis,
                 "paper_analysis": paper_analysis,
-                "sample_vectors": sample_vectors[:5]  # 상위 5개만 포함
+                "sample_vectors": sample_vectors[:5]  # Include only top 5
             }
             
             return result
             
         except Exception as e:
-            logger.error(f"네임스페이스 '{namespace}' 분석 실패: {e}")
+            logger.error(f"Failed to analyze namespace '{namespace}': {e}")
             return {
                 "namespace": namespace,
                 "error": str(e),
@@ -82,14 +82,14 @@ class PineconeAnalyzer:
             }
     
     def get_sample_vectors(self, namespace: str = "", limit: int = 20) -> List[Dict[str, Any]]:
-        """샘플 벡터 조회"""
+        """Retrieve sample vectors"""
         try:
-            # 더미 벡터로 쿼리 (1536 차원)
+            # Query with dummy vector (1536 dimensions)
             dummy_vector = [0.0] * 1536
             
-            # 모든 벡터를 조회하기 위해 큰 값 사용
+            # Use large value to retrieve all vectors
             if limit == -1:
-                # Pinecone의 최대 쿼리 한계 (10,000)
+                # Pinecone's maximum query limit (10,000)
                 query_limit = 10000
             else:
                 query_limit = limit
@@ -113,13 +113,13 @@ class PineconeAnalyzer:
             return vectors
             
         except Exception as e:
-            logger.error(f"샘플 벡터 조회 실패: {e}")
+            logger.error(f"Failed to retrieve sample vectors: {e}")
             return []
     
     def analyze_metadata(self, vectors: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """메타데이터 분석"""
+        """Metadata analysis"""
         if not vectors:
-            return {"error": "분석할 벡터가 없습니다"}
+            return {"error": "No vectors to analyze"}
         
         metadata_keys = set()
         chunk_sections = {}
@@ -129,18 +129,18 @@ class PineconeAnalyzer:
         for vector in vectors:
             metadata = vector.get("metadata", {})
             
-            # 메타데이터 키 수집
+            # Collect metadata keys
             metadata_keys.update(metadata.keys())
             
-            # 섹션 타입 분석
+            # Section type analysis
             section = metadata.get("chunk_section_type", "unknown")
             chunk_sections[section] = chunk_sections.get(section, 0) + 1
             
-            # 모델 버전 분석
+            # Model version analysis
             model_version = metadata.get("model_version", "unknown")
             model_versions.add(model_version)
             
-            # 태깅 타임스탬프 분석
+            # Tagging timestamp analysis
             timestamp = metadata.get("tagging_timestamp")
             if timestamp:
                 tagging_timestamps.append(timestamp)
@@ -155,7 +155,7 @@ class PineconeAnalyzer:
         }
     
     def analyze_model_versions(self, vectors: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """모델 버전별 분석"""
+        """Model version analysis"""
         model_counts = {}
         
         for vector in vectors:
@@ -169,7 +169,7 @@ class PineconeAnalyzer:
         }
     
     def analyze_papers(self, vectors: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """논문별 분석"""
+        """Paper analysis"""
         paper_chunks = {}
         
         for vector in vectors:
@@ -194,7 +194,7 @@ class PineconeAnalyzer:
             paper_chunks[pmid]["sections"].add(section)
             paper_chunks[pmid]["chunk_ids"].append(vector["id"])
         
-        # set을 list로 변환
+        # Convert set to list
         for pmid in paper_chunks:
             paper_chunks[pmid]["sections"] = list(paper_chunks[pmid]["sections"])
         
@@ -206,7 +206,7 @@ class PineconeAnalyzer:
         }
     
     def get_research_list(self, paper_chunks: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """리서치 리스트 생성"""
+        """Generate research list"""
         research_list = []
         
         for pmid, paper_info in paper_chunks.items():
@@ -224,13 +224,13 @@ class PineconeAnalyzer:
             }
             research_list.append(research_item)
         
-        # 출판년도별로 정렬 (최신순)
+        # Sort by publication year (newest first)
         research_list.sort(key=lambda x: x["publication_year"] or 0, reverse=True)
         
         return research_list
     
     def analyze_all_namespaces(self) -> Dict[str, Any]:
-        """모든 네임스페이스 분석"""
+        """Analyze all namespaces"""
         namespaces = self.get_all_namespaces()
         results = {}
         
@@ -240,7 +240,7 @@ class PineconeAnalyzer:
         return results
     
     def save_analysis_report(self, analysis_results: Dict[str, Any], filename: str = None):
-        """분석 결과를 JSON 파일로 저장"""
+        """Save analysis results to JSON file"""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"pinecone_analysis_{timestamp}.json"
@@ -249,151 +249,151 @@ class PineconeAnalyzer:
             with open(filename, 'w', encoding='utf-8') as f:
                 json.dump(analysis_results, f, indent=2, ensure_ascii=False, default=str)
             
-            logger.info(f"분석 결과가 {filename}에 저장되었습니다.")
+            logger.info(f"Analysis results saved to {filename}.")
             return filename
             
         except Exception as e:
-            logger.error(f"분석 결과 저장 실패: {e}")
+            logger.error(f"Failed to save analysis results: {e}")
             return None
 
 async def main():
-    """메인 함수"""
+    """Main function"""
     analyzer = PineconeAnalyzer()
     
-    print("=== Pinecone 데이터 분석 도구 ===")
-    print("1. 모든 네임스페이스 분석")
-    print("2. 특정 네임스페이스 분석")
-    print("3. 네임스페이스 목록만 확인")
-    print("4. 리서치 리스트만 확인")
+    print("=== Pinecone Data Analysis Tool ===")
+    print("1. Analyze all namespaces")
+    print("2. Analyze specific namespace")
+    print("3. Check namespace list only")
+    print("4. Check research list only")
     
-    choice = input("\n선택하세요 (1-4): ").strip()
+    choice = input("\nSelect (1-4): ").strip()
     
     if choice == "1":
-        print("\n모든 네임스페이스를 분석합니다...")
+        print("\nAnalyzing all namespaces...")
         results = analyzer.analyze_all_namespaces()
         
-        # 결과 출력
+        # Output results
         for namespace, result in results.items():
-            print(f"\n=== 네임스페이스: {namespace} ===")
+            print(f"\n=== Namespace: {namespace} ===")
             if "error" in result:
-                print(f"오류: {result['error']}")
+                print(f"Error: {result['error']}")
             else:
-                print(f"총 벡터 수: {result['total_vectors']}")
-                print(f"실제 조회된 벡터 수: {result['actual_vectors_retrieved']}")
+                print(f"Total vectors: {result['total_vectors']}")
+                print(f"Actually retrieved vectors: {result['actual_vectors_retrieved']}")
                 
                 if result['model_analysis']:
-                    print(f"모델 버전: {result['model_analysis']['model_distribution']}")
+                    print(f"Model versions: {result['model_analysis']['model_distribution']}")
                 
                 if result['paper_analysis']:
-                    print(f"논문 수: {result['paper_analysis']['total_papers']}")
-                    print(f"논문당 평균 청크: {result['paper_analysis']['avg_chunks_per_paper']:.1f}")
+                    print(f"Paper count: {result['paper_analysis']['total_papers']}")
+                    print(f"Average chunks per paper: {result['paper_analysis']['avg_chunks_per_paper']:.1f}")
                     
-                    # 리서치 리스트 출력
+                    # Output research list
                     if result['paper_analysis']['research_list']:
-                        print(f"\n=== 리서치 리스트 (최신순) ===")
-                        for i, research in enumerate(result['paper_analysis']['research_list'][:10], 1):  # 상위 10개만
+                        print(f"\n=== Research List (Newest First) ===")
+                        for i, research in enumerate(result['paper_analysis']['research_list'][:10], 1):  # Top 10 only
                             print(f"{i}. PMID: {research['pmid']}")
-                            print(f"   제목: {research['title'][:80]}...")
-                            print(f"   저널: {research['journal']} ({research['publication_year']})")
-                            print(f"   청크 수: {research['chunk_count']}개")
-                            print(f"   섹션: {', '.join(research['sections'])}")
+                            print(f"   Title: {research['title'][:80]}...")
+                            print(f"   Journal: {research['journal']} ({research['publication_year']})")
+                            print(f"   Chunk count: {research['chunk_count']}")
+                            print(f"   Sections: {', '.join(research['sections'])}")
                             if research['doi']:
                                 print(f"   DOI: {research['doi']}")
                             print()
         
-        # 파일 저장
-        save = input("\n분석 결과를 파일로 저장하시겠습니까? (y/n): ").strip().lower()
+        # Save file
+        save = input("\nSave analysis results to file? (y/n): ").strip().lower()
         if save == 'y':
             filename = analyzer.save_analysis_report(results)
             if filename:
-                print(f"저장 완료: {filename}")
+                print(f"Saved: {filename}")
     
     elif choice == "2":
         namespaces = analyzer.get_all_namespaces()
-        print(f"\n사용 가능한 네임스페이스: {namespaces}")
+        print(f"\nAvailable namespaces: {namespaces}")
         
-        namespace = input("분석할 네임스페이스를 입력하세요: ").strip()
+        namespace = input("Enter namespace to analyze: ").strip()
         if namespace == "":
-            namespace = ""  # 기본 네임스페이스
+            namespace = ""  # Default namespace
         
         result = analyzer.analyze_namespace(namespace)
         
-        print(f"\n=== 네임스페이스: {namespace} 분석 결과 ===")
+        print(f"\n=== Namespace: {namespace} Analysis Results ===")
         if "error" in result:
-            print(f"오류: {result['error']}")
+            print(f"Error: {result['error']}")
         else:
-            print(f"총 벡터 수: {result['total_vectors']}")
-            print(f"실제 조회된 벡터 수: {result['actual_vectors_retrieved']}")
+            print(f"Total vectors: {result['total_vectors']}")
+            print(f"Actually retrieved vectors: {result['actual_vectors_retrieved']}")
             
             if result['model_analysis']:
-                print(f"모델 버전: {result['model_analysis']['model_distribution']}")
+                print(f"Model versions: {result['model_analysis']['model_distribution']}")
             
             if result['paper_analysis']:
-                print(f"논문 수: {result['paper_analysis']['total_papers']}")
-                print(f"논문당 평균 청크: {result['paper_analysis']['avg_chunks_per_paper']:.1f}")
+                print(f"Paper count: {result['paper_analysis']['total_papers']}")
+                print(f"Average chunks per paper: {result['paper_analysis']['avg_chunks_per_paper']:.1f}")
                 
-                # 리서치 리스트 출력
+                # Output research list
                 if result['paper_analysis']['research_list']:
-                    print(f"\n=== 리서치 리스트 (최신순) ===")
-                    for i, research in enumerate(result['paper_analysis']['research_list'][:10], 1):  # 상위 10개만
+                    print(f"\n=== Research List (Newest First) ===")
+                    for i, research in enumerate(result['paper_analysis']['research_list'][:10], 1):  # Top 10 only
                         print(f"{i}. PMID: {research['pmid']}")
-                        print(f"   제목: {research['title'][:80]}...")
-                        print(f"   저널: {research['journal']} ({research['publication_year']})")
-                        print(f"   청크 수: {research['chunk_count']}개")
-                        print(f"   섹션: {', '.join(research['sections'])}")
+                        print(f"   Title: {research['title'][:80]}...")
+                        print(f"   Journal: {research['journal']} ({research['publication_year']})")
+                        print(f"   Chunk count: {research['chunk_count']}")
+                        print(f"   Sections: {', '.join(research['sections'])}")
                         if research['doi']:
                             print(f"   DOI: {research['doi']}")
                         print()
             
-            # 샘플 벡터 출력
+            # Output sample vectors
             if result['sample_vectors']:
-                print(f"\n=== 샘플 벡터 (상위 5개) ===")
+                print(f"\n=== Sample Vectors (Top 5) ===")
                 for i, vector in enumerate(result['sample_vectors'], 1):
                     print(f"{i}. ID: {vector['id']}")
-                    print(f"   점수: {vector['score']:.4f}")
+                    print(f"   Score: {vector['score']:.4f}")
                     print(f"   PMID: {vector['metadata'].get('pmid', 'N/A')}")
-                    print(f"   섹션: {vector['metadata'].get('chunk_section_type', 'N/A')}")
+                    print(f"   Section: {vector['metadata'].get('chunk_section_type', 'N/A')}")
                     print()
     
     elif choice == "3":
         namespaces = analyzer.get_all_namespaces()
-        print(f"\n사용 가능한 네임스페이스:")
+        print(f"\nAvailable namespaces:")
         for i, namespace in enumerate(namespaces, 1):
             print(f"{i}. '{namespace}'")
     
     elif choice == "4":
         namespaces = analyzer.get_all_namespaces()
-        print(f"\n사용 가능한 네임스페이스: {namespaces}")
+        print(f"\nAvailable namespaces: {namespaces}")
         
-        namespace = input("확인할 네임스페이스를 입력하세요: ").strip()
+        namespace = input("Enter namespace to check: ").strip()
         if namespace == "":
-            namespace = ""  # 기본 네임스페이스
+            namespace = ""  # Default namespace
         
         result = analyzer.analyze_namespace(namespace)
         
         if "error" in result:
-            print(f"오류: {result['error']}")
+            print(f"Error: {result['error']}")
         elif result['paper_analysis'] and result['paper_analysis']['research_list']:
-            print(f"\n=== 네임스페이스 '{namespace}' 리서치 리스트 ===")
-            print(f"총 {len(result['paper_analysis']['research_list'])}개 논문")
+            print(f"\n=== Namespace '{namespace}' Research List ===")
+            print(f"Total {len(result['paper_analysis']['research_list'])} papers")
             print()
             
             for i, research in enumerate(result['paper_analysis']['research_list'], 1):
                 print(f"{i:2d}. PMID: {research['pmid']}")
-                print(f"    제목: {research['title']}")
-                print(f"    저널: {research['journal']} ({research['publication_year']})")
-                print(f"    청크 수: {research['chunk_count']}개")
-                print(f"    섹션: {', '.join(research['sections'])}")
+                print(f"    Title: {research['title']}")
+                print(f"    Journal: {research['journal']} ({research['publication_year']})")
+                print(f"    Chunk count: {research['chunk_count']}")
+                print(f"    Sections: {', '.join(research['sections'])}")
                 if research['doi']:
                     print(f"    DOI: {research['doi']}")
                 if research['authors']:
-                    print(f"    저자: {', '.join(research['authors'][:3])}{'...' if len(research['authors']) > 3 else ''}")
+                    print(f"    Authors: {', '.join(research['authors'][:3])}{'...' if len(research['authors']) > 3 else ''}")
                 print()
         else:
-            print("리서치 리스트가 없습니다.")
+            print("No research list available.")
     
     else:
-        print("잘못된 선택입니다.")
+        print("Invalid selection.")
 
 if __name__ == "__main__":
     asyncio.run(main())

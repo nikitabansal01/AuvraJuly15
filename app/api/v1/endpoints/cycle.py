@@ -16,25 +16,26 @@ async def get_cycle_phase(
     db: Session = Depends(get_db)
 ):
     """
-    현재 생리 주기 정보 조회
+    Get current menstrual cycle information.
     
-    - 사용자 이름
-    - 현재 Cycle Day
-    - 생리 주기 Phase (Menses, Follicular, Ovulation, Luteal)
-    - 데이터 부족 시 안내 메시지
+    Returns:
+    - User name
+    - Current Cycle Day
+    - Menstrual cycle phase (Menses, Follicular, Ovulation, Luteal)
+    - Guidance message if data is insufficient
     """
     try:
         uid = current_user.get("uid")
         if not uid:
-            raise HTTPException(status_code=400, detail="사용자 ID 없음")
+            raise HTTPException(status_code=400, detail="User ID not found")
         
         service = CycleService(db)
         cycle_info = service.get_cycle_phase_info(uid)
         
-        logger.info(f"생리 주기 정보 조회: uid={uid}, cycle_day={cycle_info.cycle_day}, phase={cycle_info.phase}")
+        logger.info(f"Cycle phase info retrieved: uid={uid}, cycle_day={cycle_info.cycle_day}, phase={cycle_info.phase}")
         return CyclePhaseResponse(cycle_info=cycle_info)
         
     except Exception as e:
-        logger.error(f"생리 주기 정보 조회 실패: {str(e)}")
-        raise HTTPException(status_code=500, detail="생리 주기 정보 조회 실패")
+        logger.error(f"Failed to get cycle phase info: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get cycle phase information")
 

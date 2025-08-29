@@ -4,7 +4,7 @@ from datetime import datetime
 from app.core.validators import QuestionValidators
 
 class SessionCreate(BaseModel):
-    device_id: str = Field(..., description="디바이스 식별자")
+    device_id: str = Field(..., description="Device identifier")
 
 class SessionResponse(BaseModel):
     session_id: str
@@ -14,29 +14,29 @@ class SessionResponse(BaseModel):
     status: str
 
 class SessionData(BaseModel):
-    """세션에 저장될 임시 설문 데이터 (개인 식별 정보 제외)"""
-    age: Optional[int] = Field(None, description="나이 (숫자)")
-    period_description: Optional[str] = Field(None, description="생리 상태")
-    birth_control: Optional[List[str]] = Field(None, description="피임 방법")
-    last_period_date: Optional[datetime] = Field(None, description="마지막 생리 시작일 (UTC datetime)")
-    cycle_length: Optional[str] = Field(None, description="생리 주기")
-    period_concerns: Optional[List[str]] = Field(None, description="생리 관련 우려")
-    body_concerns: Optional[List[str]] = Field(None, description="신체 관련 우려")
-    skin_hair_concerns: Optional[List[str]] = Field(None, description="피부/모발 관련 우려")
-    mental_health_concerns: Optional[List[str]] = Field(None, description="정신건강 관련 우려")
-    other_concerns: Optional[List[str]] = Field(None, description="기타 우려사항")
-    top_concern: Optional[str] = Field(None, description="최우선 우려사항")
-    diagnosed_conditions: Optional[List[str]] = Field(None, description="진단된 질환")
-    family_history: Optional[List[str]] = Field(None, description="가족력")
-    workout_intensity: Optional[str] = Field(None, description="운동 강도")
-    sleep_duration: Optional[str] = Field(None, description="수면 시간")
-    stress_level: Optional[str] = Field(None, description="스트레스 수준")
-    survey_timezone: Optional[str] = Field("Asia/Seoul", description="설문 입력 시점 시간대")
+    """Temporary survey data stored in session (excluding personal identification information)"""
+    age: Optional[int] = Field(None, description="Age (number)")
+    period_description: Optional[str] = Field(None, description="Period status")
+    birth_control: Optional[List[str]] = Field(None, description="Birth control methods")
+    last_period_date: Optional[datetime] = Field(None, description="Last period start date (UTC datetime)")
+    cycle_length: Optional[str] = Field(None, description="Cycle length")
+    period_concerns: Optional[List[str]] = Field(None, description="Period-related concerns")
+    body_concerns: Optional[List[str]] = Field(None, description="Body-related concerns")
+    skin_hair_concerns: Optional[List[str]] = Field(None, description="Skin/hair-related concerns")
+    mental_health_concerns: Optional[List[str]] = Field(None, description="Mental health-related concerns")
+    other_concerns: Optional[List[str]] = Field(None, description="Other concerns")
+    top_concern: Optional[str] = Field(None, description="Top priority concern")
+    diagnosed_conditions: Optional[List[str]] = Field(None, description="Diagnosed conditions")
+    family_history: Optional[List[str]] = Field(None, description="Family history")
+    workout_intensity: Optional[str] = Field(None, description="Workout intensity")
+    sleep_duration: Optional[str] = Field(None, description="Sleep duration")
+    stress_level: Optional[str] = Field(None, description="Stress level")
+    survey_timezone: Optional[str] = Field("Asia/Seoul", description="Timezone at survey input time")
 
     @field_validator('age')
     @classmethod
     def validate_age(cls, v):
-        # 나이 제한 없음 - 모든 나이 허용
+        # No age limit - all ages allowed
         return v
 
     @field_validator('period_description')
@@ -140,65 +140,65 @@ class SessionData(BaseModel):
     @field_validator('last_period_date', mode='before')
     @classmethod
     def validate_last_period_date(cls, v):
-        """문자열을 datetime으로 변환"""
+        """Convert string to datetime"""
         if v is None:
             return v
         if isinstance(v, str):
             try:
                 from datetime import datetime
-                # ISO 8601 형식 시도
+                # Try ISO 8601 format
                 return datetime.fromisoformat(v.replace('Z', '+00:00'))
             except ValueError:
                 try:
-                    # YYYY-MM-DD 형식 시도
+                    # Try YYYY-MM-DD format
                     return datetime.strptime(v, '%Y-%m-%d')
                 except ValueError:
                     try:
-                        # MM/DD/YYYY 형식 시도 (프론트엔드 형식)
+                        # Try MM/DD/YYYY format (frontend format)
                         return datetime.strptime(v, '%m/%d/%Y')
                     except ValueError:
                         raise ValueError(f"Invalid date format: {v}. Supported formats: YYYY-MM-DD, MM/DD/YYYY, ISO 8601")
         return v
 
 class UserResponseData(BaseModel):
-    """익명화된 설문 데이터 (개인 식별 정보 제거)"""
-    age: Optional[int] = Field(None, description="나이 (숫자)")
-    period_description: Optional[str] = Field(None, description="생리 상태")
-    birth_control: Optional[List[str]] = Field(None, description="피임 방법")
-    last_period_date_utc: Optional[datetime] = Field(None, description="마지막 생리 시작일 (UTC)")
-    cycle_length: Optional[str] = Field(None, description="생리 주기")
-    period_concerns: Optional[List[str]] = Field(None, description="생리 관련 우려")
-    body_concerns: Optional[List[str]] = Field(None, description="신체 관련 우려")
-    skin_hair_concerns: Optional[List[str]] = Field(None, description="피부/모발 관련 우려")
-    mental_health_concerns: Optional[List[str]] = Field(None, description="정신건강 관련 우려")
-    other_concerns: Optional[List[str]] = Field(None, description="기타 우려사항")
-    top_concern: Optional[str] = Field(None, description="최우선 우려사항")
-    diagnosed_conditions: Optional[List[str]] = Field(None, description="진단된 질환")
-    family_history: Optional[List[str]] = Field(None, description="가족력")
-    workout_intensity: Optional[str] = Field(None, description="운동 강도")
-    sleep_duration: Optional[str] = Field(None, description="수면 시간")
-    stress_level: Optional[str] = Field(None, description="스트레스 수준")
-    survey_timezone: Optional[str] = Field("Asia/Seoul", description="설문 입력 시점 시간대")
+    """Anonymized survey data (personal identification information removed)"""
+    age: Optional[int] = Field(None, description="Age (number)")
+    period_description: Optional[str] = Field(None, description="Period status")
+    birth_control: Optional[List[str]] = Field(None, description="Birth control methods")
+    last_period_date_utc: Optional[datetime] = Field(None, description="Last period start date (UTC)")
+    cycle_length: Optional[str] = Field(None, description="Cycle length")
+    period_concerns: Optional[List[str]] = Field(None, description="Period-related concerns")
+    body_concerns: Optional[List[str]] = Field(None, description="Body-related concerns")
+    skin_hair_concerns: Optional[List[str]] = Field(None, description="Skin/hair-related concerns")
+    mental_health_concerns: Optional[List[str]] = Field(None, description="Mental health-related concerns")
+    other_concerns: Optional[List[str]] = Field(None, description="Other concerns")
+    top_concern: Optional[str] = Field(None, description="Top priority concern")
+    diagnosed_conditions: Optional[List[str]] = Field(None, description="Diagnosed conditions")
+    family_history: Optional[List[str]] = Field(None, description="Family history")
+    workout_intensity: Optional[str] = Field(None, description="Workout intensity")
+    sleep_duration: Optional[str] = Field(None, description="Sleep duration")
+    stress_level: Optional[str] = Field(None, description="Stress level")
+    survey_timezone: Optional[str] = Field("Asia/Seoul", description="Timezone at survey input time")
 
     @field_validator('age')
     @classmethod
     def validate_age(cls, v):
-        # 나이 제한 없음 - 모든 나이 허용
+        # No age limit - all ages allowed
         return v
 
-    # ... 기존 검증 로직들 유지 ...
+    # ... Keep existing validation logic ...
 
 class SessionDataCreate(BaseModel):
-    session_id: str = Field(..., description="세션 ID")
+    session_id: str = Field(..., description="Session ID")
     data: SessionData
 
 class UserProfileCreate(BaseModel):
-    name: str = Field(..., description="사용자 이름")
-    email: str = Field(..., description="사용자 이메일")
+    name: str = Field(..., description="User name")
+    email: str = Field(..., description="User email")
 
 class SessionLinkRequest(BaseModel):
-    user_profile: UserProfileCreate = Field(..., description="사용자 프로필")
-    current_timezone: str = Field("Asia/Seoul", description="현재 사용자 시간대 (IANA 형식)")
+    user_profile: UserProfileCreate = Field(..., description="User profile")
+    current_timezone: str = Field("Asia/Seoul", description="Current user timezone (IANA format)")
 
 class UserResponseFull(BaseModel):
     id: int
@@ -239,7 +239,7 @@ class AnalyticsResponse(BaseModel):
     stress_level_stats: dict 
 
 class TimezoneUpdateRequest(BaseModel):
-    new_timezone: str = Field(..., description="새로운 시간대 (IANA 형식)")
+    new_timezone: str = Field(..., description="New timezone (IANA format)")
 
 class TimezoneUpdateResponse(BaseModel):
     success: bool

@@ -15,15 +15,13 @@ async def get_weekly_progress(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    주간 진행상황 통계를 가져옵니다.
-    """
+    """Get weekly progress statistics."""
     try:
         uid = current_user.get("uid")
         if not uid:
             raise HTTPException(status_code=400, detail="User ID not found")
         
-        # 날짜 파싱
+        # Parse date
         parsed_date = None
         if target_date:
             try:
@@ -45,15 +43,13 @@ async def get_monthly_progress(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    월간 진행상황 통계를 가져옵니다.
-    """
+    """Get monthly progress statistics."""
     try:
         uid = current_user.get("uid")
         if not uid:
             raise HTTPException(status_code=400, detail="User ID not found")
         
-        # 날짜 파싱
+        # Parse date
         parsed_date = None
         if target_date:
             try:
@@ -75,9 +71,7 @@ async def get_recommendation_progress(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    특정 추천의 진행상황을 가져옵니다.
-    """
+    """Get progress for a specific recommendation."""
     try:
         uid = current_user.get("uid")
         if not uid:
@@ -99,9 +93,7 @@ async def get_overall_progress(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    전체 진행상황 통계를 가져옵니다.
-    """
+    """Get overall progress statistics."""
     try:
         uid = current_user.get("uid")
         if not uid:

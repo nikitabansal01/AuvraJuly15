@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from datetime import date
 
 class CyclePhaseInfo(BaseModel):
-    """생리 주기 정보"""
+    """Menstrual cycle information"""
     user_name: str
     cycle_day: Optional[int] = None
     phase: Optional[str] = None
@@ -18,5 +18,5 @@ class CyclePhaseInfo(BaseModel):
         }
 
 class CyclePhaseResponse(BaseModel):
-    """생리 주기 응답"""
+    """Menstrual cycle response"""
     cycle_info: CyclePhaseInfo

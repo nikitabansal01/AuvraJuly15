@@ -1,6 +1,6 @@
 """
-하이브리드 검색 API 엔드포인트 (BM25 + Pinecone Vector)
-HQ vs LQ 모델 성능 비교 및 A/B 테스트 지원
+Hybrid Search API Endpoints (BM25 + Pinecone Vector)
+HQ vs LQ model performance comparison and A/B testing support
 """
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
@@ -18,17 +18,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class HybridSearchRequest(BaseModel):
-    """하이브리드 검색 요청 모델"""
+    """Hybrid search request model"""
     query: str
     top_k: int = 20
     lexical_k: int = 50
     dense_k: int = 50
     namespace: Optional[str] = None
-    model_filter: Optional[str] = None  # "hq", "lq", 또는 구체적인 모델명
-    field_weights: Optional[Dict[str, float]] = None  # 커스텀 가중치
+    model_filter: Optional[str] = None  # "hq", "lq", or specific model name
+    field_weights: Optional[Dict[str, float]] = None  # Custom weights
 
 class SearchResult(BaseModel):
-    """검색 결과 모델"""
+    """Search result model"""
     id: str
     rrf_score: float
     found_in: List[str]  # ["dense", "lexical"]
@@ -42,7 +42,7 @@ class SearchResult(BaseModel):
     dense_score: Optional[float] = None
 
 class HybridSearchResponse(BaseModel):
-    """하이브리드 검색 응답 모델"""
+    """Hybrid search response model"""
     query: str
     results: List[SearchResult]
     stats: Dict[str, Any]
@@ -51,7 +51,7 @@ class HybridSearchResponse(BaseModel):
 
 @router.get("/health")
 async def health_check():
-    """하이브리드 검색 서비스 상태 확인"""
+    """Hybrid search service status check"""
     service = get_hybrid_search_service()
     return {
         "status": "healthy" if service.is_loaded else "not_initialized",
@@ -65,29 +65,29 @@ async def initialize_service(
     json_file: Optional[str] = None,
     force_rebuild: bool = False
 ):
-    """하이브리드 검색 서비스 초기화"""
+    """Initialize hybrid search service"""
     try:
         service = get_hybrid_search_service()
         
-        logger.info(f"하이브리드 검색 서비스 초기화 시작 (force_rebuild: {force_rebuild})")
+        logger.info(f"Hybrid search service initialization started (force_rebuild: {force_rebuild})")
         
-        # 백그라운드에서 초기화 실행 (시간이 오래 걸릴 수 있음)
+        # Run initialization in background (may take long time)
         success = service.initialize(json_file, force_rebuild)
         
         if success:
             return {
                 "status": "success",
-                "message": "하이브리드 검색 서비스 초기화 완료",
+                "message": "Hybrid search service initialization completed",
                 "documents": len(service.documents),
                 "bm25_indexes": len(service.bm25_indexes),
                 "field_weights": service.field_weights
             }
         else:
-            raise HTTPException(status_code=500, detail="서비스 초기화 실패")
+            raise HTTPException(status_code=500, detail="Service initialization failed")
         
     except Exception as e:
-        logger.error(f"하이브리드 검색 서비스 초기화 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"초기화 실패: {str(e)}")
+        logger.error(f"Hybrid search service initialization failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Initialization failed: {str(e)}")
 
 
 # =============================================================================
@@ -96,10 +96,10 @@ async def initialize_service(
 
 @router.get("/dense-combined")
 async def dense_combined_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return")
 ):
-    """Combined Dense만 검색 (pcos-rag-combined 네임스페이스)"""
+    """Combined Dense search only (pcos-rag-combined namespace)"""
     try:
         service = get_hybrid_search_service()
         
@@ -117,15 +117,15 @@ async def dense_combined_search(
         }
         
     except Exception as e:
-        logger.error(f"Combined Dense 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"Combined Dense search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/dense-hq")
 async def dense_hq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return")
 ):
-    """HQ Dense만 검색 (pcos-rag-gpt_4o 네임스페이스)"""
+    """HQ Dense search only (pcos-rag-gpt_4o namespace)"""
     try:
         service = get_hybrid_search_service()
         
@@ -143,15 +143,15 @@ async def dense_hq_search(
         }
         
     except Exception as e:
-        logger.error(f"HQ Dense 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"HQ Dense search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/dense-lq")
 async def dense_lq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return")
 ):
-    """LQ Dense만 검색 (pcos-rag-gpt_3.5_turbo 네임스페이스)"""
+    """LQ Dense search only (pcos-rag-gpt_3.5_turbo namespace)"""
     try:
         service = get_hybrid_search_service()
         
@@ -169,8 +169,8 @@ async def dense_lq_search(
         }
         
     except Exception as e:
-        logger.error(f"LQ Dense 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"LQ Dense search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # =============================================================================
 # 📝 LEXICAL SEARCH APIs (BM25 Only)
@@ -178,15 +178,15 @@ async def dense_lq_search(
 
 @router.get("/lexical-combined")
 async def lexical_combined_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return")
 ):
-    """Combined Lexical만 검색 (Combined BM25 인덱스)"""
+    """Combined Lexical search only (Combined BM25 index)"""
     try:
         service = get_hybrid_search_service()
         
         if not service.is_loaded:
-            raise HTTPException(status_code=503, detail="서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Service not initialized")
         
         start_time = datetime.now()
         results = service.lexical_search(q, top_k)
@@ -202,20 +202,20 @@ async def lexical_combined_search(
         }
         
     except Exception as e:
-        logger.error(f"Combined Lexical 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"Combined Lexical search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/lexical-hq")
 async def lexical_hq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return")
 ):
-    """HQ Lexical만 검색 (HQ BM25 인덱스)"""
+    """HQ Lexical search only (HQ BM25 index)"""
     try:
         multi_service = get_multi_scenario_service()
         
         if not multi_service.is_initialized:
-            raise HTTPException(status_code=503, detail="시나리오 서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Scenario service not initialized")
         
         hq_service = multi_service.services["hq"]
         
@@ -233,20 +233,20 @@ async def lexical_hq_search(
         }
         
     except Exception as e:
-        logger.error(f"HQ Lexical 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"HQ Lexical search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/lexical-lq")
 async def lexical_lq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return")
 ):
-    """LQ Lexical만 검색 (LQ BM25 인덱스)"""
+    """LQ Lexical search only (LQ BM25 index)"""
     try:
         multi_service = get_multi_scenario_service()
         
         if not multi_service.is_initialized:
-            raise HTTPException(status_code=503, detail="시나리오 서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Scenario service not initialized")
         
         lq_service = multi_service.services["lq"]
         
@@ -264,8 +264,8 @@ async def lexical_lq_search(
         }
         
     except Exception as e:
-        logger.error(f"LQ Lexical 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"LQ Lexical search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # =============================================================================
 # 🚀 HYBRID SEARCH APIs (Lexical + Dense)
@@ -273,17 +273,17 @@ async def lexical_lq_search(
 
 @router.get("/hybrid-combined")
 async def hybrid_combined_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수"),
-    lexical_k: int = Query(50, description="BM25 검색 결과 수"),
-    dense_k: int = Query(50, description="벡터 검색 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return"),
+    lexical_k: int = Query(50, description="Number of BM25 search results"),
+    dense_k: int = Query(50, description="Number of vector search results")
 ):
-    """Combined Hybrid 검색 (Combined Lexical + Combined Dense)"""
+    """Combined Hybrid search (Combined Lexical + Combined Dense)"""
     try:
         service = get_hybrid_search_service()
         
         if not service.is_loaded:
-            raise HTTPException(status_code=503, detail="서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Service not initialized")
         
         result = await service.hybrid_search(
             query=q,
@@ -303,22 +303,22 @@ async def hybrid_combined_search(
         return result
         
     except Exception as e:
-        logger.error(f"Combined Hybrid 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"Combined Hybrid search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-combined-hq")
 async def hybrid_combined_hq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수"),
-    lexical_k: int = Query(50, description="BM25 검색 결과 수"),
-    dense_k: int = Query(50, description="벡터 검색 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return"),
+    lexical_k: int = Query(50, description="Number of BM25 search results"),
+    dense_k: int = Query(50, description="Number of vector search results")
 ):
-    """Combined Lexical + HQ Dense 하이브리드 검색"""
+    """Combined Lexical + HQ Dense hybrid search"""
     try:
         service = get_hybrid_search_service()
         
         if not service.is_loaded:
-            raise HTTPException(status_code=503, detail="서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Service not initialized")
         
         result = await service.hybrid_search(
             query=q,
@@ -338,22 +338,22 @@ async def hybrid_combined_hq_search(
         return result
         
     except Exception as e:
-        logger.error(f"Combined+HQ Hybrid 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"Combined+HQ Hybrid search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-combined-lq")
 async def hybrid_combined_lq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수"),
-    lexical_k: int = Query(50, description="BM25 검색 결과 수"),
-    dense_k: int = Query(50, description="벡터 검색 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return"),
+    lexical_k: int = Query(50, description="Number of BM25 search results"),
+    dense_k: int = Query(50, description="Number of vector search results")
 ):
-    """Combined Lexical + LQ Dense 하이브리드 검색"""
+    """Combined Lexical + LQ Dense hybrid search"""
     try:
         service = get_hybrid_search_service()
         
         if not service.is_loaded:
-            raise HTTPException(status_code=503, detail="서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Service not initialized")
         
         result = await service.hybrid_search(
             query=q,
@@ -373,22 +373,22 @@ async def hybrid_combined_lq_search(
         return result
         
     except Exception as e:
-        logger.error(f"Combined+LQ Hybrid 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"Combined+LQ Hybrid search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-hq")
 async def hybrid_hq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수"),
-    lexical_k: int = Query(50, description="BM25 검색 결과 수"), 
-    dense_k: int = Query(50, description="벡터 검색 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return"),
+    lexical_k: int = Query(50, description="Number of BM25 search results"), 
+    dense_k: int = Query(50, description="Number of vector search results")
 ):
-    """HQ Hybrid 검색 (HQ Lexical + HQ Dense)"""
+    """HQ Hybrid search (HQ Lexical + HQ Dense)"""
     try:
         multi_service = get_multi_scenario_service()
         
         if not multi_service.is_initialized:
-            raise HTTPException(status_code=503, detail="시나리오 서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Scenario service not initialized")
         
         hq_service = multi_service.services["hq"]
         
@@ -410,22 +410,22 @@ async def hybrid_hq_search(
         return result
         
     except Exception as e:
-        logger.error(f"HQ Hybrid 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"HQ Hybrid search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-lq")
 async def hybrid_lq_search(
-    q: str = Query(..., description="검색 쿼리"),
-    top_k: int = Query(20, description="반환할 결과 수"),
-    lexical_k: int = Query(50, description="BM25 검색 결과 수"),
-    dense_k: int = Query(50, description="벡터 검색 결과 수")
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(20, description="Number of results to return"),
+    lexical_k: int = Query(50, description="Number of BM25 search results"),
+    dense_k: int = Query(50, description="Number of vector search results")
 ):
-    """LQ Hybrid 검색 (LQ Lexical + LQ Dense)"""
+    """LQ Hybrid search (LQ Lexical + LQ Dense)"""
     try:
         multi_service = get_multi_scenario_service()
         
         if not multi_service.is_initialized:
-            raise HTTPException(status_code=503, detail="시나리오 서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Scenario service not initialized")
         
         lq_service = multi_service.services["lq"]
         
@@ -447,12 +447,12 @@ async def hybrid_lq_search(
         return result
         
     except Exception as e:
-        logger.error(f"LQ Hybrid 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"LQ Hybrid search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/field-weights")
 async def get_field_weights():
-    """현재 필드별 가중치 조회"""
+    """Get current field weights"""
     service = get_hybrid_search_service()
     return {
         "field_weights": service.field_weights,
@@ -461,11 +461,11 @@ async def get_field_weights():
 
 @router.post("/field-weights")
 async def update_field_weights(weights: Dict[str, float]):
-    """필드별 가중치 업데이트"""
+    """Update field weights"""
     try:
         service = get_hybrid_search_service()
         
-        # 유효한 필드만 업데이트
+        # Update only valid fields
         updated_fields = []
         for field, weight in weights.items():
             if field in service.field_weights:
@@ -473,24 +473,24 @@ async def update_field_weights(weights: Dict[str, float]):
                 updated_fields.append(field)
         
         return {
-            "message": f"{len(updated_fields)}개 필드 가중치 업데이트",
+            "message": f"{len(updated_fields)} field weights updated",
             "updated_fields": updated_fields,
             "current_weights": service.field_weights
         }
         
     except Exception as e:
-        logger.error(f"가중치 업데이트 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"업데이트 실패: {str(e)}")
+        logger.error(f"Weight update failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
 
 @router.get("/stats")
 async def get_service_stats():
-    """서비스 통계 정보"""
+    """Get service statistics"""
     service = get_hybrid_search_service()
     
     if not service.is_loaded:
         return {"status": "not_initialized"}
     
-    # 문서 통계
+    # Document statistics
     model_versions = {}
     section_types = {}
     
@@ -515,21 +515,21 @@ async def compare_hq_lq_models(
     query: str,
     top_k: int = 10
 ):
-    """HQ vs LQ 모델 성능 비교"""
+    """Compare HQ vs LQ model performance"""
     try:
         service = get_hybrid_search_service()
         
         if not service.is_loaded:
-            raise HTTPException(status_code=503, detail="서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Service not initialized")
         
-        # HQ 모델 (gpt-4o) 검색
+        # HQ model (gpt-4o) search
         hq_results = await service.hybrid_search(
             query=query,
             top_k=top_k,
             namespace="pcos-rag-gpt_4o"
         )
         
-        # LQ 모델 (gpt-3.5-turbo) 검색  
+        # LQ model (gpt-3.5-turbo) search  
         lq_results = await service.hybrid_search(
             query=query,
             top_k=top_k,
@@ -557,8 +557,8 @@ async def compare_hq_lq_models(
         }
         
     except Exception as e:
-        logger.error(f"모델 비교 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"비교 실패: {str(e)}")
+        logger.error(f"Model comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/scenario-c-comparison")
 async def scenario_c_fair_comparison(
@@ -566,26 +566,26 @@ async def scenario_c_fair_comparison(
     top_k: int = 10
 ):
     """
-    Scenario C: 완전 통합 환경에서 공정한 모델 비교
-    Combined BM25 + Combined Dense (pcos-rag-combined) → 모델별 필터링
+    Scenario C: Fair model comparison in fully integrated environment
+    Combined BM25 + Combined Dense (pcos-rag-combined) → Model filtering
     """
     try:
         service = get_hybrid_search_service()
         
         if not service.is_loaded:
-            raise HTTPException(status_code=503, detail="서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Service not initialized")
         
         combined_namespace = "pcos-rag-combined"
         
-        # 통합 환경에서 HQ 결과 (모델 필터링)
+        # HQ results in integrated environment (model filtering)
         hq_results = await service.hybrid_search(
             query=query,
-            top_k=top_k * 2,  # 필터링 전에 더 많이 가져옴
+            top_k=top_k * 2,  # Get more before filtering
             namespace=combined_namespace,
             model_filter="hq"
         )
         
-        # 통합 환경에서 LQ 결과 (모델 필터링)
+        # LQ results in integrated environment (model filtering)
         lq_results = await service.hybrid_search(
             query=query,
             top_k=top_k * 2,
@@ -593,24 +593,24 @@ async def scenario_c_fair_comparison(
             model_filter="lq"
         )
         
-        # 무필터 전체 결과 (참고용)
+        # Unfiltered all results (for reference)
         all_results = await service.hybrid_search(
             query=query,
             top_k=top_k * 2,
             namespace=combined_namespace
         )
         
-        # 상위 결과만 자르기
+        # Cut top results only
         hq_final = hq_results["results"][:top_k]
         lq_final = lq_results["results"][:top_k]
         all_final = all_results["results"][:top_k]
         
-        # 고급 분석
+        # Advanced analysis
         hq_ids = set(r["id"] for r in hq_final)
         lq_ids = set(r["id"] for r in lq_final)
         all_ids = set(r["id"] for r in all_final)
         
-        # 순위 분석 (전체 결과에서 각 모델의 순위)
+        # Rank analysis (rank of each model in overall results)
         hq_ranks_in_all = []
         lq_ranks_in_all = []
         
@@ -623,7 +623,7 @@ async def scenario_c_fair_comparison(
         
         return {
             "query": query,
-            "scenario": "C - 완전 통합 환경 비교",
+            "scenario": "C - Fully Integrated Environment Comparison",
             "namespace": combined_namespace,
             "hq_results": {
                 "results": hq_final,
@@ -642,46 +642,46 @@ async def scenario_c_fair_comparison(
                 "hq_unique": len(hq_ids - lq_ids),
                 "lq_unique": len(lq_ids - hq_ids),
                 "total_unique_docs": len(hq_ids | lq_ids),
-                # 순위 분석
+                # Rank analysis
                 "hq_avg_rank": sum(hq_ranks_in_all[:top_k]) / len(hq_ranks_in_all[:top_k]) if hq_ranks_in_all[:top_k] else 0,
                 "lq_avg_rank": sum(lq_ranks_in_all[:top_k]) / len(lq_ranks_in_all[:top_k]) if lq_ranks_in_all[:top_k] else 0,
                 "hq_top_positions": len([r for r in hq_ranks_in_all if r <= top_k]),
                 "lq_top_positions": len([r for r in lq_ranks_in_all if r <= top_k]),
             },
-            "all_results_sample": all_final[:5]  # 참고용 상위 5개
+            "all_results_sample": all_final[:5]  # Top 5 for reference
         }
         
     except Exception as e:
-        logger.error(f"Scenario C 비교 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"비교 실패: {str(e)}")
+        logger.error(f"Scenario C comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/initialize-all-scenarios")
 async def initialize_all_scenarios():
-    """모든 시나리오용 서비스 초기화 (A, B, C)"""
+    """Initialize all scenario services (A, B, C)"""
     try:
         multi_service = get_multi_scenario_service()
         
-        logger.info("모든 시나리오 서비스 초기화 시작...")
+        logger.info("All scenario services initialization started...")
         results = multi_service.initialize_all_services()
         
         if all(results.values()):
             return {
                 "status": "success",
-                "message": "모든 시나리오 서비스 초기화 완료",
+                "message": "All scenario services initialization completed",
                 "details": results,
                 "scenarios_available": ["A", "B", "C"]
             }
         else:
             return {
                 "status": "partial_success",
-                "message": "일부 시나리오 서비스 초기화 실패",
+                "message": "Some scenario services initialization failed",
                 "details": results,
                 "failed_services": [k for k, v in results.items() if not v]
             }
         
     except Exception as e:
-        logger.error(f"시나리오 서비스 초기화 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"초기화 실패: {str(e)}")
+        logger.error(f"Scenario services initialization failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Initialization failed: {str(e)}")
 
 @router.post("/scenario-a-comparison")
 async def scenario_a_pure_comparison(
@@ -689,8 +689,8 @@ async def scenario_a_pure_comparison(
     top_k: int = 10
 ):
     """
-    Scenario A: 순수 모델 성능 비교
-    HQ 환경 (HQ BM25 + HQ Dense) vs LQ 환경 (LQ BM25 + LQ Dense)
+    Scenario A: Pure model performance comparison
+    HQ environment (HQ BM25 + HQ Dense) vs LQ environment (LQ BM25 + LQ Dense)
     """
     try:
         multi_service = get_multi_scenario_service()
@@ -698,7 +698,7 @@ async def scenario_a_pure_comparison(
         if not multi_service.is_initialized:
             raise HTTPException(
                 status_code=503, 
-                detail="시나리오 서비스가 초기화되지 않음. /initialize-all-scenarios 를 먼저 호출하세요."
+                detail="Scenario service not initialized. Call /initialize-all-scenarios first."
             )
         
         result = await multi_service.scenario_a_comparison(query, top_k)
@@ -707,8 +707,8 @@ async def scenario_a_pure_comparison(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Scenario A 비교 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"비교 실패: {str(e)}")
+        logger.error(f"Scenario A comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/scenario-b-comparison")
 async def scenario_b_mixed_comparison(
@@ -716,14 +716,14 @@ async def scenario_b_mixed_comparison(
     top_k: int = 10
 ):
     """
-    Scenario B: 혼합 환경에서의 경쟁
+    Scenario B: Competition in mixed environment
     Combined BM25 + HQ Dense vs Combined BM25 + LQ Dense
     """
     try:
         multi_service = get_multi_scenario_service()
         
         if not multi_service.is_initialized:
-            raise HTTPException(status_code=503, detail="시나리오 서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Scenario service not initialized")
         
         result = await multi_service.scenario_b_comparison(query, top_k)
         return result
@@ -731,8 +731,8 @@ async def scenario_b_mixed_comparison(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Scenario B 비교 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"비교 실패: {str(e)}")
+        logger.error(f"Scenario B comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/comprehensive-comparison")
 async def comprehensive_abc_comparison(
@@ -740,16 +740,16 @@ async def comprehensive_abc_comparison(
     top_k: int = 10
 ):
     """
-    종합 비교: Scenario A, B, C 모두 실행하여 비교
-    모든 시나리오에서 HQ vs LQ 성능을 분석
+    Comprehensive comparison: Execute all scenarios A, B, C for comparison
+    Analyze HQ vs LQ performance in all scenarios
     """
     try:
         multi_service = get_multi_scenario_service()
         
         if not multi_service.is_initialized:
-            raise HTTPException(status_code=503, detail="시나리오 서비스가 초기화되지 않음")
+            raise HTTPException(status_code=503, detail="Scenario service not initialized")
         
-        logger.info(f"종합 비교 (A/B/C) 시작: '{query}'")
+        logger.info(f"Comprehensive comparison (A/B/C) started: '{query}'")
         result = await multi_service.comprehensive_comparison(query, top_k)
         
         return result
@@ -757,12 +757,12 @@ async def comprehensive_abc_comparison(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"종합 비교 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"비교 실패: {str(e)}")
+        logger.error(f"Comprehensive comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.get("/scenarios-status")
 async def get_scenarios_status():
-    """모든 시나리오 서비스 상태 확인"""
+    """Check status of all scenario services"""
     try:
         multi_service = get_multi_scenario_service()
         
@@ -779,7 +779,7 @@ async def get_scenarios_status():
                 "service_type": service.service_type
             }
         
-        # 단일 서비스 상태도 포함
+        # Include single service status
         single_service = get_hybrid_search_service()
         status["single_service"] = {
             "loaded": single_service.is_loaded,
@@ -790,8 +790,8 @@ async def get_scenarios_status():
         return status
         
     except Exception as e:
-        logger.error(f"상태 조회 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"상태 조회 실패: {str(e)}")
+        logger.error(f"Status check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 # =============================================================================
 # 🔧 ADVANCED HYBRID SEARCH (POST with full options)
@@ -799,23 +799,23 @@ async def get_scenarios_status():
 
 @router.post("/hybrid-advanced", response_model=HybridSearchResponse)
 async def hybrid_advanced_search(request: HybridSearchRequest):
-    """고급 하이브리드 검색 (모든 옵션 지원: 가중치, 필터링 등)"""
+    """Advanced hybrid search (supports all options: weights, filtering, etc.)"""
     start_time = datetime.now()
     
     try:
         service = get_hybrid_search_service()
         
         if not service.is_loaded:
-            raise HTTPException(status_code=503, detail="서비스가 초기화되지 않음. /initialize 를 먼저 호출하세요.")
+            raise HTTPException(status_code=503, detail="Service not initialized. Call /initialize first.")
         
-        # 커스텀 가중치 적용
+        # Apply custom weights
         original_weights = None
         if request.field_weights:
             original_weights = service.field_weights.copy()
             service.field_weights.update(request.field_weights)
-            logger.info(f"커스텀 가중치 적용: {request.field_weights}")
+            logger.info(f"Custom weights applied: {request.field_weights}")
         
-        # 하이브리드 검색 실행
+        # Execute hybrid search
         result = await service.hybrid_search(
             query=request.query,
             top_k=request.top_k,
@@ -825,14 +825,14 @@ async def hybrid_advanced_search(request: HybridSearchRequest):
             model_filter=request.model_filter
         )
         
-        # 가중치 복원
+        # Restore weights
         if original_weights:
             service.field_weights = original_weights
         
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         
-        # 응답 변환
+        # Convert response
         search_results = []
         for doc in result["results"]:
             search_result = SearchResult(
@@ -860,16 +860,16 @@ async def hybrid_advanced_search(request: HybridSearchRequest):
             processing_time=processing_time
         )
         
-        logger.info(f"고급 하이브리드 검색 완료: {len(search_results)}개 결과, {processing_time:.2f}초")
+        logger.info(f"Advanced hybrid search completed: {len(search_results)} results, {processing_time:.2f} seconds")
         return response
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"고급 하이브리드 검색 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"Advanced hybrid search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # =============================================================================
-# ⚙️ LEGACY/COMPATIBILITY APIs (기존 호환성)
+# ⚙️ LEGACY/COMPATIBILITY APIs (Legacy compatibility)
 # =============================================================================
 

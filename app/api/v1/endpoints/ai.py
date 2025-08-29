@@ -20,8 +20,8 @@ async def generate_recommendations(
     current_user: dict = Depends(get_current_active_user)
 ):
     """
-    일반 추천 생성 API
-    프롬프트 엔지니어링 기반 추천
+    Generate general recommendations API.
+    Prompt engineering based recommendations.
     """
     user_profile_obj = request.userProfile
     categories = ["food", "movement", "mindfulness"]
@@ -34,7 +34,7 @@ async def generate_recommendations(
         llm_response, actual_model = await AIService.call_ai_model(prompt)
         confidence = AIService.evaluate_llm_confidence(llm_response)
         recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
-        # Fallback: 신뢰도 낮거나 추천 없음 → Fallback 모델 사용
+        # Fallback: Use fallback model if confidence is low or no recommendations
         if confidence < 60 or not recommendations:
             fallback_config = AIService.get_fallback_model_config()
             if fallback_config["provider"] == "openai":
@@ -46,7 +46,7 @@ async def generate_recommendations(
             elif fallback_config["provider"] == "perplexity":
                 fallback_response = await AIService.call_perplexity(prompt, fallback_config["model"])
             else:
-                logger.error(f"지원하지 않는 fallback 모델 프로바이더: {fallback_config['provider']}")
+                logger.error(f"Unsupported fallback model provider: {fallback_config['provider']}")
                 continue
             
             fallback_confidence = AIService.evaluate_llm_confidence(fallback_response)
@@ -69,13 +69,13 @@ async def generate_recommendations(
         rawLLMResponse="\n---\n".join(raw_llm_responses)
     )
     
-    # 추천 결과를 DB에 저장
+    # Save recommendation results to database
     recommendation_service = RecommendationService(db)
     uid = current_user.get("user_id")
     if uid:
         save_success = await recommendation_service.save_recommendations(uid, result, "general")
         if not save_success:
-            # 저장 실패해도 추천 결과는 반환
+            # Return recommendation results even if save fails
             pass
 
     return result
@@ -87,24 +87,24 @@ async def generate_rag_recommendations(
     current_user: dict = Depends(get_current_active_user)
 ):
     """
-    RAG 기반 추천 생성 API
-    실제 PCOS 연구 데이터를 기반으로 한 추천
+    Generate RAG-based recommendations API.
+    Recommendations based on actual PCOS research data.
     """
     user_profile_obj = request.userProfile
     
     try:
-        # RAG 기반 추천 생성
+        # Generate RAG-based recommendations
         rag_results = await AIService.generate_rag_recommendations(user_profile_obj)
         
-        # 신뢰도 평가 (RAG 결과 기반)
+        # Evaluate confidence (based on RAG results)
         confidences = []
         for category in ["food", "movement", "mindfulness"]:
             recommendations = rag_results.get(category, [])
             if recommendations:
-                # 추천이 있으면 높은 신뢰도
+                # High confidence if recommendations exist
                 confidences.append(85)
             else:
-                # 추천이 없으면 낮은 신뢰도
+                # Low confidence if no recommendations
                 confidences.append(30)
         
         confidence = min(max(confidences), 100) if confidences else 30
@@ -119,13 +119,13 @@ async def generate_rag_recommendations(
             rawLLMResponse="RAG-based recommendations generated from actual PCOS research data"
         )
         
-        # 추천 결과를 DB에 저장
+        # Save recommendation results to database
         recommendation_service = RecommendationService(db)
         uid = current_user.get("user_id")
         if uid:
             save_success = await recommendation_service.save_recommendations(uid, result, "rag")
             if not save_success:
-                # 저장 실패해도 추천 결과는 반환
+                # Return recommendation results even if save fails
                 pass
     
         return result
@@ -139,9 +139,7 @@ async def get_recommendation_history(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    사용자의 추천 이력 조회
-    """
+    """Get user's recommendation history."""
     try:
         uid = current_user.get("user_id")
         if not uid:
@@ -165,9 +163,7 @@ async def get_recommendation_advices(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    특정 추천의 조언들 조회
-    """
+    """Get advices for a specific recommendation."""
     try:
         uid = current_user.get("user_id")
         if not uid:
@@ -192,9 +188,7 @@ async def delete_recommendation(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    추천 삭제 (관련 조언들도 함께 삭제)
-    """
+    """Delete recommendation (including related advices)."""
     try:
         uid = current_user.get("user_id")
         if not uid:
@@ -221,9 +215,7 @@ async def get_recommendation_history_by_category(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    카테고리별 사용자 추천 이력 조회
-    """
+    """Get user's recommendation history by category."""
     try:
         uid = current_user.get("user_id")
         if not uid:

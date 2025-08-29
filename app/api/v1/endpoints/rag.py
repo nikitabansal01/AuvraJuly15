@@ -6,7 +6,7 @@ import logging
 import time
 from app.models.rag_models import RAGResponse
 
-# RAG 엔드포인트 전용 로거 설정
+# RAG endpoint dedicated logger setup
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -14,33 +14,33 @@ router = APIRouter()
 @router.get("/health")
 async def health_check():
     """
-    RAG 서비스 상태 확인
+    RAG service status check
     """
     return {"status": "healthy", "service": "RAG"}
 
 @router.get("/pinecone-status")
 async def pinecone_status_endpoint():
     """
-    Pinecone 인덱스 상태 확인
+    Pinecone index status check
     """
     try:
         index = RAGService.get_pinecone_client()
         stats = index.describe_index_stats()
         
-        # 통계 정보 추출
+        # Extract statistics
         total_vector_count = stats.total_vector_count
         namespaces = stats.namespaces
         
-        # 네임스페이스별 통계
+        # Statistics by namespace
         namespace_stats = {}
         for ns_name, ns_info in namespaces.items():
             namespace_stats[ns_name] = {
                 "vector_count": ns_info.vector_count
             }
         
-        # 도메인 통계 (URL 기반)
+        # Domain statistics (URL based)
         all_vectors = index.query(
-            vector=[0] * 1536,  # 더미 벡터
+            vector=[0] * 1536,  # Dummy vector
             top_k=1000,
             include_metadata=True
         )
@@ -56,7 +56,7 @@ async def pinecone_status_endpoint():
             "status": "connected",
             "total_vectors": total_vector_count,
             "namespaces": namespace_stats,
-            "domains": list(unique_domains)[:20]  # 상위 20개 도메인
+            "domains": list(unique_domains)[:20]  # Top 20 domains
         }
         
     except Exception as e:
@@ -66,20 +66,20 @@ async def pinecone_status_endpoint():
 @router.post("/search-rag")
 async def search_rag_endpoint(request: Dict[str, Any]):
     """
-    사용자 쿼리에 따른 개인화된 RAG 검색
-    :param request: {"query": "사용자 질문", "user_profile": {...}, "top_k": 5}
+    Personalized RAG search based on user query
+    :param request: {"query": "user question", "user_profile": {...}, "top_k": 5}
     """
     query = request.get("query", "")
     user_profile = request.get("user_profile", None)
     top_k = request.get("top_k", 5)
     
     if not query:
-        raise HTTPException(status_code=400, detail="쿼리가 필요합니다.")
+        raise HTTPException(status_code=400, detail="Query is required.")
     
     logger.info(f"RAG search started - query: {query[:50]}..., user profile: {user_profile is not None}")
     
     try:
-        # RAG 검색 및 우선순위 계산
+        # RAG search and priority calculation
         ranked_papers = await RAGService.search_and_rank_papers(query, user_profile, top_k)
         
         logger.info(f"RAG search completed - {len(ranked_papers)} papers found")
@@ -91,7 +91,7 @@ async def search_rag_endpoint(request: Dict[str, Any]):
             "ranked_papers": [
                 {
                     "title": paper.get("title", ""),
-                    "content": paper.get("content", "")[:200] + "...",  # 내용 미리보기
+                    "content": paper.get("content", "")[:200] + "...",  # Content preview
                     "url": paper.get("url", ""),
                     "priority_score": paper.get("priority_score", 0),
                     "study_type": paper.get("study_type", ""),
@@ -106,73 +106,73 @@ async def search_rag_endpoint(request: Dict[str, Any]):
         
     except Exception as e:
         logger.error(f"RAG search failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"RAG 검색 실패: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"RAG search failed: {str(e)}") 
 
 @router.post("/fetch-and-process", response_model=RAGResponse)
 async def fetch_and_process_endpoint(resume_from_checkpoint: bool = False):
     """
-    PCOS 관련 논문을 수집하고 처리하여 Pinecone에 저장
-            기본 설정: 최대 50개 논문, 2015년 이후, LLM 태깅 사용
-    :param resume_from_checkpoint: 체크포인트에서 재시작할지 여부 (기본값: False)
+    Collect and process PCOS related papers and store in Pinecone
+            Default settings: max 50 papers, after 2015, use LLM tagging
+    :param resume_from_checkpoint: Whether to resume from checkpoint (default: False)
     """
     start_time = time.time()
     logger.info(f"PCOS paper collection and processing started (resume_from_checkpoint: {resume_from_checkpoint})")
     
     try:
-        # 1. PubMed Central에서 논문 수집 (기본 설정)
+        # 1. Collect papers from PubMed Central (default settings)
         all_papers = await RAGService.fetch_pcos_papers_from_pubmed_api(resume_from_checkpoint)
         logger.info(f"PubMed Central paper collection completed: {len(all_papers)} papers")
         
         if not all_papers:
             return RAGResponse(
                 success=False,
-                message="PubMed Central에서 논문을 찾지 못했습니다.",
+                message="No papers found in PubMed Central.",
                 papers_processed=0,
                 papers_stored=0,
                 processing_time=time.time() - start_time
             )
         
-        # 2. 중복 논문 필터링
+        # 2. Filter duplicate papers
         filtered_papers = await RAGService.filter_new_papers(all_papers)
         logger.info(f"After deduplication: {len(filtered_papers)} papers")
         
         if not filtered_papers:
             return RAGResponse(
                 success=True,
-                message="모든 논문이 이미 저장되어 있습니다.",
+                message="All papers are already stored.",
                 papers_processed=len(all_papers),
                 papers_stored=0,
                 processing_time=time.time() - start_time
             )
         
-        # 3. 전체 논문 처리 (LLM 태깅 사용)
+        # 3. Process all papers (use LLM tagging)
         processed_count = 0
         stored_count = 0
         
         for paper in filtered_papers:
             try:
-                # PaperMeta 객체 생성
+                # Create PaperMeta object
                 paper_meta = PaperMeta(
                     title=paper["title"],
                     content=paper["content"],
                     url=paper["url"],
                     date=paper["date"],
                     source=paper.get("source", "pubmed-api"),
-                    # 논문 식별자
+                    # Paper identifiers
                     pmid=paper.get("pmid"),
                     pmcid=paper.get("pmcid"),
                     doi=paper.get("doi"),
-                    # 저자 정보
+                    # Author information
                     authors=paper.get("authors", []),
-                    # 저널 정보
+                    # Journal information
                     journal=paper.get("journal"),
                     journal_issn=paper.get("journal_issn"),
-                    # 출판년도 정보
+                    # Publication year information
                     publication_year=paper.get("publication_year"),
-                    # 추가 메타데이터
+                    # Additional metadata
                     mesh_terms=paper.get("mesh_terms", []),
                     abstract=paper.get("abstract"),
-                    # 섹션 태그 정보와 섹션 정보를 모두 포함
+                    # Include both section tags and section information
                     source_paper={
                         "section_tags": paper.get("section_tags"),
                         "sections": paper.get("sections"),
@@ -180,7 +180,7 @@ async def fetch_and_process_endpoint(resume_from_checkpoint: bool = False):
                     } if paper.get("section_tags") or paper.get("sections") else None
                 )
                 
-                # 논문 처리 (LLM 태깅 사용)
+                # Process paper (use LLM tagging)
                 results = await RAGService.process_paper_pipeline_with_llm_option(paper_meta, use_llm=True)
                 processed_count += 1
                 stored_count += len(results)
@@ -195,7 +195,7 @@ async def fetch_and_process_endpoint(resume_from_checkpoint: bool = False):
         
         return RAGResponse(
             success=True,
-            message=f"PCOS 논문 수집 및 처리 완료",
+            message=f"PCOS paper collection and processing completed",
             papers_processed=processed_count,
             papers_stored=stored_count,
             processing_time=processing_time
@@ -205,7 +205,7 @@ async def fetch_and_process_endpoint(resume_from_checkpoint: bool = False):
         logger.error(f"PCOS paper collection and processing failed: {e}", exc_info=True)
         return RAGResponse(
             success=False,
-            message=f"처리 실패: {str(e)}",
+            message=f"Processing failed: {str(e)}",
             papers_processed=0,
             papers_stored=0,
             processing_time=time.time() - start_time
@@ -214,38 +214,38 @@ async def fetch_and_process_endpoint(resume_from_checkpoint: bool = False):
 @router.get("/test-pubmed-search")
 async def test_pubmed_search_endpoint():
     """
-    PubMed 검색 결과를 XML 그대로 보여주는 테스트 API
+    Test API to show PubMed search results as raw XML
     """
     try:
         import httpx
         
-        # PubMed 검색 URL (현재 사용 중인 것과 동일)
+        # PubMed search URL (same as currently used)
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
         mesh_query = "Polycystic+Ovary+Syndrome[Mesh]+OR+PCOS[Mesh]+OR+Stein-Leventhal+Syndrome[Mesh]"
         max_results = 100
         
         search_url = f"{base_url}esearch.fcgi?db=pubmed&term={mesh_query}&retmax={max_results}&retmode=xml&datetype=pdat&mindate=2015&maxdate=2025"
         
-        logger.info(f"PubMed 검색 URL: {search_url}")
+        logger.info(f"PubMed search URL: {search_url}")
         
-        # PubMed 검색 실행
+        # Execute PubMed search
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(search_url)
             response.raise_for_status()
             
-            # XML 응답 그대로 반환
+            # Return XML response as is
             xml_content = response.text
             
-            # 기본 정보 추출 (로깅용)
+            # Extract basic information (for logging)
             import xml.etree.ElementTree as ET
             try:
                 root = ET.fromstring(xml_content)
                 id_list = root.findall(".//Id")
                 id_count = len(id_list)
-                logger.info(f"PubMed 검색 결과: {id_count}개 ID 발견")
+                logger.info(f"PubMed search results: {id_count} IDs found")
             except Exception as e:
-                logger.warning(f"XML 파싱 실패: {e}")
-                id_count = "파싱 실패"
+                logger.warning(f"XML parsing failed: {e}")
+                id_count = "Parsing failed"
             
         return {
                 "status": "success",
@@ -256,7 +256,7 @@ async def test_pubmed_search_endpoint():
             }
             
     except Exception as e:
-        logger.error(f"PubMed 검색 테스트 실패: {e}")
+        logger.error(f"PubMed search test failed: {e}")
         return {
             "status": "error",
             "message": str(e),
@@ -266,34 +266,34 @@ async def test_pubmed_search_endpoint():
 @router.get("/test-pmc-fetch/{pmcid}")
 async def test_pmc_fetch_endpoint(pmcid: str):
     """
-    PMC ID로 PMC XML을 가져오는 테스트 API
+    Test API to fetch PMC XML by PMC ID
     """
     try:
         import httpx
         
-        # PMC에서 본문 가져오기 (현재 사용 중인 것과 동일)
+        # Fetch content from PMC (same as currently used)
         fetch_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pmc&id={pmcid}&retmode=xml"
         
-        logger.info(f"PMC 가져오기 URL: {fetch_url}")
+        logger.info(f"PMC fetch URL: {fetch_url}")
         
-        # PMC XML 가져오기
+        # Fetch PMC XML
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(fetch_url)
             response.raise_for_status()
             
-            # XML 응답 그대로 반환
+            # Return XML response as is
             xml_content = response.text
             
-            # 기본 정보 추출 (로깅용)
+            # Extract basic information (for logging)
             import xml.etree.ElementTree as ET
             try:
                 root = ET.fromstring(xml_content)
                 body_elements = root.findall(".//body")
                 abstract_elements = root.findall(".//abstract")
                 
-                logger.info(f"PMC XML 파싱: body={len(body_elements)}개, abstract={len(abstract_elements)}개")
+                logger.info(f"PMC XML parsing: body={len(body_elements)} elements, abstract={len(abstract_elements)} elements")
             except Exception as e:
-                logger.warning(f"PMC XML 파싱 실패: {e}")
+                logger.warning(f"PMC XML parsing failed: {e}")
             
             return {
                 "status": "success",
@@ -304,7 +304,7 @@ async def test_pmc_fetch_endpoint(pmcid: str):
             }
             
     except Exception as e:
-        logger.error(f"PMC 가져오기 테스트 실패: {e}")
+        logger.error(f"PMC fetch test failed: {e}")
         return {
             "status": "error",
             "message": str(e),
@@ -315,41 +315,41 @@ async def test_pmc_fetch_endpoint(pmcid: str):
 @router.get("/test-pubmed-to-pmc")
 async def test_pubmed_to_pmc_endpoint():
     """
-    PubMed 검색 → PMC XML 가져오기 전체 과정을 보여주는 테스트 API
+    Test API to show the complete process of PubMed search → PMC XML fetch
     """
     try:
         import httpx
         import xml.etree.ElementTree as ET
         
-        # 1단계: PubMed 검색
+        # Step 1: PubMed search
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
         mesh_query = "Polycystic+Ovary+Syndrome[Mesh]+OR+PCOS[Mesh]+OR+Stein-Leventhal+Syndrome[Mesh]"
-        max_results = 10  # 테스트용으로 10개만
+        max_results = 10  # Only 10 for testing
         
         search_url = f"{base_url}esearch.fcgi?db=pubmed&term={mesh_query}&retmax={max_results}&retmode=xml&datetype=pdat&mindate=2015&maxdate=2025"
         
-        logger.info(f"1단계: PubMed 검색 시작 - URL: {search_url}")
+        logger.info(f"Step 1: PubMed search started - URL: {search_url}")
         
-        # PubMed 검색 실행
+        # Execute PubMed search
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(search_url)
             response.raise_for_status()
             pubmed_xml = response.text
             
-            # PubMed ID 추출
+            # Extract PubMed IDs
             root = ET.fromstring(pubmed_xml)
             pubmed_ids = [id_elem.text for id_elem in root.findall(".//Id")]
-            logger.info(f"PubMed 검색 완료: {len(pubmed_ids)}개 ID 발견")
+            logger.info(f"PubMed search completed: {len(pubmed_ids)} IDs found")
             
-            # 2단계: PubMed 상세 정보 가져오기
+            # Step 2: Fetch PubMed detailed information
             fetch_url = f"{base_url}efetch.fcgi?db=pubmed&retmode=xml&id={','.join(pubmed_ids)}"
-            logger.info(f"2단계: PubMed 상세 정보 가져오기 - URL: {fetch_url}")
+            logger.info(f"Step 2: Fetch PubMed detailed information - URL: {fetch_url}")
             
             response = await client.get(fetch_url)
             response.raise_for_status()
             pubmed_detail_xml = response.text
             
-            # PMC ID 추출
+            # Extract PMC IDs
             root = ET.fromstring(pubmed_detail_xml)
             papers_with_pmcid = []
             
@@ -357,7 +357,7 @@ async def test_pubmed_to_pmc_endpoint():
                 pmid = article.find(".//PMID")
                 pmid_text = pmid.text if pmid is not None else ""
                 
-                # PMC ID 찾기
+                # Find PMC ID
                 pmcid = ""
                 article_ids = article.findall(".//ArticleId")
                 for article_id in article_ids:
@@ -371,16 +371,16 @@ async def test_pubmed_to_pmc_endpoint():
                         "pmcid": pmcid
                     })
             
-            logger.info(f"PMC ID가 있는 논문: {len(papers_with_pmcid)}개")
+            logger.info(f"Papers with PMC ID: {len(papers_with_pmcid)}")
             
-            # 3단계: PMC XML 가져오기 (첫 번째 논문만)
+            # Step 3: Fetch PMC XML (first paper only)
             pmc_results = []
             if papers_with_pmcid:
                 first_paper = papers_with_pmcid[0]
                 pmcid = first_paper["pmcid"]
                 
                 pmc_fetch_url = f"{base_url}efetch.fcgi?db=pmc&id={pmcid}&retmode=xml"
-                logger.info(f"3단계: PMC XML 가져오기 - URL: {pmc_fetch_url}")
+                logger.info(f"Step 3: Fetch PMC XML - URL: {pmc_fetch_url}")
                 
                 response = await client.get(pmc_fetch_url)
                 response.raise_for_status()
@@ -413,7 +413,7 @@ async def test_pubmed_to_pmc_endpoint():
         }
         
     except Exception as e:
-        logger.error(f"PubMed → PMC 테스트 실패: {e}")
+        logger.error(f"PubMed → PMC test failed: {e}")
         return {
             "status": "error",
             "message": str(e)

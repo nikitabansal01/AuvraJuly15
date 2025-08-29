@@ -3,19 +3,19 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime
 
 class Author(BaseModel):
-    """저자 정보"""
+    """Author information"""
     last_name: str
     first_name: str
     affiliation: Optional[str] = None
 
 class PublicationDate(BaseModel):
-    """출판일자 정보"""
+    """Publication date information"""
     year: Optional[int] = None
     month: Optional[int] = None
     day: Optional[int] = None
 
 class StudyArm(BaseModel):
-    """연구 팔 정보"""
+    """Study arm information"""
     arm_name: Optional[str] = ""
     intervention_type: Optional[List[str]] = []
     target_symptoms: Optional[List[str]] = []
@@ -25,9 +25,9 @@ class StudyArm(BaseModel):
     description: Optional[str] = ""
 
 class ChunkStudyArms(BaseModel):
-    """청크의 study arms 정보를 PostgreSQL에 저장하기 위한 모델"""
+    """Model for storing chunk study arms information in PostgreSQL"""
     chunk_id: str
-    paper_id: str  # pmid 또는 pmcid
+    paper_id: str  # pmid or pmcid
     section_type: Optional[str] = ""
     chunk_summary: Optional[str] = ""
     study_arms: List[StudyArm] = []
@@ -39,29 +39,29 @@ class PaperMeta(BaseModel):
     content: str  # abstract or full text
     url: str
     date: str
-    source: Optional[str] = None  # 추가: 출처 정보
+    source: Optional[str] = None  # Added: source information
     
-    # 논문 식별자
+    # Paper identifiers
     pmid: Optional[str] = None
     pmcid: Optional[str] = None
     doi: Optional[str] = None
     
-    # 저자 정보
+    # Author information
     authors: Optional[List[Author]] = []
     
-    # 저널 정보
+    # Journal information
     journal: Optional[str] = None
     journal_issn: Optional[str] = None
     
-    # 출판년도 정보
+    # Publication year information
     publication_year: Optional[int] = None
     
-    # 추가 메타데이터
+    # Additional metadata
     mesh_terms: Optional[List[str]] = []
     abstract: Optional[str] = None
-    # 섹션 태그 정보 (원본 논문에서 전달)
+    # Section tag information (passed from original paper)
     source_paper: Optional[Dict[str, Any]] = None
-    # 우선순위 점수 제거 - 검색 시점에 계산
+    # Priority score removed - calculated at search time
 
 class ChunkedPaper(BaseModel):
     chunk_id: str
@@ -71,43 +71,43 @@ class ChunkedPaper(BaseModel):
     start_idx: int
     end_idx: int
     
-    # 논문 식별자
+    # Paper identifiers
     pmid: Optional[str] = None
     pmcid: Optional[str] = None
     doi: Optional[str] = None
     
-    # 저자 정보
+    # Author information
     authors: Optional[List[Author]] = []
     
-    # 저널 정보
+    # Journal information
     journal: Optional[str] = None
     journal_issn: Optional[str] = None
     
-    # 출판년도 정보
+    # Publication year information
     publication_year: Optional[int] = None
     
-    # 추가 메타데이터
+    # Additional metadata
     mesh_terms: Optional[List[str]] = []
     abstract: Optional[str] = None
-    # 섹션 태그 정보 (원본 논문에서 전달)
+    # Section tag information (passed from original paper)
     source_paper: Optional[Dict[str, Any]] = None
     
-    # 섹션 정보 (청크가 여러 섹션에 걸쳐있을 때 사용)
-    section_info: Optional[Dict[str, Any]] = None  # 청크가 속한 섹션 정보
-    overlapping_sections: Optional[List[Dict[str, Any]]] = []  # 청크가 걸쳐있는 모든 섹션들
+    # Section information (used when chunk spans multiple sections)
+    section_info: Optional[Dict[str, Any]] = None  # Section information where chunk belongs
+    overlapping_sections: Optional[List[Dict[str, Any]]] = []  # All sections the chunk spans
     
-    # 우선순위 점수 제거 - 검색 시점에 계산
+    # Priority score removed - calculated at search time
 
 class TaggedChunk(BaseModel):
     chunk_id: str
     text: str
     
-    # 새로운 필드들 (2차 태깅 리팩토링)
+    # New fields (2nd tagging refactoring)
     section_type: Optional[str] = ""
     chunk_summary: Optional[str] = ""
     study_arms: Optional[List[Dict[str, Any]]] = []
     
-    # Study arm에서 추출되는 필드들
+    # Fields extracted from Study arm
     condition_disease: Optional[List[str]] = []
     target: Optional[List[str]] = []
     target_age_distribution: Optional[Dict[str, int]] = {}
@@ -117,7 +117,7 @@ class TaggedChunk(BaseModel):
     target_symptoms: Optional[List[str]] = []
     primary_outcome: Optional[List[str]] = []
     
-    # 기존 필드들 (호환성을 위해 유지)
+    # Existing fields (maintained for compatibility)
     study_type: Optional[str] = ""
     is_human_study: Optional[bool] = False
     participant_count: Optional[int] = 0
@@ -129,7 +129,7 @@ class TaggedChunk(BaseModel):
     menstrual_phase: Optional[str] = ""
     primary_outcome_text: Optional[str] = ""
     
-    # 기존 필드 (하위 호환성)
+    # Existing field (backward compatibility)
     tags: Optional[List[str]] = []
     title: Optional[str] = ""
     url: Optional[str] = ""
@@ -139,17 +139,17 @@ class EmbeddingResult(BaseModel):
     values: List[float]
     metadata: dict
 
-# RAG API 요청 모델
+# RAG API request models
 class RAGRequest(BaseModel):
     """
-    RAG 요청 모델 - 단순화된 버전
+    RAG request model - simplified version
     """
-    # 기본값만 사용, 사용자 입력 불필요
+    # Use default values only, no user input required
     pass
 
 class RAGResponse(BaseModel):
     """
-    RAG 응답 모델
+    RAG response model
     """
     success: bool
     message: str

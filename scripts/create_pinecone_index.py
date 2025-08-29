@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pinecone 인덱스 생성 스크립트
+Pinecone index creation script
 """
 
 import os
@@ -10,31 +10,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def create_pinecone_index():
-    """Pinecone 인덱스 생성"""
+    """Create Pinecone index"""
     
     PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
     PINECONE_INDEX = os.getenv("PINECONE_INDEX", "auvra-rag")
     
     if not PINECONE_API_KEY:
-        print("❌ PINECONE_API_KEY 환경변수가 필요합니다.")
+        print("❌ PINECONE_API_KEY environment variable is required.")
         return
     
     try:
         # Pinecone v2 API initialization
         pc = Pinecone(api_key=PINECONE_API_KEY)
         
-        # 기존 인덱스 확인
+        # Check existing indexes
         existing_indexes = [index.name for index in pc.list_indexes()]
-        print(f"기존 인덱스: {existing_indexes}")
+        print(f"Existing indexes: {existing_indexes}")
         
         if PINECONE_INDEX in existing_indexes:
-            print(f"✅ 인덱스 '{PINECONE_INDEX}'가 이미 존재합니다.")
+            print(f"✅ Index '{PINECONE_INDEX}' already exists.")
             return
         
-        # 새 인덱스 생성 (Serverless)
+        # Create new index (Serverless)
         pc.create_index(
             name=PINECONE_INDEX,
-            dimension=1536,  # text-embedding-3-small 차원
+            dimension=1536,  # text-embedding-3-small dimension
             metric="cosine",
             spec=ServerlessSpec(
                 cloud="aws",
@@ -42,13 +42,13 @@ def create_pinecone_index():
             )
         )
         
-        print(f"✅ 인덱스 '{PINECONE_INDEX}' 생성 완료!")
-        print(f"  - 차원: 1536")
-        print(f"  - 메트릭: cosine")
-        print(f"  - 타입: Serverless")
+        print(f"✅ Index '{PINECONE_INDEX}' created successfully!")
+        print(f"  - Dimension: 1536")
+        print(f"  - Metric: cosine")
+        print(f"  - Type: Serverless")
         
     except Exception as e:
-        print(f"❌ 인덱스 생성 실패: {e}")
+        print(f"❌ Index creation failed: {e}")
 
 if __name__ == "__main__":
     create_pinecone_index() 

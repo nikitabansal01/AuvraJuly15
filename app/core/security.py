@@ -6,25 +6,25 @@ from app.core.config import settings
 import json
 import os
 
-# HTTP Bearer 토큰 스키마
+# HTTP Bearer token schema
 security = HTTPBearer()
 
-# Firebase 초기화
+# Firebase initialization
 def initialize_firebase():
-    """Firebase 초기화"""
+    """Initialize Firebase"""
     try:
-        # 이미 초기화되었는지 확인
+        # Check if already initialized
         if firebase_admin._apps:
             print("Firebase already initialized")
             return
         
-        # 서비스 계정 키 파일이 있는 경우
+        # If service account key file exists
         if os.path.exists("firebase-service-account.json"):
             cred = credentials.Certificate("firebase-service-account.json")
             firebase_admin.initialize_app(cred)
             print("Firebase initialized with service account file")
         else:
-            # 환경변수에서 설정
+            # Configure from environment variables
             if settings.FIREBASE_PROJECT_ID and settings.FIREBASE_PROJECT_ID != "your-firebase-project-id":
                 firebase_config = {
                     "type": "service_account",
@@ -43,13 +43,13 @@ def initialize_firebase():
                 firebase_admin.initialize_app(cred)
                 print("Firebase initialized with environment variables")
             else:
-                # 개발 환경에서는 기본 앱 사용
+                # Use default app in development
                 firebase_admin.initialize_app()
                 print("Firebase initialized with default app")
                 
     except Exception as e:
-        print(f"Firebase 초기화 오류: {e}")
-        # 이미 초기화된 경우 무시
+        print(f"Firebase initialization error: {e}")
+        # Ignore if already initialized
         if not firebase_admin._apps:
             try:
                 firebase_admin.initialize_app()
@@ -59,14 +59,14 @@ def initialize_firebase():
 
 
 async def verify_firebase_token(token: str) -> dict:
-    """Firebase ID 토큰 검증"""
+    """Verify Firebase ID token"""
     import logging
     logger = logging.getLogger(__name__)
     
     try:
-        logger.info(f"Firebase 토큰 검증 시작: 토큰 길이={len(token)}")
+        logger.info(f"Firebase token verification started: token length={len(token)}")
         
-        # Firebase 앱이 초기화되었는지 확인
+        # Check if Firebase app is initialized
         if not firebase_admin._apps:
             logger.error("Firebase not initialized")
             raise HTTPException(
@@ -74,38 +74,38 @@ async def verify_firebase_token(token: str) -> dict:
                 detail="Firebase not initialized"
             )
         
-        # Firebase 토큰 검증 (clock skew 10초 허용)
-        logger.info("Firebase 토큰 검증 실행 중...")
+        # Verify Firebase token (allow 10 seconds clock skew)
+        logger.info("Firebase token verification in progress...")
         decoded_token = auth.verify_id_token(token, check_revoked=False, clock_skew_seconds=10)
-        logger.info(f"Firebase 토큰 검증 성공: uid={decoded_token.get('uid')}, email={decoded_token.get('email')}")
+        logger.info(f"Firebase token verification successful: uid={decoded_token.get('uid')}, email={decoded_token.get('email')}")
         return decoded_token
         
     except Exception as e:
-        logger.error(f"Firebase 토큰 검증 실패: {str(e)}", exc_info=True)
+        logger.error(f"Firebase token verification failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"유효하지 않은 Firebase 토큰입니다: {str(e)}",
+            detail=f"Invalid Firebase token: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    """현재 사용자 정보 가져오기 (Firebase)"""
+    """Get current user information (Firebase)"""
     import logging
     logger = logging.getLogger(__name__)
     
     try:
-        logger.info(f"=== get_current_user 시작 ===")
+        logger.info(f"=== get_current_user started ===")
         token = credentials.credentials
-        logger.info(f"토큰 길이: {len(token) if token else 0}")
+        logger.info(f"Token length: {len(token) if token else 0}")
         
         decoded_token = await verify_firebase_token(token)
-        logger.info(f"Firebase 토큰 검증 성공: uid={decoded_token.get('uid')}")
+        logger.info(f"Firebase token verification successful: uid={decoded_token.get('uid')}")
         
-        # Firebase 사용자 정보 추출
+        # Extract Firebase user information
         user_info = {
             "uid": decoded_token.get("uid"),
-            "user_id": decoded_token.get("uid"),  # 호환성을 위해 둘 다 제공
+            "user_id": decoded_token.get("uid"),  # Provide both for compatibility
             "email": decoded_token.get("email"),
             "email_verified": decoded_token.get("email_verified", False),
             "name": decoded_token.get("name"),
@@ -113,27 +113,27 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             "provider": decoded_token.get("firebase", {}).get("sign_in_provider", "password")
         }
         
-        logger.info(f"사용자 정보 추출 완료: uid={user_info.get('user_id')}, email={user_info.get('email')}")
+        logger.info(f"User information extraction completed: uid={user_info.get('user_id')}, email={user_info.get('email')}")
         return user_info
         
     except Exception as e:
-        logger.error(f"get_current_user 실패: {str(e)}", exc_info=True)
+        logger.error(f"get_current_user failed: {str(e)}", exc_info=True)
         raise
 
 
 async def get_current_active_user(current_user: dict = Depends(get_current_user)) -> dict:
-    """현재 활성 사용자 정보 가져오기"""
-    # 이메일 인증 체크 비활성화 (개발 중)
+    """Get current active user information"""
+    # Email verification check disabled (during development)
     # if not current_user.get("email_verified", True):
     #     raise HTTPException(
     #         status_code=status.HTTP_400_BAD_REQUEST,
-    #         detail="이메일이 인증되지 않은 사용자입니다."
+    #         detail="User email not verified."
     #     )
     return current_user
 
 
 async def create_firebase_user(email: str, password: str, display_name: str = None) -> dict:
-    """Firebase 사용자 생성"""
+    """Create Firebase user"""
     try:
         user_properties = {
             "email": email,
@@ -155,12 +155,12 @@ async def create_firebase_user(email: str, password: str, display_name: str = No
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"사용자 생성 실패: {str(e)}"
+            detail=f"User creation failed: {str(e)}"
         )
 
 
 async def update_firebase_user(uid: str, **kwargs) -> dict:
-    """Firebase 사용자 정보 업데이트"""
+    """Update Firebase user information"""
     try:
         user_record = auth.update_user(uid, **kwargs)
         return {
@@ -172,43 +172,43 @@ async def update_firebase_user(uid: str, **kwargs) -> dict:
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"사용자 업데이트 실패: {str(e)}"
+            detail=f"User update failed: {str(e)}"
         )
 
 
 async def delete_firebase_user(uid: str):
-    """Firebase 사용자 삭제"""
+    """Delete Firebase user"""
     try:
         auth.delete_user(uid)
-        return {"message": "사용자가 성공적으로 삭제되었습니다."}
+        return {"message": "User deleted successfully."}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"사용자 삭제 실패: {str(e)}"
+            detail=f"User deletion failed: {str(e)}"
         )
 
 
 async def send_email_verification(uid: str):
-    """이메일 인증 메일 발송"""
+    """Send email verification"""
     try:
-        # Firebase Admin SDK에서는 직접 이메일 발송 불가
-        # 클라이언트에서 처리하거나 Cloud Functions 사용
-        return {"message": "이메일 인증 메일이 발송되었습니다."}
+        # Firebase Admin SDK cannot send emails directly
+        # Handle on client side or use Cloud Functions
+        return {"message": "Email verification sent."}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"이메일 발송 실패: {str(e)}"
+            detail=f"Email sending failed: {str(e)}"
         )
 
 
 async def send_password_reset_email(email: str):
-    """비밀번호 재설정 이메일 발송"""
+    """Send password reset email"""
     try:
-        # Firebase Admin SDK에서는 직접 이메일 발송 불가
-        # 클라이언트에서 처리하거나 Cloud Functions 사용
-        return {"message": "비밀번호 재설정 이메일이 발송되었습니다."}
+        # Firebase Admin SDK cannot send emails directly
+        # Handle on client side or use Cloud Functions
+        return {"message": "Password reset email sent."}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"이메일 발송 실패: {str(e)}"
+            detail=f"Email sending failed: {str(e)}"
         ) 

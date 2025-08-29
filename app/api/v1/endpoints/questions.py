@@ -53,14 +53,14 @@ async def save_session_data(
 ):
     """Save survey data to session (available without login)"""
     try:
-        logger.info(f"세션 데이터 저장 요청: session_id={session_id}")
+        logger.info(f"Session data save request: session_id={session_id}")
         
         service = QuestionService(db)
         
         # Check if session exists
         session = service.get_session(session_id)
         if not session:
-            logger.error(f"세션을 찾을 수 없음: {session_id}")
+            logger.error(f"Session not found: {session_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found or expired"
@@ -70,7 +70,7 @@ async def save_session_data(
         success = service.save_session_data(session_id, data_request.data)
         
         if success:
-            logger.info(f"세션 데이터 저장 성공: {session_id}")
+            logger.info(f"Session data saved successfully: {session_id}")
             return {"message": "Session data saved successfully"}
         else:
             raise HTTPException(
@@ -81,7 +81,7 @@ async def save_session_data(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"세션 데이터 저장 중 예외 발생: {str(e)}", exc_info=True)
+        logger.error(f"Exception during session data save: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session data save failed: {str(e)}"
@@ -122,14 +122,14 @@ async def get_session_recommendations(
     try:
         from app.core.database import RecommendationRecord, RecommendationAdvice
         
-        # 세션 연결된 추천들 조회
+        # Get recommendations linked to session
         recommendations = db.query(RecommendationRecord).filter(
             RecommendationRecord.session_id == session_id
         ).all()
         
         result = []
         for rec in recommendations:
-            # 추천에 연결된 조언들 조회
+            # Get advices linked to recommendation
             advices = db.query(RecommendationAdvice).filter(
                 RecommendationAdvice.recommendation_id == rec.id
             ).all()
@@ -176,7 +176,7 @@ async def get_session_recommendations(
         }
         
     except Exception as e:
-        logger.error(f"세션 추천 조회 실패: {str(e)}", exc_info=True)
+        logger.error(f"Session recommendations retrieval failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session recommendations retrieval failed: {str(e)}"
@@ -189,14 +189,14 @@ async def start_session_recommendations_generation(
 ):
     """Start generating recommendations for session (available without login)"""
     try:
-        logger.info(f"세션 추천 생성 시작 요청: session_id={session_id}")
+        logger.info(f"Session recommendation generation start request: session_id={session_id}")
         
         service = QuestionService(db)
         
         # Check if session exists and has data
         session = service.get_session(session_id)
         if not session:
-            logger.error(f"세션을 찾을 수 없음: {session_id}")
+            logger.error(f"Session not found: {session_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found or expired"
@@ -204,7 +204,7 @@ async def start_session_recommendations_generation(
         
         # Check if session has data
         if session.age is None and session.period_description is None:
-            logger.error(f"세션에 데이터가 없음: {session_id}")
+            logger.error(f"Session has no data: {session_id}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Session has no data to generate recommendations"
@@ -217,7 +217,7 @@ async def start_session_recommendations_generation(
         ).count()
         
         if existing_recommendations > 0:
-            logger.info(f"이미 추천이 존재함: {session_id}, count={existing_recommendations}")
+            logger.info(f"Recommendations already exist: {session_id}, count={existing_recommendations}")
             return {
                 "message": "Recommendations already exist",
                 "status": "completed",
@@ -229,14 +229,14 @@ async def start_session_recommendations_generation(
         processing_service = ProcessingStatusService(db)
         existing_processing = processing_service.get_processing_status(session_id)
         if existing_processing and existing_processing.processing_status in ["queued", "in_progress"]:
-            logger.info(f"이미 처리 중: {session_id}, status={existing_processing.processing_status}")
+            logger.info(f"Already processing: {session_id}, status={existing_processing.processing_status}")
             return {
                 "message": "Recommendation generation already in progress",
                 "status": existing_processing.processing_status,
                 "session_id": session_id
             }
         
-        # 세션 데이터로 UserProfile 생성 (임시)
+        # Create temporary UserProfile from session data
         session_data = service.get_session_data(session_id)
         if not session_data:
             raise HTTPException(
@@ -244,7 +244,7 @@ async def start_session_recommendations_generation(
                 detail="Session data not found"
             )
         
-        # 임시 UserProfile 생성
+        # Create temporary UserProfile
         temp_user_profile = {
             "age": session_data.age,
             "period_description": session_data.period_description,
@@ -263,25 +263,25 @@ async def start_session_recommendations_generation(
             "stress_level": session_data.stress_level
         }
         
-        # Root cause engine을 사용하여 호르몬 불균형 분석 및 추가
+        # Use Root cause engine to analyze hormone imbalance and add
         from app.services.root_cause_engine import RootCauseEngine
         root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
         temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
         temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
         
-        # QuestionSession에 root cause 결과 저장
+        # Save root cause results to QuestionSession
         session.primary_hormone = root_cause_analysis["primary_imbalance"]
         session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
         db.commit()
         
-        # 처리 상태 레코드 생성
+        # Create processing status record
         processing_status = processing_service.create_processing_status(session_id, temp_user_profile)
         
         # Start recommendation generation in background
         import asyncio
         asyncio.create_task(_generate_recommendations_background(session_id, service, processing_service, db))
         
-        logger.info(f"세션 추천 생성 시작됨: {session_id}")
+        logger.info(f"Session recommendation generation started: {session_id}")
         return {
             "message": "Recommendation generation started",
             "status": "queued",
@@ -291,7 +291,7 @@ async def start_session_recommendations_generation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"세션 추천 생성 시작 실패: {str(e)}", exc_info=True)
+        logger.error(f"Failed to start session recommendation generation: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start recommendation generation: {str(e)}"
@@ -299,20 +299,20 @@ async def start_session_recommendations_generation(
 
 async def _generate_recommendations_background(session_id: str, service, processing_service, db) -> None:
     """
-    백그라운드에서 세션 추천 생성
+    Generate session recommendations in background
     """
     try:
-        logger.info(f"백그라운드 추천 생성 시작: {session_id}")
+        logger.info(f"Background recommendation generation started: {session_id}")
         
-        # 처리 시작 상태로 업데이트
+        # Update to processing started status
         processing_service.update_processing_started(session_id)
         
         recommendation_service = RecommendationService(db)
         
-        # 세션 데이터로 UserProfile 생성 (임시)
+        # Create temporary UserProfile from session data
         session_data = service.get_session_data(session_id)
         if session_data:
-            # 임시 UserProfile 생성 (uid는 None)
+            # Create temporary UserProfile (uid is None)
             temp_user_profile = {
                 "age": session_data.age,
                 "period_description": session_data.period_description,
@@ -331,27 +331,27 @@ async def _generate_recommendations_background(session_id: str, service, process
                 "stress_level": session_data.stress_level
             }
             
-            # Root cause engine을 사용하여 호르몬 불균형 분석 및 추가
+            # Use Root cause engine to analyze hormone imbalance and add
             from app.services.root_cause_engine import RootCauseEngine
             root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
             temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
             temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
             
-            # QuestionSession에 root cause 결과 저장 (이미 저장되어 있지 않은 경우만)
+            # Save root cause results to QuestionSession (only if not already saved)
             session = service.get_session(session_id)
             if session and not session.primary_hormone:
                 session.primary_hormone = root_cause_analysis["primary_imbalance"]
                 session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
                 db.commit()
             
-            # 각 카테고리별 추천 생성 (에러 핸들링 개선)
+            # Generate recommendations for each category (improved error handling)
             categories = ["food", "movement", "mindfulness"]
             successful_categories = []
             failed_categories = []
             
             for category in categories:
                 try:
-                    # 카테고리 처리 시작
+                    # Start category processing
                     processing_service.update_category_status(session_id, category, "processing", f"{category} recommendation generation in progress")
                     
                     success = await recommendation_service.generate_and_save_session_recommendations(
@@ -363,21 +363,21 @@ async def _generate_recommendations_background(session_id: str, service, process
                     if success:
                         successful_categories.append(category)
                         processing_service.update_category_status(session_id, category, "completed", f"{category} recommendation completed")
-                        logger.info(f"카테고리 추천 생성 성공: {session_id}, {category}")
+                        logger.info(f"Category recommendation generation successful: {session_id}, {category}")
                     else:
                         failed_categories.append(category)
                         processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation failed")
-                        logger.error(f"카테고리 추천 생성 실패: {session_id}, {category}")
+                        logger.error(f"Category recommendation generation failed: {session_id}, {category}")
                         
                 except Exception as e:
                     failed_categories.append(category)
                     processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation error")
-                    logger.error(f"카테고리 추천 생성 중 예외: {session_id}, {category}, error={str(e)}")
+                    logger.error(f"Exception during category recommendation generation: {session_id}, {category}, error={str(e)}")
                 
-                # 하트비트 업데이트
+                # Update heartbeat
                 processing_service.update_heartbeat(session_id)
             
-            # 전체 처리 완료 (성공/실패 관계없이)
+            # Complete overall processing (regardless of success/failure)
             result_summary = {
                 "successful_categories": successful_categories,
                 "failed_categories": failed_categories,
@@ -386,18 +386,18 @@ async def _generate_recommendations_background(session_id: str, service, process
             
             processing_service.update_processing_completed(session_id, result_summary)
             
-            logger.info(f"백그라운드 세션 추천 생성 완료: {session_id}")
-            logger.info(f"성공한 카테고리: {successful_categories}")
-            logger.info(f"실패한 카테고리: {failed_categories}")
+            logger.info(f"Background session recommendation generation completed: {session_id}")
+            logger.info(f"Successful categories: {successful_categories}")
+            logger.info(f"Failed categories: {failed_categories}")
             
         else:
-            logger.warning(f"세션 데이터를 찾을 수 없음: {session_id}")
+            logger.warning(f"Session data not found: {session_id}")
             processing_service.update_processing_failed(session_id, {"error": "Session data not found"})
             
     except Exception as e:
-        logger.error(f"백그라운드 세션 추천 생성 실패: {str(e)}", exc_info=True)
+        logger.error(f"Background session recommendation generation failed: {str(e)}", exc_info=True)
         processing_service.update_processing_failed(session_id, {"error": str(e)})
-        # 백그라운드 실패는 사용자에게 영향을 주지 않음
+        # Background failure doesn't affect user
 
 @router.post("/sessions/{session_id}/link")
 async def link_session_to_user(
@@ -411,23 +411,23 @@ async def link_session_to_user(
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"=== 엔드포인트 진입 성공 ===")
+    logger.info(f"=== Endpoint entry successful ===")
     logger.info(f"session_id: {session_id}")
     logger.info(f"link_data: {link_data}")
     logger.info(f"current_user: {current_user}")
-    logger.info(f"db 객체: {type(db)}")
+    logger.info(f"db object: {type(db)}")
     
     try:
-        logger.info(f"=== _link_session_to_user_internal 호출 시작 ===")
-        # 타임아웃 설정 (30초)
+        logger.info(f"=== _link_session_to_user_internal call start ===")
+        # Set timeout (30 seconds)
         result = await asyncio.wait_for(
             _link_session_to_user_internal(session_id, link_data, db, current_user),
             timeout=30.0
         )
-        logger.info(f"=== _link_session_to_user_internal 완료 ===")
+        logger.info(f"=== _link_session_to_user_internal completed ===")
         return result
     except asyncio.TimeoutError:
-        logger.error(f"세션 연결 타임아웃: session_id={session_id}")
+        logger.error(f"Session linking timeout: session_id={session_id}")
         raise HTTPException(
             status_code=status.HTTP_408_REQUEST_TIMEOUT,
             detail="Session linking timeout"
@@ -441,24 +441,24 @@ async def _link_session_to_user_internal(
 ):
     """Link session to user and delete session"""
     try:
-        logger.info(f"=== 세션 연결 시작 ===")
-        logger.info(f"세션 연결 시도: session_id={session_id}")
-        logger.info(f"현재 사용자 정보: uid={current_user.get('uid')}, email={current_user.get('email')}")
-        logger.info(f"요청 데이터: name={link_data.user_profile.name}, email={link_data.user_profile.email}")
+        logger.info(f"=== Session linking start ===")
+        logger.info(f"Session linking attempt: session_id={session_id}")
+        logger.info(f"Current user info: uid={current_user.get('uid')}, email={current_user.get('email')}")
+        logger.info(f"Request data: name={link_data.user_profile.name}, email={link_data.user_profile.email}")
         
         service = QuestionService(db)
         
         # Check that only the user can link their own session
-        # Firebase UID와 이메일이 일치하는지 확인
-        logger.info(f"이메일 일치 확인: current={current_user.get('email')}, request={link_data.user_profile.email}")
+        # Verify Firebase UID and email match
+        logger.info(f"Email match verification: current={current_user.get('email')}, request={link_data.user_profile.email}")
         if current_user.get("email") != link_data.user_profile.email:
-            logger.warning(f"이메일 불일치: current_user_email={current_user.get('email')}, request_email={link_data.user_profile.email}")
+            logger.warning(f"Email mismatch: current_user_email={current_user.get('email')}, request_email={link_data.user_profile.email}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only link your own sessions"
             )
         
-        logger.info(f"세션 연결 서비스 호출: uid={current_user.get('uid')}, name={link_data.user_profile.name}, current_timezone={link_data.current_timezone}")
+        logger.info(f"Session linking service call: uid={current_user.get('uid')}, name={link_data.user_profile.name}, current_timezone={link_data.current_timezone}")
         success = service.link_session_to_user(
             session_id, 
             current_user.get("uid"),
@@ -468,21 +468,21 @@ async def _link_session_to_user_internal(
         )
         
         if success:
-            logger.info(f"세션 연결 성공: session_id={session_id}")
+            logger.info(f"Session linking successful: session_id={session_id}")
             return {"message": "Session linked successfully and deleted"}
         else:
-            logger.error(f"세션 연결 실패: session_id={session_id}, success=False")
-            logger.error(f"=== 400 오류 발생: Session linking failed ===")
+            logger.error(f"Session linking failed: session_id={session_id}, success=False")
+            logger.error(f"=== 400 error occurred: Session linking failed ===")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Session linking failed"
             )
             
     except HTTPException as he:
-        logger.error(f"HTTPException 발생: session_id={session_id}, status_code={he.status_code}, detail={he.detail}")
+        logger.error(f"HTTPException occurred: session_id={session_id}, status_code={he.status_code}, detail={he.detail}")
         raise
     except Exception as e:
-        logger.error(f"세션 연결 중 예외 발생: session_id={session_id}, error={str(e)}", exc_info=True)
+        logger.error(f"Exception during session linking: session_id={session_id}, error={str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session linking failed: {str(e)}"
@@ -492,11 +492,11 @@ async def _link_session_to_user_internal(
 async def test_auth(
     current_user: dict = Depends(get_current_active_user)
 ):
-    """테스트용 인증 엔드포인트"""
+    """Test authentication endpoint"""
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"=== 테스트 인증 성공 ===")
+    logger.info(f"=== Test authentication successful ===")
     logger.info(f"current_user: {current_user}")
     
     return {"message": "Authentication successful", "user": current_user}
@@ -506,51 +506,51 @@ async def test_db(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_active_user)
 ):
-    """테스트용 DB 연결 엔드포인트"""
+    """Test database connection endpoint"""
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"=== DB 연결 테스트 시작 ===")
-    logger.info(f"db 객체: {type(db)}")
+    logger.info(f"=== Database connection test start ===")
+    logger.info(f"db object: {type(db)}")
     logger.info(f"current_user: {current_user}")
     
     try:
-        # 간단한 DB 쿼리 테스트
+        # Simple database query test
         from app.core.database import QuestionSession
         session_count = db.query(QuestionSession).count()
-        logger.info(f"세션 개수: {session_count}")
+        logger.info(f"Session count: {session_count}")
         
-        logger.info(f"=== DB 연결 테스트 성공 ===")
+        logger.info(f"=== Database connection test successful ===")
         return {"message": "Database connection successful", "session_count": session_count}
     except Exception as e:
-        logger.error(f"DB 연결 테스트 실패: {str(e)}")
+        logger.error(f"Database connection test failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database test failed: {str(e)}")
 
 @router.post("/test-pydantic")
 async def test_pydantic(
     current_user: dict = Depends(get_current_active_user)
 ):
-    """테스트용 Pydantic 모델 엔드포인트"""
+    """Test Pydantic model endpoint"""
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"=== Pydantic 테스트 시작 ===")
+    logger.info(f"=== Pydantic test start ===")
     logger.info(f"current_user: {current_user}")
     
     try:
-        # 간단한 Pydantic 모델 테스트
+        # Simple Pydantic model test
         from app.models.question_models import UserProfileCreate
         
         test_data = {"name": "Test", "email": "test@test.com"}
-        logger.info(f"테스트 데이터: {test_data}")
+        logger.info(f"Test data: {test_data}")
         
         profile = UserProfileCreate(**test_data)
-        logger.info(f"Pydantic 모델 생성 성공: {profile}")
+        logger.info(f"Pydantic model creation successful: {profile}")
         
-        logger.info(f"=== Pydantic 테스트 성공 ===")
+        logger.info(f"=== Pydantic test successful ===")
         return {"message": "Pydantic test successful", "profile": profile.dict()}
     except Exception as e:
-        logger.error(f"Pydantic 테스트 실패: {str(e)}")
+        logger.error(f"Pydantic test failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Pydantic test failed: {str(e)}")
 
 @router.get("/users/{uid}/responses", response_model=List[UserResponseFull])
@@ -610,7 +610,7 @@ async def get_session_recommendations_status(
         from app.core.database import RecommendationRecord
         from app.services.processing_status_service import ProcessingStatusService
         
-        # 세션 존재 여부 확인
+        # Check if session exists
         service = QuestionService(db)
         session = service.get_session(session_id)
         
@@ -620,12 +620,12 @@ async def get_session_recommendations_status(
                 detail="Session not found or expired"
             )
         
-        # 처리 상태 확인
+        # Check processing status
         processing_service = ProcessingStatusService(db)
         processing_status = processing_service.get_processing_status(session_id)
         
         if processing_status:
-            # 처리 상태가 있으면 그것을 우선 사용
+            # Use processing status if available
             return {
                 "session_id": session_id,
                 "status": processing_status.processing_status,
@@ -643,7 +643,7 @@ async def get_session_recommendations_status(
                 "error": processing_status.error
             }
         else:
-            # 처리 상태가 없으면 기존 방식으로 확인
+            # Use legacy method if no processing status
             categories = ["food", "movement", "mindfulness"]
             category_counts = {}
             total_recommendations = 0
@@ -656,18 +656,18 @@ async def get_session_recommendations_status(
                 category_counts[category] = count
                 total_recommendations += count
             
-            # 더 정교한 상태 판단
+            # More sophisticated status determination
             completed_categories = [cat for cat, count in category_counts.items() if count > 0]
             
-            if len(completed_categories) == 3:  # 모든 카테고리 완료
-                # 추가로 최소 추천 수 확인 (각 카테고리당 최소 1개)
+            if len(completed_categories) == 3:  # All categories completed
+                # Additional check for minimum recommendations (at least 1 per category)
                 if all(count > 0 for count in category_counts.values()):
                     status = "completed"
                 else:
                     status = "in_progress"
-            elif len(completed_categories) > 0:  # 일부 카테고리 완료
+            elif len(completed_categories) > 0:  # Some categories completed
                 status = "in_progress"
-            else:  # 아직 시작 안됨
+            else:  # Not started yet
                 status = "pending"
             
             return {
@@ -685,7 +685,7 @@ async def get_session_recommendations_status(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"세션 추천 상태 조회 실패: {str(e)}", exc_info=True)
+        logger.error(f"Session recommendations status retrieval failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session recommendations status retrieval failed: {str(e)}"
@@ -697,9 +697,9 @@ async def update_user_timezone(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """사용자 시간대 업데이트"""
+    """Update user timezone"""
     try:
-        logger.info(f"시간대 변경 요청: uid={current_user.get('uid')}, new_timezone={timezone_update.new_timezone}")
+        logger.info(f"Timezone change request: uid={current_user.get('uid')}, new_timezone={timezone_update.new_timezone}")
         
         service = QuestionService(db)
         success = service.update_user_timezone(current_user.get("uid"), timezone_update.new_timezone)
@@ -707,18 +707,18 @@ async def update_user_timezone(
         if success:
             return TimezoneUpdateResponse(
                 success=True,
-                message="시간대가 성공적으로 업데이트되었습니다",
+                message="Timezone updated successfully",
                 new_timezone=timezone_update.new_timezone
             )
         else:
             return TimezoneUpdateResponse(
                 success=False,
-                message="시간대 업데이트에 실패했습니다"
+                message="Timezone update failed"
             )
             
     except Exception as e:
-        logger.error(f"시간대 변경 실패: {str(e)}")
+        logger.error(f"Timezone change failed: {str(e)}")
         return TimezoneUpdateResponse(
             success=False,
-            message=f"시간대 변경 중 오류가 발생했습니다: {str(e)}"
+            message=f"Error occurred during timezone change: {str(e)}"
         ) 
