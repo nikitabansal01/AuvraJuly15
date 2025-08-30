@@ -429,7 +429,7 @@ class HybridSearchService:
             asyncio.to_thread(self.lexical_search, query, lexical_k)
         )
         dense_task = asyncio.create_task(
-            self.dense_search, query, dense_k, namespace
+            self.dense_search(query, dense_k, namespace)
         )
         
         lexical_results, dense_results = await asyncio.gather(lexical_task, dense_task)

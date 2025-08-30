@@ -1,0 +1,819 @@
+{
+  "query": "What is the relationship between hyperandrogenism (HA) and gut microbiota in PCOS?",
+  "method": "lexical_combined",
+  "bm25_index": "Combined (HQ+LQ)",
+  "results": [
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "Studies were selected based on their reporting of mechanistic insights related to hormonal, metabolic, or inflammatory pathways. This selection process involved a two-stage screening, starting with a review of titles and abstracts, followed by a full-text evaluation of potentially eligible studies. The aim is to systematically delineate the tripartite interactions among TCM, PCOS, and gut microbiota, to synthesize evidence on the therapeutic benefits of TCM-driven microbiota modulation in mitigating PCOS pathologies, and to identify and evaluate novel microbiota-targeted modulators derived from TCM compounds, which may offer innovative strategies for clinical management, symptom alleviation, and long-term health improvement in affected women. 2 Relationship between intestinal microflora and PCOS 2.1 Gut microflora signatures in PCOS The gut microbiota is essential for maintaining human homeostasis, and an imbalance in this microbiota is associated with polycystic ovary syndrome (PCOS).",
+      "section_title": "Discussion",
+      "chunk_summary": "The section explores the link between gut microbiota and PCOS, focusing on the potential of TCM to modulate microbiota and alleviate PCOS symptoms. It discusses hyperandrogenism, insulin resistance, and chronic inflammation as key features of PCOS linked to microbiota imbalances.",
+      "study_arms_text": "Study Arm 1: Interventions: others, Target Symptoms: hirsutism, adult acne, Hormone Focus: androgens, insulin",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:29:39.223794",
+      "start_idx": 300,
+      "end_idx": 2266,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [
+        "others"
+      ],
+      "symptoms_focus": [
+        "hirsutism",
+        "adult acne"
+      ],
+      "hormone_focus": [
+        "androgens",
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_2",
+      "similarity_score": 0,
+      "bm25_score": 195.56131314996287
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "Often, there is insufficient detailed characterization of microbial changes, and a lack of comprehensive metabolomic profiling that links TCM interventions with shifts in gut microbiota and host outcomes. To fully realize the therapeutic potential of TCM via gut microbiota modulation, it is essential to align TCM practices with modern clinical standards. This alignment necessitates rigorous standardization and quality control of TCM products, employing advanced analytical techniques such as chromatography. Although there is evidence indicating that specific TCM compound formulas or individual herbs can influence gut microbiota, the precise active components and their molecular targets remain unidentified. While there is evidence that specific TCM compound formulas or individual herbs can influence gut microbiota, the exact active components and their molecular targets remain unclear. Therefore, future research should focus on identifying these specific active components within TCM form",
+      "section_title": "Discussion",
+      "chunk_summary": "This section highlights the challenges in current research on Traditional Chinese Medicine (TCM) for PCOS, such as inadequate microbial characterization and lack of standardization in TCM formulations. It emphasizes the need for identifying active components in TCM that influence gut microbiota using modern biotechnologies.",
+      "study_arms_text": "Study Arm 1: ",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:30:41.517717",
+      "start_idx": 357,
+      "end_idx": 1923,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [],
+      "symptoms_focus": [],
+      "hormone_focus": [],
+      "id": "paper_40842497_chunk_11",
+      "similarity_score": 0,
+      "bm25_score": 169.94245236113818
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "Around 50%–70% of PCOS patients present with varying degrees of IR, which is more pronounced in obese patients, who have a higher risk of diabetes compared to normal women ( 28 12 10 12 29 30 14 2.2.3 Chronic inflammation Chronic inflammation is a notable feature in patients with PCOS, marked by low-grade inflammation that manifests through several biological indicators. These patients often show elevated levels of proinflammatory cytokines, both in their ovarian tissue and bloodstream ( 31 32 33 34 35 35 10 36 37 38 39 39 40 10 41 42 10 A summary of the mechanism is shown in Figure 1 Figure 1 Mechanism of gut microbiota dysbiosis for PCOS. Gut microbiota dysbiosis, characterized by reduced diversity, decreased beneficial bacteria, and increased potentially pathogenic bacteria, may contribute to PCOS through several pathways. The first possible mechanism involves specific bacterial taxa correlating with elevated serum testosterone levels, directly influencing androgen metabolism and le",
+      "section_title": "Discussion",
+      "chunk_summary": "The chunk discusses how gut microbiota dysbiosis in PCOS may contribute to insulin resistance and inflammation, exacerbating hyperandrogenism. It highlights Traditional Chinese Medicine's role in potentially managing these issues holistically.",
+      "study_arms_text": "Study Arm 1: Target Symptoms: irregular periods, hirsutism, Hormone Focus: insulin, androgens",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:29:45.232578",
+      "start_idx": 374,
+      "end_idx": 2738,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [],
+      "symptoms_focus": [
+        "hirsutism",
+        "irregular periods"
+      ],
+      "hormone_focus": [
+        "androgens",
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_3",
+      "similarity_score": 0,
+      "bm25_score": 169.83347087473834
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "Reference Intervention Animals Model Results Mechanism ( 13 Banxia Xiexin Decoction Rats Letrozole plus HFD increase the abundance of Verrucomicrobiota, Proteobacteria, Akkermansia and Blautia; reduce the abundance of Clostridium_sensu_stricto_1, and promote follicular development reduces insulin resistance ( 48 Bu Shen Hua Zhuo formula Rats Letrozole increase the α-diversity of the gut microbiota; reduce the relative abundance of Firmicutes; increase lactic acid bacteria and short-chain fatty acid-producing bacteria regulate hormone metabolism; inhibit inflammatory responses ( 49 Shaoyao Gancao Decoction Rats Letrozole reduced the ratio of Firmicutes to Bacteroidetes; decreased the LPS-producing pathogen Proteobacteria; increased the abundance of Butyricicoccus, Coprococcus, Akkermansia, Blautia and Bacteroides regulate hormone metabolism; inhibit inflammatory responses ( 50 Yulin Tong Bu foumula Mice DEHA plus HFD increasing the relative abundance of beneficial bacteria such as lacti",
+      "section_title": "Discussion",
+      "chunk_summary": "This section explores the effects of various Traditional Chinese Medicine formulas on gut microbiota in animal models of PCOS, highlighting changes in bacterial abundance and their potential to reduce insulin resistance and inflammation. Acupuncture is also discussed as a complementary approach to modulate gut microbiota.",
+      "study_arms_text": "Study Arm 1: Hormone Focus: insulin",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:30:28.023347",
+      "start_idx": 1816,
+      "end_idx": 3958,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 0.561624649859944,
+      "overlapping_sections": [
+        "Discussion||0.561624649859944",
+        "Introduction||0.43790849673202614"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [],
+      "symptoms_focus": [],
+      "hormone_focus": [
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_9",
+      "similarity_score": 0,
+      "bm25_score": 166.4221976952074
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "Table 2 Animal experiment of treating PCOS with TCM through gut microbiota. Reference Intervention Animals Model Results Mechanism ( 13 Banxia Xiexin Decoction Rats Letrozole plus HFD increase the abundance of Verrucomicrobiota, Proteobacteria, Akkermansia and Blautia; reduce the abundance of Clostridium_sensu_stricto_1, and promote follicular development reduces insulin resistance ( 48 Bu Shen Hua Zhuo formula Rats Letrozole increase the α-diversity of the gut microbiota; reduce the relative abundance of Firmicutes; increase lactic acid bacteria and short-chain fatty acid-producing bacteria regulate hormone metabolism; inhibit inflammatory responses ( 49 Shaoyao Gancao Decoction Rats Letrozole reduced the ratio of Firmicutes to Bacteroidetes; decreased the LPS-producing pathogen Proteobacteria; increased the abundance of Butyricicoccus, Coprococcus, Akkermansia, Blautia and Bacteroides regulate hormone metabolism; inhibit inflammatory responses ( 50 Yulin Tong Bu foumula Mice DEHA plu",
+      "section_title": "Discussion",
+      "chunk_summary": "Animal studies demonstrate the potential of various Traditional Chinese Medicine (TCM) formulations in modulating gut microbiota to manage PCOS. Results indicate changes in gut bacteria, reduced insulin resistance, and inhibited inflammatory responses.",
+      "study_arms_text": "Study Arm 1: Interventions: others, Hormone Focus: insulin",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:30:21.795763",
+      "start_idx": 76,
+      "end_idx": 1967,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [
+        "others"
+      ],
+      "symptoms_focus": [],
+      "hormone_focus": [
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_8",
+      "similarity_score": 0,
+      "bm25_score": 164.53204250491487
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "4.2 Mechanisms of acupuncture in regulating PCOS via gut microbiota Acupuncture, a fundamental practice in Traditional Chinese Medicine with a history spanning thousands of years, offers therapeutic benefits for polycystic ovary syndrome (PCOS) through mechanisms that differ from those of orally administered herbal remedies. While herbal treatments interact directly with the gastrointestinal tract and its microbiota, acupuncture primarily works by stimulating specific acupoints on the body surface, which sends afferent neural signals to the central nervous system (CNS) and triggers a series of neuroendocrine responses. A crucial pathway for the systemic effects of acupuncture, including its impact on gut microbiota and PCOS-related issues, is the brain-gut axis ( 91 92 93 94 5 Discussion Overall, substantial evidence links gut microbiota dysbiosis to the pathogenesis of PCOS. TCM, which includes herbal formulas such as Bu Shen Hua Zhuo formula, Shaoyao-Gancao Decoction, and Modified Ba",
+      "section_title": "Discussion",
+      "chunk_summary": "This section explores how acupuncture in Traditional Chinese Medicine can regulate PCOS via gut microbiota, focusing on neural mechanisms and the brain-gut axis. It also discusses the therapeutic potential and challenges of TCM, including sample size limitations and formulation inconsistencies.",
+      "study_arms_text": "Study Arm 1: Interventions: others, Target Symptoms: irregular periods, difficulty losing weight, weight gain, hirsutism, thinning of hair, adult acne, Hormone Focus: insulin, androgens",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:30:35.323176",
+      "start_idx": 327,
+      "end_idx": 2922,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [
+        "others"
+      ],
+      "symptoms_focus": [
+        "weight gain",
+        "irregular periods",
+        "hirsutism",
+        "adult acne",
+        "difficulty losing weight",
+        "thinning of hair"
+      ],
+      "hormone_focus": [
+        "androgens",
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_10",
+      "similarity_score": 0,
+      "bm25_score": 161.0231355097026
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "Diagram showing how Traditional Chinese Medicine (TCM) can influence polycystic ovary syndrome (PCOS) by altering gut microbiota. TCM elements include regulating hormone metabolism, reducing insulin resistance, and inhibiting inflammatory responses. It lists various formulas and extracts under each category, such as curcumin, cinnamon, and berberine, with effects indicated by arrows. 4.1 Mechanisms of TCM formulas and herbs in regulating PCOS via gut microbiota 4.1.1 Regulate hormone metabolism PCOS is characterized by specific endocrine features, such as high levels of androgens, increased luteinizing hormone (LH), normal follicle-stimulating hormone (FSH) levels, and a relatively high LH/FSH ratio ( 76 77 78 49 79 47 46 80 60 63 55 81 4.1.2 Reduce insulin resistance Insulin resistance (IR) is a key characteristic of PCOS. It regulates various mediators and pathways, playing a crucial role in the development and progression of PCOS. It also leads to metabolic dysfunction and an increa",
+      "section_title": "Discussion",
+      "chunk_summary": "This section details how Traditional Chinese Medicine (TCM) can manage PCOS by altering gut microbiota. It discusses TCM's potential to regulate hormone metabolism, reduce insulin resistance, and inhibit inflammatory responses in PCOS treatment.",
+      "study_arms_text": "Study Arm 1: Interventions: others, Hormone Focus: insulin, androgens",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:30:05.030261",
+      "start_idx": 250,
+      "end_idx": 2159,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [
+        "others"
+      ],
+      "symptoms_focus": [],
+      "hormone_focus": [
+        "androgens",
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_6",
+      "similarity_score": 0,
+      "bm25_score": 148.159045907341
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "1 Introduction Polycystic ovary syndrome (PCOS) is one of the most common endocrine disorders in women of reproductive age, affecting 4-20% of this population worldwide ( 1 2 3 4 5 6 At present, the treatment of PCOS mainly adopts methods such as lifestyle adjustment and drug therapy. However, these methods have disadvantages such as side effects, low long-term medication compliance of patients, poor curative effects, and the existence of contraindications in some cases. Traditional Chinese medicine (TCM) has accumulated rich experience in the treatment of PCOS through long-term practice and exploration. TCM theory emphasizes the concept of holism, that is, all parts of the human body are interrelated and influence each other. TCM treatment of PCOS has the characteristics of multi-target and overall regulation. Multi-target treatment means that TCM intervenes in multiple symptoms and pathological changes simultaneously. Additionally, TCM has unique potential to regulate intestinal flor",
+      "section_title": "Discussion",
+      "chunk_summary": "The introduction discusses the prevalence of PCOS and the limitations of current treatments such as lifestyle changes and medication. It highlights the potential of Traditional Chinese Medicine (TCM) in treating PCOS through the modulation of gut microbiota.",
+      "study_arms_text": "Study Arm 1: ",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:29:32.431672",
+      "start_idx": 0,
+      "end_idx": 2262,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "introduction",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [],
+      "symptoms_focus": [],
+      "hormone_focus": [],
+      "id": "paper_40842497_chunk_1",
+      "similarity_score": 0,
+      "bm25_score": 144.87592683093686
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "TCM has been increasingly recognized for its potential in managing PCOS, providing a holistic approach that includes herbal remedies, acupuncture, and lifestyle modifications. 3.1 The impact of TCM formulas on PCOS TCM plays a crucial role in the treatment of PCOS, especially herbal formulas which show unique advantages. On one hand, traditional TCM prescriptions are widely used in the clinical treatment of PCOS patients. A national study in Taiwan showed that more than 20 herbal formulas have been used to treat PCOS patients ( 43 44 45 46 47 48 49 13 50 51 50 52 53 3.2 The effects of single herbs on PCOS In addition to complex formulas, the efficacy of single herbs and their components in treating PCOS has also been studied. Different monomeric components of traditional Chinese medicine can improve the pathological conditions of PCOS through multiple mechanisms. Coptis chinensis, an important medicinal plant in the Ranunculaceae family, has been found to reverse the pathological damag",
+      "section_title": "Discussion",
+      "chunk_summary": "This section explores the role of Traditional Chinese Medicine (TCM) in managing PCOS through modulation of gut microbiota. It highlights various TCM approaches, including herbal remedies and acupuncture, and their potential effects on hormonal regulation and metabolic improvement in PCOS patients.",
+      "study_arms_text": "Study Arm 1: Interventions: others, Target Symptoms: irregular periods, difficulty losing weight, weight gain, hirsutism, thinning of hair, adult acne, Hormone Focus: insulin, androgens",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:29:52.544773",
+      "start_idx": 180,
+      "end_idx": 2385,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [
+        "others"
+      ],
+      "symptoms_focus": [
+        "weight gain",
+        "irregular periods",
+        "hirsutism",
+        "adult acne",
+        "difficulty losing weight",
+        "thinning of hair"
+      ],
+      "hormone_focus": [
+        "androgens",
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_4",
+      "similarity_score": 0,
+      "bm25_score": 142.84391518235304
+    },
+    {
+      "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+      "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+      "text": "Traditional Chinese Medicine (TCM) has gained attention as a complementary approach to managing PCOS due to its holistic perspective and multifaceted therapeutic strategies. This section explores the mechanisms by which TCM can improve the symptoms and underlying causes of PCOS, emphasizing hormonal regulation, insulin resistance, and anti-inflammatory effects ( Figure 2 Figure 2 Main mechanisms of traditional Chinese medicines for treating PCOS through modulation of gut microbiota. BSHT, Bushen Huatan Fang; BSJYTC, Bushen Jieyu Tiaochong formula; BSHZ, BuShenHuaZhuo formula; BXXX, Banxia Xiexin decoction; CFDT, Cangfu Daotan decoction; CRP, C-reactive protein; DKP, Dingkun pill; E2, estradiol; FSH, follicle-stimulating hormone; FT, free testosterone; GLUT4, glucose transporter 4; GZFL, Guizhi Fuling Wan; HDL-c, high-density lipoprotein cholesterol; HYKT, Heyan Kuntai capsules; IGF-1, insulin-like growth factor 1; IL, interleukin; INSR, Insulin Receptor; IRS-1, insulin receptor substra",
+      "section_title": "Discussion",
+      "chunk_summary": "This section explores how Traditional Chinese Medicine (TCM) can manage PCOS by modulating gut microbiota. It emphasizes the hormonal regulation, improvement in insulin resistance, and reduction of inflammatory responses associated with PCOS.",
+      "study_arms_text": "Study Arm 1: Target Symptoms: irregular periods, difficulty losing weight, weight gain, hirsutism, thinning of hair, adult acne, Hormone Focus: insulin, androgens",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+      "pmid": "40842497",
+      "pmcid": "PMC12364671",
+      "doi": "10.3389/fendo.2025.1610869",
+      "model_version": "gpt-4o",
+      "tagging_timestamp": "2025-08-24T17:29:58.654787",
+      "start_idx": 174,
+      "end_idx": 1957,
+      "journal": "Frontiers in endocrinology",
+      "journal_issn": "1664-2392",
+      "publication_year": 2025,
+      "authors": [
+        "Jiang Xiaomei",
+        "Wang Yongfeng",
+        "Hua Yu",
+        "Tang Hong",
+        "Li Heyue"
+      ],
+      "mesh_terms": [
+        "Humans",
+        "Polycystic Ovary Syndrome",
+        "Gastrointestinal Microbiome",
+        "Female",
+        "Medicine, Chinese Traditional",
+        "Drugs, Chinese Herbal",
+        "Animals"
+      ],
+      "section_type": "",
+      "chunk_section_type": "discussion",
+      "section_priority": 0,
+      "overlap_ratio": 1,
+      "overlapping_sections": [
+        "Discussion||1.0"
+      ],
+      "doc_study_type": [
+        "review article"
+      ],
+      "doc_condition_disease": [
+        "PCOS"
+      ],
+      "doc_target": [
+        "female"
+      ],
+      "doc_target_age_distribution": [],
+      "doc_num_of_participants": 0,
+      "doc_study_duration": "",
+      "doc_intervention_type": [],
+      "doc_hormone_focus": [
+        "insulin",
+        "androgens"
+      ],
+      "doc_target_symptoms": [
+        "irregular periods",
+        "difficulty losing weight",
+        "weight gain",
+        "hirsutism",
+        "thinning of hair",
+        "adult acne"
+      ],
+      "doc_risk_of_bias": "not_specified",
+      "doc_summary": "This review article examines the role of gut microbiota in the pathogenesis of polycystic ovary syndrome (PCOS) and evaluates the potential of Traditional Chinese Medicine (TCM) as a regulatory treatment. Highlighting the connection between microbiome health and PCOS symptoms, the paper discusses how TCM might modulate gut flora to alleviate hormonal imbalances such as insulin resistance and androgen excess. The review emphasizes the need for further research into TCM's mechanisms and efficacy in treating PCOS-related metabolic and reproductive complications.",
+      "intervention_type": [],
+      "symptoms_focus": [
+        "weight gain",
+        "irregular periods",
+        "hirsutism",
+        "adult acne",
+        "difficulty losing weight",
+        "thinning of hair"
+      ],
+      "hormone_focus": [
+        "androgens",
+        "insulin"
+      ],
+      "id": "paper_40842497_chunk_5",
+      "similarity_score": 0,
+      "bm25_score": 139.63713619261074
+    }
+  ],
+  "count": 10,
+  "processing_time": 0.056431
+}

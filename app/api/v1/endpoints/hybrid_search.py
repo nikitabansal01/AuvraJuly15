@@ -117,7 +117,10 @@ async def dense_combined_search(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Combined Dense search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/dense-hq")
@@ -143,7 +146,10 @@ async def dense_hq_search(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"HQ Dense search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/dense-lq")
@@ -169,7 +175,10 @@ async def dense_lq_search(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"LQ Dense search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # =============================================================================
@@ -202,7 +211,10 @@ async def lexical_combined_search(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Combined Lexical search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/lexical-hq")
@@ -233,7 +245,10 @@ async def lexical_hq_search(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"HQ Lexical search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/lexical-lq")
@@ -264,7 +279,10 @@ async def lexical_lq_search(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"LQ Lexical search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # =============================================================================
@@ -303,7 +321,10 @@ async def hybrid_combined_search(
         return result
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Combined Hybrid search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-combined-hq")
@@ -338,7 +359,10 @@ async def hybrid_combined_hq_search(
         return result
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Combined+HQ Hybrid search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-combined-lq")
@@ -373,7 +397,10 @@ async def hybrid_combined_lq_search(
         return result
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Combined+LQ Hybrid search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-hq")
@@ -410,7 +437,10 @@ async def hybrid_hq_search(
         return result
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"HQ Hybrid search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/hybrid-lq")
@@ -447,7 +477,10 @@ async def hybrid_lq_search(
         return result
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"LQ Hybrid search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.get("/field-weights")
@@ -479,7 +512,10 @@ async def update_field_weights(weights: Dict[str, float]):
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Weight update failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
 
 @router.get("/stats")
@@ -557,7 +593,10 @@ async def compare_hq_lq_models(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Model comparison failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/scenario-c-comparison")
@@ -652,7 +691,10 @@ async def scenario_c_fair_comparison(
         }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Scenario C comparison failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/initialize-all-scenarios")
@@ -680,7 +722,10 @@ async def initialize_all_scenarios():
             }
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Scenario services initialization failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Initialization failed: {str(e)}")
 
 @router.post("/scenario-a-comparison")
@@ -707,7 +752,10 @@ async def scenario_a_pure_comparison(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Scenario A comparison failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/scenario-b-comparison")
@@ -731,7 +779,10 @@ async def scenario_b_mixed_comparison(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Scenario B comparison failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.post("/comprehensive-comparison")
@@ -757,7 +808,10 @@ async def comprehensive_abc_comparison(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Comprehensive comparison failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.get("/scenarios-status")
@@ -790,7 +844,10 @@ async def get_scenarios_status():
         return status
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Status check failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 # =============================================================================
@@ -866,7 +923,10 @@ async def hybrid_advanced_search(request: HybridSearchRequest):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Advanced hybrid search failed: {e}")
+        logger.error(f"Error details: {error_details}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # =============================================================================

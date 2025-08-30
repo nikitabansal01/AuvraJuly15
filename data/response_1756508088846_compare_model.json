@@ -1,0 +1,1895 @@
+{
+  "query": "What is the relationship between hyperandrogenism (HA) and gut microbiota in PCOS?",
+  "hq_model": {
+    "namespace": "pcos-rag-gpt_4o",
+    "results": [
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Studies were selected based on their reporting of mechanistic insights related to hormonal, metabolic, or inflammatory pathways. This selection process involved a two-stage screening, starting with a review of titles and abstracts, followed by a full-text evaluation of potentially eligible studies. The aim is to systematically delineate the tripartite interactions among TCM, PCOS, and gut microbiota, to synthesize evidence on the therapeutic benefits of TCM-driven microbiota modulation in mitigating PCOS pathologies, and to identify and evaluate novel microbiota-targeted modulators derived from TCM compounds, which may offer innovative strategies for clinical management, symptom alleviation, and long-term health improvement in affected women. 2 Relationship between intestinal microflora and PCOS 2.1 Gut microflora signatures in PCOS The gut microbiota is essential for maintaining human homeostasis, and an imbalance in this microbiota is associated with polycystic ovary syndrome (PCOS).",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:43:56.108655",
+        "start_idx": 300,
+        "end_idx": 2266,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_2",
+        "similarity_score": 0,
+        "rrf_score": 0.02889344262295082,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 0,
+        "lexical_rank": 19
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "4.2 Mechanisms of acupuncture in regulating PCOS via gut microbiota Acupuncture, a fundamental practice in Traditional Chinese Medicine with a history spanning thousands of years, offers therapeutic benefits for polycystic ovary syndrome (PCOS) through mechanisms that differ from those of orally administered herbal remedies. While herbal treatments interact directly with the gastrointestinal tract and its microbiota, acupuncture primarily works by stimulating specific acupoints on the body surface, which sends afferent neural signals to the central nervous system (CNS) and triggers a series of neuroendocrine responses. A crucial pathway for the systemic effects of acupuncture, including its impact on gut microbiota and PCOS-related issues, is the brain-gut axis ( 91 92 93 94 5 Discussion Overall, substantial evidence links gut microbiota dysbiosis to the pathogenesis of PCOS. TCM, which includes herbal formulas such as Bu Shen Hua Zhuo formula, Shaoyao-Gancao Decoction, and Modified Ba",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:41.175632",
+        "start_idx": 327,
+        "end_idx": 2922,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_10",
+        "similarity_score": 0,
+        "rrf_score": 0.02736726874657909,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 2,
+        "lexical_rank": 26
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Around 50%–70% of PCOS patients present with varying degrees of IR, which is more pronounced in obese patients, who have a higher risk of diabetes compared to normal women ( 28 12 10 12 29 30 14 2.2.3 Chronic inflammation Chronic inflammation is a notable feature in patients with PCOS, marked by low-grade inflammation that manifests through several biological indicators. These patients often show elevated levels of proinflammatory cytokines, both in their ovarian tissue and bloodstream ( 31 32 33 34 35 35 10 36 37 38 39 39 40 10 41 42 10 A summary of the mechanism is shown in Figure 1 Figure 1 Mechanism of gut microbiota dysbiosis for PCOS. Gut microbiota dysbiosis, characterized by reduced diversity, decreased beneficial bacteria, and increased potentially pathogenic bacteria, may contribute to PCOS through several pathways. The first possible mechanism involves specific bacterial taxa correlating with elevated serum testosterone levels, directly influencing androgen metabolism and le",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:02.283112",
+        "start_idx": 374,
+        "end_idx": 2738,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_3",
+        "similarity_score": 0,
+        "rrf_score": 0.026655348047538198,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 1,
+        "lexical_rank": 34
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Often, there is insufficient detailed characterization of microbial changes, and a lack of comprehensive metabolomic profiling that links TCM interventions with shifts in gut microbiota and host outcomes. To fully realize the therapeutic potential of TCM via gut microbiota modulation, it is essential to align TCM practices with modern clinical standards. This alignment necessitates rigorous standardization and quality control of TCM products, employing advanced analytical techniques such as chromatography. Although there is evidence indicating that specific TCM compound formulas or individual herbs can influence gut microbiota, the precise active components and their molecular targets remain unidentified. While there is evidence that specific TCM compound formulas or individual herbs can influence gut microbiota, the exact active components and their molecular targets remain unclear. Therefore, future research should focus on identifying these specific active components within TCM form",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:46.496852",
+        "start_idx": 357,
+        "end_idx": 1923,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_11",
+        "similarity_score": 0,
+        "rrf_score": 0.02507351803126451,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 10,
+        "lexical_rank": 30
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Diagram showing how Traditional Chinese Medicine (TCM) can influence polycystic ovary syndrome (PCOS) by altering gut microbiota. TCM elements include regulating hormone metabolism, reducing insulin resistance, and inhibiting inflammatory responses. It lists various formulas and extracts under each category, such as curcumin, cinnamon, and berberine, with effects indicated by arrows. 4.1 Mechanisms of TCM formulas and herbs in regulating PCOS via gut microbiota 4.1.1 Regulate hormone metabolism PCOS is characterized by specific endocrine features, such as high levels of androgens, increased luteinizing hormone (LH), normal follicle-stimulating hormone (FSH) levels, and a relatively high LH/FSH ratio ( 76 77 78 49 79 47 46 80 60 63 55 81 4.1.2 Reduce insulin resistance Insulin resistance (IR) is a key characteristic of PCOS. It regulates various mediators and pathways, playing a crucial role in the development and progression of PCOS. It also leads to metabolic dysfunction and an increa",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:18.300473",
+        "start_idx": 250,
+        "end_idx": 2159,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_6",
+        "similarity_score": 0,
+        "rrf_score": 0.02480203197370387,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 8,
+        "lexical_rank": 36
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Table 2 Animal experiment of treating PCOS with TCM through gut microbiota. Reference Intervention Animals Model Results Mechanism ( 13 Banxia Xiexin Decoction Rats Letrozole plus HFD increase the abundance of Verrucomicrobiota, Proteobacteria, Akkermansia and Blautia; reduce the abundance of Clostridium_sensu_stricto_1, and promote follicular development reduces insulin resistance ( 48 Bu Shen Hua Zhuo formula Rats Letrozole increase the α-diversity of the gut microbiota; reduce the relative abundance of Firmicutes; increase lactic acid bacteria and short-chain fatty acid-producing bacteria regulate hormone metabolism; inhibit inflammatory responses ( 49 Shaoyao Gancao Decoction Rats Letrozole reduced the ratio of Firmicutes to Bacteroidetes; decreased the LPS-producing pathogen Proteobacteria; increased the abundance of Butyricicoccus, Coprococcus, Akkermansia, Blautia and Bacteroides regulate hormone metabolism; inhibit inflammatory responses ( 50 Yulin Tong Bu foumula Mice DEHA plu",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:30.331703",
+        "start_idx": 76,
+        "end_idx": 1967,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_8",
+        "similarity_score": 0,
+        "rrf_score": 0.023314014752370917,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 12,
+        "lexical_rank": 43
+      },
+      {
+        "title": "Hyperandrogenism-mediated YAP activation drives ovarian inflammation and pyroptosis in PCOS: implications for follicular dysfunction.",
+        "abstract": "Hyperandrogenism and persistent chronic inflammation significantly contribute to ovarian dysfunction in polycystic ovary syndrome (PCOS). Although the exact connection between hyperandrogenism and inflammation in PCOS remains unclear, the Hippo pathway, also seems to be involved in the inflammatory response through YAP.",
+        "text": "(A) AR FSHR LHR 3β-HSD Cyp11α1 (B) AR FSH 3β-HSD Cyp11α1 (C) n P P P P Inhibition of YAP by verteporfin suppresses Hyperandrogenism-induced ovarian polycystic changes in a murine model Continuing our previous investigations, we have discovered that hyperandrogenism, induced by DHEA, significantly enhances the activation of the Hippo-YAP signaling pathway in ovarian tissue [ 26 YAP 2 2 2 2 To further elucidate the relationship between YAP and the development of characteristic phenotypes in HA-induced PCOS models, we inhibited YAP using VP. Mice co-administered DHEA and VP exhibited a significant reduction in body weight and abdominal fat accumulation compared to those receiving DHEA alone [Fig. 1 1 1 1 1 1 1 Verteporfin-mediated YAP inhibition attenuates hyperandrogenism-induced ovarian inflammation and pyroptosis In our preceding in vitro study, we have identified that HA, induced by testosterone, triggers the activation of pro-inflammatory factors and subsequent pyroptosis in ovarian ",
+        "section_title": "Materials and methods",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12312577/",
+        "pmid": "40739575",
+        "pmcid": "PMC12312577",
+        "doi": "10.1186/s13048-025-01757-5",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T18:39:59.103403",
+        "start_idx": 545,
+        "end_idx": 2400,
+        "journal": "Journal of ovarian research",
+        "journal_issn": "1757-2215",
+        "publication_year": 2025,
+        "authors": [
+          "Xu Tianyue",
+          "Xiang Yu",
+          "Huang Zichao",
+          "Zhu Qi",
+          "Wu Honghui",
+          "Cai Jieyu",
+          "Weng Linglin",
+          "Ge Hongshan"
+        ],
+        "mesh_terms": [
+          "Female",
+          "Polycystic Ovary Syndrome",
+          "Pyroptosis",
+          "Animals",
+          "Hyperandrogenism",
+          "Mice",
+          "YAP-Signaling Proteins",
+          "Inflammation",
+          "Humans",
+          "Disease Models, Animal",
+          "Testosterone",
+          "Ovarian Follicle",
+          "Verteporfin",
+          "Ovary",
+          "Granulosa Cells",
+          "Adaptor Proteins, Signal Transducing"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Materials and methods||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40739575_chunk_9",
+        "similarity_score": 0,
+        "rrf_score": 0.022005772005772008,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 23,
+        "lexical_rank": 38
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "1 Introduction Polycystic ovary syndrome (PCOS) is one of the most common endocrine disorders in women of reproductive age, affecting 4-20% of this population worldwide ( 1 2 3 4 5 6 At present, the treatment of PCOS mainly adopts methods such as lifestyle adjustment and drug therapy. However, these methods have disadvantages such as side effects, low long-term medication compliance of patients, poor curative effects, and the existence of contraindications in some cases. Traditional Chinese medicine (TCM) has accumulated rich experience in the treatment of PCOS through long-term practice and exploration. TCM theory emphasizes the concept of holism, that is, all parts of the human body are interrelated and influence each other. TCM treatment of PCOS has the characteristics of multi-target and overall regulation. Multi-target treatment means that TCM intervenes in multiple symptoms and pathological changes simultaneously. Additionally, TCM has unique potential to regulate intestinal flor",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:43:48.592047",
+        "start_idx": 0,
+        "end_idx": 2262,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_1",
+        "similarity_score": 0,
+        "rrf_score": 0.02200402224062463,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 18,
+        "lexical_rank": 46
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Reference Intervention Animals Model Results Mechanism ( 13 Banxia Xiexin Decoction Rats Letrozole plus HFD increase the abundance of Verrucomicrobiota, Proteobacteria, Akkermansia and Blautia; reduce the abundance of Clostridium_sensu_stricto_1, and promote follicular development reduces insulin resistance ( 48 Bu Shen Hua Zhuo formula Rats Letrozole increase the α-diversity of the gut microbiota; reduce the relative abundance of Firmicutes; increase lactic acid bacteria and short-chain fatty acid-producing bacteria regulate hormone metabolism; inhibit inflammatory responses ( 49 Shaoyao Gancao Decoction Rats Letrozole reduced the ratio of Firmicutes to Bacteroidetes; decreased the LPS-producing pathogen Proteobacteria; increased the abundance of Butyricicoccus, Coprococcus, Akkermansia, Blautia and Bacteroides regulate hormone metabolism; inhibit inflammatory responses ( 50 Yulin Tong Bu foumula Mice DEHA plus HFD increasing the relative abundance of beneficial bacteria such as lacti",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:35.623640",
+        "start_idx": 1816,
+        "end_idx": 3958,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 0.561624649859944,
+        "overlapping_sections": [
+          "Discussion||0.561624649859944",
+          "Introduction||0.43790849673202614"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_9",
+        "similarity_score": 0,
+        "rrf_score": 0.019638043896804003,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 37,
+        "lexical_rank": 45
+      },
+      {
+        "title": "Effect and mechanism of resveratrol against polycystic ovary syndrome: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent reproductive endocrine disorder characterized by significant clinical heterogeneity. The etiology of PCOS remains elusive, though it is closely linked to genetic, metabolic, endocrine, and environmental determinants. Resveratrol, a natural polyphenol, has garnered considerable interest due to its diverse biological activities. While resveratrol has been shown to ameliorate disorders in glucose, lipid, and endocrine metabolism associated with PCOS, the precise underlying mechanisms remain unclear. This narrative review aims to explore the potential mechanisms through which resveratrol operates, considering the multifaceted pathological pathways of PCOS, thereby offering insights for clinical applications and drug development.",
+        "text": "These findings underscore its multi-target capacity to restore glycemic control in PCOS. 3 Resveratrol improves abnormal lipid metabolism Obesity, particularly central adiposity, is a prevalent comorbidity in PCOS, affecting 30%–70% of patients ( 53 53 8 54 55 56 56 Dyslipidemia—characterized by elevated low-density lipoprotein (LDL), triglycerides (TG), and total cholesterol (TC), alongside reduced high-density lipoprotein cholesterol (HDL-C)—is prevalent in PCOS, with severity correlating positively with body mass index (BMI) ( 57 58 59 3.1 Regulation of lipid metabolism-related signaling pathways Adipocyte differentiation involves a transcriptional cascade orchestrated by CCAAT/enhancer-binding protein α (C/EBPα), sterol regulatory element-binding protein 1c (SREBP-1c), and PPAR-γ, which collectively drive the morphological transition of a fibroblastic cell shape to a spherical one ( 60 60 61 62 63 64 IGF-1 modulates adipocyte metabolism through insulin-mimetic mechanisms, suppressi",
+        "section_title": "Conclusion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12277147/",
+        "pmid": "40692591",
+        "pmcid": "PMC12277147",
+        "doi": "10.3389/fendo.2025.1529231",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T19:14:39.745948",
+        "start_idx": 91,
+        "end_idx": 2188,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Chang Hui",
+          "Shi Baichao",
+          "Wang Yu",
+          "Lu Fengjuan",
+          "Guan Muxin",
+          "Wu Xiaoke"
+        ],
+        "mesh_terms": [
+          "Polycystic Ovary Syndrome",
+          "Humans",
+          "Resveratrol",
+          "Female",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 0.5789222699093943,
+        "overlapping_sections": [
+          "Introduction||0.4206008583690987",
+          "Conclusion||0.5789222699093943"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40692591_chunk_3",
+        "similarity_score": 0,
+        "rrf_score": 0.015625,
+        "found_in": [
+          "dense"
+        ],
+        "dense_rank": 3
+      }
+    ],
+    "stats": {
+      "total_results": 10,
+      "lexical_only": 0,
+      "dense_only": 1,
+      "both": 9,
+      "lexical_total": 50,
+      "dense_total": 50,
+      "model_filter": null
+    }
+  },
+  "lq_model": {
+    "namespace": "pcos-rag-gpt_3.5_turbo",
+    "results": [
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Studies were selected based on their reporting of mechanistic insights related to hormonal, metabolic, or inflammatory pathways. This selection process involved a two-stage screening, starting with a review of titles and abstracts, followed by a full-text evaluation of potentially eligible studies. The aim is to systematically delineate the tripartite interactions among TCM, PCOS, and gut microbiota, to synthesize evidence on the therapeutic benefits of TCM-driven microbiota modulation in mitigating PCOS pathologies, and to identify and evaluate novel microbiota-targeted modulators derived from TCM compounds, which may offer innovative strategies for clinical management, symptom alleviation, and long-term health improvement in affected women. 2 Relationship between intestinal microflora and PCOS 2.1 Gut microflora signatures in PCOS The gut microbiota is essential for maintaining human homeostasis, and an imbalance in this microbiota is associated with polycystic ovary syndrome (PCOS).",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:43:56.108655",
+        "start_idx": 300,
+        "end_idx": 2266,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_2",
+        "similarity_score": 0,
+        "rrf_score": 0.02889344262295082,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 0,
+        "lexical_rank": 19
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "4.2 Mechanisms of acupuncture in regulating PCOS via gut microbiota Acupuncture, a fundamental practice in Traditional Chinese Medicine with a history spanning thousands of years, offers therapeutic benefits for polycystic ovary syndrome (PCOS) through mechanisms that differ from those of orally administered herbal remedies. While herbal treatments interact directly with the gastrointestinal tract and its microbiota, acupuncture primarily works by stimulating specific acupoints on the body surface, which sends afferent neural signals to the central nervous system (CNS) and triggers a series of neuroendocrine responses. A crucial pathway for the systemic effects of acupuncture, including its impact on gut microbiota and PCOS-related issues, is the brain-gut axis ( 91 92 93 94 5 Discussion Overall, substantial evidence links gut microbiota dysbiosis to the pathogenesis of PCOS. TCM, which includes herbal formulas such as Bu Shen Hua Zhuo formula, Shaoyao-Gancao Decoction, and Modified Ba",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:41.175632",
+        "start_idx": 327,
+        "end_idx": 2922,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_10",
+        "similarity_score": 0,
+        "rrf_score": 0.02736726874657909,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 2,
+        "lexical_rank": 26
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Around 50%–70% of PCOS patients present with varying degrees of IR, which is more pronounced in obese patients, who have a higher risk of diabetes compared to normal women ( 28 12 10 12 29 30 14 2.2.3 Chronic inflammation Chronic inflammation is a notable feature in patients with PCOS, marked by low-grade inflammation that manifests through several biological indicators. These patients often show elevated levels of proinflammatory cytokines, both in their ovarian tissue and bloodstream ( 31 32 33 34 35 35 10 36 37 38 39 39 40 10 41 42 10 A summary of the mechanism is shown in Figure 1 Figure 1 Mechanism of gut microbiota dysbiosis for PCOS. Gut microbiota dysbiosis, characterized by reduced diversity, decreased beneficial bacteria, and increased potentially pathogenic bacteria, may contribute to PCOS through several pathways. The first possible mechanism involves specific bacterial taxa correlating with elevated serum testosterone levels, directly influencing androgen metabolism and le",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:02.283112",
+        "start_idx": 374,
+        "end_idx": 2738,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_3",
+        "similarity_score": 0,
+        "rrf_score": 0.026655348047538198,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 1,
+        "lexical_rank": 34
+      },
+      {
+        "title": "The relationship between polycystic ovary syndrome and gynecological cancers: neurotransmitter metabolism changes and immune regulation.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a common endocrine disorder affecting approximately 10% of middle-aged women worldwide. It is characterized by hirsutism, anovulation, and polycystic ovaries. Various factors, including environmental toxins, inflammation, oxidative stress, and insulin resistance, contribute to the progression of this condition. PCOS is also associated with metabolic disturbances, such as abnormal hormone and neurotransmitter metabolism, leading to obesity, hyperandrogenemia, and type 2 diabetes. Among female cancers, breast cancer, endometrial cancer, and ovarian cancer have high incidence rates and pose significant threats to women's health. Studies suggest a potential link between PCOS and these gynecological cancers. Consequently, hormonal alterations in PCOS patients may influence tumorigenesis and metastasis. Moreover, PCOS is characterized by chronic low-grade inflammation, including dysregulated pro-inflammatory cytokine secretion, increased immune cell proliferation, and endothelial dysfunction. These factors contribute to cancer development, primarily through impaired immune metabolism, preventing effective tumor cell clearance and facilitating metastasis. This review synthesizes current knowledge on the mechanistic links between PCOS and gynecological cancers, focusing on the roles of immune cell dysfunction, aberrant cytokine secretion, and neurotransmitter metabolism. Therapeutic strategies, including hormonal interventions, insulin sensitizers, and lifestyle modifications, may mitigate cancer risk by modulating these pathways. This review highlights critical gaps in understanding PCOS-related oncogenesis and advocates for further research to elucidate molecular mechanisms and optimize clinical management.",
+        "text": "However, the underlying mechanisms affecting gastrointestinal motility in PCOS remain unclear. Wanger et al. established a PCOS rat model using dihydrotestosterone and analyzed acetylcholine and carbachol expression levels in gastrointestinal tissues after 17 weeks. Results showed that acetylcholine responsiveness and contractile force in the gastric fundus and colonic muscle were significantly reduced in the PCOS group. A decrease in extracellular calcium ion responsiveness and MLC20 phosphorylation was also observed, indicating that PCOS may induce gastroparesis and reduce gastrointestinal contractility, primarily via diminished acetylcholine responsiveness ( 82 In another study, PCOS rats treated with the traditional Chinese medicine Wushenhua formula for three estrous cycles exhibited significant metabolic changes. Serum metabolomics revealed reductions in creatine, creatinine, and glycerophosphoethanolamine, whereas lysine, ornithine, and acetylcholine levels increased in the hype",
+        "section_title": "Discussion",
+        "chunk_summary": "This clinical study explores the effects of various interventions on PCOS rats, including traditional Chinese medicine and drug treatments. The study also discusses the impact of endocrine dysfunction in PCOS on cognitive impairment and depression in rats.",
+        "study_arms_text": "",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12174418/",
+        "pmid": "40534880",
+        "pmcid": "PMC12174418",
+        "doi": "10.3389/fimmu.2025.1578470",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T21:50:51.758385",
+        "start_idx": 95,
+        "end_idx": 2387,
+        "journal": "Frontiers in immunology",
+        "journal_issn": "1664-3224",
+        "publication_year": 2025,
+        "authors": [
+          "Wu Dongning",
+          "Zhang Yue",
+          "Wu Congying",
+          "An Bo",
+          "Wang Xin",
+          "Ni Jinxia",
+          "Chen Min"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Female",
+          "Neurotransmitter Agents",
+          "Genital Neoplasms, Female",
+          "Animals",
+          "Immunomodulation",
+          "Cytokines"
+        ],
+        "section_type": "",
+        "chunk_section_type": "discussion",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [],
+        "symptoms_focus": [],
+        "hormone_focus": [],
+        "id": "paper_40534880_chunk_7",
+        "similarity_score": 0,
+        "rrf_score": 0.022658227848101266,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 18,
+        "lexical_rank": 39
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Diagram showing how Traditional Chinese Medicine (TCM) can influence polycystic ovary syndrome (PCOS) by altering gut microbiota. TCM elements include regulating hormone metabolism, reducing insulin resistance, and inhibiting inflammatory responses. It lists various formulas and extracts under each category, such as curcumin, cinnamon, and berberine, with effects indicated by arrows. 4.1 Mechanisms of TCM formulas and herbs in regulating PCOS via gut microbiota 4.1.1 Regulate hormone metabolism PCOS is characterized by specific endocrine features, such as high levels of androgens, increased luteinizing hormone (LH), normal follicle-stimulating hormone (FSH) levels, and a relatively high LH/FSH ratio ( 76 77 78 49 79 47 46 80 60 63 55 81 4.1.2 Reduce insulin resistance Insulin resistance (IR) is a key characteristic of PCOS. It regulates various mediators and pathways, playing a crucial role in the development and progression of PCOS. It also leads to metabolic dysfunction and an increa",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:18.300473",
+        "start_idx": 250,
+        "end_idx": 2159,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_6",
+        "similarity_score": 0,
+        "rrf_score": 0.02167291471415183,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 27,
+        "lexical_rank": 36
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Often, there is insufficient detailed characterization of microbial changes, and a lack of comprehensive metabolomic profiling that links TCM interventions with shifts in gut microbiota and host outcomes. To fully realize the therapeutic potential of TCM via gut microbiota modulation, it is essential to align TCM practices with modern clinical standards. This alignment necessitates rigorous standardization and quality control of TCM products, employing advanced analytical techniques such as chromatography. Although there is evidence indicating that specific TCM compound formulas or individual herbs can influence gut microbiota, the precise active components and their molecular targets remain unidentified. While there is evidence that specific TCM compound formulas or individual herbs can influence gut microbiota, the exact active components and their molecular targets remain unclear. Therefore, future research should focus on identifying these specific active components within TCM form",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:46.496852",
+        "start_idx": 357,
+        "end_idx": 1923,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_11",
+        "similarity_score": 0,
+        "rrf_score": 0.021405677655677656,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 35,
+        "lexical_rank": 30
+      },
+      {
+        "title": "Mechanisms of traditional Chinese medicine regulating polycystic ovary syndrome through gut microbiota: a review.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a prevalent endocrine disorder that adversely affects women's reproductive and metabolic health conditions. Recent studies have highlighted the significant contributory role of gut microbiota in the pathogenesis of PCOS, indicating a complex interplay between the microbiome and the syndrome's clinical manifestations. Given this connection, Traditional Chinese Medicine (TCM), a well-established therapeutic approach, has demonstrated potential efficacy in modulating gut microbiota and alleviating symptoms associated with PCOS. This review aims to summarize and analyze current research on the effects of TCM on gut microbiota in individuals with PCOS, exploring underlying mechanisms and relevant findings to provide insights for future clinical applications and improve understanding of TCM's role in managing PCOS.",
+        "text": "Table 2 Animal experiment of treating PCOS with TCM through gut microbiota. Reference Intervention Animals Model Results Mechanism ( 13 Banxia Xiexin Decoction Rats Letrozole plus HFD increase the abundance of Verrucomicrobiota, Proteobacteria, Akkermansia and Blautia; reduce the abundance of Clostridium_sensu_stricto_1, and promote follicular development reduces insulin resistance ( 48 Bu Shen Hua Zhuo formula Rats Letrozole increase the α-diversity of the gut microbiota; reduce the relative abundance of Firmicutes; increase lactic acid bacteria and short-chain fatty acid-producing bacteria regulate hormone metabolism; inhibit inflammatory responses ( 49 Shaoyao Gancao Decoction Rats Letrozole reduced the ratio of Firmicutes to Bacteroidetes; decreased the LPS-producing pathogen Proteobacteria; increased the abundance of Butyricicoccus, Coprococcus, Akkermansia, Blautia and Bacteroides regulate hormone metabolism; inhibit inflammatory responses ( 50 Yulin Tong Bu foumula Mice DEHA plu",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12364671/",
+        "pmid": "40842497",
+        "pmcid": "PMC12364671",
+        "doi": "10.3389/fendo.2025.1610869",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T17:44:30.331703",
+        "start_idx": 76,
+        "end_idx": 1967,
+        "journal": "Frontiers in endocrinology",
+        "journal_issn": "1664-2392",
+        "publication_year": 2025,
+        "authors": [
+          "Jiang Xiaomei",
+          "Wang Yongfeng",
+          "Hua Yu",
+          "Tang Hong",
+          "Li Heyue"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Gastrointestinal Microbiome",
+          "Female",
+          "Medicine, Chinese Traditional",
+          "Drugs, Chinese Herbal",
+          "Animals"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40842497_chunk_8",
+        "similarity_score": 0,
+        "rrf_score": 0.019324122479462285,
+        "found_in": [
+          "dense",
+          "lexical"
+        ],
+        "dense_rank": 42,
+        "lexical_rank": 43
+      },
+      {
+        "title": "Harnessing Microbiome, Bacterial Extracellular Vesicle, and Artificial Intelligence for Polycystic Ovary Syndrome Diagnosis and Management.",
+        "abstract": "Polycystic ovary syndrome (PCOS) affects 6-19% of reproductive-age women worldwide, yet diagnosis remains challenging due to heterogeneous presentations and symptoms overlapping with other endocrine disorders. Recent studies have shown that gut dysbiosis plays a significant role in PCOS pathophysiology, with bacterial extracellular vesicles (BEVs) functioning as critical mediators of the gut-ovary axis. BEVs carry distinct cargos in PCOS patients-including specific miRNAs and inflammatory proteins-and show promise for both diagnostic and therapeutic applications. Artificial intelligence (AI) is emerging as a promising significant tool in PCOS research due to improved diagnostic accuracy and the capability to analyze complex datasets combining microbiome, BEV, and clinical parameters. These integrated approaches have the potential to better address PCOS multifactorial nature, enabling improved phenotypic classification and personalized treatment strategies. This review examines recent advances in the last 25 years in microbiome, BEV, and AI applications in PCOS research using PubMed, Web of Science, and Scopus databases. We explore the diagnostic potential of the AI-driven analysis of microbiome and BEV profiles, and address ethical considerations including data privacy and algorithmic bias. As these technologies continue to evolve, they hold increasing potential for the improvement of PCOS diagnosis and management, including the development of safer, more precise, and effective interventions.",
+        "text": "Clinical hyperandrogenism: Present; Biochemical hyperandrogenism: Method-dependent thresholds; Oligo/anovulation: Present; Polycystic ovarian morphology: As per updated criteria Emphasizes hyperandrogenism as core feature; Better identification of women with metabolic risks More restrictive than Rotterdam; Excludes some milder phenotypes; Implementation challenges Performance metrics not extensively validated in large studies [ 9 18 Emerging Approaches Microbiome Analysis Gut dysbiosis: Altered microbiota composition characterized by reduced diversity and specific bacterial imbalances associated with metabolic dysfunction. Assessed via Firmicutes/Bacteroidetes ratio, specific bacterial genera (Escherichia-Shigella, Proteobacteria), alpha diversity measures, and beta diversity patterns. Microbiome–PCOS axis: Gut bacteria influence host metabolism, inflammation, and hormone regulation. PCOS vs. Controls: Decreased Firmicutes/Bacteroidetes ratio; Increased Proteobacteria abundance; Increa",
+        "section_title": "1. Introduction",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12190607/",
+        "pmid": "40563474",
+        "pmcid": "PMC12190607",
+        "doi": "10.3390/biom15060834",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T21:16:53.710978",
+        "start_idx": 631,
+        "end_idx": 2579,
+        "journal": "Biomolecules",
+        "journal_issn": "2218-273X",
+        "publication_year": 2025,
+        "authors": [
+          "Kushawaha Bhawna",
+          "Rem Tial T",
+          "Pelosi Emanuele"
+        ],
+        "mesh_terms": [
+          "Polycystic Ovary Syndrome",
+          "Humans",
+          "Female",
+          "Artificial Intelligence",
+          "Extracellular Vesicles",
+          "Microbiota",
+          "Gastrointestinal Microbiome",
+          "Dysbiosis",
+          "Bacteria"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 0.6396303901437371,
+        "overlapping_sections": [
+          "2. Methods||0.337782340862423",
+          "1. Introduction||0.6396303901437371",
+          "10. Conclusions||0.021560574948665298"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40563474_chunk_4",
+        "similarity_score": 0,
+        "rrf_score": 0.015625,
+        "found_in": [
+          "dense"
+        ],
+        "dense_rank": 3
+      },
+      {
+        "title": "The relationship between polycystic ovary syndrome and gynecological cancers: neurotransmitter metabolism changes and immune regulation.",
+        "abstract": "Polycystic ovary syndrome (PCOS) is a common endocrine disorder affecting approximately 10% of middle-aged women worldwide. It is characterized by hirsutism, anovulation, and polycystic ovaries. Various factors, including environmental toxins, inflammation, oxidative stress, and insulin resistance, contribute to the progression of this condition. PCOS is also associated with metabolic disturbances, such as abnormal hormone and neurotransmitter metabolism, leading to obesity, hyperandrogenemia, and type 2 diabetes. Among female cancers, breast cancer, endometrial cancer, and ovarian cancer have high incidence rates and pose significant threats to women's health. Studies suggest a potential link between PCOS and these gynecological cancers. Consequently, hormonal alterations in PCOS patients may influence tumorigenesis and metastasis. Moreover, PCOS is characterized by chronic low-grade inflammation, including dysregulated pro-inflammatory cytokine secretion, increased immune cell proliferation, and endothelial dysfunction. These factors contribute to cancer development, primarily through impaired immune metabolism, preventing effective tumor cell clearance and facilitating metastasis. This review synthesizes current knowledge on the mechanistic links between PCOS and gynecological cancers, focusing on the roles of immune cell dysfunction, aberrant cytokine secretion, and neurotransmitter metabolism. Therapeutic strategies, including hormonal interventions, insulin sensitizers, and lifestyle modifications, may mitigate cancer risk by modulating these pathways. This review highlights critical gaps in understanding PCOS-related oncogenesis and advocates for further research to elucidate molecular mechanisms and optimize clinical management.",
+        "text": "1 Introduction Polycystic ovary syndrome (PCOS) is a polygenic endocrine disorder influenced by genetic, hormonal, and environmental factors. It affects up to 10% of women globally, significantly impacting reproductive health, particularly infertility, acne, and psychological disorders ( 1 2 3 4 5 Animal studies demonstrate that hyperhomocysteinemia-induced macrophage polarization toward the M2 phenotype promotes adipose tissue inflammation in PCOS mice, consistent with previous findings ( 6 7 8 9 10 Despite increased research efforts and funding, the precise mechanisms underlying PCOS remain controversial ( 11 12 13 14 Given the heterogeneity of PCOS and its endocrine-metabolic abnormalities, clinical outcomes and cancer risks may vary. Studies indicate that PCOS patients have an elevated risk of endometrial cancer, underscoring the need for preventive measures and early detection ( 15 16 17 18 The adverse consequences of PCOS may stem from dysregulated hormone metabolism, particularl",
+        "section_title": "Discussion",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12174418/",
+        "pmid": "40534880",
+        "pmcid": "PMC12174418",
+        "doi": "10.3389/fimmu.2025.1578470",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T21:50:19.368456",
+        "start_idx": 0,
+        "end_idx": 2399,
+        "journal": "Frontiers in immunology",
+        "journal_issn": "1664-3224",
+        "publication_year": 2025,
+        "authors": [
+          "Wu Dongning",
+          "Zhang Yue",
+          "Wu Congying",
+          "An Bo",
+          "Wang Xin",
+          "Ni Jinxia",
+          "Chen Min"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Polycystic Ovary Syndrome",
+          "Female",
+          "Neurotransmitter Agents",
+          "Genital Neoplasms, Female",
+          "Animals",
+          "Immunomodulation",
+          "Cytokines"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 1,
+        "overlapping_sections": [
+          "Discussion||1.0"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS",
+          "PMS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical study explores the comparative effects of physical activity and mindfulness techniques on obese female participants diagnosed with either PCOS or PMS. Over a 12-week observation period, changes in hormone levels and menstrual-related symptoms were tracked.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40534880_chunk_1",
+        "similarity_score": 0,
+        "rrf_score": 0.015384615384615385,
+        "found_in": [
+          "dense"
+        ],
+        "dense_rank": 4
+      },
+      {
+        "title": "The Association of Glucose Metabolism Disorders and Acne in Women With Polycystic Ovary Syndrome (PCOS).",
+        "abstract": "Acne is a common dermatological manifestation of polycystic ovary syndrome (PCOS), a prevalent endocrinological disorder among women of reproductive age. A growing body of evidence highlights glucose metabolism disorders, including insulin resistance, in the context of PCOS. This study aimed to investigate the association of acne and its severity with insulin resistance in a population of women with PCOS.",
+        "text": "Moreover, insulin resistance, another key feature of PCOS, was found to be related to acne. This further corroborates the findings of Franik et al. 7 et al. 16 However, not all studies agree on the specific hormonal markers associated with acne in PCOS. Some studies have been able to determine weaker correlations of acne with androstenedione, as well as other androgens ( 16 Our study confirms the literature that hyper-androgenism-represented by high levels of DHEAS-plays a pivotal role in the pathogenesis of acne in women with PCOS. Thus, the increased DHEAS serves as an indicator of androgen excess, probably leading to increased sebum production, blockage of pores, and finally, acne. This agrees with other works mentioned by Archer and Chang ( 17 et al. 7 Our findings also underscore the need to consider both hormonal and metabolic variables in the treatment of acne in women with PCOS. Besides the overwhelming majority of studies that have focused on androgens, insulin resistance, obe",
+        "section_title": "Patients and Methods",
+        "chunk_summary": "This study evaluates the effects of a structured dietary intervention on women diagnosed with PCOS. Hormonal biomarkers and symptoms were assessed over a 12-week period.",
+        "study_arms_text": "Study Arm 1: Interventions: food, Target Symptoms: irregular periods, weight gain, bloating, Hormone Focus: insulin",
+        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12223598/",
+        "pmid": "40579029",
+        "pmcid": "PMC12223598",
+        "doi": "10.21873/invivo.14017",
+        "model_version": "gpt-3.5-turbo",
+        "tagging_timestamp": "2025-08-24T20:59:53.559078",
+        "start_idx": 254,
+        "end_idx": 2797,
+        "journal": "In vivo (Athens, Greece)",
+        "journal_issn": "1791-7549",
+        "publication_year": 2025,
+        "authors": [
+          "Damoulaki Eftichia",
+          "Sioutis Dimos",
+          "Georgiadi Eleni P",
+          "Trakakis Eftichios",
+          "Mastorakos Georgios",
+          "Katoulis Alexander",
+          "Louis Konstantinos",
+          "Panagiotopoulos Dimitrios",
+          "Machairiotis Nikolaos",
+          "Pergaliotis Vasilios",
+          "Panagopoulos Periklis",
+          "Christodoulaki Chrysi"
+        ],
+        "mesh_terms": [
+          "Humans",
+          "Female",
+          "Polycystic Ovary Syndrome",
+          "Acne Vulgaris",
+          "Adult",
+          "Adolescent",
+          "Insulin Resistance",
+          "Young Adult",
+          "Glucose Metabolism Disorders",
+          "Retrospective Studies",
+          "Blood Glucose",
+          "Biomarkers",
+          "Dehydroepiandrosterone Sulfate",
+          "Severity of Illness Index"
+        ],
+        "section_type": "",
+        "chunk_section_type": "method",
+        "section_priority": 0,
+        "overlap_ratio": 0.9830908375933937,
+        "overlapping_sections": [
+          "Patients and Methods||0.01651592607156901",
+          "Patients and Methods||0.9830908375933937"
+        ],
+        "doc_study_type": [
+          "clinical_trial"
+        ],
+        "doc_condition_disease": [
+          "PCOS"
+        ],
+        "doc_target": [
+          "female"
+        ],
+        "doc_target_age_distribution": [
+          "teenager",
+          "adult"
+        ],
+        "doc_num_of_participants": 30,
+        "doc_study_duration": "12 weeks",
+        "doc_intervention_type": [
+          "movement",
+          "mindfulness"
+        ],
+        "doc_hormone_focus": [
+          "insulin",
+          "androgens"
+        ],
+        "doc_target_symptoms": [
+          "weight gain",
+          "irregular periods"
+        ],
+        "doc_risk_of_bias": "low",
+        "doc_summary": "This clinical trial investigates the association between glucose metabolism disorders, insulin resistance, and acne severity in women with PCOS. The study aims to elucidate the impact of insulin resistance on acne development in the context of PCOS. Results will contribute to understanding the interplay between hormonal imbalances, metabolic disturbances, and dermatological manifestations in women with PCOS.",
+        "intervention_type": [
+          "food"
+        ],
+        "symptoms_focus": [
+          "bloating",
+          "irregular periods",
+          "weight gain"
+        ],
+        "hormone_focus": [
+          "insulin"
+        ],
+        "id": "paper_40579029_chunk_5",
+        "similarity_score": 0,
+        "rrf_score": 0.015151515151515152,
+        "found_in": [
+          "dense"
+        ],
+        "dense_rank": 5
+      }
+    ],
+    "stats": {
+      "total_results": 10,
+      "lexical_only": 0,
+      "dense_only": 3,
+      "both": 7,
+      "lexical_total": 50,
+      "dense_total": 50,
+      "model_filter": null
+    }
+  },
+  "comparison": {
+    "hq_count": 10,
+    "lq_count": 10,
+    "common_results": 6
+  }
+}
