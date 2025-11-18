@@ -20,7 +20,12 @@ def initialize_firebase():
             
         
         # Environment variables configuration
-        if settings.FIREBASE_PROJECT_ID:
+        # Guard against placeholder values to avoid noisy initialization errors
+        placeholder_markers = {"your-firebase-project-id", "your-private-key-id-here", "your-private-key-here"}
+        if settings.FIREBASE_PROJECT_ID and settings.FIREBASE_PROJECT_ID not in placeholder_markers:
+            if not settings.FIREBASE_PRIVATE_KEY or settings.FIREBASE_PRIVATE_KEY in placeholder_markers:
+                print("⚠️ Firebase skipped: Private key missing or placeholder. Provide real credentials to enable Firebase features.")
+                return
             firebase_config = {
                 "type": "service_account",
                 "project_id": settings.FIREBASE_PROJECT_ID,

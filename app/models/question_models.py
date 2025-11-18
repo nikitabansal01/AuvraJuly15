@@ -24,7 +24,8 @@ class SessionData(BaseModel):
     body_concerns: Optional[List[str]] = Field(None, description="Body-related concerns")
     skin_hair_concerns: Optional[List[str]] = Field(None, description="Skin/hair-related concerns")
     mental_health_concerns: Optional[List[str]] = Field(None, description="Mental health-related concerns")
-    other_concerns: Optional[List[str]] = Field(None, description="Other concerns")
+    # Default to empty list to prevent stale persistence across partial updates
+    other_concerns: Optional[List[str]] = Field([], description="Other concerns (defaults empty to avoid stale reuse)")
     top_concern: Optional[str] = Field(None, description="Top priority concern")
     diagnosed_conditions: Optional[List[str]] = Field(None, description="Diagnosed conditions")
     family_history: Optional[List[str]] = Field(None, description="Family history")
@@ -171,7 +172,7 @@ class UserResponseData(BaseModel):
     body_concerns: Optional[List[str]] = Field(None, description="Body-related concerns")
     skin_hair_concerns: Optional[List[str]] = Field(None, description="Skin/hair-related concerns")
     mental_health_concerns: Optional[List[str]] = Field(None, description="Mental health-related concerns")
-    other_concerns: Optional[List[str]] = Field(None, description="Other concerns")
+    other_concerns: Optional[List[str]] = Field([], description="Other concerns (defaults empty to avoid stale reuse)")
     top_concern: Optional[str] = Field(None, description="Top priority concern")
     diagnosed_conditions: Optional[List[str]] = Field(None, description="Diagnosed conditions")
     family_history: Optional[List[str]] = Field(None, description="Family history")
