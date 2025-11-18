@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Groq settings
     GROQ_API_KEY: str = ""
     
+    # Gemini LLM settings (for "Others" text processing)
+    GEMINI_API_KEY: str = ""
+    ENABLE_LLM_OTHERS: bool = True
+    LLM_OTHERS_TIMEOUT: int = 30
+    
     # Redis settings
     REDIS_URL: str = "redis://localhost:6379"
     
