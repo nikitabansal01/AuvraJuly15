@@ -34,9 +34,18 @@ class QuestionValidators:
         "Mood swings", "Stress", "Fatigue"
     ]
     
+    # TOP_CONCERN_OPTIONS: Combined from all concern categories
+    # This must include all possible options a user could select as their top concern
     TOP_CONCERN_OPTIONS = [
-        "Painful Periods", "Bloating", "Recent weight gain", 
-        "Hirsutism (hair growth on chin, nipples etc)", "Adult Acne", "Mood swings"
+        # Period concerns
+        "Irregular Periods", "Painful Periods", "Light periods / Spotting", "Heavy periods",
+        # Body concerns
+        "Bloating", "Hot Flashes", "Nausea", 
+        "Difficulty losing weight / stubborn belly fat", "Recent weight gain", "Menstrual headaches",
+        # Skin and hair concerns
+        "Hirsutism (hair growth on chin, nipples etc)", "Thinning of hair", "Adult Acne",
+        # Mental health concerns
+        "Mood swings", "Stress", "Fatigue"
     ]
     
     DIAGNOSED_CONDITIONS_OPTIONS = [
@@ -125,7 +134,11 @@ class QuestionValidators:
     
     @classmethod
     def validate_top_concern(cls, value: str) -> str:
-        """Validate top priority concern"""
+        """Validate top priority concern - accepts any concern from the categories or custom 'Others:' text"""
+        # Accept custom "Others:" prefixed values
+        if value.startswith("Others:"):
+            return value
+        # Accept any value from the expanded options
         if value not in cls.TOP_CONCERN_OPTIONS:
             raise ValueError(f"Invalid top_concern: {value}. Allowed options: {cls.TOP_CONCERN_OPTIONS}")
         return value
