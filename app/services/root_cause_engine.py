@@ -10,8 +10,14 @@ load_dotenv()
 
 # Configure Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-ENABLE_LLM_OTHERS = os.getenv("ENABLE_LLM_OTHERS", "false").lower() in ("1", "true", "yes", "on")
-LLM_OTHERS_TIMEOUT = int(os.getenv("LLM_OTHERS_TIMEOUT", "30"))  # seconds (increased from 20 → 30 by request)
+# Auto-enable LLM if GEMINI_API_KEY is present (unless explicitly disabled)
+_enable_llm_env = os.getenv("ENABLE_LLM_OTHERS", "").lower()
+if _enable_llm_env in ("0", "false", "no", "off"):
+    ENABLE_LLM_OTHERS = False
+else:
+    # Enable if API key exists OR if explicitly enabled
+    ENABLE_LLM_OTHERS = bool(GEMINI_API_KEY) or _enable_llm_env in ("1", "true", "yes", "on")
+LLM_OTHERS_TIMEOUT = int(os.getenv("LLM_OTHERS_TIMEOUT", "30"))  # seconds
 
 # Debug logging to verify env vars are loaded
 print(f"🔑 GEMINI_API_KEY loaded: {'Yes' if GEMINI_API_KEY else 'No'}")
