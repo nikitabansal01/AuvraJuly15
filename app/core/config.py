@@ -1,6 +1,10 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -47,6 +51,11 @@ class Settings(BaseSettings):
     # Groq settings
     GROQ_API_KEY: str = ""
     
+    # Gemini LLM settings (for "Others" text processing)
+    GEMINI_API_KEY: str = ""
+    ENABLE_LLM_OTHERS: bool = True
+    LLM_OTHERS_TIMEOUT: int = 30
+    
     # Redis settings
     REDIS_URL: str = "redis://localhost:6379"
     
@@ -65,7 +74,9 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "case_sensitive": True,
         "env_file_encoding": "utf-8",
-        "extra": "ignore"  # Ignore additional fields
+        "extra": "ignore",  # Ignore additional fields
+        # Allow fields with prefix model_ without warnings from Pydantic
+        "protected_namespaces": ()
     }
 
 

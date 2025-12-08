@@ -92,8 +92,15 @@ class QuestionService:
                 session.skin_hair_concerns = data.skin_hair_concerns
             if data.mental_health_concerns is not None:
                 session.mental_health_concerns = data.mental_health_concerns
+            # If caller explicitly sends other_concerns, use them; else proactively clear to avoid stale carry-over
             if data.other_concerns is not None:
                 session.other_concerns = data.other_concerns
+                logger.info(f"other_concerns updated: {session.other_concerns}")
+            else:
+                # Production-safe: Clear previous free-text / selections if omitted (prevents unintended reuse)
+                if session.other_concerns not in (None, [], {}):
+                    logger.info("other_concerns omitted in request -> clearing previous stored value to prevent stale reuse")
+                session.other_concerns = []
             if data.top_concern is not None:
                 session.top_concern = data.top_concern
             if data.diagnosed_conditions is not None:

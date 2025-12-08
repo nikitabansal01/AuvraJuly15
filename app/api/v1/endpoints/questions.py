@@ -691,6 +691,204 @@ async def get_session_recommendations_status(
             detail=f"Session recommendations status retrieval failed: {str(e)}"
         ) 
 
+@router.get("/sessions/{session_id}/hormone-analysis", response_model=dict)
+async def get_hormone_analysis(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get hormone analysis results for a session
+    Returns detailed hormone information formatted for frontend display
+    """
+    try:
+        service = QuestionService(db)
+        session = service.get_session(session_id)
+        
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found or expired"
+            )
+        
+        # Hormone display metadata
+        HORMONE_METADATA = {
+            "estrogen": {
+                "name": "Estrogen",
+                "subtitle": "The energizer",
+                "high": {
+                    "description": "Higher levels may be contributing to heavy bleeding, breast tenderness, and mood swings.",
+                    "icon": "🔺",
+                    "symptoms": ["heavy bleeding", "breast tenderness", "mood swings"]
+                },
+                "low": {
+                    "description": "Lower levels may be contributing to hot flashes, vaginal dryness, and low libido.",
+                    "icon": "🔻",
+                    "symptoms": ["hot flashes", "vaginal dryness", "low libido"]
+                }
+            },
+            "progesterone": {
+                "name": "Progesterone",
+                "subtitle": "The calmer",
+                "low": {
+                    "description": "Lower levels may be contributing to painful periods and mood changes.",
+                    "icon": "🔻",
+                    "symptoms": ["painful periods", "mood changes"]
+                }
+            },
+            "androgens": {
+                "name": "Testosterone",
+                "subtitle": "The titan",
+                "high": {
+                    "description": "Higher levels may be contributing to acne, excess hair, and mood swings, common in PCOS.",
+                    "icon": "🔺",
+                    "symptoms": ["acne", "excess hair", "mood swings", "PCOS"]
+                }
+            },
+            "insulin": {
+                "name": "Insulin",
+                "subtitle": "The regulator",
+                "high": {
+                    "description": "Higher levels may be contributing to weight gain, sugar cravings, and PCOS symptoms.",
+                    "icon": "🔺",
+                    "symptoms": ["weight gain", "sugar cravings", "PCOS symptoms"]
+                }
+            },
+            "cortisol": {
+                "name": "Cortisol",
+                "subtitle": "The stress hormone",
+                "high": {
+                    "description": "Higher levels may be contributing to anxiety, weight gain, and sleep issues.",
+                    "icon": "🔺",
+                    "symptoms": ["anxiety", "weight gain", "sleep issues"]
+                },
+                "low": {
+                    "description": "Lower levels may be contributing to fatigue, low energy, and difficulty handling stress.",
+                    "icon": "🔻",
+                    "symptoms": ["fatigue", "low energy", "difficulty handling stress"]
+                }
+            },
+            "thyroid": {
+                "name": "Thyroid",
+                "subtitle": "The metabolism master",
+                "low": {
+                    "description": "Lower levels may be contributing to fatigue, weight gain, and hair loss.",
+                    "icon": "🔻",
+                    "symptoms": ["fatigue", "weight gain", "hair loss"]
+                }
+            }
+        }
+        
+        # Get session data to re-run analysis with levels
+        session_data = service.get_session_data(session_id)
+        
+        if not session_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session data not found"
+            )
+
+        # Debug: surface raw stored other_concerns before analysis to diagnose unintended carry-over
+        try:
+            print(f"🔎 Session {session_id} raw other_concerns: {getattr(session_data, 'other_concerns', None)}")
+        except Exception as _e:
+            print(f"⚠️ Unable to log other_concerns for session {session_id}: {_e}")
+        
+        # Create temp user profile and re-run analysis to get levels
+        from app.services.root_cause_engine import RootCauseEngine
+        
+        temp_user_profile = {
+            "age": session_data.age,
+            "period_description": session_data.period_description,
+            "birth_control": session_data.birth_control,
+            "cycle_length": session_data.cycle_length,
+            "period_concerns": session_data.period_concerns,
+            "body_concerns": session_data.body_concerns,
+            "skin_hair_concerns": session_data.skin_hair_concerns,
+            "mental_health_concerns": session_data.mental_health_concerns,
+            "other_concerns": session_data.other_concerns,
+            "top_concern": session_data.top_concern,
+            "diagnosed_conditions": session_data.diagnosed_conditions,
+            "family_history": session_data.family_history,
+            "workout_intensity": session_data.workout_intensity,
+            "sleep_duration": session_data.sleep_duration,
+            "stress_level": session_data.stress_level
+        }
+        
+        root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
+        
+        # Build hormone cards array for frontend
+        hormone_cards = []
+        
+        # Primary hormone (High Priority)
+        primary_hormone = root_cause_analysis["primary_imbalance"]
+        primary_level = root_cause_analysis["primary_level"]
+        
+        if primary_hormone in HORMONE_METADATA:
+            meta = HORMONE_METADATA[primary_hormone]
+            level_data = meta.get(primary_level, {})
+            # Derive score key (e.g. androgens_high)
+            all_scores = root_cause_analysis.get("all_scores", {})
+            score_key = f"{primary_hormone}_{primary_level}" if primary_level else primary_hormone
+            primary_score = all_scores.get(score_key, 0)
+            
+            hormone_cards.append({
+                "hormone": primary_hormone,
+                "name": meta["name"],
+                "subtitle": meta["subtitle"],
+                "level": primary_level,
+                "score": primary_score,
+                "icon": level_data.get("icon", ""),
+                "description": level_data.get("description", ""),
+                "symptoms": level_data.get("symptoms", []),
+                "priority": "High Priority",
+                "is_primary": True
+            })
+        
+        # Secondary hormones (Moderate priority)
+        secondary_hormones = root_cause_analysis.get("secondary_imbalances", [])
+        secondary_levels = root_cause_analysis.get("secondary_levels", [])
+        
+        for idx, hormone in enumerate(secondary_hormones):
+            if hormone in HORMONE_METADATA:
+                level = secondary_levels[idx] if idx < len(secondary_levels) else "unknown"
+                meta = HORMONE_METADATA[hormone]
+                level_data = meta.get(level, {})
+                all_scores = root_cause_analysis.get("all_scores", {})
+                score_key = f"{hormone}_{level}" if level else hormone
+                hormone_score = all_scores.get(score_key, 0)
+                
+                hormone_cards.append({
+                    "hormone": hormone,
+                    "name": meta["name"],
+                    "subtitle": meta["subtitle"],
+                    "level": level,
+                    "score": hormone_score,
+                    "icon": level_data.get("icon", ""),
+                    "description": level_data.get("description", ""),
+                    "symptoms": level_data.get("symptoms", []),
+                    "priority": "Moderate",
+                    "is_primary": False
+                })
+        
+        return {
+            "session_id": session_id,
+            "primary_hormone": primary_hormone,
+            "primary_level": primary_level,
+            "secondary_hormones": secondary_hormones,
+            "secondary_levels": secondary_levels,
+            "hormone_cards": hormone_cards,
+            "total_imbalances": len(hormone_cards)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Hormone analysis retrieval failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Hormone analysis retrieval failed: {str(e)}"
+        )
+
 @router.put("/users/timezone")
 async def update_user_timezone(
     timezone_update: TimezoneUpdateRequest,

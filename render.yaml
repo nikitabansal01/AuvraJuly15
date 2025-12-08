@@ -21,5 +21,12 @@ services:
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
         sync: false
+      # Gemini LLM for "Others" text processing (new feature)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ENABLE_LLM_OTHERS
+        value: "true"
+      - key: LLM_OTHERS_TIMEOUT
+        value: "30"
 
  

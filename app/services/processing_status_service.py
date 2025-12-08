@@ -14,6 +14,14 @@ class ProcessingStatusService:
     
     def create_processing_status(self, session_id: str, request_payload: Dict[str, Any]) -> SessionProcessingStatus:
         """Create processing status record"""
+        # Idempotent create: if record already exists, return existing instead of raising IntegrityError
+        existing = self.db.query(SessionProcessingStatus).filter(
+            SessionProcessingStatus.session_id == session_id
+        ).first()
+        if existing:
+            logger.info(f"Processing status already exists (idempotent return): {session_id}, status={existing.processing_status}")
+            return existing
+
         processing_status = SessionProcessingStatus(
             session_id=session_id,
             processing_status="queued",
@@ -22,13 +30,24 @@ class ProcessingStatusService:
             message="Waiting for recommendation generation",
             request_payload=request_payload
         )
-        
-        self.db.add(processing_status)
-        self.db.commit()
-        self.db.refresh(processing_status)
-        
-        logger.info(f"Processing status created: {session_id}, status=queued")
-        return processing_status
+
+        try:
+            self.db.add(processing_status)
+            self.db.commit()
+            self.db.refresh(processing_status)
+            logger.info(f"Processing status created: {session_id}, status=queued")
+            return processing_status
+        except Exception as e:
+            self.db.rollback()
+            # Race condition fallback: try fetch again (another thread may have inserted)
+            existing_after = self.db.query(SessionProcessingStatus).filter(
+                SessionProcessingStatus.session_id == session_id
+            ).first()
+            if existing_after:
+                logger.warning(f"Processing status create race resolved by returning existing: {session_id}")
+                return existing_after
+            logger.error(f"Failed to create processing status: {session_id}, error={str(e)}")
+            raise
     
     def update_processing_started(self, session_id: str) -> bool:
         """Update to processing started status"""
