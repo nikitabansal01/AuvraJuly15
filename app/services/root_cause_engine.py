@@ -260,7 +260,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             scores["insulin_high"] += 1
         
         # 3. PERIOD CONCERNS (Table 3)
-        period_concerns = user_data.get("period_concerns", [])
+        period_concerns = user_data.get("period_concerns") or []
         if isinstance(period_concerns, dict):
             period_concerns = period_concerns.get("concerns", [])
         
@@ -278,7 +278,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             scores["progesterone_low"] += 1
         
         # 4. BODY CONCERNS (Table 4)
-        body_concerns = user_data.get("body_concerns", [])
+        body_concerns = user_data.get("body_concerns") or []
         if isinstance(body_concerns, dict):
             body_concerns = body_concerns.get("concerns", [])
         
@@ -303,7 +303,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             scores["progesterone_low"] += 1
         
         # 5. SKIN/HAIR CONCERNS (Table 5) - HIGHEST WEIGHTS
-        skin_concerns = user_data.get("skin_hair_concerns", [])
+        skin_concerns = user_data.get("skin_hair_concerns") or []
         if isinstance(skin_concerns, dict):
             skin_concerns = skin_concerns.get("concerns", [])
         
@@ -317,7 +317,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             scores["insulin_high"] += 1
         
         # 6. MENTAL HEALTH CONCERNS (Table 6)
-        mental_concerns = user_data.get("mental_health_concerns", [])
+        mental_concerns = user_data.get("mental_health_concerns") or []
         if isinstance(mental_concerns, dict):
             mental_concerns = mental_concerns.get("concerns", [])
         
@@ -332,7 +332,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             scores["insulin_high"] += 1
         
         # 7. DIAGNOSED CONDITIONS (Table 7) - HIGHEST WEIGHTS
-        diagnosed = user_data.get("diagnosed_conditions", [])
+        diagnosed = user_data.get("diagnosed_conditions") or []
         if not isinstance(diagnosed, list):
             diagnosed = []
         
@@ -367,7 +367,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             scores["thyroid_low"] += 5
         
         # 8. FAMILY HISTORY (Table 8) - +1 genetic modifiers
-        family = user_data.get("family_history", [])
+        family = user_data.get("family_history") or []
         if not isinstance(family, list):
             family = []
         

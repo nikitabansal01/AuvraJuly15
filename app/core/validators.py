@@ -42,6 +42,7 @@ class QuestionValidators:
     DIAGNOSED_CONDITIONS_OPTIONS = [
         "PCOS", "PCOD", "Endometriosis", "Dysmenorrhea", "Amenorrhea", "Menorrhagia", 
         "Metrorrhagia", "Cushing's Syndrome", "Premenstrual Syndrome", "Diabetes", "PMDD",
+        "Hashimoto's", "Hypothyroidism",
         "None of the above", "Others (please specify)"
     ]
     
@@ -57,7 +58,7 @@ class QuestionValidators:
     ]
     
     WORKOUT_INTENSITY_OPTIONS = [
-        "Low", "Moderate", "High"
+        "Low", "Moderate", "High", "I'm yet to start"
     ]
     
     SLEEP_DURATION_OPTIONS = [
