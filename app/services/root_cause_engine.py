@@ -471,20 +471,49 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
                 scores[hormone] += score
         
         # 11. TOP CONCERN MULTIPLIER (1.5x)
+        # Apply 1.5x multiplier to hormones associated with user's top concern
         top_concern = user_data.get("top_concern")
         if top_concern:
-            # Map concerns to hormones and apply 1.5x
+            # Map ALL concerns to hormones (from every category)
+            # Based on evidence-based clinical scoring tables used above
             concern_map = {
+                # PERIOD CONCERNS (Table 3)
+                "Irregular Periods": ["androgens_high", "thyroid_low"],
                 "Painful Periods": ["estrogen_high", "progesterone_low"],
+                "Light periods / Spotting": ["estrogen_low", "progesterone_low"],
+                "Heavy periods": ["estrogen_high", "progesterone_low"],
+                
+                # BODY CONCERNS (Table 4)
                 "Bloating": ["estrogen_high", "insulin_high"],
+                "Hot Flashes": ["estrogen_low"],
+                "Nausea": ["estrogen_high", "cortisol_low"],
+                "Difficulty losing weight / stubborn belly fat": ["insulin_high", "cortisol_high", "thyroid_low"],
                 "Recent weight gain": ["insulin_high", "thyroid_low", "cortisol_high"],
+                "Menstrual headaches": ["estrogen_high", "progesterone_low"],
+                
+                # SKIN/HAIR CONCERNS (Table 5)
                 "Hirsutism (hair growth on chin, nipples etc)": ["androgens_high"],
+                "Thinning of hair": ["thyroid_low", "androgens_high"],
                 "Adult Acne": ["androgens_high", "insulin_high"],
-                "Mood swings": ["progesterone_low", "cortisol_high"]
+                
+                # MENTAL HEALTH CONCERNS (Table 6)
+                "Mood swings": ["progesterone_low", "cortisol_high"],
+                "Stress": ["cortisol_high"],
+                "Fatigue": ["thyroid_low", "cortisol_low", "insulin_high"]
             }
+            
+            # Check if top_concern is in the known mapping
             if top_concern in concern_map:
                 for hormone in concern_map[top_concern]:
                     scores[hormone] = int(scores[hormone] * 1.5)
+            elif top_concern.startswith("Others:"):
+                # For custom "Others:" text as top concern,
+                # The LLM already scored it above (section 10)
+                # We apply a general multiplier to all non-zero LLM-scored hormones
+                # This is handled by the LLM process above, no additional action needed
+                print(f"📌 Top concern is custom 'Others:' text: {top_concern}")
+                # Note: LLM scores were already added in section 10
+
         
         # 12. IDENTIFY PRIMARY & SECONDARY
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
