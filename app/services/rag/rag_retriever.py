@@ -208,7 +208,8 @@ class HybridRetriever:
         results = index.query(
             vector=embedding,
             top_k=top_k,
-            include_metadata=True
+            include_metadata=True,
+            namespace="pcos-rag-gpt_4o"  # Query the namespace where vectors are indexed
         )
         
         # Convert to standard format

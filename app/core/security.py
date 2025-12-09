@@ -74,9 +74,9 @@ async def verify_firebase_token(token: str) -> dict:
                 detail="Firebase not initialized"
             )
         
-        # Verify Firebase token (allow 10 seconds clock skew)
+        # Verify Firebase token
         logger.info("Firebase token verification in progress...")
-        decoded_token = auth.verify_id_token(token, check_revoked=False, clock_skew_seconds=10)
+        decoded_token = auth.verify_id_token(token, check_revoked=False)
         logger.info(f"Firebase token verification successful: uid={decoded_token.get('uid')}, email={decoded_token.get('email')}")
         return decoded_token
         
