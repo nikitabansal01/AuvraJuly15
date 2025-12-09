@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, status, Request
-from app.models.rag_models import PaperMeta, RAGRequest
+from fastapi import APIRouter, HTTPException, status, Request, Query
+from app.models.rag_models import PaperMeta, RAGRequest, Author
 from app.services.rag_service import RAGService
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 import logging
 import time
 from app.models.rag_models import RAGResponse
@@ -10,6 +11,68 @@ from app.models.rag_models import RAGResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def convert_authors_to_objects(authors: List[Any]) -> List[Author]:
+    """
+    Convert author strings or dicts to Author objects.
+    Handles formats like: "Smith J", "John Smith", {"name": "Smith J"}
+    """
+    result = []
+    for author in authors:
+        if author is None:
+            continue
+        
+        # Already an Author object
+        if isinstance(author, Author):
+            result.append(author)
+            continue
+        
+        # Dict format
+        if isinstance(author, dict):
+            if "name" in author:
+                name = author["name"]
+            elif "last_name" in author and "first_name" in author:
+                result.append(Author(
+                    last_name=author["last_name"],
+                    first_name=author["first_name"],
+                    affiliation=author.get("affiliation")
+                ))
+                continue
+            else:
+                continue
+        else:
+            # String format like "Smith J" or "John Smith"
+            name = str(author)
+        
+        # Parse name string
+        parts = name.strip().split()
+        if len(parts) >= 2:
+            # Try to detect format: "LastName FirstInitial" vs "First Last"
+            if len(parts[-1]) <= 2:  # Likely "Smith J" format
+                last_name = " ".join(parts[:-1])
+                first_name = parts[-1]
+            else:  # Likely "John Smith" format
+                first_name = parts[0]
+                last_name = " ".join(parts[1:])
+        elif len(parts) == 1:
+            last_name = parts[0]
+            first_name = ""
+        else:
+            last_name = "Unknown"
+            first_name = ""
+        
+        result.append(Author(
+            last_name=last_name,
+            first_name=first_name,
+            affiliation=None
+        ))
+    
+    return result
+
+# Request model for indexing
+class IndexRequest(BaseModel):
+    tiers: Optional[List[str]] = None
 
 @router.get("/health")
 async def health_check():
@@ -163,7 +226,7 @@ async def fetch_and_process_endpoint(resume_from_checkpoint: bool = False):
                     pmcid=paper.get("pmcid"),
                     doi=paper.get("doi"),
                     # Author information
-                    authors=paper.get("authors", []),
+                    authors=convert_authors_to_objects(paper.get("authors", [])),
                     # Journal information
                     journal=paper.get("journal"),
                     journal_issn=paper.get("journal_issn"),
@@ -417,4 +480,349 @@ async def test_pubmed_to_pmc_endpoint():
         return {
             "status": "error",
             "message": str(e)
-        } 
+        }
+
+
+@router.post("/index-expanded")
+async def index_expanded_papers(request: IndexRequest = None):
+    """
+    Index papers using expanded Tier queries
+    
+    Args:
+        request: JSON body with "tiers" list. Options: ["all"], ["essential"], or specific tiers
+                Use "all" for all 205 queries (~$0.40)
+                Use "essential" for tiers 1-5 (~$0.20)
+    
+    Example:
+        curl -X POST "http://localhost:8000/api/v1/rag/index-expanded" \\
+             -H "Content-Type: application/json" \\
+             -d '{"tiers": ["all"]}'
+    """
+    start_time = time.time()
+    
+    # Handle None request or None tiers
+    if request is None or request.tiers is None:
+        tiers = ["tier_1_pcos"]
+    else:
+        tiers = request.tiers
+    
+    logger.info(f"📚 Starting expanded paper indexing for tiers: {tiers}")
+    
+    try:
+        from app.services.rag.paper_fetcher import fetch_papers_for_rag
+        from app.models.rag_models import PaperMeta
+        
+        # Step 1: Fetch papers from expanded queries
+        papers = await fetch_papers_for_rag(tiers)
+        logger.info(f"✅ Fetched {len(papers)} papers from PubMed")
+        
+        if not papers:
+            return {
+                "success": False,
+                "message": "No papers found for specified tiers",
+                "tiers": tiers,
+                "papers_fetched": 0,
+                "papers_indexed": 0,
+                "processing_time": time.time() - start_time
+            }
+        
+        # Step 2: Filter duplicates
+        filtered_papers = await RAGService.filter_new_papers_by_pmid(papers)
+        logger.info(f"✅ After deduplication: {len(filtered_papers)} new papers")
+        
+        # Step 3: Process and index each paper
+        indexed_count = 0
+        chunk_count = 0
+        
+        for paper in filtered_papers:
+            try:
+                # Create PaperMeta object
+                paper_meta = PaperMeta(
+                    title=paper.get("title", ""),
+                    content=paper.get("full_text", paper.get("abstract", "")),
+                    url=f"https://pubmed.ncbi.nlm.nih.gov/{paper.get('pmid', '')}",
+                    date=str(paper.get("publication_year", "")),
+                    source="pubmed-expanded",
+                    pmid=paper.get("pmid"),
+                    pmcid=paper.get("pmcid"),
+                    doi=paper.get("doi"),
+                    authors=convert_authors_to_objects(paper.get("authors", [])),
+                    journal=paper.get("journal"),
+                    publication_year=paper.get("publication_year"),
+                    mesh_terms=paper.get("mesh_terms", []),
+                    abstract=paper.get("abstract")
+                )
+                
+                # Process with LLM tagging
+                results = await RAGService.process_paper_pipeline_with_llm_option(paper_meta, use_llm=True)
+                indexed_count += 1
+                chunk_count += len(results)
+                
+                logger.info(f"✅ Indexed: {paper_meta.title[:50]}... ({len(results)} chunks)")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to index paper: {paper.get('title', 'Unknown')}: {e}")
+                continue
+        
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "message": f"Indexed {indexed_count} papers with {chunk_count} chunks",
+            "tiers": tiers,
+            "papers_fetched": len(papers),
+            "papers_indexed": indexed_count,
+            "chunks_stored": chunk_count,
+            "processing_time": round(processing_time, 2)
+        }
+        
+    except ImportError as e:
+        logger.error(f"Import error: {e}")
+        return {
+            "success": False,
+            "message": f"Module import failed: {str(e)}",
+            "processing_time": time.time() - start_time
+        }
+    except Exception as e:
+        logger.error(f"Expanded indexing failed: {e}", exc_info=True)
+        return {
+            "success": False,
+            "message": str(e),
+            "processing_time": time.time() - start_time
+        }
+
+
+@router.post("/index-from-cache")
+async def index_papers_from_cache():
+    """
+    Index papers from the cached JSON file (no PubMed fetch needed).
+    Use after fixing bugs to avoid re-fetching from PubMed.
+    
+    Example:
+        curl -X POST "http://localhost:8000/api/v1/rag/index-from-cache"
+    """
+    start_time = time.time()
+    logger.info("📦 Starting paper indexing from cache...")
+    
+    try:
+        from app.services.rag.paper_fetcher import load_cached_papers
+        from app.models.rag_models import PaperMeta
+        
+        # Step 1: Load papers from cache
+        papers = load_cached_papers()
+        logger.info(f"✅ Loaded {len(papers)} papers from cache")
+        
+        if not papers:
+            return {
+                "success": False,
+                "message": "No papers found in cache",
+                "papers_in_cache": 0,
+                "papers_indexed": 0,
+                "processing_time": time.time() - start_time
+            }
+        
+        # Step 2: Filter duplicates against already indexed papers
+        filtered_papers = await RAGService.filter_new_papers_by_pmid(papers)
+        logger.info(f"✅ After deduplication: {len(filtered_papers)} new papers")
+        
+        # Step 3: Process and index each paper
+        indexed_count = 0
+        chunk_count = 0
+        errors = []
+        
+        for paper in filtered_papers:
+            try:
+                # Skip papers without title or content
+                title = paper.get("title") or ""
+                content = paper.get("full_text") or paper.get("abstract") or ""
+                
+                if not title.strip():
+                    logger.warning(f"Skipping paper with no title: PMID={paper.get('pmid')}")
+                    continue
+                
+                if not content.strip():
+                    logger.warning(f"Skipping paper with no content: {title[:50]}")
+                    continue
+                
+                # Create PaperMeta object with author conversion
+                paper_meta = PaperMeta(
+                    title=title,
+                    content=content,
+                    url=f"https://pubmed.ncbi.nlm.nih.gov/{paper.get('pmid') or ''}",
+                    date=str(paper.get("publication_year") or ""),
+                    source="pubmed-cached",
+                    pmid=paper.get("pmid"),
+                    pmcid=paper.get("pmcid"),
+                    doi=paper.get("doi"),
+                    authors=convert_authors_to_objects(paper.get("authors") or []),
+                    journal=paper.get("journal"),
+                    publication_year=paper.get("publication_year"),
+                    mesh_terms=paper.get("mesh_terms") or [],
+                    abstract=paper.get("abstract")
+                )
+                
+                # Process WITHOUT LLM tagging (embeddings only - faster & cheaper)
+                results = await RAGService.process_paper_pipeline_with_llm_option(paper_meta, use_llm=False)
+                indexed_count += 1
+                chunk_count += len(results)
+                
+                if indexed_count % 50 == 0:
+                    logger.info(f"📈 Progress: {indexed_count}/{len(filtered_papers)} papers indexed")
+                
+            except Exception as e:
+                paper_title = (paper.get('title') or 'Unknown')[:50]
+                error_msg = f"{paper_title}: {str(e)[:100]}"
+                errors.append(error_msg)
+                logger.error(f"❌ {error_msg}")
+                continue
+        
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "message": f"Indexed {indexed_count} papers with {chunk_count} chunks from cache",
+            "papers_in_cache": len(papers),
+            "papers_after_dedup": len(filtered_papers),
+            "papers_indexed": indexed_count,
+            "chunks_stored": chunk_count,
+            "errors_count": len(errors),
+            "processing_time": round(processing_time, 2)
+        }
+        
+    except FileNotFoundError as e:
+        return {
+            "success": False,
+            "message": f"Cache file not found: {str(e)}",
+            "processing_time": time.time() - start_time
+        }
+    except Exception as e:
+        logger.error(f"Cache indexing failed: {e}", exc_info=True)
+        return {
+            "success": False,
+            "message": str(e),
+            "processing_time": time.time() - start_time
+        }
+
+
+@router.post("/index-batch")
+async def index_papers_batch():
+    """
+    FAST batch indexing - embeddings only, no LLM tagging.
+    Uses OpenAI batch embedding API for speed (~3 min instead of 75 min).
+    """
+    import httpx
+    import os
+    from app.services.rag.paper_fetcher import load_cached_papers
+    
+    start_time = time.time()
+    logger.info("🚀 Starting FAST batch indexing...")
+    
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+    PINECONE_INDEX = os.getenv("PINECONE_INDEX")
+    
+    try:
+        # Step 1: Load papers
+        papers = load_cached_papers()
+        logger.info(f"📦 Loaded {len(papers)} papers from cache")
+        
+        if not papers:
+            return {"success": False, "message": "No papers in cache", "processing_time": time.time() - start_time}
+        
+        # Step 2: Prepare all chunks
+        all_chunks = []
+        chunk_metadata = []
+        
+        for paper in papers:
+            title = paper.get("title") or ""
+            content = paper.get("full_text") or paper.get("abstract") or ""
+            
+            if not title.strip() or not content.strip():
+                continue
+            
+            # Simple chunking - split into ~500 char chunks
+            chunk_size = 500
+            for i in range(0, len(content), chunk_size):
+                chunk_text = content[i:i+chunk_size]
+                if len(chunk_text) > 50:  # Skip tiny chunks
+                    chunk_id = f"paper_{paper.get('pmid', 'unknown')}_{i//chunk_size}"
+                    all_chunks.append(chunk_text)
+                    chunk_metadata.append({
+                        "chunk_id": chunk_id,
+                        "title": title[:500],
+                        "text": chunk_text[:1000],
+                        "pmid": paper.get("pmid", ""),
+                        "url": f"https://pubmed.ncbi.nlm.nih.gov/{paper.get('pmid', '')}",
+                        "journal": paper.get("journal", ""),
+                        "publication_year": paper.get("publication_year", 0),
+                        "mesh_terms": paper.get("mesh_terms", [])[:10]
+                    })
+        
+        logger.info(f"✂️ Created {len(all_chunks)} chunks from {len(papers)} papers")
+        
+        # Step 3: Batch embedding (max 2048 per batch)
+        BATCH_SIZE = 2000
+        all_embeddings = []
+        
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            for batch_start in range(0, len(all_chunks), BATCH_SIZE):
+                batch_end = min(batch_start + BATCH_SIZE, len(all_chunks))
+                batch_texts = all_chunks[batch_start:batch_end]
+                
+                logger.info(f"🔄 Embedding batch {batch_start//BATCH_SIZE + 1}: {len(batch_texts)} chunks")
+                
+                response = await client.post(
+                    "https://api.openai.com/v1/embeddings",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    json={"input": batch_texts, "model": "text-embedding-3-small"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                for item in data["data"]:
+                    all_embeddings.append(item["embedding"])
+                
+                logger.info(f"✅ Batch complete: {len(all_embeddings)} embeddings total")
+        
+        # Step 4: Upload to Pinecone
+        from pinecone import Pinecone
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+        index = pc.Index(PINECONE_INDEX)
+        
+        # Get namespace
+        namespace = RAGService.get_model_namespace()
+        
+        # Prepare vectors
+        vectors = []
+        for i, (embedding, metadata) in enumerate(zip(all_embeddings, chunk_metadata)):
+            vectors.append({
+                "id": metadata["chunk_id"],
+                "values": embedding,
+                "metadata": metadata
+            })
+        
+        # Batch upsert (100 at a time)
+        UPSERT_BATCH = 100
+        for i in range(0, len(vectors), UPSERT_BATCH):
+            batch = vectors[i:i+UPSERT_BATCH]
+            index.upsert(vectors=batch, namespace=namespace)
+            if (i // UPSERT_BATCH) % 10 == 0:
+                logger.info(f"📤 Uploaded {i + len(batch)} / {len(vectors)} vectors")
+        
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "message": f"Indexed {len(papers)} papers with {len(vectors)} chunks",
+            "papers_processed": len(papers),
+            "chunks_created": len(vectors),
+            "processing_time": round(processing_time, 2)
+        }
+        
+    except Exception as e:
+        logger.error(f"Batch indexing failed: {e}", exc_info=True)
+        return {
+            "success": False,
+            "message": str(e),
+            "processing_time": time.time() - start_time
+        }
