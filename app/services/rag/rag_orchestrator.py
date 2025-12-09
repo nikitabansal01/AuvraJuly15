@@ -54,35 +54,37 @@ class RAGOrchestrator:
     ) -> List[Dict[str, Any]]:
         """
         Generate recommendations using RAG pipeline
-        
-        Args:
-            user_profile: User's health profile
-            category: food, movement, or mindfulness
-            use_rag: Whether to use RAG (True) or fall back to prompt-only
-            
-        Returns:
-            List of validated recommendations
         """
+        logger.info("=" * 60)
+        logger.info("🎯 RAG ORCHESTRATOR CALLED")
+        logger.info(f"   Category: {category}")
+        logger.info(f"   Use RAG: {use_rag}")
+        logger.info("=" * 60)
+        
         try:
             # Convert to dict for processing
             profile_dict = user_profile.dict() if hasattr(user_profile, 'dict') else user_profile
             
             # Step 1: Analyze hormone imbalance
+            logger.info("🧬 STEP 1: Analyzing hormone imbalance...")
             hormone_analysis = RootCauseEngine.analyze_hormone_imbalance(profile_dict)
             profile_dict['primary_imbalance'] = hormone_analysis.get('primary_imbalance', '')
             profile_dict['primary_level'] = hormone_analysis.get('primary_level', '')
             profile_dict['secondary_imbalances'] = hormone_analysis.get('secondary_imbalances', [])
             
-            logger.info(f"🧬 RAG Orchestrator: Hormone analysis complete - primary={hormone_analysis.get('primary_imbalance')}")
+            logger.info(f"✅ STEP 1 SUCCESS: Primary={hormone_analysis.get('primary_imbalance')} ({hormone_analysis.get('primary_level', '')})")
             
             if use_rag:
+                logger.info("➡️ Proceeding with RAG pipeline...")
                 return await self._rag_generate(profile_dict, category, hormone_analysis)
             else:
+                logger.info("➡️ RAG disabled, using fallback...")
                 return await self._fallback_generate(user_profile, category)
                 
         except Exception as e:
-            logger.error(f"❌ RAG Orchestrator failed: {str(e)}")
-            # Fallback to non-RAG generation
+            logger.error(f"❌ RAG Orchestrator EXCEPTION: {str(e)}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             return await self._fallback_generate(user_profile, category)
     
     async def _rag_generate(
@@ -93,8 +95,15 @@ class RAGOrchestrator:
     ) -> List[Dict[str, Any]]:
         """RAG-enhanced generation pipeline with medical safety checks"""
         
+        logger.info("=" * 60)
+        logger.info(f"🔬 RAG PIPELINE STARTED: {category.upper()}")
+        logger.info("=" * 60)
+        
         # Step 2: Retrieve relevant papers
+        logger.info("📖 STEP 2: Retrieving papers from Pinecone...")
         query = self._build_retrieval_query(profile_dict, category)
+        logger.info(f"   Query: {query[:100]}...")
+        
         papers = await self.retriever.retrieve(
             query=query,
             user_profile=profile_dict,
@@ -103,13 +112,15 @@ class RAGOrchestrator:
         )
         
         if not papers:
-            logger.warning(f"⚠️ RAG: No papers retrieved for {category}, falling back")
+            logger.warning(f"⚠️ STEP 2 FAILED: No papers retrieved for {category}")
+            logger.info("   Falling back to prompt-only generation...")
             return await self._fallback_generate(profile_dict, category)
         
-        logger.info(f"🔬 RAG: Retrieved {len(papers)} papers for {category}")
+        logger.info(f"✅ STEP 2 SUCCESS: Retrieved {len(papers)} papers")
         
         # Step 2.5: CHECK EVIDENCE THRESHOLD (Medical Safety)
         if MEDICAL_SAFETY_ENABLED:
+            logger.info("🛡️ STEP 2.5: Checking evidence threshold...")
             recommendation_type = self._get_recommendation_type(category)
             evidence_check = EvidenceThresholdChecker.check_evidence_sufficiency(
                 papers=papers,
@@ -118,24 +129,26 @@ class RAGOrchestrator:
             
             if not evidence_check['sufficient']:
                 logger.warning(f"⚠️ Evidence threshold not met: {evidence_check['message']}")
-                # Still proceed but add warning to recommendations
                 evidence_warning = evidence_check['message']
             else:
                 evidence_warning = None
                 logger.info(f"✅ Evidence check passed: {evidence_check['papers_found']} quality papers")
         else:
             evidence_warning = None
+            logger.info("ℹ️ STEP 2.5: Medical safety module not enabled")
         
         # Step 3: Compile context with citations
+        logger.info("📄 STEP 3: Compiling context with citations...")
         context, citations = self.compiler.compile(papers, category, profile_dict)
         
         if not context:
-            logger.warning(f"⚠️ RAG: Context compilation failed for {category}")
+            logger.warning(f"⚠️ STEP 3 FAILED: Context compilation failed for {category}")
             return await self._fallback_generate(profile_dict, category)
         
-        logger.info(f"📄 RAG: Compiled context with {len(citations)} citations")
+        logger.info(f"✅ STEP 3 SUCCESS: Compiled {len(citations)} citations")
         
         # Step 4: Create RAG prompt and generate
+        logger.info("🤖 STEP 4: Generating recommendations with LLM...")
         prompt = self.compiler.create_rag_prompt(
             user_profile=profile_dict,
             category=category,
@@ -148,27 +161,37 @@ class RAGOrchestrator:
         from app.services.ai_service import AIService
         
         llm_response, model_used = await AIService.call_ai_model(prompt)
-        logger.info(f"🤖 RAG: LLM response received from {model_used}")
+        logger.info(f"✅ STEP 4 SUCCESS: LLM response received from {model_used}")
         
         # Step 5: Parse recommendations
+        logger.info("📝 STEP 5: Parsing recommendations from LLM response...")
         recommendations = self._parse_recommendations(llm_response, category)
         
         if not recommendations:
-            logger.warning(f"⚠️ RAG: No recommendations parsed from LLM response")
+            logger.warning(f"⚠️ STEP 5 FAILED: No recommendations parsed")
+            logger.info(f"   LLM response preview: {llm_response[:200]}...")
             return []
         
+        logger.info(f"✅ STEP 5 SUCCESS: Parsed {len(recommendations)} recommendations")
+        
         # Step 6: Validate citations
+        logger.info("🔍 STEP 6: Validating citations...")
         validated_recs, stats = self.validator.validate(recommendations, citations)
+        logger.info(f"✅ STEP 6 SUCCESS: {stats['verified']}/{stats['total']} citations verified")
         
         # Step 7: Enrich with full citation metadata
+        logger.info("📚 STEP 7: Enriching citations with metadata...")
         enriched_recs = self.validator.enrich_citations(validated_recs, citations)
         
         # Step 8: Calculate faithfulness score
         faithfulness = self.validator.calculate_faithfulness_score(enriched_recs, context)
         
-        logger.info(f"✅ RAG Complete: {len(enriched_recs)} recommendations, "
-                    f"verification_rate={stats.get('verification_rate', 0):.2f}, "
-                    f"faithfulness={faithfulness:.2f}")
+        logger.info("=" * 60)
+        logger.info(f"✅ RAG PIPELINE COMPLETE: {category.upper()}")
+        logger.info(f"   Recommendations: {len(enriched_recs)}")
+        logger.info(f"   Verification rate: {stats.get('verification_rate', 0):.0%}")
+        logger.info(f"   Faithfulness: {faithfulness:.0%}")
+        logger.info("=" * 60)
         
         return enriched_recs
     

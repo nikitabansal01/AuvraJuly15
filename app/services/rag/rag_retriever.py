@@ -69,14 +69,19 @@ class HybridRetriever:
     }
     
     def __init__(self):
+        logger.info("=" * 60)
+        logger.info("🚀 RAG RETRIEVER INITIALIZING")
+        logger.info("=" * 60)
+        
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_index = os.getenv("PINECONE_INDEX")
         
         # Debug logging for environment variables
-        logger.info(f"🔧 RAG Retriever Init: OPENAI_API_KEY={'SET' if self.openai_api_key else 'MISSING'}")
-        logger.info(f"🔧 RAG Retriever Init: PINECONE_API_KEY={'SET' if self.pinecone_api_key else 'MISSING'}")
-        logger.info(f"🔧 RAG Retriever Init: PINECONE_INDEX={self.pinecone_index or 'MISSING'}")
+        logger.info(f"🔧 OPENAI_API_KEY: {'SET (' + self.openai_api_key[:8] + '...)' if self.openai_api_key else '❌ MISSING'}")
+        logger.info(f"🔧 PINECONE_API_KEY: {'SET (' + self.pinecone_api_key[:8] + '...)' if self.pinecone_api_key else '❌ MISSING'}")
+        logger.info(f"🔧 PINECONE_INDEX: {self.pinecone_index or '❌ MISSING'}")
+        logger.info("=" * 60)
         
     async def retrieve(
         self,
@@ -87,39 +92,40 @@ class HybridRetriever:
     ) -> List[Dict[str, Any]]:
         """
         Main retrieval method combining semantic and keyword search
-        
-        Args:
-            query: Base search query
-            user_profile: User's health profile from survey
-            category: food, movement, or mindfulness
-            top_k: Number of results to return
-            
-        Returns:
-            List of retrieved paper chunks with metadata
         """
+        logger.info("=" * 60)
+        logger.info(f"📚 RAG RETRIEVE CALLED: category={category}")
+        logger.info("=" * 60)
+        
         try:
             # Step 1: Build enhanced query from user profile
             enhanced_query = self._build_enhanced_query(query, user_profile, category)
-            logger.info(f"🔍 RAG Retriever: Enhanced query for {category}: {enhanced_query[:100]}...")
+            logger.info(f"🔍 STEP 1: Built enhanced query")
+            logger.info(f"   Query: {enhanced_query[:150]}...")
             
             # Step 2: Semantic search - Pinecone returns results ALREADY sorted by similarity
+            logger.info(f"🔍 STEP 2: Calling Pinecone semantic search (top_k={top_k})")
             semantic_results = await self._semantic_search(enhanced_query, top_k)
             
             if not semantic_results:
-                logger.warning(f"⚠️ RAG Retriever: No results from Pinecone for {category}")
+                logger.warning(f"⚠️ STEP 2 RESULT: No results from Pinecone for {category}")
                 return []
             
             # Log top match scores
-            if semantic_results:
-                top_scores = [r.get('score', 0) for r in semantic_results[:3]]
-                logger.info(f"🔬 RAG Retriever: Retrieved {len(semantic_results)} papers for {category}, top scores: {top_scores}")
+            top_scores = [round(r.get('score', 0), 3) for r in semantic_results[:5]]
+            top_titles = [r.get('title', 'N/A')[:50] for r in semantic_results[:3]]
             
-            # Return directly - Pinecone already sorted by relevance!
-            # No need for extra filtering that might remove good papers
+            logger.info(f"✅ STEP 2 RESULT: Retrieved {len(semantic_results)} papers")
+            logger.info(f"   Top 5 scores: {top_scores}")
+            logger.info(f"   Top 3 titles: {top_titles}")
+            logger.info("=" * 60)
+            
             return semantic_results
             
         except Exception as e:
-            logger.error(f"❌ RAG Retriever failed: {str(e)}")
+            logger.error(f"❌ RAG Retriever EXCEPTION: {str(e)}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             return []
     
     def _build_enhanced_query(
