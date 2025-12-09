@@ -36,6 +36,39 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Firebase initialization failed: {e}")
     
+    # ========================================
+    # RAG Module Diagnostic - Test if RAG loads
+    # ========================================
+    logger.info("=" * 60)
+    logger.info("🔬 RAG MODULE DIAGNOSTIC")
+    logger.info("=" * 60)
+    
+    try:
+        from app.services.rag.rag_orchestrator import generate_rag_recommendations
+        if generate_rag_recommendations is not None:
+            logger.info("✅ RAG: generate_rag_recommendations LOADED SUCCESSFULLY")
+        else:
+            logger.error("❌ RAG: generate_rag_recommendations is None (load failed)")
+    except ImportError as e:
+        logger.error(f"❌ RAG IMPORT FAILED: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+    except Exception as e:
+        logger.error(f"❌ RAG EXCEPTION: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    # Test Pinecone environment variables
+    import os
+    pinecone_key = os.getenv("PINECONE_API_KEY")
+    pinecone_index = os.getenv("PINECONE_INDEX")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    
+    logger.info(f"🔧 PINECONE_API_KEY: {'SET (' + pinecone_key[:8] + '...)' if pinecone_key else 'NOT SET'}")
+    logger.info(f"🔧 PINECONE_INDEX: {pinecone_index or 'NOT SET'}")
+    logger.info(f"🔧 OPENAI_API_KEY: {'SET' if openai_key else 'NOT SET'}")
+    logger.info("=" * 60)
+    
     yield
     # Application shutdown
     logger.info("Application shutdown.")
