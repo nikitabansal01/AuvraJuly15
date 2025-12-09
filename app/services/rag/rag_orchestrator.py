@@ -55,6 +55,11 @@ class RAGOrchestrator:
         """
         Generate recommendations using RAG pipeline
         """
+        print("=" * 60)
+        print("🎯 [RAG ORCH] RAG ORCHESTRATOR CALLED")
+        print(f"   Category: {category}")
+        print(f"   Use RAG: {use_rag}")
+        print("=" * 60)
         logger.info("=" * 60)
         logger.info("🎯 RAG ORCHESTRATOR CALLED")
         logger.info(f"   Category: {category}")
@@ -66,22 +71,27 @@ class RAGOrchestrator:
             profile_dict = user_profile.dict() if hasattr(user_profile, 'dict') else user_profile
             
             # Step 1: Analyze hormone imbalance
+            print("🧬 [RAG ORCH] STEP 1: Analyzing hormone imbalance...")
             logger.info("🧬 STEP 1: Analyzing hormone imbalance...")
             hormone_analysis = RootCauseEngine.analyze_hormone_imbalance(profile_dict)
             profile_dict['primary_imbalance'] = hormone_analysis.get('primary_imbalance', '')
             profile_dict['primary_level'] = hormone_analysis.get('primary_level', '')
             profile_dict['secondary_imbalances'] = hormone_analysis.get('secondary_imbalances', [])
             
+            print(f"✅ [RAG ORCH] STEP 1 SUCCESS: Primary={hormone_analysis.get('primary_imbalance')} ({hormone_analysis.get('primary_level', '')})")
             logger.info(f"✅ STEP 1 SUCCESS: Primary={hormone_analysis.get('primary_imbalance')} ({hormone_analysis.get('primary_level', '')})")
             
             if use_rag:
+                print("➡️ [RAG ORCH] Proceeding with RAG pipeline...")
                 logger.info("➡️ Proceeding with RAG pipeline...")
                 return await self._rag_generate(profile_dict, category, hormone_analysis)
             else:
+                print("➡️ [RAG ORCH] RAG disabled, using fallback...")
                 logger.info("➡️ RAG disabled, using fallback...")
                 return await self._fallback_generate(user_profile, category)
                 
         except Exception as e:
+            print(f"❌ [RAG ORCH] EXCEPTION: {str(e)}")
             logger.error(f"❌ RAG Orchestrator EXCEPTION: {str(e)}")
             import traceback
             logger.error(f"   Traceback: {traceback.format_exc()}")
@@ -95,6 +105,9 @@ class RAGOrchestrator:
     ) -> List[Dict[str, Any]]:
         """RAG-enhanced generation pipeline with medical safety checks"""
         
+        print("=" * 60)
+        print(f"🔬 [RAG ORCH] RAG PIPELINE STARTED: {category.upper()}")
+        print("=" * 60)
         logger.info("=" * 60)
         logger.info(f"🔬 RAG PIPELINE STARTED: {category.upper()}")
         logger.info("=" * 60)

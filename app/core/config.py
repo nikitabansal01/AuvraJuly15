@@ -91,7 +91,7 @@ class DevelopmentSettings(Settings):
 
 class ProductionSettings(Settings):
     DEBUG: bool = False
-    LOG_LEVEL: str = "WARNING"
+    LOG_LEVEL: str = "INFO"  # Changed from WARNING to INFO to see RAG debug logs
     ENVIRONMENT: str = "production"
     # Production environment: allow all hosts (for Render)
     ALLOWED_HOSTS: List[str] = ["*"]

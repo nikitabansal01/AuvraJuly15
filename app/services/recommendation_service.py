@@ -17,17 +17,30 @@ class RecommendationService:
         Generate and save session recommendations (for temporary sessions)
         """
         try:
-            logger.info(f"Session recommendation generation started: session_id={session_id}, category={category}")
+            print("=" * 60)
+            print(f"🚀 [REC SERVICE] Starting {category.upper()}")
+            print(f"   Session: {session_id}")
+            print("=" * 60)
+            logger.info("=" * 60)
+            logger.info(f"🚀 RECOMMENDATION SERVICE: Starting {category.upper()}")
+            logger.info(f"   Session: {session_id}")
+            logger.info("=" * 60)
             
             # Create UserProfile object
             user_profile_obj = UserProfile(**user_profile)
+            print(f"✅ [REC SERVICE] UserProfile created, calling AIService.generate_session_recommendations")
+            logger.info(f"✅ UserProfile created, calling AIService.generate_session_recommendations")
             
             # Generate AI recommendations (optimized for sessions)
             recommendations = await AIService.generate_session_recommendations(user_profile_obj, category)
             
             if not recommendations:
-                logger.warning(f"Session recommendation generation failed: {session_id}, {category}")
+                print(f"⚠️ [REC SERVICE] No recommendations returned for {category}")
+                logger.warning(f"⚠️ RECOMMENDATION SERVICE: No recommendations returned for {category}")
                 return False
+            
+            print(f"✅ [REC SERVICE] Got {len(recommendations)} recommendations for {category}")
+            logger.info(f"✅ RECOMMENDATION SERVICE: Got {len(recommendations)} recommendations for {category}")
             
             # Save each recommendation for session
             for rec in recommendations:

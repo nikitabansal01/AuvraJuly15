@@ -93,6 +93,9 @@ class HybridRetriever:
         """
         Main retrieval method combining semantic and keyword search
         """
+        print("=" * 60)
+        print(f"📚 [RAG RETRIEVER] CALLED: category={category}")
+        print("=" * 60)
         logger.info("=" * 60)
         logger.info(f"📚 RAG RETRIEVE CALLED: category={category}")
         logger.info("=" * 60)
@@ -100,14 +103,17 @@ class HybridRetriever:
         try:
             # Step 1: Build enhanced query from user profile
             enhanced_query = self._build_enhanced_query(query, user_profile, category)
+            print(f"🔍 [RAG RETRIEVER] STEP 1: Built enhanced query: {enhanced_query[:100]}...")
             logger.info(f"🔍 STEP 1: Built enhanced query")
             logger.info(f"   Query: {enhanced_query[:150]}...")
             
             # Step 2: Semantic search - Pinecone returns results ALREADY sorted by similarity
+            print(f"🔍 [RAG RETRIEVER] STEP 2: Calling Pinecone semantic search (top_k={top_k})")
             logger.info(f"🔍 STEP 2: Calling Pinecone semantic search (top_k={top_k})")
             semantic_results = await self._semantic_search(enhanced_query, top_k)
             
             if not semantic_results:
+                print(f"⚠️ [RAG RETRIEVER] STEP 2 RESULT: No results from Pinecone for {category}")
                 logger.warning(f"⚠️ STEP 2 RESULT: No results from Pinecone for {category}")
                 return []
             
@@ -115,6 +121,8 @@ class HybridRetriever:
             top_scores = [round(r.get('score', 0), 3) for r in semantic_results[:5]]
             top_titles = [r.get('title', 'N/A')[:50] for r in semantic_results[:3]]
             
+            print(f"✅ [RAG RETRIEVER] STEP 2 RESULT: Retrieved {len(semantic_results)} papers")
+            print(f"   Top 5 scores: {top_scores}")
             logger.info(f"✅ STEP 2 RESULT: Retrieved {len(semantic_results)} papers")
             logger.info(f"   Top 5 scores: {top_scores}")
             logger.info(f"   Top 3 titles: {top_titles}")
@@ -123,6 +131,7 @@ class HybridRetriever:
             return semantic_results
             
         except Exception as e:
+            print(f"❌ [RAG RETRIEVER] EXCEPTION: {str(e)}")
             logger.error(f"❌ RAG Retriever EXCEPTION: {str(e)}")
             import traceback
             logger.error(f"   Traceback: {traceback.format_exc()}")

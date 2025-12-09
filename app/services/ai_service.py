@@ -874,16 +874,20 @@ CONFIDENCE ASSESSMENT:
             # ========================================
             # STEP 1: Try NEW RAG Orchestrator (with citation validation)
             # ========================================
+            print(f"🔬 [RAG DEBUG] Starting generate_session_recommendations for category={category}")
             logger.info(f"🔬 RAG v2: Attempting to start RAG pipeline for category={category}")
             
             try:
+                print(f"🔬 [RAG DEBUG] Attempting to import generate_rag_recommendations...")
                 from app.services.rag.rag_orchestrator import generate_rag_recommendations
                 
                 # Check if function was loaded successfully
                 if generate_rag_recommendations is None:
+                    print(f"❌ [RAG DEBUG] generate_rag_recommendations is None!")
                     logger.error(f"❌ RAG v2: generate_rag_recommendations is None (module load failed)")
                     raise ImportError("generate_rag_recommendations is None")
                 
+                print(f"✅ [RAG DEBUG] Import successful, calling RAG pipeline...")
                 logger.info(f"✅ RAG v2: Import successful, calling generate_rag_recommendations")
                 
                 recommendations = await generate_rag_recommendations(
@@ -892,20 +896,26 @@ CONFIDENCE ASSESSMENT:
                     use_rag=True
                 )
                 
+                print(f"🔬 [RAG DEBUG] RAG returned {len(recommendations) if recommendations else 0} recommendations")
+                
                 if recommendations:
                     # Count verified citations
                     verified_count = sum(1 for r in recommendations if r.get('citation_verified', False))
+                    print(f"✅ [RAG DEBUG] SUCCESS: {len(recommendations)} recs, {verified_count} verified citations")
                     logger.info(f"✅ RAG v2: Generated {len(recommendations)} recommendations, "
                                f"{verified_count} with verified citations for {category}")
                     return recommendations
                 else:
+                    print(f"⚠️ [RAG DEBUG] RAG returned empty, falling back to prompt-only")
                     logger.warning(f"⚠️ RAG v2: No recommendations from orchestrator, falling back to prompt-only")
                     
             except ImportError as import_error:
+                print(f"❌ [RAG DEBUG] IMPORT ERROR: {import_error}")
                 logger.error(f"❌ RAG v2 IMPORT FAILED: {import_error}")
                 import traceback
                 logger.error(f"❌ Import traceback: {traceback.format_exc()}")
             except Exception as rag_v2_error:
+                print(f"❌ [RAG DEBUG] EXCEPTION: {str(rag_v2_error)}")
                 logger.error(f"❌ RAG v2 EXCEPTION for {category}: {str(rag_v2_error)}")
                 import traceback
                 logger.error(f"❌ Exception traceback: {traceback.format_exc()}")
@@ -913,6 +923,7 @@ CONFIDENCE ASSESSMENT:
             # ========================================
             # STEP 2: Fallback to prompt-only (no research)
             # ========================================
+            print(f"📝 [RAG DEBUG] FALLBACK: Using prompt-only generation for {category}")
             logger.info(f"📝 Using prompt-only generation for category={category}")
             
             # Create prompt (without real research)
