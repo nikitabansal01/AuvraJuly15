@@ -6,6 +6,13 @@ from typing import Any, Dict, List, Optional
 from app.models.ai_models import UserProfile
 from app.services.root_cause_engine import RootCauseEngine
 
+# Import medical safety modules
+try:
+    from app.services.safety.medical_safety import SafetyGuardrails, RecommendationAuditLog, EvidenceThresholdChecker
+    MEDICAL_SAFETY_ENABLED = True
+except ImportError:
+    MEDICAL_SAFETY_ENABLED = False
+
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -546,6 +553,74 @@ class AIService:
             return 20
 
     @staticmethod
+    def process_recommendations_with_safety(
+        recommendations: List[Dict[str, Any]],
+        user_profile: UserProfile,
+        category: str,
+        retrieved_papers: List[Dict[str, Any]] = None,
+        user_id: str = None,
+        llm_prompt: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Process recommendations with medical safety checks and audit logging.
+        
+        Adds:
+        - Contraindication checking
+        - Safety warnings
+        - Mandatory disclaimers
+        - Audit logging for provenance
+        """
+        if not MEDICAL_SAFETY_ENABLED:
+            logger.warning("Medical safety module not available - skipping safety checks")
+            return recommendations
+        
+        if not recommendations:
+            return recommendations
+        
+        processed_recommendations = []
+        
+        # Get user conditions for contraindication checking
+        user_conditions = user_profile.conditions or []
+        
+        for rec in recommendations:
+            try:
+                # Apply safety guardrails
+                processed_rec = SafetyGuardrails.process_recommendation(
+                    recommendation=rec,
+                    user_conditions=user_conditions,
+                    user_medications=None  # Could add medications to UserProfile in future
+                )
+                
+                # Log each recommendation for audit trail
+                if user_id:
+                    try:
+                        RecommendationAuditLog.log_recommendation(
+                            user_id=user_id,
+                            user_profile=user_profile.dict() if hasattr(user_profile, 'dict') else {},
+                            category=category,
+                            retrieved_papers=retrieved_papers or [],
+                            recommendation=processed_rec,
+                            llm_prompt=llm_prompt
+                        )
+                    except Exception as audit_error:
+                        logger.warning(f"Audit logging failed: {audit_error}")
+                
+                processed_recommendations.append(processed_rec)
+                
+            except Exception as safety_error:
+                logger.error(f"Safety processing failed for recommendation: {safety_error}")
+                # Still include the recommendation but mark it
+                rec['safety_error'] = str(safety_error)
+                processed_recommendations.append(rec)
+        
+        # Log high-risk recommendations for manual review
+        high_risk_count = sum(1 for r in processed_recommendations if r.get('risk_level') == 'high')
+        if high_risk_count > 0:
+            logger.warning(f"⚠️ {high_risk_count} high-risk recommendations flagged for review in {category}")
+        
+        return processed_recommendations
+
+    @staticmethod
     def suggest_llm_prompt_for_recommendations(user_profile: UserProfile, category: str) -> str:
         up = user_profile
         
@@ -754,290 +829,10 @@ CONFIDENCE ASSESSMENT:
 '''
         return prompt
 
-    @staticmethod
-    def create_rag_enhanced_prompt(user_profile: UserProfile, category: str, research_texts: List[str]) -> str:
-        """
-        Create enhanced prompt including RAG search results
-        """
-        up = user_profile
-        
-        # Use root cause engine to analyze hormone imbalance
-        root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(user_profile.dict())
-        imbalance_text = RootCauseEngine.get_formatted_imbalance_text(root_cause_analysis)
-        related_hormones = RootCauseEngine.get_related_hormones(root_cause_analysis)
-        
-        # Extract Primary/Secondary hormone information
-        primary_hormone = root_cause_analysis.get("primary_imbalance", "")
-        secondary_hormones = root_cause_analysis.get("secondary_imbalances", [])
-        
-        user_health_profile = ', '.join(filter(None, [
-            f"Age: {up.age}" if up.age else None,
-            f"Ethnicity: {up.ethnicity}" if up.ethnicity else None,
-            f"Cycle phase: {up.cyclePhase}" if up.cyclePhase and up.cyclePhase != 'unknown' else None,
-            f"Birth control: {up.birthControlStatus}" if up.birthControlStatus else None,
-            f"Diagnosis: {', '.join(up.conditions)}" if up.conditions else None,
-            f"Symptoms: {', '.join(up.symptoms)}" if up.symptoms else None
-        ]))
-        
-        # Category-specific instructions
-        category_instructions = {
-            "food": "Focus on dietary interventions, nutrition, and food-based treatments. Base recommendations on specific foods, nutrients, and dietary patterns.",
-            "movement": "Focus on exercise interventions, physical activity, and movement-based treatments. Base recommendations on specific exercise types, duration, and intensity.",
-            "mindfulness": "Focus on stress reduction, meditation, and mindfulness-based treatments. Base recommendations on specific techniques, duration, and frequency."
-        }
-        
-        # Combine research texts
-        research_context = "\n\n".join([f"Research Text {i+1}:\n{text}" for i, text in enumerate(research_texts)])
-        
-        # Pre-define JSON examples
-        example_study = {
-            "title": "Cinnamon Supplementation Improves Insulin Sensitivity in Women with PCOS",
-            "authors": ["Lee J", "Kim S", "Park M"],
-            "journal": "Diabetes Research",
-            "publicationYear": 2023,
-            "participantCount": 130,
-            "results": "Improved insulin sensitivity by 25% and reduced fasting glucose"
-        }
-        
-        example_recommendation = {
-            "title": "Cinnamon Supplementation for Insulin Sensitivity",
-            "specificAction": "Take 1.5g of cinnamon powder daily",
-            "frequency": "Daily",
-            "intensity": "Moderate",
-            "expectedTimeline": "12 weeks",
-            "priority": "high",
-            "contraindications": ["Not recommended during pregnancy"],
-            "food_amounts": ["1.5g"],
-            "food_items": ["cinnamon powder"],
-            "frequency_detail": "daily",
-            "duration_weeks": 12,
-            "researchBacking": {
-                "summary": "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose",
-                "studies": [example_study]
-            }
-        }
-        
-        prompt = f'''
-You are a medical AI assistant specializing in women's hormone health. Your task is to generate HIGHLY SPECIFIC, SCIENTIFICALLY-BASED recommendations with exact amounts, durations, and frequencies based on the provided research texts.
-
-Category: {category}
-Root cause (hormones out of balance): {imbalance_text}
-User health profile: {user_health_profile}
-
-CRITICAL HORMONE FOCUS REQUIREMENT:
-- You MUST focus ONLY on recommendations related to the identified hormone imbalances: {', '.join(related_hormones)}
-- All recommendations must directly address these specific hormone imbalances
-- Do NOT include recommendations for other hormones not identified in the root cause analysis
-- The hormones field in each recommendation must ONLY contain hormones from the root cause analysis: {', '.join(related_hormones)}
-
-PRIMARY/SECONDARY HORMONE BALANCE REQUIREMENT:
-- Primary hormone ({primary_hormone}): You MUST include at least 1 recommendation specifically targeting this hormone
-- Secondary hormones ({', '.join(secondary_hormones)}): You MUST include at least 1 recommendation specifically targeting these hormones
-- Ensure balanced coverage of both primary and secondary hormone imbalances
-- If you have limited recommendations, prioritize primary hormone first, then secondary hormones
-
-CATEGORY-SPECIFIC FOCUS:
-{category_instructions.get(category, "")}
-
-RELEVANT RESEARCH CONTEXTS:
-The following research texts are specifically relevant to your profile and the {category} category:
-
-{research_context}
-
-CRITICAL REQUIREMENTS:
-- Base your recommendations PRIMARILY on the research texts provided above
-- Reference specific studies and findings from the provided research
-- Ensure recommendations match the intervention types and outcomes shown in the research
-- Focus on {category}-specific interventions and outcomes
-- If research texts don't provide enough information for {category} recommendations, you may supplement with general knowledge
-- ALL recommendations must be actionable with specific amounts, durations, and frequencies
-
-CRITICAL REQUIREMENTS FOR SPECIFIC ACTIONS:
-- FOOD: Specify exact amounts (grams, cups, servings) and frequency. Example: "Consume 2 tablespoons of ground flaxseed daily" or "Eat 100g of salmon 3 times per week"
-- MOVEMENT: Specify exact duration, intensity, and frequency. Example: "Perform 30-minute moderate-intensity yoga sessions 4 times per week" or "Walk briskly for 45 minutes daily"
-- MINDFULNESS: Specify exact duration, technique, and frequency. Example: "Practice 15-minute daily meditation" or "Perform 20-minute deep breathing exercises twice daily"
-- ALL recommendations must include: exact amounts/times and frequency (daily/weekly)
-
-TIME UNIT STANDARDIZATION FOR DURATION ARRAYS:
-- exercise_durations: Use "min" instead of "minutes" or "minute" (e.g., ["30 min", "45 min"] not ["30 minutes", "45 minutes"])
-- mindfulness_durations: Use "min" instead of "minutes" or "minute" (e.g., ["15 min", "20 min"] not ["15 minutes", "20 minutes"])
-- For hours, use "h" instead of "hours" or "hour" (e.g., ["1.5 h", "2 h"] not ["1.5 hours", "2 hours"])
-- This standardization applies ONLY to the exercise_durations and mindfulness_durations array fields
-
-RESEARCH BACKING FORMAT:
-- Summary: "Based on [YEAR] study with [NUMBER] women showing [SPECIFIC RESULTS]"
-- Example: "Based on 2023 study with 130 women showing Improved insulin sensitivity by 25% and reduced fasting glucose"
-- Studies must include: title, authors (array), journal, publicationYear, participantCount, results
-- Example study: {json.dumps(example_study, ensure_ascii=False)}
-
-Output format: Return a JSON array of recommendation cards. Each card must include: title, specificAction (with exact amounts/duration), frequency, intensity, expectedTimeline, priority (high/medium/low), contraindications (array), conditions (array), symptoms (array), hormones (array), and researchBacking object with: summary (string) and studies (array of objects with: title, authors (array), journal, publicationYear, participantCount, results).
-
-IMPORTANT HORMONE REQUIREMENT:
-- The hormones field must ONLY contain hormones from the root cause analysis: {', '.join(related_hormones)}
-- Do NOT include other hormones not identified in the root cause analysis 
-
-Additionally, include the following separated fields based on category:
-
-FOOD recommendations: food_amounts, food_items, frequency_detail, duration_weeks
-MOVEMENT recommendations: exercise_durations, exercise_types, exercise_intensities, frequency_detail, duration_weeks  
-MINDFULNESS recommendations: mindfulness_durations, mindfulness_techniques, frequency_detail, duration_weeks
-
-Generate as many relevant cards as possible.
-
-Example structure: {json.dumps([example_recommendation], ensure_ascii=False)}
-
-CONFIDENCE ASSESSMENT:
-- If you are highly confident in your recommendations (based on strong research evidence), include "confidence: 90" in your response
-- If you are moderately confident (some research support but limited), include "confidence: 70" in your response  
-- If you are less confident (limited research or extrapolation), include "confidence: 50" in your response
-- If you cannot provide evidence-based recommendations, include "confidence: 30" and explain why
-- Always base confidence on the quality and relevance of available research for this specific user profile
-'''
-        return prompt
-
-    @staticmethod
-    async def generate_rag_recommendations(user_profile: UserProfile) -> Dict[str, List]:
-        """
-        Generate RAG-based recommendations
-        """
-        from app.services.rag_service import RAGService
-        
-        categories = ["food", "movement", "mindfulness"]
-        results = {}
-        
-        for category in categories:
-            try:
-                # 1. Find relevant research through RAG search
-                search_results = await AIService.search_relevant_research_by_category(user_profile, category)
-                
-                # 2. Extract research texts (original)
-                research_texts = AIService.extract_research_texts(search_results)
-                
-                # 3. Create enhanced prompt
-                enhanced_prompt = AIService.create_rag_enhanced_prompt(user_profile, category, research_texts)
-                
-                # 4. Call LLM
-                llm_response, actual_model = await AIService.call_ai_model(enhanced_prompt)
-                
-                # 5. Parse results
-                recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
-                
-                results[category] = recommendations
-                
-            except Exception as e:
-                print(f"RAG recommendation generation failed for {category}: {e}")
-                results[category] = []
-        
-        return results
-
-    @staticmethod
-    async def search_relevant_research_by_category(user_profile: UserProfile, category: str) -> List[Dict]:
-        """
-        Search relevant research by category
-        """
-        from app.services.rag_service import RAGService
-        
-        # Create search query
-        query = AIService.create_category_search_query(user_profile, category)
-        
-        # Create category-specific filter
-        filter_conditions = AIService.create_category_filter(category)
-        
-        # Pinecone search
-        search_results = await RAGService.search_and_rank_papers(
-            query=query,
-            user_profile=user_profile.dict(),
-            top_k=10,
-            filter=filter_conditions
-        )
-        
-        return search_results
-
-    @staticmethod
-    def create_category_search_query(user_profile: UserProfile, category: str) -> str:
-        """
-        Create category-specific search query
-        """
-        query_parts = []
-        
-        # 1. Basic PCOS keywords
-        query_parts.append("PCOS polycystic ovary syndrome")
-        
-        # 2. Category-specific accurate keywords
-        if category == "food":
-            query_parts.append("diet nutrition food meal dietary intervention")
-        elif category == "movement":
-            query_parts.append("exercise workout training physical activity movement intervention")
-        elif category == "mindfulness":
-            query_parts.append("mindfulness meditation stress relaxation mental health intervention")
-        
-        # 3. User hormone imbalance
-        if user_profile.primaryImbalance:
-            query_parts.append(user_profile.primaryImbalance)
-        
-        # 4. User symptoms (only those related to category)
-        if user_profile.symptoms:
-            relevant_symptoms = AIService.filter_symptoms_by_category(user_profile.symptoms, category)
-            query_parts.extend(relevant_symptoms)
-        
-        return " ".join(query_parts)
-
-    @staticmethod
-    def create_category_filter(category: str) -> Dict:
-        """
-        Create category-specific filter
-        """
-        if category == "food":
-            return {"intervention_type": {"$in": ["food"]}}
-        elif category == "movement":
-            return {"intervention_type": {"$in": ["movement"]}}
-        elif category == "mindfulness":
-            return {"intervention_type": {"$in": ["mindfulness"]}}
-        else:
-            return {}
-
-    @staticmethod
-    def filter_symptoms_by_category(symptoms: List[str], category: str) -> List[str]:
-        """
-        Use user-entered symptoms as-is (no category classification)
-        """
-        # Return user-entered symptoms as-is
-        # Each symptom can have food, movement, mindfulness solutions
-        return symptoms
-
-    @staticmethod
-    def extract_research_texts(search_results: List[Dict]) -> List[str]:
-        """
-        Extract research texts from search results
-        """
-        research_texts = []
-        
-        for result in search_results:
-            # Extract original text
-            text = result.get("content", "")
-            title = result.get("title", "")
-            study_arms_text = result.get("study_arms_text", "")
-            section_type = result.get("section_type", "")
-            chunk_summary = result.get("chunk_summary", "")
-            
-            if text and title:
-                # Combine title and content
-                research_text = f"Title: {title}\n\nContent: {text[:2000]}"  # Limit to 2000 characters
-                
-                # Add study_arms information
-                if study_arms_text:
-                    research_text += f"\n\nStudy Arms: {study_arms_text}"
-                
-                # Add section information
-                if section_type:
-                    research_text += f"\n\nSection Type: {section_type}"
-                
-                if chunk_summary:
-                    research_text += f"\n\nChunk Summary: {chunk_summary}"
-                
-                research_texts.append(research_text)
-        
-        return research_texts[:5]  # Use only top 5 studies
+    # NOTE: Legacy RAG functions removed - now using RAG v2 from app.services.rag/
+    # Removed: create_rag_enhanced_prompt, generate_rag_recommendations, 
+    #          search_relevant_research_by_category, create_category_search_query,
+    #          create_category_filter, filter_symptoms_by_category, extract_research_texts
 
     @staticmethod
     def parse_frequency_detail(frequency_detail: str) -> dict:
@@ -1070,16 +865,53 @@ CONFIDENCE ASSESSMENT:
     async def generate_session_recommendations(user_profile: UserProfile, category: str) -> List[Dict[str, Any]]:
         """
         Generate session recommendations (for background processing)
-        Same logic as general recommendation generation but optimized for session flow
+        
+        NEW RAG ARCHITECTURE:
+        Uses RAGOrchestrator for full pipeline: Retrieve → Compile → Generate → Validate
+        Falls back to prompt-only if RAG fails
         """
         try:
-            # Create prompt
+            # ========================================
+            # STEP 1: Try NEW RAG Orchestrator (with citation validation)
+            # ========================================
+            try:
+                from app.services.rag.rag_orchestrator import generate_rag_recommendations
+                
+                logger.info(f"🔬 RAG v2: Starting orchestrated RAG pipeline for category={category}")
+                
+                recommendations = await generate_rag_recommendations(
+                    user_profile=user_profile,
+                    category=category,
+                    use_rag=True
+                )
+                
+                if recommendations:
+                    # Count verified citations
+                    verified_count = sum(1 for r in recommendations if r.get('citation_verified', False))
+                    logger.info(f"✅ RAG v2: Generated {len(recommendations)} recommendations, "
+                               f"{verified_count} with verified citations for {category}")
+                    return recommendations
+                else:
+                    logger.warning(f"⚠️ RAG v2: No recommendations from orchestrator, trying legacy RAG")
+                    
+            except ImportError as import_error:
+                logger.warning(f"⚠️ RAG v2 modules not available: {import_error}, using prompt-only")
+            except Exception as rag_v2_error:
+                logger.warning(f"⚠️ RAG v2 failed for {category}: {str(rag_v2_error)}, using prompt-only")
+
+
+            # ========================================
+            # STEP 3: Fallback to prompt-only (no research)
+            # ========================================
+            logger.info(f"📝 Using prompt-only generation for category={category}")
+            
+            # Create prompt (without real research)
             prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile, category)
             logger.info(f"Session recommendation prompt creation completed: category={category}")
             
             # Call OpenAI API
             llm_response, actual_model = await AIService.call_ai_model(prompt)
-            logger.info(f"AI model call completed: category={category}, model={actual_model}, response_length={len(llm_response) if llm_response else 0}")
+            logger.info(f"AI model call completed: category={category}, model={actual_model}")
             
             # Evaluate confidence
             confidence = AIService.evaluate_llm_confidence(llm_response)
@@ -1088,7 +920,12 @@ CONFIDENCE ASSESSMENT:
             # Parse response
             recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
             logger.info(f"Response parsing completed: category={category}, recommendations_count={len(recommendations) if recommendations else 0}")
-            logger.info(f"AI response content (first 200 chars): {llm_response[:200] if llm_response else 'None'}")
+            
+            # Mark as prompt-only (unverified citations)
+            for rec in recommendations if recommendations else []:
+                rec['citation_verified'] = False
+                rec['rag_version'] = 'prompt_only'
+                rec['citation_warning'] = 'Generated without RAG - citations may be hallucinated'
             
             # Fallback: low confidence or no recommendations → use fallback model
             if confidence < 60 or not recommendations:
@@ -1108,6 +945,10 @@ CONFIDENCE ASSESSMENT:
                 fallback_confidence = AIService.evaluate_llm_confidence(fallback_response)
                 fallback_recommendations = AIService.parse_recommendations_from_llm(fallback_response, category)
                 if fallback_recommendations and fallback_confidence > confidence:
+                    # Mark fallback recommendations
+                    for rec in fallback_recommendations:
+                        rec['citation_verified'] = False
+                        rec['rag_version'] = 'prompt_only_fallback'
                     recommendations = fallback_recommendations
             
             return recommendations if recommendations else []

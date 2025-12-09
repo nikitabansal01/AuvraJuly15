@@ -88,23 +88,37 @@ async def generate_rag_recommendations(
 ):
     """
     Generate RAG-based recommendations API.
-    Recommendations based on actual PCOS research data.
+    Uses RAG v2 with quality scoring, safety checks, and citation validation.
     """
     user_profile_obj = request.userProfile
     
     try:
-        # Generate RAG-based recommendations
-        rag_results = await AIService.generate_rag_recommendations(user_profile_obj)
+        # Import RAG v2 orchestrator
+        from app.services.rag.rag_orchestrator import generate_rag_recommendations as rag_v2_generate
         
-        # Evaluate confidence (based on RAG results)
+        # Generate RAG-based recommendations for all categories
+        categories = ["food", "movement", "mindfulness"]
+        rag_results = {}
         confidences = []
-        for category in ["food", "movement", "mindfulness"]:
-            recommendations = rag_results.get(category, [])
-            if recommendations:
-                # High confidence if recommendations exist
-                confidences.append(85)
-            else:
-                # Low confidence if no recommendations
+        
+        for category in categories:
+            try:
+                recommendations = await rag_v2_generate(
+                    user_profile=user_profile_obj,
+                    category=category,
+                    use_rag=True
+                )
+                rag_results[category] = recommendations
+                
+                # Calculate confidence based on citation verification
+                if recommendations:
+                    verified = sum(1 for r in recommendations if r.get('citation_verified', False))
+                    conf = 70 + (verified / len(recommendations)) * 30 if recommendations else 70
+                    confidences.append(conf)
+                else:
+                    confidences.append(40)
+            except Exception as cat_error:
+                rag_results[category] = []
                 confidences.append(30)
         
         confidence = min(max(confidences), 100) if confidences else 30
@@ -116,14 +130,14 @@ async def generate_rag_recommendations(
             userProfile=user_profile_obj,
             generatedAt=None,
             confidence=confidence,
-            rawLLMResponse="RAG-based recommendations generated from actual PCOS research data"
+            rawLLMResponse="RAG v2: Quality-scored papers with citation validation"
         )
         
         # Save recommendation results to database
         recommendation_service = RecommendationService(db)
         uid = current_user.get("user_id")
         if uid:
-            save_success = await recommendation_service.save_recommendations(uid, result, "rag")
+            save_success = await recommendation_service.save_recommendations(uid, result, "rag_v2")
             if not save_success:
                 # Return recommendation results even if save fails
                 pass

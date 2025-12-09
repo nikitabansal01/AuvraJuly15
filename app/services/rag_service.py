@@ -759,26 +759,69 @@ class RAGService:
     @staticmethod
     def split_into_sentences(paragraph: str) -> List[str]:
         """
-        Split paragraph into sentences using spaCy
+        Split paragraph into sentences using regex-based approach.
+        Note: spacy is NOT used due to Python 3.14 compatibility issues.
         """
-        import spacy
         import re
         
-        # Load spaCy model (English)
-        try:
-            nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            # Download model if not available
-            import subprocess
-            subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-            nlp = spacy.load("en_core_web_sm")
-        
-        # Remove HTML tags
+        # Remove HTML tags first
         clean_text = re.sub(r'<[^>]+>', '', paragraph)
         
-        # Split sentences using spaCy
-        doc = nlp(clean_text)
-        sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+        if not clean_text.strip():
+            return []
+        
+        # Regex-based sentence splitting
+        # Split on sentence-ending punctuation followed by whitespace
+        # Handles: periods, question marks, exclamation marks
+        # Preserves abbreviations like Dr., Mr., Mrs., etc.
+        
+        # First, temporarily replace common abbreviations
+        abbrev_map = {
+            'Dr.': 'Dr_DOT_',
+            'Mr.': 'Mr_DOT_',
+            'Mrs.': 'Mrs_DOT_',
+            'Ms.': 'Ms_DOT_',
+            'Prof.': 'Prof_DOT_',
+            'Jr.': 'Jr_DOT_',
+            'Sr.': 'Sr_DOT_',
+            'Inc.': 'Inc_DOT_',
+            'Ltd.': 'Ltd_DOT_',
+            'etc.': 'etc_DOT_',
+            'vs.': 'vs_DOT_',
+            'e.g.': 'eg_DOT_',
+            'i.e.': 'ie_DOT_',
+            'et al.': 'etal_DOT_',
+            'cf.': 'cf_DOT_',
+            'fig.': 'fig_DOT_',
+            'vol.': 'vol_DOT_',
+            'no.': 'no_DOT_',
+            'pp.': 'pp_DOT_'
+        }
+        
+        temp_text = clean_text
+        for abbrev, placeholder in abbrev_map.items():
+            temp_text = temp_text.replace(abbrev, placeholder)
+            temp_text = temp_text.replace(abbrev.lower(), placeholder.lower())
+        
+        # Split on sentence boundaries: . ? ! followed by space and optionally a capital letter
+        sentence_pattern = r'(?<=[.!?])\s+'
+        raw_sentences = re.split(sentence_pattern, temp_text)
+        
+        # Restore abbreviations and clean sentences
+        sentences = []
+        for s in raw_sentences:
+            # Restore abbreviations
+            for abbrev, placeholder in abbrev_map.items():
+                s = s.replace(placeholder, abbrev)
+                s = s.replace(placeholder.lower(), abbrev.lower())
+            
+            s = s.strip()
+            if s and len(s) > 3:  # Filter very short fragments
+                sentences.append(s)
+        
+        # If no sentences found, return the whole text as one sentence
+        if not sentences and clean_text.strip():
+            sentences = [clean_text.strip()]
         
         return sentences
 
@@ -1349,90 +1392,9 @@ Respond with ONLY this JSON format (no additional text):
                 else:
                     metadata["overlapping_sections"] = []
                 
-                # Process new tagging structure
-                try:
-                    # Process document-level and chunk tags
-                    if hasattr(chunk, 'source_paper') and chunk.source_paper and isinstance(chunk.source_paper, dict) and 'section_tags' in chunk.source_paper:
-                        section_tags = chunk.source_paper['section_tags']
-                        
-                        # Add document-level tags
-                        if section_tags.get("document_level"):
-                            doc_tags = section_tags["document_level"]
-                            # Convert target_age_distribution to array
-                            age_distribution_dict = doc_tags.get("target_age_distribution", {})
-                            age_distribution_array = RAGService.convert_age_distribution_to_array(age_distribution_dict)
-                            
-                            metadata.update({
-                                # Document-level tags
-                                "doc_study_type": doc_tags.get("study_type", []),
-                                "doc_condition_disease": doc_tags.get("condition_disease", []),
-                                "doc_target": doc_tags.get("target", []),
-                                "doc_target_age_distribution": age_distribution_array,  # Convert to array
-                                "doc_num_of_participants": doc_tags.get("num_of_participants", 0),
-                                "doc_study_duration": doc_tags.get("study_duration", ""),
-                                "doc_intervention_type": doc_tags.get("intervention_type", []),
-                                "doc_hormone_focus": doc_tags.get("hormone_focus", []),
-                                "doc_target_symptoms": doc_tags.get("target_symptoms", []),
-                                "doc_risk_of_bias": doc_tags.get("risk_of_bias", ""),
-                                "doc_summary": doc_tags.get("summary", "")
-                            })
-                        
-                        # Perform chunk tagging (using document-level tags as context)
-                        chunk_tagged = await RAGService.tag_chunk_with_llm(chunk, section_tags)
-                        
-                        # Convert study_arms to text
-                        study_arms_text = ""
-                        if chunk_tagged.study_arms:
-                            study_arms_text = RAGService.convert_study_arms_to_text(chunk_tagged.study_arms)
-                        
-                        # Add chunk-level tags
-                        metadata.update({
-                            "chunk_section_type": chunk_tagged.section_type or "",
-                            "chunk_summary": chunk_tagged.chunk_summary or "",
-                            # Fields extracted from study_arms (duplicates removed)
-                            "intervention_type": chunk_tagged.intervention_type or [],
-                            "symptoms_focus": chunk_tagged.symptoms_focus or [],
-                            "hormone_focus": chunk_tagged.hormone_focus or [],
-                            # Store study_arms as text
-                            "study_arms_text": study_arms_text
-                        })
-                        
-                        # Log study_arms structure
-                        if chunk_tagged.study_arms:
-                            logger.debug(f"[Embedding] Study arms structure for {chunk.chunk_id}:")
-                            for i, arm in enumerate(chunk_tagged.study_arms):
-                                logger.debug(f"  Study Arm {i+1}: {arm}")
-                        
-                        logger.info(f"[Embedding] Document and chunk tags processed: {chunk.chunk_id}")
-                        
-                    else:
-                        # If no document-level tags, perform chunk tagging only
-                        logger.info(f"[Embedding] No document-level tags, performing chunk tagging only: {chunk.chunk_id}")
-                        
-                        # Perform chunk tagging only
-                        chunk_tagged = await RAGService.tag_chunk_with_llm(chunk, None)
-                        
-                        # Convert study_arms to text
-                        study_arms_text = ""
-                        if chunk_tagged.study_arms:
-                            study_arms_text = RAGService.convert_study_arms_to_text(chunk_tagged.study_arms)
-                        
-                        # Add chunk-level tags only
-                        metadata.update({
-                            "chunk_section_type": chunk_tagged.section_type or "",
-                            "chunk_summary": chunk_tagged.chunk_summary or "",
-                            # Fields extracted from study_arms (duplicates removed)
-                            "intervention_type": chunk_tagged.intervention_type or [],
-                            "symptoms_focus": chunk_tagged.symptoms_focus or [],
-                            "hormone_focus": chunk_tagged.hormone_focus or [],
-                            # Store study_arms as text
-                            "study_arms_text": study_arms_text
-                        })
-                        
-                        logger.info(f"[Embedding] Chunk tags only processed: {chunk.chunk_id}")
-                    
-                except Exception as e:
-                    logger.warning(f"[Embedding] Tagging failed, using basic metadata only: {chunk.chunk_id}, error: {e}")
+                # TAGGING DISABLED - Only embeddings, no LLM calls
+                # All tagging metadata is SKIPPED to save cost
+                logger.debug(f"[Embedding] Skipping LLM tagging (disabled): {chunk.chunk_id}")
                 
                 logger.info(f"[OpenAI] Embedding generation successful: {chunk.chunk_id}, dimensions: {len(embedding_vector)}")
                 # Remove chunk_id from metadata to prevent duplication
@@ -1668,6 +1630,53 @@ Respond with ONLY this JSON format (no additional text):
         
         logger.info(f"Filtering completed - {len(papers)} papers, {len(new_papers)} new papers, {skipped_count} skipped")
         return new_papers
+
+    @staticmethod
+    async def filter_new_papers_by_pmid(papers: List[Dict[str, Any]], namespace: str = None) -> List[Dict[str, Any]]:
+        """
+        Filter out papers already stored in Pinecone using PMID
+        :param papers: List of papers with 'pmid' field
+        :param namespace: Pinecone namespace
+        :return: Filtered list of new papers
+        """
+        if not papers:
+            return []
+        
+        if namespace is None:
+            namespace = RAGService.get_model_namespace()
+        
+        try:
+            # Get existing PMIDs from Pinecone
+            index = RAGService.get_pinecone_client()
+            
+            # Query to get existing PMIDs
+            existing_pmids = set()
+            query_result = index.query(
+                vector=[0] * 1536,
+                top_k=10000,
+                include_metadata=True,
+                namespace=namespace
+            )
+            
+            for match in query_result.matches:
+                pmid = match.metadata.get("pmid")
+                if pmid:
+                    existing_pmids.add(str(pmid))
+            
+            # Filter new papers
+            new_papers = []
+            for paper in papers:
+                pmid = str(paper.get("pmid", ""))
+                if pmid and pmid not in existing_pmids:
+                    new_papers.append(paper)
+            
+            logger.info(f"PMID filtering: {len(papers)} papers → {len(new_papers)} new (skipped {len(papers) - len(new_papers)})")
+            return new_papers
+            
+        except Exception as e:
+            logger.warning(f"PMID filtering failed, returning all papers: {e}")
+            return papers
+
 
     @staticmethod
     def get_model_namespace() -> str:
@@ -1951,23 +1960,18 @@ Respond with ONLY this JSON format (no additional text):
     @staticmethod
     async def hybrid_tagging(chunk: ChunkedPaper, use_llm: bool = False, section_tags: Optional[Dict[str, Any]] = None) -> TaggedChunk:
         """
-        Use only OpenAI LLM for tagging (1st-level tagging results as context)
-        :param use_llm: Use LLM or not (ignored, always True)
+        Tag chunk with optional LLM tagging.
+        :param use_llm: If False, skip LLM and return basic TaggedChunk with only text
         :param section_tags: 1st-level tagging results (section-level tagging)
         """
-        try:
-            # Use only OpenAI LLM for tagging (1st-level tagging results as context)
-            llm_tagged = await RAGService.tag_chunk_with_llm(chunk, section_tags)
-            logger.info(f"OpenAI Tagging - LLM tagging completed: {chunk.chunk_id}")
-            return llm_tagged
-        except Exception as e:
-            logger.error(f"OpenAI Tagging - LLM tagging failed: {chunk.chunk_id}, error: {e}")
-            # Return default TaggedChunk if tagging fails
+        # If LLM is disabled, return basic TaggedChunk without LLM call
+        if not use_llm:
+            logger.debug(f"Skipping LLM tagging for: {chunk.chunk_id}")
             return TaggedChunk(
                 chunk_id=chunk.chunk_id,
+                text=chunk.text,
                 study_type="",
                 is_human_study=False,
-                published_year=0,
                 participant_count=0,
                 hormone_focus=[],
                 symptoms_focus=[],
@@ -1977,7 +1981,35 @@ Respond with ONLY this JSON format (no additional text):
                 risk_of_bias="",
                 citation_count=0,
                 study_duration="",
-                primary_outcome="",
+                primary_outcome_text="",
+                tags=[],
+                title=chunk.title,
+                url=chunk.source_url
+            )
+        
+        try:
+            # Use OpenAI LLM for tagging
+            llm_tagged = await RAGService.tag_chunk_with_llm(chunk, section_tags)
+            logger.info(f"OpenAI Tagging - LLM tagging completed: {chunk.chunk_id}")
+            return llm_tagged
+        except Exception as e:
+            logger.error(f"OpenAI Tagging - LLM tagging failed: {chunk.chunk_id}, error: {e}")
+            # Return default TaggedChunk if tagging fails
+            return TaggedChunk(
+                chunk_id=chunk.chunk_id,
+                text=chunk.text,
+                study_type="",
+                is_human_study=False,
+                participant_count=0,
+                hormone_focus=[],
+                symptoms_focus=[],
+                intervention_type=[],
+                menstrual_phase="",
+                relevance_score=0,
+                risk_of_bias="",
+                citation_count=0,
+                study_duration="",
+                primary_outcome_text="",
                 tags=[],
                 title=chunk.title,
                 url=chunk.source_url
