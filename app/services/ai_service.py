@@ -878,6 +878,12 @@ CONFIDENCE ASSESSMENT:
             
             try:
                 from app.services.rag.rag_orchestrator import generate_rag_recommendations
+                
+                # Check if function was loaded successfully
+                if generate_rag_recommendations is None:
+                    logger.error(f"❌ RAG v2: generate_rag_recommendations is None (module load failed)")
+                    raise ImportError("generate_rag_recommendations is None")
+                
                 logger.info(f"✅ RAG v2: Import successful, calling generate_rag_recommendations")
                 
                 recommendations = await generate_rag_recommendations(
