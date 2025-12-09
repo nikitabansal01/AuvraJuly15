@@ -874,10 +874,11 @@ CONFIDENCE ASSESSMENT:
             # ========================================
             # STEP 1: Try NEW RAG Orchestrator (with citation validation)
             # ========================================
+            logger.info(f"🔬 RAG v2: Attempting to start RAG pipeline for category={category}")
+            
             try:
                 from app.services.rag.rag_orchestrator import generate_rag_recommendations
-                
-                logger.info(f"🔬 RAG v2: Starting orchestrated RAG pipeline for category={category}")
+                logger.info(f"✅ RAG v2: Import successful, calling generate_rag_recommendations")
                 
                 recommendations = await generate_rag_recommendations(
                     user_profile=user_profile,
@@ -892,16 +893,19 @@ CONFIDENCE ASSESSMENT:
                                f"{verified_count} with verified citations for {category}")
                     return recommendations
                 else:
-                    logger.warning(f"⚠️ RAG v2: No recommendations from orchestrator, trying legacy RAG")
+                    logger.warning(f"⚠️ RAG v2: No recommendations from orchestrator, falling back to prompt-only")
                     
             except ImportError as import_error:
-                logger.warning(f"⚠️ RAG v2 modules not available: {import_error}, using prompt-only")
+                logger.error(f"❌ RAG v2 IMPORT FAILED: {import_error}")
+                import traceback
+                logger.error(f"❌ Import traceback: {traceback.format_exc()}")
             except Exception as rag_v2_error:
-                logger.warning(f"⚠️ RAG v2 failed for {category}: {str(rag_v2_error)}, using prompt-only")
-
+                logger.error(f"❌ RAG v2 EXCEPTION for {category}: {str(rag_v2_error)}")
+                import traceback
+                logger.error(f"❌ Exception traceback: {traceback.format_exc()}")
 
             # ========================================
-            # STEP 3: Fallback to prompt-only (no research)
+            # STEP 2: Fallback to prompt-only (no research)
             # ========================================
             logger.info(f"📝 Using prompt-only generation for category={category}")
             
