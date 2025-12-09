@@ -1,7 +1,7 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
-firebase-admin>=7.0.0
+firebase-admin==7.0.0
 python-dotenv==1.0.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
@@ -10,21 +10,20 @@ alembic==1.13.1
 psycopg2-binary==2.9.9
 
 celery==5.3.4
-httpx>=0.28.1
+httpx==0.28.1
 pytest==7.4.3
 pytest-asyncio==0.21.1
 black==23.11.0
 isort==5.12.0
 flake8==6.1.0
 mypy==1.7.1
-pinecone>=8.0.0
+pinecone==8.0.0
 requests==2.31.0
-tiktoken>=0.5.0
-openai>=1.0.0
+tiktoken==0.5.2
+openai==1.58.1
 python-dateutil==2.8.2
 pytz==2023.3
-google-generativeai>=0.3.0
+google-generativeai==0.3.2
 # Hybrid search dependencies
-rank-bm25>=0.2.2
-nltk>=3.8.1
-# firecrawl-py==2.16.2  # Currently disabled 
+rank-bm25==0.2.2
+nltk==3.8.1
