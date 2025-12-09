@@ -66,45 +66,37 @@ class ContextCompiler:
         for i, paper in enumerate(top_papers):
             ref_id = f"[{i + 1}]"
             
-            # Extract key information
+            # Extract key information - ONLY ACTUAL FIELDS FROM PINECONE
             pmid = paper.get("pmid", "N/A")
             title = paper.get("title", "Unknown Title")
-            authors = paper.get("authors", [])
             journal = paper.get("journal", "Unknown Journal")
             year = paper.get("publication_year", "N/A")
-            study_type = paper.get("study_type", "study")
-            participants = paper.get("participant_count", "N/A")
+            url = paper.get("url", f"https://pubmed.ncbi.nlm.nih.gov/{pmid}" if pmid != "N/A" else "")
+            mesh_terms = paper.get("mesh_terms", [])
+            semantic_score = paper.get("score", 0)
             
-            # Format authors (first 3 + et al.)
-            if isinstance(authors, list) and len(authors) > 0:
-                if len(authors) > 3:
-                    authors_str = f"{', '.join(authors[:3])}, et al."
-                else:
-                    authors_str = ", ".join(authors)
-            else:
-                authors_str = "Unknown Authors"
+            # Format mesh terms (show top 5 as topic indicators)
+            mesh_str = ", ".join(mesh_terms[:5]) if mesh_terms else "Not specified"
             
-            # Get chunk text or abstract
+            # Get chunk text
             chunk_text = paper.get("text", "")
-            abstract = paper.get("abstract", "")
-            chunk_summary = paper.get("chunk_summary", "")
             
             # Extract key findings for this category
             key_findings = self._extract_key_findings(
-                chunk_text or abstract,
-                chunk_summary,
+                chunk_text,
+                "",  # No chunk_summary in actual data
                 category
             )
             
-            # Format the paper entry
+            # Format the paper entry - SIMPLIFIED for actual data
             context_parts.append(f"""
 {ref_id} {title} ({year})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Authors: {authors_str}
 • Journal: {journal}
 • PMID: {pmid}
-• Study Type: {study_type}
-• Participants: {participants if participants else 'N/A'}
+• Topics: {mesh_str}
+• Relevance: {semantic_score:.0%}
+• URL: {url}
 
 Key Findings for {category.upper()}:
 {key_findings}
@@ -115,11 +107,11 @@ Key Findings for {category.upper()}:
                 "reference_id": ref_id,
                 "pmid": pmid,
                 "title": title,
-                "authors": authors if isinstance(authors, list) else [],
                 "journal": journal,
                 "year": year,
-                "study_type": study_type,
-                "participant_count": participants if isinstance(participants, int) else 0
+                "url": url,
+                "mesh_terms": mesh_terms,
+                "score": semantic_score
             })
         
         context = "\n".join(context_parts)
