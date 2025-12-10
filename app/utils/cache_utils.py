@@ -101,18 +101,23 @@ class TTLCache(Generic[T]):
         with self._lock:
             if key not in self._cache:
                 self._misses += 1
+                logger.debug(f"🔴 CACHE MISS [{self.name}]: key={key[:16]}... (not found)")
                 return None
             
             value, timestamp = self._cache[key]
+            age_seconds = time.time() - timestamp
             
             if self._is_expired(timestamp):
                 del self._cache[key]
                 self._misses += 1
+                logger.info(f"⏰ CACHE EXPIRED [{self.name}]: key={key[:16]}... age={age_seconds:.1f}s > TTL={self.ttl_seconds}s")
                 return None
             
             # Move to end (LRU update)
             self._cache.move_to_end(key)
             self._hits += 1
+            hit_rate = (self._hits / (self._hits + self._misses) * 100)
+            logger.info(f"✅ CACHE HIT [{self.name}]: key={key[:16]}... age={age_seconds:.1f}s | hits={self._hits} rate={hit_rate:.1f}%")
             return value
     
     def set(self, key: str, value: T) -> None:
@@ -124,14 +129,22 @@ class TTLCache(Generic[T]):
         with self._lock:
             # Evict expired entries periodically
             if len(self._cache) % 10 == 0:  # Every 10 sets
-                self._evict_expired()
+                evicted = self._evict_expired()
+                if evicted > 0:
+                    logger.info(f"🗑️ CACHE CLEANUP [{self.name}]: Evicted {evicted} expired entries")
             
             # Evict LRU if at capacity
-            if key not in self._cache:
+            if key not in self._cache and len(self._cache) >= self.maxsize:
+                oldest_key = next(iter(self._cache))
                 self._evict_lru()
+                logger.warning(f"📤 CACHE LRU EVICT [{self.name}]: Removed oldest key={oldest_key[:16]}... (size={self.maxsize})")
             
+            is_update = key in self._cache
             self._cache[key] = (value, time.time())
             self._cache.move_to_end(key)
+            
+            action = "UPDATE" if is_update else "SET"
+            logger.info(f"💾 CACHE {action} [{self.name}]: key={key[:16]}... | size={len(self._cache)}/{self.maxsize}")
     
     def delete(self, key: str) -> bool:
         """Remove key from cache. Returns True if key existed."""
@@ -239,7 +252,11 @@ def generate_cache_key(*args, **kwargs) -> str:
     parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
     content = "|".join(parts)
     
-    return hashlib.md5(content.encode()).hexdigest()
+    key = hashlib.md5(content.encode()).hexdigest()
+    # Log only first 50 chars of content to avoid huge logs
+    content_preview = content[:50] + "..." if len(content) > 50 else content
+    logger.debug(f"🔑 CACHE KEY: {key[:16]}... from '{content_preview}'")
+    return key
 
 
 # ============================================
@@ -254,6 +271,7 @@ hormone_analysis_cache: TTLCache[Dict[str, int]] = TTLCache(
     ttl_seconds=600,  # 10 minutes
     name="hormone_analysis"
 )
+logger.info(f"🚀 CACHE INITIALIZED: hormone_analysis_cache (maxsize=50, TTL=600s)")
 
 # Cache for Pinecone/RAG query results  
 # TTL: 5 minutes (research papers don't change frequently)
@@ -263,6 +281,7 @@ rag_query_cache: TTLCache[list] = TTLCache(
     ttl_seconds=300,  # 5 minutes
     name="rag_query"
 )
+logger.info(f"🚀 CACHE INITIALIZED: rag_query_cache (maxsize=200, TTL=300s)")
 
 
 def clear_all_caches() -> Dict[str, int]:
@@ -272,11 +291,12 @@ def clear_all_caches() -> Dict[str, int]:
     Returns:
         Dict with count of entries cleared per cache
     """
+    logger.info("🧹 CLEARING ALL CACHES...")
     results = {
         "hormone_analysis": hormone_analysis_cache.clear(),
         "rag_query": rag_query_cache.clear(),
     }
-    logger.info(f"🧹 All caches cleared: {results}")
+    logger.info(f"🧹 ALL CACHES CLEARED: hormone_analysis={results['hormone_analysis']} entries, rag_query={results['rag_query']} entries")
     return results
 
 
@@ -287,7 +307,38 @@ def get_all_cache_stats() -> Dict[str, Dict[str, Any]]:
     Returns:
         Dict with stats per cache
     """
-    return {
+    stats = {
         "hormone_analysis": hormone_analysis_cache.stats(),
         "rag_query": rag_query_cache.stats(),
     }
+    
+    # Log summary
+    ha = stats["hormone_analysis"]
+    rq = stats["rag_query"]
+    logger.info(
+        f"📊 CACHE STATS: "
+        f"hormone_analysis(size={ha['size']}/{ha['maxsize']}, hits={ha['hits']}, rate={ha['hit_rate_percent']}%) | "
+        f"rag_query(size={rq['size']}/{rq['maxsize']}, hits={rq['hits']}, rate={rq['hit_rate_percent']}%)"
+    )
+    return stats
+
+
+def log_cache_summary() -> None:
+    """
+    Log a summary of all cache states.
+    Call this periodically or at session boundaries for monitoring.
+    """
+    logger.info("=" * 60)
+    logger.info("📊 CACHE SUMMARY REPORT")
+    logger.info("=" * 60)
+    
+    for cache_name, cache in [("hormone_analysis", hormone_analysis_cache), ("rag_query", rag_query_cache)]:
+        s = cache.stats()
+        logger.info(
+            f"  [{cache_name}]\n"
+            f"    Size: {s['size']}/{s['maxsize']} ({s['size']/s['maxsize']*100:.1f}% full)\n"
+            f"    TTL: {s['ttl_seconds']}s\n"
+            f"    Hits: {s['hits']} | Misses: {s['misses']} | Hit Rate: {s['hit_rate_percent']}%\n"
+            f"    Evictions: {s['evictions']}"
+        )
+    logger.info("=" * 60)
