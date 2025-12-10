@@ -1,7 +1,6 @@
 """
 RAG Orchestrator Module
 Coordinates the full RAG pipeline: Retrieve → Compile → Generate → Validate
-Now with medical safety integration for evidence thresholds and contradiction resolution
 """
 
 from typing import List, Dict, Any, Optional
@@ -15,16 +14,6 @@ from app.services.rag.rag_citation_validator import get_citation_validator, Cita
 from app.services.root_cause_engine import RootCauseEngine
 from app.models.ai_models import UserProfile
 
-# Import medical safety modules
-try:
-    from app.services.safety.medical_safety import (
-        EvidenceThresholdChecker,
-        ContradictionResolver
-    )
-    MEDICAL_SAFETY_ENABLED = True
-except ImportError:
-    MEDICAL_SAFETY_ENABLED = False
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,11 +23,10 @@ class RAGOrchestrator:
     
     Flow:
     1. Analyze user profile (Root Cause Engine)
-    2. Retrieve relevant papers (Hybrid Retriever)
-    3. CHECK EVIDENCE THRESHOLD (Medical Safety)
-    4. Compile context with citations (Context Compiler)
-    5. Generate recommendations (LLM)
-    6. Validate citations (Citation Validator)
+    2. Retrieve relevant chunks (Semantic Search)
+    3. Compile context with citations (Context Compiler)
+    4. Generate recommendations (LLM)
+    5. Validate citations (Citation Validator)
     """
     
     def __init__(self):
@@ -129,26 +117,7 @@ class RAGOrchestrator:
             logger.info("   Falling back to prompt-only generation...")
             return await self._fallback_generate(profile_dict, category)
         
-        logger.info(f"✅ STEP 2 SUCCESS: Retrieved {len(papers)} papers")
-        
-        # Step 2.5: CHECK EVIDENCE THRESHOLD (Medical Safety)
-        if MEDICAL_SAFETY_ENABLED:
-            logger.info("🛡️ STEP 2.5: Checking evidence threshold...")
-            recommendation_type = self._get_recommendation_type(category)
-            evidence_check = EvidenceThresholdChecker.check_evidence_sufficiency(
-                papers=papers,
-                recommendation_type=recommendation_type
-            )
-            
-            if not evidence_check['sufficient']:
-                logger.warning(f"⚠️ Evidence threshold not met: {evidence_check['message']}")
-                evidence_warning = evidence_check['message']
-            else:
-                evidence_warning = None
-                logger.info(f"✅ Evidence check passed: {evidence_check['papers_found']} quality papers")
-        else:
-            evidence_warning = None
-            logger.info("ℹ️ STEP 2.5: Medical safety module not enabled")
+        logger.info(f"✅ STEP 2 SUCCESS: Retrieved {len(papers)} chunks")
         
         # Step 3: Compile context with citations
         logger.info("📄 STEP 3: Compiling context with citations...")
@@ -233,18 +202,7 @@ class RAGOrchestrator:
         
         return recommendations
     
-    def _get_recommendation_type(self, category: str) -> str:
-        """
-        Map category to recommendation type for evidence threshold checking.
-        Higher-risk categories require more evidence.
-        """
-        type_mapping = {
-            'food': 'food_recommendation',
-            'supplement': 'supplement_dosage',
-            'movement': 'exercise_protocol',
-            'mindfulness': 'mindfulness',
-        }
-        return type_mapping.get(category, 'food_recommendation')
+
     
     def _build_retrieval_query(
         self,
