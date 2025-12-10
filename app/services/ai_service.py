@@ -15,6 +15,24 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# AUVRA V3 RECOMMENDATION ENGINE - MODULE INITIALIZATION
+# ============================================================================
+V3_ENGINE_VERSION = "3.0.0"
+V3_ENGINE_DESCRIPTION = "Modular Expert Architecture with Pinecone RAG"
+print("=" * 70)
+print(f"🎯 AUVRA V3 RECOMMENDATION ENGINE - Module Loaded")
+print(f"   Version: {V3_ENGINE_VERSION}")
+print(f"   Architecture: {V3_ENGINE_DESCRIPTION}")
+print(f"   Pipeline: Problem Focus → Expert Routing → Evidence Grading → Evaluation")
+print(f"   RAG Backend: Pinecone (auvra-papers index)")
+print("=" * 70)
+logger.info("=" * 70)
+logger.info(f"🎯 AUVRA V3 RECOMMENDATION ENGINE INITIALIZED")
+logger.info(f"   Version: {V3_ENGINE_VERSION}")
+logger.info(f"   Architecture: {V3_ENGINE_DESCRIPTION}")
+logger.info("=" * 70)
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -866,65 +884,176 @@ CONFIDENCE ASSESSMENT:
         """
         Generate session recommendations (for background processing)
         
-        NEW RAG ARCHITECTURE:
-        Uses RAGOrchestrator for full pipeline: Retrieve → Compile → Generate → Validate
-        Falls back to prompt-only if RAG fails
+        V3 RECOMMENDATION ENGINE:
+        Uses V3 architecture: Problem Focus → Expert Routing → Evidence Grading → Personalization → Quality Evaluation
+        Falls back to prompt-only if V3 fails
         """
         try:
             # ========================================
-            # STEP 1: Try NEW RAG Orchestrator (with citation validation)
+            # STEP 1: Try V3 Recommendation Engine
             # ========================================
-            print(f"🔬 [RAG DEBUG] Starting generate_session_recommendations for category={category}")
-            logger.info(f"🔬 RAG v2: Attempting to start RAG pipeline for category={category}")
+            print("=" * 70)
+            print(f"🚀 [AUVRA V3 ENGINE] STARTING - Category: {category.upper()}")
+            print("=" * 70)
+            logger.info("=" * 70)
+            logger.info(f"🚀 AUVRA V3 RECOMMENDATION ENGINE - Category: {category.upper()}")
+            logger.info("=" * 70)
+            logger.info(f"📋 Engine: V3 (Problem Focus → Expert Routing → Evidence Grading)")
+            logger.info(f"📋 Primary Imbalance: {getattr(user_profile, 'primaryImbalance', 'N/A')}")
+            logger.info(f"📋 Conditions: {getattr(user_profile, 'conditions', [])}")
             
             try:
-                print(f"🔬 [RAG DEBUG] Attempting to import generate_rag_recommendations...")
-                from app.services.rag.rag_orchestrator import generate_rag_recommendations
-                
-                # Check if function was loaded successfully
-                if generate_rag_recommendations is None:
-                    print(f"❌ [RAG DEBUG] generate_rag_recommendations is None!")
-                    logger.error(f"❌ RAG v2: generate_rag_recommendations is None (module load failed)")
-                    raise ImportError("generate_rag_recommendations is None")
-                
-                print(f"✅ [RAG DEBUG] Import successful, calling RAG pipeline...")
-                logger.info(f"✅ RAG v2: Import successful, calling generate_rag_recommendations")
-                
-                recommendations = await generate_rag_recommendations(
-                    user_profile=user_profile,
-                    category=category,
-                    use_rag=True
+                print(f"🔬 [V3] Step 1: Importing V3 components...")
+                logger.info(f"🔬 V3 Step 1: Importing components...")
+                from app.services.recommendation_engine_v3.core.v3_orchestrator import (
+                    RecommendationEngineV3,
+                    V3RecommendationRequest
+                )
+                from app.services.recommendation_engine_v3.utils.format_converter import (
+                    convert_v3_response_to_mobile_format
                 )
                 
-                print(f"🔬 [RAG DEBUG] RAG returned {len(recommendations) if recommendations else 0} recommendations")
+                print(f"✅ [V3] Step 2: Building request...")
+                logger.info(f"✅ V3 Step 2: Components imported, building request...")
+                
+                # Safely extract fields from UserProfile (handles both pydantic model and dict-like)
+                def safe_get(obj, field, default=None):
+                    """Safely get attribute from pydantic model or dict"""
+                    if hasattr(obj, field):
+                        return getattr(obj, field, default)
+                    elif hasattr(obj, '__getitem__'):
+                        try:
+                            return obj.get(field, default) if hasattr(obj, 'get') else default
+                        except:
+                            return default
+                    return default
+                
+                def safe_get_list(obj, field):
+                    """Safely get list attribute"""
+                    val = safe_get(obj, field, [])
+                    return val if isinstance(val, list) else []
+                
+                # Build V3 request from UserProfile (safely)
+                # Map session fields to V3 expected format
+                period_concerns = safe_get_list(user_profile, 'period_concerns')
+                body_concerns = safe_get_list(user_profile, 'body_concerns')
+                skin_concerns = safe_get_list(user_profile, 'skin_hair_concerns') or safe_get_list(user_profile, 'skin_concerns')
+                mood_concerns = safe_get_list(user_profile, 'mental_health_concerns') or safe_get_list(user_profile, 'mood_concerns')
+                diagnosed_conditions = safe_get_list(user_profile, 'diagnosed_conditions')
+                
+                # Also use symptoms field from UserProfile model if available
+                model_symptoms = safe_get_list(user_profile, 'symptoms')
+                all_symptoms = list(set(period_concerns + body_concerns + skin_concerns + mood_concerns + model_symptoms))
+                
+                primary_imbalance = safe_get(user_profile, 'primaryImbalance', '')
+                secondary_imbalances = safe_get_list(user_profile, 'secondaryImbalances')
+                
+                v3_request = V3RecommendationRequest(
+                    user_id=safe_get(user_profile, 'uid', 'session_user') or "session_user",
+                    user_profile={
+                        'age': safe_get(user_profile, 'age'),
+                        'period_description': safe_get(user_profile, 'period_description', ''),
+                        'birth_control': safe_get(user_profile, 'birth_control') or safe_get(user_profile, 'birthControlStatus', ''),
+                        'cycle_length': safe_get(user_profile, 'cycle_length', ''),
+                        'cycle_phase': safe_get(user_profile, 'cyclePhase', 'unknown'),
+                        'period_concerns': period_concerns,
+                        'body_concerns': body_concerns,
+                        'skin_concerns': skin_concerns,
+                        'mood_concerns': mood_concerns,
+                        'diagnosed_conditions': diagnosed_conditions,
+                        'conditions': safe_get_list(user_profile, 'conditions'),
+                        'dietary_preferences': safe_get(user_profile, 'dietary_preferences'),
+                        'workout_intensity': safe_get(user_profile, 'workout_intensity'),
+                        'stress_level': safe_get(user_profile, 'stress_level'),
+                        'sleep_duration': safe_get(user_profile, 'sleep_duration'),
+                    },
+                    hormone_data={
+                        'primary_imbalance': primary_imbalance,
+                        'secondary_imbalances': secondary_imbalances,
+                        'hormone_scores': safe_get(user_profile, 'hormoneScores'),
+                    },
+                    symptoms=all_symptoms,
+                    preferences={
+                        'dietary': safe_get(user_profile, 'dietary_preferences'),
+                    },
+                    constraints={
+                        'diagnosed_conditions': diagnosed_conditions,
+                    }
+                )
+                
+                print(f"📊 [V3] Step 3: Request built - {len(all_symptoms)} symptoms, primary={primary_imbalance}")
+                logger.info(f"📊 V3 Step 3: Request built")
+                logger.info(f"   - Symptoms: {len(all_symptoms)}")
+                logger.info(f"   - Primary imbalance: {primary_imbalance}")
+                logger.info(f"   - Secondary imbalances: {secondary_imbalances}")
+                
+                # Initialize V3 engine and generate
+                print(f"🔄 [V3] Step 4: Calling V3 orchestrator (Pinecone RAG + Experts)...")
+                logger.info(f"🔄 V3 Step 4: Calling V3 orchestrator...")
+                
+                v3_engine = RecommendationEngineV3()
+                v3_response = await v3_engine.generate_recommendations(v3_request)
+                
+                quality_score = v3_response.quality_scores.get('overall', 0) if v3_response.quality_scores else 0
+                print(f"✅ [V3] Step 5: V3 response received, quality={quality_score:.2f}")
+                logger.info(f"✅ V3 Step 5: Response received")
+                logger.info(f"   - Quality score: {quality_score:.2f}")
+                logger.info(f"   - Recommendations count: {len(v3_response.recommendations)}")
+                
+                # Convert V3 response to mobile app format
+                recommendations = convert_v3_response_to_mobile_format(v3_response, category)
                 
                 if recommendations:
                     # Count verified citations
                     verified_count = sum(1 for r in recommendations if r.get('citation_verified', False))
-                    print(f"✅ [RAG DEBUG] SUCCESS: {len(recommendations)} recs, {verified_count} verified citations")
-                    logger.info(f"✅ RAG v2: Generated {len(recommendations)} recommendations, "
-                               f"{verified_count} with verified citations for {category}")
+                    total_pmids = sum(len(r.get('researchBacking', {}).get('studies', [])) for r in recommendations)
+                    
+                    print("=" * 70)
+                    print(f"✅ [AUVRA V3 ENGINE] SUCCESS - {category.upper()}")
+                    print(f"   📱 Recommendations: {len(recommendations)}")
+                    print(f"   📚 Verified citations: {verified_count}/{len(recommendations)}")
+                    print(f"   🔬 Total PMIDs attached: {total_pmids}")
+                    print(f"   ⭐ Quality score: {quality_score:.2f}")
+                    print("=" * 70)
+                    
+                    logger.info("=" * 70)
+                    logger.info(f"✅ AUVRA V3 ENGINE SUCCESS - {category.upper()}")
+                    logger.info(f"   📱 Recommendations: {len(recommendations)}")
+                    logger.info(f"   📚 Verified citations: {verified_count}/{len(recommendations)}")
+                    logger.info(f"   🔬 Total PMIDs attached: {total_pmids}")
+                    logger.info(f"   ⭐ Quality score: {quality_score:.2f}")
+                    logger.info(f"   🏷️ RAG Version: v3_engine")
+                    logger.info("=" * 70)
+                    
                     return recommendations
                 else:
-                    print(f"⚠️ [RAG DEBUG] RAG returned empty, falling back to prompt-only")
-                    logger.warning(f"⚠️ RAG v2: No recommendations from orchestrator, falling back to prompt-only")
+                    print(f"⚠️ [V3] V3 returned empty for {category}, falling back to prompt-only")
+                    logger.warning(f"⚠️ V3 Engine: No recommendations for {category}, falling back to prompt-only")
                     
             except ImportError as import_error:
-                print(f"❌ [RAG DEBUG] IMPORT ERROR: {import_error}")
-                logger.error(f"❌ RAG v2 IMPORT FAILED: {import_error}")
+                print(f"❌ [V3 ENGINE] IMPORT ERROR: {import_error}")
+                logger.error(f"❌ V3 Engine IMPORT FAILED: {import_error}")
                 import traceback
+                print(f"❌ [V3 ENGINE] Traceback: {traceback.format_exc()}")
                 logger.error(f"❌ Import traceback: {traceback.format_exc()}")
-            except Exception as rag_v2_error:
-                print(f"❌ [RAG DEBUG] EXCEPTION: {str(rag_v2_error)}")
-                logger.error(f"❌ RAG v2 EXCEPTION for {category}: {str(rag_v2_error)}")
+            except Exception as v3_error:
+                print(f"❌ [V3 ENGINE] EXCEPTION: {str(v3_error)}")
+                logger.error(f"❌ V3 Engine EXCEPTION for {category}: {str(v3_error)}")
                 import traceback
+                print(f"❌ [V3 ENGINE] Traceback: {traceback.format_exc()}")
                 logger.error(f"❌ Exception traceback: {traceback.format_exc()}")
 
             # ========================================
             # STEP 2: Fallback to prompt-only (no research)
             # ========================================
-            print(f"📝 [RAG DEBUG] FALLBACK: Using prompt-only generation for {category}")
-            logger.info(f"📝 Using prompt-only generation for category={category}")
+            print("=" * 70)
+            print(f"📝 [FALLBACK] Using prompt-only generation (NO V3, NO RAG)")
+            print(f"   Category: {category}")
+            print("=" * 70)
+            logger.info("=" * 70)
+            logger.info(f"📝 FALLBACK: Using prompt-only generation for category={category}")
+            logger.info(f"   🏷️ RAG Version: prompt_only (V3 failed or returned empty)")
+            logger.info("=" * 70)
             
             # Create prompt (without real research)
             prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile, category)
