@@ -212,14 +212,39 @@ class RecommendationEvaluator:
             suggestions.append("Add specific amounts, durations, and frequencies")
         
         # 3. Evidence Quality: Is it backed by research?
-        evidence_strength = recommendation.get('evidence_strength', 'weak')
+        # FIXED: Use REAL grades from Evidence Grader, not hardcoded template values
+        evidence_grade = recommendation.get('evidence_grade', {})
         citation_verified = recommendation.get('citation_verified', False)
+        verified_count = recommendation.get('verified_citation_count', 0)
         
-        evidence_scores = {'strong': 0.9, 'moderate': 0.7, 'weak': 0.4}
-        scores.evidence_quality = evidence_scores.get(evidence_strength, 0.5)
+        # Primary: Use Evidence Grader's numeric score if available
+        if evidence_grade and isinstance(evidence_grade, dict):
+            # Evidence Grader returns average_score (0-1)
+            grader_score = evidence_grade.get('average_score', 0)
+            high_quality_count = evidence_grade.get('high_quality_count', 0)
+            rct_count = evidence_grade.get('rct_count', 0)
+            
+            # Base score from Evidence Grader
+            scores.evidence_quality = grader_score
+            
+            # Bonus for high-quality studies (RCTs, meta-analyses)
+            if rct_count > 0:
+                scores.evidence_quality = min(1.0, scores.evidence_quality + 0.1)
+            if high_quality_count >= 2:
+                scores.evidence_quality = min(1.0, scores.evidence_quality + 0.05)
+        else:
+            # Fallback: Use evidence_strength string (from grader or template hint)
+            evidence_strength = recommendation.get('evidence_strength', 'weak')
+            if evidence_strength == 'pending_grade':
+                evidence_strength = recommendation.get('evidence_strength_hint', 'weak')
+            
+            evidence_scores = {'strong': 0.85, 'moderate': 0.65, 'weak': 0.35}
+            scores.evidence_quality = evidence_scores.get(evidence_strength, 0.4)
         
-        if citation_verified:
-            scores.evidence_quality = min(1.0, scores.evidence_quality + 0.1)
+        # Bonus for verified citations (have valid PMIDs)
+        if citation_verified and verified_count > 0:
+            bonus = min(0.1, verified_count * 0.03)  # Up to 0.1 bonus
+            scores.evidence_quality = min(1.0, scores.evidence_quality + bonus)
         
         if scores.evidence_quality < 0.6:
             feedback_parts.append("Weak evidence backing")

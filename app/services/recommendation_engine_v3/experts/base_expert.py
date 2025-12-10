@@ -231,21 +231,42 @@ class BaseExpertSubModule(ABC):
             return []
     
     def _extract_citations(self, retrieved_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Extract citation information from retrieved documents"""
+        """
+        Extract citation information from retrieved documents.
+        
+        IMPORTANT: Includes 'text' and 'mesh_terms' fields so Evidence Grader
+        can analyze the actual research content for quality grading.
+        """
         citations = []
         for doc in retrieved_docs[:5]:  # Top 5 citations
+            # Handle both direct fields and nested metadata
+            metadata = doc.get('metadata', {})
+            
+            # Get publication_year - handle float (from Pinecone) or int
+            year_raw = doc.get('publication_year') or doc.get('year') or metadata.get('publication_year') or metadata.get('year')
+            year = int(year_raw) if year_raw else None
+            
             citation = {
-                'pmid': doc.get('pmid') or doc.get('metadata', {}).get('pmid'),
-                'doi': doc.get('doi') or doc.get('metadata', {}).get('doi'),
-                'title': doc.get('title') or doc.get('metadata', {}).get('title', 'Unknown'),
-                'authors': doc.get('authors') or doc.get('metadata', {}).get('authors', []),
-                'year': doc.get('year') or doc.get('metadata', {}).get('year'),
-                'journal': doc.get('journal') or doc.get('metadata', {}).get('journal'),
+                # Identity fields
+                'pmid': doc.get('pmid') or metadata.get('pmid'),
+                'doi': doc.get('doi') or metadata.get('doi'),
+                'title': doc.get('title') or metadata.get('title', 'Unknown'),
+                
+                # Content for Evidence Grader (CRITICAL - was missing before!)
+                'text': doc.get('text') or metadata.get('text', ''),
+                'mesh_terms': doc.get('mesh_terms') or metadata.get('mesh_terms', []),
+                
+                # Metadata
+                'authors': doc.get('authors') or metadata.get('authors', []),
+                'year': year,
+                'publication_year': year,  # Alias for Evidence Grader
+                'journal': doc.get('journal') or metadata.get('journal'),
                 'relevance_score': doc.get('score', 0.0),
-                'study_type': doc.get('study_type') or doc.get('metadata', {}).get('study_type'),
+                'study_type': doc.get('study_type') or metadata.get('study_type'),
             }
-            # Only add if we have at least PMID or DOI
-            if citation['pmid'] or citation['doi'] or citation['title'] != 'Unknown':
+            
+            # Only add if we have at least PMID or meaningful title
+            if citation['pmid'] or citation['doi'] or (citation['title'] and citation['title'] != 'Unknown'):
                 citations.append(citation)
         return citations
     
@@ -254,6 +275,7 @@ class BaseExpertSubModule(ABC):
         template_key: str,
         focused_problem: FocusedProblem,
         citations: List[Dict[str, Any]] = None,
+        evidence_sources: List[Dict[str, Any]] = None,
         customizations: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
@@ -261,10 +283,25 @@ class BaseExpertSubModule(ABC):
         
         Templates provide evidence-based defaults, which are then
         customized for the specific user.
+        
+        Args:
+            template_key: Key of the template to use
+            focused_problem: The focused problem context
+            citations: Display-friendly citation list
+            evidence_sources: Full documents with 'text' field for Evidence Grader
+            customizations: Any custom field overrides
         """
         template = self.INTERVENTION_TEMPLATES.get(template_key, {})
         if not template:
             return None
+        
+        # Determine citation verification status:
+        # True only if we have citations with valid PMIDs (from real Pinecone papers)
+        verified_citations = [
+            c for c in (citations or []) 
+            if c.get('pmid') or c.get('doi')
+        ]
+        has_verified_citations = len(verified_citations) > 0
         
         rec = {
             'title': template.get('title', template_key),
@@ -272,11 +309,24 @@ class BaseExpertSubModule(ABC):
             'specificAction': template.get('action', ''),
             'frequency': template.get('frequency', 'Daily'),
             'priority': template.get('priority', 'medium'),
-            'evidence_strength': template.get('evidence_strength', 'moderate'),
+            
+            # FIXED: Set to 'pending_grade' - will be set by Evidence Grader
+            # Template value is just a hint, real grade comes from analysis
+            'evidence_strength': 'pending_grade',
+            'evidence_strength_hint': template.get('evidence_strength', 'moderate'),
+            
             'root_causes_addressed': template.get('root_causes', self.TARGET_ROOT_CAUSES),
             'citations': citations or [],
-            'citation_verified': bool(citations),
-            'confidence': 0.7 if citations else 0.5,
+            
+            # FIXED: Store full evidence sources for Evidence Grader
+            # These contain 'text' field needed for actual content analysis
+            'evidence_sources': evidence_sources or citations or [],
+            
+            # FIXED: Only True if we have citations with valid PMIDs/DOIs
+            'citation_verified': has_verified_citations,
+            'verified_citation_count': len(verified_citations),
+            
+            'confidence': 0.7 if has_verified_citations else 0.5,
             'module_source': self.MODULE_NAME,
             'contraindications': template.get('contraindications', []),
             'expectedTimeline': template.get('timeline', '8-12 weeks'),

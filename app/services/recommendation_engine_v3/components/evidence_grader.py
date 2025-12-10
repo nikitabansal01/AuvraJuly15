@@ -99,13 +99,28 @@ class EvidenceGrader:
             EvidenceGrade with detailed scoring
         """
         # Extract document info
+        # Pinecone chunks have: title, text (chunk content), publication_year, mesh_terms
         title = document.get('title', '').lower()
-        abstract = document.get('abstract', document.get('text', '')).lower()
-        year = document.get('year', document.get('publication_year', 0))
-        sample_size = self._extract_sample_size(abstract)
+        text_content = document.get('text', document.get('abstract', '')).lower()
+        
+        # Handle year - Pinecone returns as float (2025.0)
+        year = document.get('publication_year', document.get('year', 0))
+        if isinstance(year, float):
+            year = int(year)
+        elif isinstance(year, str):
+            try:
+                year = int(float(year))
+            except (ValueError, TypeError):
+                year = 0
+        
+        # Get mesh_terms for better classification
+        mesh_terms = document.get('mesh_terms', [])
+        
+        sample_size = self._extract_sample_size(text_content)
         
         # Calculate component scores
-        study_type = self._classify_study_type(title, abstract)
+        # Use title + mesh_terms for study type (most reliable for chunks)
+        study_type = self._classify_study_type(title, text_content, mesh_terms)
         study_quality = study_type.value / 10.0
         
         relevance_score = self._calculate_relevance(
@@ -223,13 +238,40 @@ class EvidenceGrader:
             }
         }
     
-    def _classify_study_type(self, title: str, abstract: str) -> StudyType:
-        """Classify the study type based on text patterns"""
-        text = f"{title} {abstract}"
+    def _classify_study_type(self, title: str, text_content: str, mesh_terms: List[str] = None) -> StudyType:
+        """
+        Classify the study type based on title, text patterns, and MeSH terms.
         
+        For chunked papers, title and mesh_terms are most reliable since
+        the text content may be from any section (methods, results, etc.)
+        """
+        # First check title (most reliable)
         for study_type, patterns in self.study_type_patterns.items():
             for pattern in patterns:
-                if re.search(pattern, text, re.IGNORECASE):
+                if re.search(pattern, title, re.IGNORECASE):
+                    return study_type
+        
+        # Check MeSH terms (reliable - added by PubMed indexers)
+        if mesh_terms:
+            mesh_text = ' '.join(mesh_terms).lower()
+            mesh_study_mapping = {
+                'meta-analysis': StudyType.META_ANALYSIS,
+                'systematic review': StudyType.SYSTEMATIC_REVIEW,
+                'randomized controlled trial': StudyType.RCT,
+                'randomized controlled trials': StudyType.RCT,
+                'cohort studies': StudyType.COHORT,
+                'prospective studies': StudyType.COHORT,
+                'case-control studies': StudyType.CASE_CONTROL,
+                'cross-sectional studies': StudyType.CROSS_SECTIONAL,
+            }
+            for mesh_pattern, study_type in mesh_study_mapping.items():
+                if mesh_pattern in mesh_text:
+                    return study_type
+        
+        # Finally check text content (less reliable for chunks)
+        for study_type, patterns in self.study_type_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, text_content, re.IGNORECASE):
                     return study_type
         
         return StudyType.UNKNOWN
@@ -261,11 +303,19 @@ class EvidenceGrader:
         if not target_conditions:
             return 0.5  # Default moderate relevance
         
-        text = f"{document.get('title', '')} {document.get('abstract', '')}".lower()
+        # Use title + text (chunk content) + mesh_terms for relevance
+        title = document.get('title', '')
+        text_content = document.get('text', document.get('abstract', ''))
+        mesh_terms = document.get('mesh_terms', [])
+        
+        # Combine all searchable text
+        combined_text = f"{title} {text_content}".lower()
+        if mesh_terms:
+            combined_text += ' ' + ' '.join(mesh_terms).lower()
         
         matches = sum(
             1 for condition in target_conditions
-            if condition.lower() in text
+            if condition.lower() in combined_text
         )
         
         return min(matches / max(len(target_conditions), 1), 1.0)

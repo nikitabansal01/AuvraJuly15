@@ -243,17 +243,57 @@ class RecommendationEngineV3:
             # ========================================
             logger.info("📊 Step 3: Grading evidence quality...")
             
-            evidence_summary = {'strength': 'not_graded', 'details': []}
+            evidence_summary = {'strength': 'not_graded', 'details': [], 'graded_count': 0}
             if self.evidence_grader:
-                # Grade evidence for each category
+                # Build target conditions for relevance scoring
+                target_conditions = ['PCOS', 'polycystic ovary syndrome', 'hormone']
+                if request.hormone_data.get('primary_imbalance'):
+                    target_conditions.append(request.hormone_data['primary_imbalance'])
+                
+                # Grade evidence for each recommendation
                 for category, recs in expert_results.items():
                     for rec in recs:
-                        if 'evidence_sources' in rec:
-                            grading = self.evidence_grader.grade_multiple(
-                                rec['evidence_sources'],
-                                target_conditions=['PCOS', 'hormone', request.hormone_data.get('primary_imbalance', '')]
-                            )
-                            rec['evidence_grade'] = grading['aggregate']
+                        # Get evidence sources (full docs with text) or fall back to citations
+                        sources = rec.get('evidence_sources') or rec.get('citations', [])
+                        
+                        if sources and len(sources) > 0:
+                            try:
+                                grading = self.evidence_grader.grade_multiple(
+                                    sources,
+                                    target_conditions=target_conditions
+                                )
+                                
+                                # Store full grading result
+                                rec['evidence_grade'] = grading['aggregate']
+                                
+                                # FIXED: Update evidence_strength with REAL grade from Evidence Grader
+                                # This replaces the 'pending_grade' placeholder
+                                rec['evidence_strength'] = grading['aggregate'].get('evidence_strength', 'moderate')
+                                
+                                # Store individual grades for transparency
+                                rec['evidence_grades_detail'] = [
+                                    {
+                                        'title': g['document'].get('title', 'Unknown')[:60],
+                                        'grade': g['grade'].grade_letter,
+                                        'score': round(g['grade'].overall_score, 2),
+                                        'study_type': g['grade'].study_quality
+                                    }
+                                    for g in grading.get('graded_documents', [])[:3]
+                                ]
+                                
+                                evidence_summary['graded_count'] += 1
+                                logger.debug(f"   📊 Graded '{rec.get('title', 'Unknown')[:30]}': {rec['evidence_strength']}")
+                                
+                            except Exception as e:
+                                logger.warning(f"   ⚠️ Evidence grading failed for '{rec.get('title', 'Unknown')[:30]}': {e}")
+                                # Fall back to template hint if grading fails
+                                rec['evidence_strength'] = rec.get('evidence_strength_hint', 'moderate')
+                        else:
+                            # No evidence sources - use template hint as fallback
+                            rec['evidence_strength'] = rec.get('evidence_strength_hint', 'weak')
+                            rec['evidence_grade'] = {'average_score': 0.3, 'evidence_strength': 'weak'}
+                
+                logger.info(f"   ↳ Graded {evidence_summary['graded_count']} recommendations with real evidence")
             
             # ========================================
             # STEP 4: PERSONALIZE
