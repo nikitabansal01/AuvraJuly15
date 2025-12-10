@@ -304,13 +304,10 @@ async def _generate_recommendations_background(session_id: str, service, process
     try:
         logger.info(f"Background recommendation generation started: {session_id}")
         
-        # OPTIMIZATION: Clear session caches at start of new session
-        try:
-            from app.services.cache_service import clear_session_caches
-            cache_results = clear_session_caches()
-            logger.info(f"🧹 Session caches cleared: {cache_results}")
-        except Exception as cache_err:
-            logger.warning(f"⚠️ Cache clear failed (non-fatal): {cache_err}")
+        # NOTE: Do NOT clear caches here! The hormone_analysis was already cached
+        # in the main endpoint (line 268) before this background task started.
+        # Clearing here would cause duplicate LLM calls. Caches will be cleared
+        # at the END of this task after all recommendations are generated.
         
         # Update to processing started status
         processing_service.update_processing_started(session_id)
@@ -397,6 +394,15 @@ async def _generate_recommendations_background(session_id: str, service, process
             logger.info(f"Background session recommendation generation completed: {session_id}")
             logger.info(f"Successful categories: {successful_categories}")
             logger.info(f"Failed categories: {failed_categories}")
+            
+            # OPTIMIZATION: Clear session caches AFTER all recommendations are generated
+            # This prevents duplicate LLM calls while still ensuring fresh data for next session
+            try:
+                from app.services.cache_service import clear_session_caches
+                cache_results = clear_session_caches()
+                logger.info(f"🧹 Session caches cleared after completion: {cache_results}")
+            except Exception as cache_err:
+                logger.warning(f"⚠️ Cache clear failed (non-fatal): {cache_err}")
             
         else:
             logger.warning(f"Session data not found: {session_id}")
