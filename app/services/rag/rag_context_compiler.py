@@ -30,7 +30,6 @@ class ContextCompiler:
     """
     
     MAX_CONTEXT_TOKENS = 4000  # Reserve tokens for prompt + response
-    MAX_PAPERS = 5  # Top papers to include
     MAX_CHUNK_LENGTH = 500  # Max characters per chunk excerpt
     
     def __init__(self):
@@ -57,13 +56,11 @@ class ContextCompiler:
             logger.warning("⚠️ Context Compiler: No papers to compile")
             return "", []
         
-        # Take top papers
-        top_papers = papers[:self.MAX_PAPERS]
-        
+        # Use all retrieved chunks - already sorted by Pinecone similarity
         context_parts = []
         citations = []
         
-        for i, paper in enumerate(top_papers):
+        for i, paper in enumerate(papers):
             ref_id = f"[{i + 1}]"
             
             # Extract key information - ONLY ACTUAL FIELDS FROM PINECONE
