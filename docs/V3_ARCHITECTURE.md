@@ -236,79 +236,201 @@
 
 ---
 
-## Caching Architecture
+## Caching Architecture (Production-Ready)
+
+> ✅ **Refactored December 2025** - All caches now use thread-safe, TTL-enabled, size-limited `TTLCache`
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                               🗄️ 4-LAYER CACHE SYSTEM                                │
+│                        🗄️ PRODUCTION-READY CACHE SYSTEM                              │
+│                                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│  │ 🔧 CACHE UTILITY MODULE (app/utils/cache_utils.py)                               │ │
+│  │                                                                                  │ │
+│  │  TTLCache Class Features:                                                        │ │
+│  │    • Thread-safe: threading.RLock for all operations                            │ │
+│  │    • TTL expiration: Automatic cleanup of stale entries                         │ │
+│  │    • Size limits: LRU eviction when maxsize reached                             │ │
+│  │    • Statistics: hit rate, evictions, cache size monitoring                     │ │
+│  │                                                                                  │ │
+│  │  Global Cache Instances:                                                         │ │
+│  │    hormone_analysis_cache: TTLCache(maxsize=50, ttl=600s)                       │ │
+│  │    rag_query_cache: TTLCache(maxsize=200, ttl=300s)                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
 │  │ LAYER 1: Hormone Analysis Cache                                                  │ │
-│  │ File: root_cause_engine.py                                                       │ │
-│  │ Key: hash(symptoms_others + family_others)                                       │ │
-│  │ Prevents: 4x duplicate OpenAI calls per session                                  │ │
+│  │ File: root_cause_engine.py → uses cache_utils.hormone_analysis_cache            │ │
+│  │                                                                                  │ │
+│  │ • Key: MD5 hash of (symptoms_others + family_others)                            │ │
+│  │ • TTL: 10 minutes (hormone analysis stable within session)                      │ │
+│  │ • Max Size: 50 entries (one per unique symptom combination)                     │ │
+│  │ • Prevents: Duplicate OpenAI LLM calls for same "Others" text                   │ │
 │  └─────────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
-│  │ LAYER 2: Pinecone Query Cache                                                    │ │
-│  │ File: rag_retriever.py                                                           │ │
-│  │ Key: hash(query + category + top_k)                                              │ │
-│  │ Prevents: 3x duplicate Pinecone API calls                                        │ │
+│  │ LAYER 2: Pinecone/RAG Query Cache                                                │ │
+│  │ File: rag_retriever.py → uses cache_utils.rag_query_cache                       │ │
+│  │                                                                                  │ │
+│  │ • Key: MD5 hash of (query + category + top_k)                                   │ │
+│  │ • TTL: 5 minutes (research papers don't change frequently)                      │ │
+│  │ • Max Size: 200 entries (different queries across categories)                   │ │
+│  │ • Prevents: Duplicate Pinecone API calls for same search                        │ │
+│  │                                                                                  │ │
+│  │ ⚠️ IMPORTANT: retrieval_component.py NOW DELEGATES to rag_retriever.py         │ │
+│  │    (No more duplicate caching - single source of truth)                         │ │
 │  └─────────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
-│  │ LAYER 3: Retrieval Component Cache                                               │ │
-│  │ File: retrieval_component.py                                                     │ │
-│  │ Key: hash(expert_query)                                                          │ │
-│  │ Benefit: Shared across 3 experts                                                 │ │
+│  │ LAYER 3: V3 Engine Singleton                                                     │ │
+│  │ File: v3_orchestrator.py → threading.Lock with double-checked locking           │ │
+│  │                                                                                  │ │
+│  │ • Pattern: get_v3_engine() returns thread-safe singleton                        │ │
+│  │ • Lock: threading.Lock (not asyncio.Lock - works in sync contexts)              │ │
+│  │ • Prevents: Race conditions during initialization                               │ │
+│  │ • Reset: reset_v3_engine() for testing/cache invalidation                       │ │
 │  └─────────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
-│  │ LAYER 4: V3 Engine Singleton                                                     │ │
-│  │ File: v3_orchestrator.py                                                         │ │
-│  │ Pattern: get_v3_engine() returns single instance                                 │ │
-│  │ Prevents: Re-initialization per category                                         │ │
+│  │ LAYER 4: Retriever Singleton                                                     │ │
+│  │ File: rag_retriever.py → threading.Lock with double-checked locking             │ │
+│  │                                                                                  │ │
+│  │ • Pattern: get_retriever() returns thread-safe singleton                        │ │
+│  │ • Prevents: Multiple Pinecone client initializations                            │ │
 │  └─────────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
 │  │ 🧹 CACHE SERVICE (cache_service.py)                                              │ │
-│  │   clear_session_caches() → Clears layers 1-3 at session start                    │ │
-│  │   get_cache_stats() → Returns cache sizes for monitoring                         │ │
+│  │                                                                                  │ │
+│  │  clear_session_caches(clear_engine=False):                                       │ │
+│  │    → Clears hormone_analysis_cache                                               │ │
+│  │    → Clears rag_query_cache                                                      │ │
+│  │    → Optionally resets V3 engine singleton                                       │ │
+│  │                                                                                  │ │
+│  │  get_cache_stats():                                                              │ │
+│  │    → Returns: size, maxsize, ttl, hits, misses, hit_rate%, evictions            │ │
 │  └─────────────────────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Cache Configuration Summary
+
+| Cache | Location | TTL | Max Size | Purpose |
+|-------|----------|-----|----------|---------|
+| `hormone_analysis_cache` | `cache_utils.py` | 10 min | 50 | LLM responses for "Others" text |
+| `rag_query_cache` | `cache_utils.py` | 5 min | 200 | Pinecone search results |
+| V3 Engine Singleton | `v3_orchestrator.py` | ∞ | 1 | Engine instance reuse |
+| Retriever Singleton | `rag_retriever.py` | ∞ | 1 | Pinecone client reuse |
+
+### Thread Safety Implementation
+
+```python
+# TTLCache uses RLock for thread-safe operations
+class TTLCache:
+    def __init__(self, maxsize=100, ttl_seconds=300):
+        self._cache = OrderedDict()
+        self._lock = threading.RLock()  # Reentrant for nested calls
+        
+    def get(self, key):
+        with self._lock:
+            # Thread-safe read with TTL check
+            ...
+    
+    def set(self, key, value):
+        with self._lock:
+            # Thread-safe write with LRU eviction
+            ...
+
+# Singletons use Lock with double-checked locking
+_v3_engine_instance = None
+_v3_engine_lock = threading.Lock()
+
+def get_v3_engine():
+    global _v3_engine_instance
+    if _v3_engine_instance is None:
+        with _v3_engine_lock:
+            if _v3_engine_instance is None:  # Double-check
+                _v3_engine_instance = RecommendationEngineV3()
+    return _v3_engine_instance
+```
+
+### Cache Statistics Example
+
+```python
+>>> from app.services.cache_service import get_cache_stats
+>>> get_cache_stats()
+{
+    "hormone_analysis": {
+        "name": "hormone_analysis",
+        "size": 3,
+        "maxsize": 50,
+        "ttl_seconds": 600,
+        "hits": 12,
+        "misses": 3,
+        "hit_rate_percent": 80.0,
+        "evictions": 0,
+        "sample_keys": ["a1b2c3...", "d4e5f6..."]
+    },
+    "rag_retriever": {
+        "name": "rag_query",
+        "size": 45,
+        "maxsize": 200,
+        "ttl_seconds": 300,
+        "hits": 89,
+        "misses": 45,
+        "hit_rate_percent": 66.4,
+        "evictions": 0,
+        "sample_keys": ["x7y8z9...", "m1n2o3..."]
+    }
+}
+```
+
+### Previous Issues Fixed
+
+| Issue | Before | After |
+|-------|--------|-------|
+| **Duplicate caches** | `retrieval_component.py` and `rag_retriever.py` both cached | Single cache in `rag_retriever.py` |
+| **No TTL** | Caches grew forever | Auto-expire after TTL |
+| **No size limit** | Memory could exhaust | LRU eviction at maxsize |
+| **Not thread-safe** | Race conditions possible | `threading.RLock` for all ops |
+| **V3 singleton race** | `asyncio.Lock` defined but unused | `threading.Lock` with double-check |
+| **Unstable hash** | `hash()` varies across restarts | `MD5` hash is stable |
 
 ---
 
 ## File Structure (Verified)
 
 ```
-app/services/
-├── ai_service.py                          # Entry point, uses get_v3_engine()
-├── root_cause_engine.py                   # Hormone analysis (OpenAI)
-├── cache_service.py                       # Central cache management
+app/
+├── utils/
+│   └── cache_utils.py                     # 🆕 TTLCache, SingletonMeta, cache instances
 │
-├── rag/
-│   └── rag_retriever.py                   # Pinecone hybrid search singleton
-│
-└── recommendation_engine_v3/
-    │
-    ├── core/
-    │   ├── v3_orchestrator.py             # Main engine (SINGLETON)
-    │   ├── problem_narrower.py            # Step 1: Focus narrowing
-    │   ├── expert_orchestrator.py         # Step 2: Expert routing
-    │   └── evaluator_optimizer.py         # Step 5: Quality evaluation
-    │
-    ├── components/
-    │   ├── retrieval_component.py         # Shared RAG for experts
-    │   ├── evidence_grader.py             # Step 3: Evidence scoring
-    │   └── personalization_engine.py      # Step 4: User adaptation
-    │
-    └── experts/
-        ├── base_expert.py                 # Abstract base class
-        ├── nutrition_expert.py            # 🥗 Food recommendations
-        ├── movement_expert.py             # 🏃 Exercise recommendations
-        └── mindfulness_expert.py          # 🧘 Stress/sleep recommendations
+├── services/
+│   ├── ai_service.py                      # Entry point, uses get_v3_engine()
+│   ├── root_cause_engine.py               # Hormone analysis (uses TTLCache)
+│   ├── cache_service.py                   # Central cache management
+│   │
+│   ├── rag/
+│   │   └── rag_retriever.py               # Pinecone singleton + TTLCache
+│   │
+│   └── recommendation_engine_v3/
+│       │
+│       ├── core/
+│       │   ├── v3_orchestrator.py         # Main engine (thread-safe SINGLETON)
+│       │   ├── problem_narrower.py        # Step 1: Focus narrowing
+│       │   ├── expert_orchestrator.py     # Step 2: Expert routing
+│       │   └── evaluator_optimizer.py     # Step 5: Quality evaluation
+│       │
+│       ├── components/
+│       │   ├── retrieval_component.py     # Delegates to rag_retriever (no own cache)
+│       │   ├── evidence_grader.py         # Step 3: Evidence scoring
+│       │   └── personalization_engine.py  # Step 4: User adaptation
+│       │
+│       └── experts/
+│           ├── base_expert.py             # Abstract base class
+│           ├── nutrition_expert.py        # 🥗 Food recommendations
+│           ├── movement_expert.py         # 🏃 Exercise recommendations
+│           └── mindfulness_expert.py      # 🧘 Stress/sleep recommendations
 ```
 
 ---

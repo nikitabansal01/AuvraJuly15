@@ -4,7 +4,7 @@ Hybrid search combining semantic and keyword-based retrieval
 
 OPTIMIZATIONS (Production-ready):
 - Singleton retriever pattern (prevents re-initialization)
-- Query result caching (prevents duplicate Pinecone calls)
+- Thread-safe, TTL-enabled caching via cache_utils.TTLCache
 - Reduced verbose logging for production
 """
 
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import logging
 import os
 import httpx
-import hashlib
+import threading
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -22,32 +22,34 @@ logger = logging.getLogger(__name__)
 # ============================================
 # SINGLETON & CACHE (OPTIMIZATION)
 # ============================================
+# Thread-safe singleton pattern
 _retriever_instance: Optional['HybridRetriever'] = None
-_pinecone_query_cache: Dict[str, List[Dict[str, Any]]] = {}
+_retriever_lock = threading.Lock()
+
+# Use centralized production-ready cache
+from app.utils.cache_utils import rag_query_cache, generate_cache_key
 
 
 def get_retriever() -> 'HybridRetriever':
-    """Get singleton retriever instance (OPTIMIZATION)"""
+    """Get singleton retriever instance (thread-safe)"""
     global _retriever_instance
     if _retriever_instance is None:
-        _retriever_instance = HybridRetriever()
-        logger.info("✅ Singleton HybridRetriever created")
+        with _retriever_lock:
+            # Double-checked locking
+            if _retriever_instance is None:
+                _retriever_instance = HybridRetriever()
+                logger.info("✅ Singleton HybridRetriever created")
     return _retriever_instance
 
 
 def clear_retriever_cache():
     """Clear the Pinecone query cache (call between sessions)"""
-    global _pinecone_query_cache
-    _pinecone_query_cache.clear()
-    logger.info("🧹 Pinecone query cache cleared")
+    rag_query_cache.clear()
 
 
 def get_cache_stats() -> Dict[str, Any]:
     """Get cache statistics"""
-    return {
-        "cache_size": len(_pinecone_query_cache),
-        "sample_keys": list(_pinecone_query_cache.keys())[:5]
-    }
+    return rag_query_cache.stats()
 
 
 class StudyType(Enum):
@@ -118,9 +120,8 @@ class HybridRetriever:
         logger.info(f"🔧 PINECONE_INDEX: {self.pinecone_index or '❌ MISSING'}")
     
     def _get_cache_key(self, query: str, category: str, top_k: int) -> str:
-        """Generate cache key for Pinecone query"""
-        content = f"{query}|{category}|{top_k}"
-        return hashlib.md5(content.encode()).hexdigest()
+        """Generate cache key for Pinecone query using stable hash"""
+        return generate_cache_key(query, category, top_k)
         
     async def retrieve(
         self,
@@ -132,19 +133,17 @@ class HybridRetriever:
         """
         Main retrieval method combining semantic and keyword search.
         
-        OPTIMIZED: Results are cached by query hash to prevent duplicate
-        Pinecone API calls within the same session.
+        OPTIMIZED: Thread-safe, TTL-enabled caching via cache_utils.TTLCache
+        prevents duplicate Pinecone API calls within the same session.
         """
-        global _pinecone_query_cache
-        
         try:
             # Step 1: Build enhanced query from user profile
             enhanced_query = self._build_enhanced_query(query, user_profile, category)
             
-            # Check cache first (OPTIMIZATION)
+            # Check cache first (thread-safe, TTL-enabled)
             cache_key = self._get_cache_key(enhanced_query, category, top_k)
-            if cache_key in _pinecone_query_cache:
-                cached_results = _pinecone_query_cache[cache_key]
+            cached_results = rag_query_cache.get(cache_key)
+            if cached_results is not None:
                 logger.info(f"✅ Pinecone Cache HIT: {len(cached_results)} results for {category}")
                 return cached_results
             
@@ -161,8 +160,8 @@ class HybridRetriever:
             top_scores = [round(r.get('score', 0), 3) for r in semantic_results[:3]]
             logger.info(f"✅ Retrieved {len(semantic_results)} papers, top scores: {top_scores}")
             
-            # Cache results (OPTIMIZATION)
-            _pinecone_query_cache[cache_key] = semantic_results
+            # Cache results (thread-safe, auto-expires after TTL)
+            rag_query_cache.set(cache_key, semantic_results)
             
             return semantic_results
             

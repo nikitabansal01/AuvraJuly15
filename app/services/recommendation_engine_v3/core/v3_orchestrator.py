@@ -65,15 +65,17 @@ class V3RecommendationResponse:
 # ============================================
 # SINGLETON V3 ENGINE INSTANCE (OPTIMIZATION)
 # ============================================
+# Thread-safe singleton pattern using threading.Lock
 # Prevents re-initialization for each category (food, movement, mindfulness)
-# Components are thread-safe and reusable
+import threading
+
 _v3_engine_instance: Optional['RecommendationEngineV3'] = None
-_v3_engine_init_lock = asyncio.Lock() if asyncio else None
+_v3_engine_lock = threading.Lock()
 
 
 def get_v3_engine() -> 'RecommendationEngineV3':
     """
-    Get singleton V3 engine instance.
+    Get singleton V3 engine instance (thread-safe).
     Use this instead of creating new RecommendationEngineV3() each time.
     
     OPTIMIZATION: Prevents re-initialization overhead for each category.
@@ -82,16 +84,20 @@ def get_v3_engine() -> 'RecommendationEngineV3':
     """
     global _v3_engine_instance
     if _v3_engine_instance is None:
-        _v3_engine_instance = RecommendationEngineV3()
-        logger.info("✅ V3 Engine singleton created")
+        with _v3_engine_lock:
+            # Double-checked locking pattern
+            if _v3_engine_instance is None:
+                _v3_engine_instance = RecommendationEngineV3()
+                logger.info("✅ V3 Engine singleton created")
     return _v3_engine_instance
 
 
 def reset_v3_engine():
     """Reset the singleton engine (for testing or cache invalidation)"""
     global _v3_engine_instance
-    _v3_engine_instance = None
-    logger.info("🔄 V3 Engine singleton reset")
+    with _v3_engine_lock:
+        _v3_engine_instance = None
+        logger.info("🔄 V3 Engine singleton reset")
 
 
 class RecommendationEngineV3:

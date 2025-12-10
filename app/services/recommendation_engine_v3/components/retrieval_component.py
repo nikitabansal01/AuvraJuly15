@@ -6,39 +6,35 @@ This component provides reusable retrieval functionality that can be
 used across all expert modules.
 
 OPTIMIZATIONS (Production-ready):
-- Query-level caching to prevent duplicate Pinecone calls
+- Delegates to HybridRetriever which uses centralized TTLCache
 - Singleton retriever pattern
 - Async-first design
+
+NOTE: Caching is handled by the underlying rag_retriever module.
+This component does NOT maintain its own cache to avoid double-caching.
 """
 
 from typing import List, Dict, Any, Optional
 import logging
-import hashlib
 
 logger = logging.getLogger(__name__)
 
 
 # ============================================
-# RAG QUERY CACHE (OPTIMIZATION)
+# CACHE FUNCTIONS (Delegate to centralized cache)
 # ============================================
-# Caches Pinecone query results by query hash
-# Same query in same session returns cached results
-_rag_query_cache: Dict[str, List[Dict[str, Any]]] = {}
-
+# These functions exist for backward compatibility with cache_service.py
 
 def clear_rag_cache():
-    """Clear the RAG query cache (call between sessions)"""
-    global _rag_query_cache
-    _rag_query_cache.clear()
-    logger.info("🧹 RAG query cache cleared")
+    """Clear the RAG query cache (delegates to rag_retriever)"""
+    from app.services.rag.rag_retriever import clear_retriever_cache
+    clear_retriever_cache()
 
 
 def get_rag_cache_stats() -> Dict[str, Any]:
-    """Get RAG cache statistics"""
-    return {
-        "cache_size": len(_rag_query_cache),
-        "keys": list(_rag_query_cache.keys())[:10]  # First 10 keys
-    }
+    """Get RAG cache statistics (delegates to rag_retriever)"""
+    from app.services.rag.rag_retriever import get_cache_stats
+    return get_cache_stats()
 
 
 class RetrievalComponent:
@@ -48,8 +44,8 @@ class RetrievalComponent:
     This component wraps the existing Pinecone/hybrid search infrastructure
     and provides a clean interface for expert modules.
     
-    OPTIMIZATION: Query results are cached by query hash to prevent
-    duplicate Pinecone API calls within the same session.
+    IMPORTANT: Caching is handled by the underlying HybridRetriever
+    to avoid double-caching and ensure cache coherence.
     """
     
     def __init__(
@@ -72,11 +68,6 @@ class RetrievalComponent:
             logger.warning(f"⚠️ RetrievalComponent: Retriever not available: {e}")
             self._retriever = None
     
-    def _get_cache_key(self, query: str, category: str, top_k: int) -> str:
-        """Generate cache key for RAG query"""
-        content = f"{query}|{category}|{top_k}"
-        return hashlib.md5(content.encode()).hexdigest()
-    
     async def retrieve(
         self,
         query: str,
@@ -88,7 +79,7 @@ class RetrievalComponent:
         """
         Retrieve relevant documents for a query.
         
-        OPTIMIZED: Results are cached by query+category+top_k hash.
+        Caching is handled by the underlying HybridRetriever.
         
         Args:
             query: Search query
@@ -100,22 +91,12 @@ class RetrievalComponent:
         Returns:
             List of relevant documents with metadata
         """
-        global _rag_query_cache
-        
         if self._retriever is None:
             logger.warning("⚠️ Retriever not available, returning empty results")
             return []
         
-        # Check cache first (OPTIMIZATION)
-        cache_key = self._get_cache_key(query, category, top_k)
-        if cache_key in _rag_query_cache:
-            cached_results = _rag_query_cache[cache_key]
-            logger.info(f"✅ RAG Cache HIT: {len(cached_results)} results for category={category}")
-            return cached_results
-        
         try:
-            # Use the existing RAG retriever's signature
-            # retrieve(query, user_profile, category, top_k)
+            # Delegate to HybridRetriever (which handles caching)
             results = await self._retriever.retrieve(
                 query=query,
                 user_profile={},  # Empty profile for general retrieval
@@ -128,10 +109,6 @@ class RetrievalComponent:
                 r for r in results 
                 if r.get('score', 0) >= min_score or r.get('relevance_score', 0) >= min_score
             ]
-            
-            # Cache results (OPTIMIZATION)
-            _rag_query_cache[cache_key] = filtered
-            logger.info(f"📚 RAG Cache MISS: Retrieved and cached {len(filtered)} documents for category={category}")
             
             return filtered
             

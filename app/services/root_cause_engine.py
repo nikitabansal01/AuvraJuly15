@@ -3,7 +3,6 @@ import json
 import os
 import asyncio
 import logging
-from functools import lru_cache
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -33,8 +32,11 @@ else:
 LLM_OTHERS_TIMEOUT = int(os.getenv("LLM_OTHERS_TIMEOUT", "30"))  # seconds
 LLM_OTHERS_MODEL = os.getenv("LLM_OTHERS_MODEL", "gpt-4o-mini")  # Fast, cheap, good for JSON
 
-# Session-level cache for hormone analysis (prevents duplicate LLM calls)
-_hormone_analysis_cache: Dict[str, Dict[str, int]] = {}
+# ============================================
+# PRODUCTION-READY CACHE (Thread-safe, TTL, Size-limited)
+# ============================================
+# Uses centralized cache utility instead of bare dictionary
+from app.utils.cache_utils import hormone_analysis_cache, generate_cache_key
 
 # Debug logging
 logger.info(f"🔑 LLM Provider: {LLM_PROVIDER or 'NONE (disabled)'}")
@@ -50,24 +52,25 @@ class RootCauseEngine:
     
     OPTIMIZATIONS (Production-ready):
     - Migrated from Gemini (5 RPM limit) to OpenAI (3,500+ RPM)
-    - Session-level caching to prevent duplicate LLM calls
+    - Thread-safe, TTL-enabled caching via cache_utils.TTLCache
     - Async support for non-blocking operations
     - Graceful fallbacks on API failures
     """
     
     @staticmethod
     def _get_cache_key(symptom_others: Optional[str], family_others: Optional[str]) -> str:
-        """Generate cache key for hormone analysis"""
-        import hashlib
-        content = f"{symptom_others or ''}|{family_others or ''}"
-        return hashlib.md5(content.encode()).hexdigest()
+        """Generate cache key for hormone analysis using stable hash"""
+        return generate_cache_key(symptom_others or '', family_others or '')
     
     @staticmethod
     def clear_cache():
         """Clear the hormone analysis cache (call between sessions)"""
-        global _hormone_analysis_cache
-        _hormone_analysis_cache.clear()
-        logger.info("🧹 Hormone analysis cache cleared")
+        hormone_analysis_cache.clear()
+    
+    @staticmethod
+    def get_cache_stats() -> Dict:
+        """Get hormone analysis cache statistics"""
+        return hormone_analysis_cache.stats()
     
     @staticmethod
     def _get_default_scores() -> Dict[str, int]:
@@ -234,8 +237,6 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
         Returns:
             Dict with hormone scores (0-3) for all 8 hormones
         """
-        global _hormone_analysis_cache
-        
         # Return zeros if empty
         if not symptom_others and not family_others:
             return RootCauseEngine._get_default_scores()
@@ -245,11 +246,12 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             logger.info("ℹ️ Skipping LLM processing (disabled or no API key)")
             return RootCauseEngine._get_default_scores()
         
-        # Check cache first (prevents duplicate LLM calls)
+        # Check cache first (thread-safe, TTL-enabled)
         cache_key = RootCauseEngine._get_cache_key(symptom_others, family_others)
-        if cache_key in _hormone_analysis_cache:
+        cached_result = hormone_analysis_cache.get(cache_key)
+        if cached_result is not None:
             logger.info(f"✅ Cache HIT for hormone analysis (saved 1 LLM call)")
-            return _hormone_analysis_cache[cache_key]
+            return cached_result
         
         try:
             import time as _time
@@ -287,8 +289,8 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             # Parse response
             scores = RootCauseEngine._parse_llm_response(response_text)
             
-            # Cache result
-            _hormone_analysis_cache[cache_key] = scores
+            # Cache result (thread-safe, auto-expires after TTL)
+            hormone_analysis_cache.set(cache_key, scores)
             logger.info(f"✅ Cached hormone analysis result (key={cache_key[:8]}...)")
             logger.info(f"🎯 Final scores: {scores}")
             
