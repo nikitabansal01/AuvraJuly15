@@ -1,97 +1,95 @@
 from typing import Dict, List, Tuple, Optional
-import google.generativeai as genai
 import json
 import os
+import asyncio
+import logging
+from functools import lru_cache
 from dotenv import load_dotenv
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure Gemini API
+logger = logging.getLogger(__name__)
+
+# ============================================
+# OPENAI API CONFIGURATION (Migrated from Gemini)
+# ============================================
+# OpenAI has much higher rate limits (3,500 RPM tier 1) vs Gemini free (5 RPM)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Fallback: Still support Gemini if explicitly configured
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Auto-enable LLM if GEMINI_API_KEY is present (unless explicitly disabled)
+
+# Determine which LLM provider to use (priority: OpenAI > Gemini)
+LLM_PROVIDER = "openai" if OPENAI_API_KEY else ("gemini" if GEMINI_API_KEY else None)
+
+# Auto-enable LLM if API key is present (unless explicitly disabled)
 _enable_llm_env = os.getenv("ENABLE_LLM_OTHERS", "").lower()
 if _enable_llm_env in ("0", "false", "no", "off"):
     ENABLE_LLM_OTHERS = False
 else:
-    # Enable if API key exists OR if explicitly enabled
-    ENABLE_LLM_OTHERS = bool(GEMINI_API_KEY) or _enable_llm_env in ("1", "true", "yes", "on")
+    ENABLE_LLM_OTHERS = bool(OPENAI_API_KEY) or bool(GEMINI_API_KEY) or _enable_llm_env in ("1", "true", "yes", "on")
+    
 LLM_OTHERS_TIMEOUT = int(os.getenv("LLM_OTHERS_TIMEOUT", "30"))  # seconds
+LLM_OTHERS_MODEL = os.getenv("LLM_OTHERS_MODEL", "gpt-4o-mini")  # Fast, cheap, good for JSON
 
-# Debug logging to verify env vars are loaded
-print(f"🔑 GEMINI_API_KEY loaded: {'Yes' if GEMINI_API_KEY else 'No'}")
-print(f"🔑 ENABLE_LLM_OTHERS: {ENABLE_LLM_OTHERS}")
+# Session-level cache for hormone analysis (prevents duplicate LLM calls)
+_hormone_analysis_cache: Dict[str, Dict[str, int]] = {}
+
+# Debug logging
+logger.info(f"🔑 LLM Provider: {LLM_PROVIDER or 'NONE (disabled)'}")
+logger.info(f"🔑 OPENAI_API_KEY loaded: {'Yes' if OPENAI_API_KEY else 'No'}")
+logger.info(f"🔑 ENABLE_LLM_OTHERS: {ENABLE_LLM_OTHERS}")
+logger.info(f"🔑 LLM Model: {LLM_OTHERS_MODEL}")
 
 
 class RootCauseEngine:
     """
     Hormone imbalance root cause analysis engine
     Evidence-based clinical scoring system with LLM integration
+    
+    OPTIMIZATIONS (Production-ready):
+    - Migrated from Gemini (5 RPM limit) to OpenAI (3,500+ RPM)
+    - Session-level caching to prevent duplicate LLM calls
+    - Async support for non-blocking operations
+    - Graceful fallbacks on API failures
     """
     
     @staticmethod
-    def process_others_with_llm(symptom_others: Optional[str], family_others: Optional[str]) -> Dict[str, int]:
-        """
-        Process free-text "Others" input using Gemini API
+    def _get_cache_key(symptom_others: Optional[str], family_others: Optional[str]) -> str:
+        """Generate cache key for hormone analysis"""
+        import hashlib
+        content = f"{symptom_others or ''}|{family_others or ''}"
+        return hashlib.md5(content.encode()).hexdigest()
+    
+    @staticmethod
+    def clear_cache():
+        """Clear the hormone analysis cache (call between sessions)"""
+        global _hormone_analysis_cache
+        _hormone_analysis_cache.clear()
+        logger.info("🧹 Hormone analysis cache cleared")
+    
+    @staticmethod
+    def _get_default_scores() -> Dict[str, int]:
+        """Return default zero scores for all hormones"""
+        return {
+            "estrogen_high": 0,
+            "estrogen_low": 0,
+            "progesterone_low": 0,
+            "androgens_high": 0,
+            "insulin_high": 0,
+            "cortisol_high": 0,
+            "cortisol_low": 0,
+            "thyroid_low": 0
+        }
+    
+    @staticmethod
+    def _build_hormone_prompt(symptom_others: str, family_others: str) -> str:
+        """Build the prompt for hormone analysis"""
+        symptoms_text = symptom_others if symptom_others else "None"
+        family_text = family_others if family_others else "None"
         
-        Args:
-            symptom_others: User's free-text symptoms from "Others" field
-            family_others: User's free-text family history from "Others" field
-            
-        Returns:
-            Dict with hormone scores (0-3) for all 8 hormones
-        """
-        # If both are empty, or LLM is disabled/misconfigured, return zeros immediately
-        if not symptom_others and not family_others:
-            return {
-                "estrogen_high": 0,
-                "estrogen_low": 0,
-                "progesterone_low": 0,
-                "androgens_high": 0,
-                "insulin_high": 0,
-                "cortisol_high": 0,
-                "cortisol_low": 0,
-                "thyroid_low": 0
-            }
-        # Skip calling the LLM unless explicitly enabled and API key is present
-        if not ENABLE_LLM_OTHERS or not GEMINI_API_KEY:
-            # Optional: log once to indicate skip in development environments
-            print("ℹ️ Skipping LLM processing for 'Others' text (disabled or missing GEMINI_API_KEY)")
-            return {
-                "estrogen_high": 0,
-                "estrogen_low": 0,
-                "progesterone_low": 0,
-                "androgens_high": 0,
-                "insulin_high": 0,
-                "cortisol_high": 0,
-                "cortisol_low": 0,
-                "thyroid_low": 0
-            }
-        
-        try:
-            import time as _time
-            start_ts = _time.time()
-            print(f"\n{'='*70}")
-            print(f"🤖 LLM PROCESSING STARTED")
-            print(f"{'='*70}")
-            # Clarified log labels: only free-text "Others" content (not structured symptom selections)
-            print(f"📝 Free-text 'Others' symptoms passed to LLM: {symptom_others if symptom_others else 'None'}")
-            print(f"👨‍👩‍👧‍👦 Free-text 'Others' family history passed to LLM: {family_others if family_others else 'None'}")
-            
-            # Configure API key
-            genai.configure(api_key=GEMINI_API_KEY)
-            print(f"✅ Gemini API configured")
-            
-            # Initialize Gemini model
-            model = genai.GenerativeModel('gemini-2.5-flash')
-            print(f"✅ Model initialized: gemini-2.5-flash")
-            
-            # Build prompt
-            symptoms_text = symptom_others if symptom_others else "None"
-            family_text = family_others if family_others else "None"
-            
-            prompt = f"""You are a clinical AI analyzing hormone imbalance symptoms and family history.
+        return f"""You are a clinical AI analyzing hormone imbalance symptoms and family history.
 
 Patient Symptoms: {symptoms_text}
 Family Medical History: {family_text}
@@ -111,92 +109,194 @@ SCORING SCALE:
 
 Return ONLY valid JSON with these exact keys. No markdown, no explanation:
 {{"androgens_high": 0, "insulin_high": 0, "thyroid_low": 0, "estrogen_high": 0, "estrogen_low": 0, "progesterone_low": 0, "cortisol_high": 0, "cortisol_low": 0}}"""
+    
+    @staticmethod
+    def _parse_llm_response(response_text: str) -> Dict[str, int]:
+        """Parse and validate LLM response JSON"""
+        # Clean up markdown formatting
+        if "```json" in response_text:
+            start_marker = "```json"
+            end_marker = "```"
+            start_idx = response_text.find(start_marker) + len(start_marker)
+            end_idx = response_text.find(end_marker, start_idx)
+            if end_idx != -1:
+                response_text = response_text[start_idx:end_idx].strip()
+        elif response_text.startswith("```") and response_text.endswith("```"):
+            lines = response_text.split('\n')
+            response_text = '\n'.join(lines[1:-1]).strip()
+        
+        # Parse JSON
+        scores = json.loads(response_text)
+        
+        # Validate scores are in 0-3 range
+        for hormone, score in scores.items():
+            if not isinstance(score, int) or score < 0 or score > 3:
+                scores[hormone] = 0
+        
+        return scores
+    
+    @staticmethod
+    async def _call_openai_async(prompt: str) -> str:
+        """Call OpenAI API asynchronously (preferred for production)"""
+        import httpx
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {OPENAI_API_KEY}'
+        }
+        
+        body = {
+            'model': LLM_OTHERS_MODEL,
+            'messages': [
+                {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            'temperature': 0.3,  # Lower temperature for consistent JSON output
+            'max_tokens': 200,   # JSON response is small
+            'response_format': {"type": "json_object"}  # Enforce JSON output
+        }
+        
+        async with httpx.AsyncClient(timeout=LLM_OTHERS_TIMEOUT) as client:
+            response = await client.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers=headers,
+                json=body
+            )
             
-            print(f"🧪 FULL PROMPT SENT TO LLM:\n{prompt}\n--- END PROMPT ---")
-            print(f"📤 Sending request to Gemini API...")
+            if response.status_code != 200:
+                raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
             
-            # Call Gemini API (no generation_config - causes empty responses)
-            # Execute the LLM call with a hard timeout using a separate thread
-            def _call_llm():
-                return model.generate_content(prompt)
-
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_call_llm)
+            data = response.json()
+            return data['choices'][0]['message']['content']
+    
+    @staticmethod
+    def _call_openai_sync(prompt: str) -> str:
+        """Call OpenAI API synchronously (fallback)"""
+        import httpx
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {OPENAI_API_KEY}'
+        }
+        
+        body = {
+            'model': LLM_OTHERS_MODEL,
+            'messages': [
+                {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            'temperature': 0.3,
+            'max_tokens': 200,
+            'response_format': {"type": "json_object"}
+        }
+        
+        with httpx.Client(timeout=LLM_OTHERS_TIMEOUT) as client:
+            response = client.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers=headers,
+                json=body
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
+            
+            data = response.json()
+            return data['choices'][0]['message']['content']
+    
+    @staticmethod
+    def _call_gemini_sync(prompt: str) -> str:
+        """Call Gemini API synchronously (legacy fallback)"""
+        import google.generativeai as genai
+        
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        
+        if not response.parts:
+            raise ValueError("Empty response from Gemini")
+        
+        return response.text.strip()
+    
+    @staticmethod
+    def process_others_with_llm(symptom_others: Optional[str], family_others: Optional[str]) -> Dict[str, int]:
+        """
+        Process free-text "Others" input using LLM (OpenAI primary, Gemini fallback)
+        
+        OPTIMIZED:
+        - Uses OpenAI (3,500+ RPM) instead of Gemini (5 RPM)
+        - Caches results to prevent duplicate calls within same session
+        - Uses JSON mode for reliable parsing
+        
+        Args:
+            symptom_others: User's free-text symptoms from "Others" field
+            family_others: User's free-text family history from "Others" field
+            
+        Returns:
+            Dict with hormone scores (0-3) for all 8 hormones
+        """
+        global _hormone_analysis_cache
+        
+        # Return zeros if empty
+        if not symptom_others and not family_others:
+            return RootCauseEngine._get_default_scores()
+        
+        # Check if LLM is enabled
+        if not ENABLE_LLM_OTHERS or not LLM_PROVIDER:
+            logger.info("ℹ️ Skipping LLM processing (disabled or no API key)")
+            return RootCauseEngine._get_default_scores()
+        
+        # Check cache first (prevents duplicate LLM calls)
+        cache_key = RootCauseEngine._get_cache_key(symptom_others, family_others)
+        if cache_key in _hormone_analysis_cache:
+            logger.info(f"✅ Cache HIT for hormone analysis (saved 1 LLM call)")
+            return _hormone_analysis_cache[cache_key]
+        
+        try:
+            import time as _time
+            start_ts = _time.time()
+            
+            logger.info(f"🤖 LLM PROCESSING ({LLM_PROVIDER.upper()}, model={LLM_OTHERS_MODEL})")
+            logger.info(f"   Symptoms: {symptom_others[:100] if symptom_others else 'None'}...")
+            logger.info(f"   Family: {family_others[:100] if family_others else 'None'}...")
+            
+            # Build prompt
+            prompt = RootCauseEngine._build_hormone_prompt(symptom_others, family_others)
+            
+            # Call appropriate LLM provider
+            if LLM_PROVIDER == "openai":
+                # Try async first, fall back to sync
                 try:
-                    response = future.result(timeout=LLM_OTHERS_TIMEOUT)
-                except FuturesTimeoutError:
-                    elapsed = _time.time() - start_ts
-                    print(f"⏱️ LLM timed out after {elapsed:.2f}s (limit {LLM_OTHERS_TIMEOUT}s). Falling back to zeros.")
-                    return {
-                        "estrogen_high": 0,
-                        "estrogen_low": 0,
-                        "progesterone_low": 0,
-                        "androgens_high": 0,
-                        "insulin_high": 0,
-                        "cortisol_high": 0,
-                        "cortisol_low": 0,
-                        "thyroid_low": 0
-                    }
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Already in async context - use sync to avoid nested loop
+                        response_text = RootCauseEngine._call_openai_sync(prompt)
+                    else:
+                        response_text = loop.run_until_complete(
+                            RootCauseEngine._call_openai_async(prompt)
+                        )
+                except RuntimeError:
+                    # No event loop - use sync
+                    response_text = RootCauseEngine._call_openai_sync(prompt)
+            else:
+                # Gemini fallback
+                response_text = RootCauseEngine._call_gemini_sync(prompt)
+            
             elapsed = _time.time() - start_ts
-            print(f"⏱️ LLM round-trip time (completed before timeout): {elapsed:.2f}s (limit {LLM_OTHERS_TIMEOUT}s)")
+            logger.info(f"⏱️ LLM response in {elapsed:.2f}s")
             
-            print(f"📥 Received response from Gemini API")
+            # Parse response
+            scores = RootCauseEngine._parse_llm_response(response_text)
             
-            # Check if response was generated
-            if not response.parts:
-                raise ValueError("Empty response from LLM")
+            # Cache result
+            _hormone_analysis_cache[cache_key] = scores
+            logger.info(f"✅ Cached hormone analysis result (key={cache_key[:8]}...)")
+            logger.info(f"🎯 Final scores: {scores}")
             
-            # Parse JSON response
-            response_text = response.text.strip()
-            print("� RAW LLM RESPONSE (UNALTERED):")
-            print(response.text)
-            print("--- END RAW RESPONSE ---")
-            print("📄 CLEANED RESPONSE FOR PARSING:")
-            print(response_text)
-            print("--- END CLEANED RESPONSE ---")
-            
-            # Clean up markdown formatting
-            # Method 1: Remove ```json ... ``` blocks
-            if "```json" in response_text:
-                # Extract content between ```json and ```
-                start_marker = "```json"
-                end_marker = "```"
-                start_idx = response_text.find(start_marker) + len(start_marker)
-                end_idx = response_text.find(end_marker, start_idx)
-                if end_idx != -1:
-                    response_text = response_text[start_idx:end_idx].strip()
-            # Method 2: Remove generic ``` blocks
-            elif response_text.startswith("```") and response_text.endswith("```"):
-                lines = response_text.split('\n')
-                # Remove first and last line (the ``` markers)
-                response_text = '\n'.join(lines[1:-1]).strip()
-            
-            # Try to parse JSON
-            scores = json.loads(response_text)
-            print(f"✅ Parsed JSON scores: {scores}")
-            
-            # Validate scores are in 0-3 range
-            for hormone, score in scores.items():
-                if not isinstance(score, int) or score < 0 or score > 3:
-                    scores[hormone] = 0  # Reset invalid scores
-            
-            print(f"🎯 Final validated LLM scores: {scores}")
             return scores
             
         except Exception as e:
-            print(f"❌ LLM error: {e}")
-            # Fallback: Return zeros if API fails
-            print(f"⚠️ LLM processing failed: {str(e)}")
-            return {
-                "estrogen_high": 0,
-                "estrogen_low": 0,
-                "progesterone_low": 0,
-                "androgens_high": 0,
-                "insulin_high": 0,
-                "cortisol_high": 0,
-                "cortisol_low": 0,
-                "thyroid_low": 0
-            }
+            logger.error(f"❌ LLM error: {e}")
+            return RootCauseEngine._get_default_scores()
     
     @staticmethod
     def analyze_hormone_imbalance(user_data: Dict) -> Dict[str, any]:

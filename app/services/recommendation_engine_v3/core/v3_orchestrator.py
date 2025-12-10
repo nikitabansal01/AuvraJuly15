@@ -62,6 +62,38 @@ class V3RecommendationResponse:
     confidence_level: str
 
 
+# ============================================
+# SINGLETON V3 ENGINE INSTANCE (OPTIMIZATION)
+# ============================================
+# Prevents re-initialization for each category (food, movement, mindfulness)
+# Components are thread-safe and reusable
+_v3_engine_instance: Optional['RecommendationEngineV3'] = None
+_v3_engine_init_lock = asyncio.Lock() if asyncio else None
+
+
+def get_v3_engine() -> 'RecommendationEngineV3':
+    """
+    Get singleton V3 engine instance.
+    Use this instead of creating new RecommendationEngineV3() each time.
+    
+    OPTIMIZATION: Prevents re-initialization overhead for each category.
+    Components (ProblemNarrower, ExpertOrchestrator, etc.) are only
+    initialized once and reused across all requests.
+    """
+    global _v3_engine_instance
+    if _v3_engine_instance is None:
+        _v3_engine_instance = RecommendationEngineV3()
+        logger.info("✅ V3 Engine singleton created")
+    return _v3_engine_instance
+
+
+def reset_v3_engine():
+    """Reset the singleton engine (for testing or cache invalidation)"""
+    global _v3_engine_instance
+    _v3_engine_instance = None
+    logger.info("🔄 V3 Engine singleton reset")
+
+
 class RecommendationEngineV3:
     """
     Main V3 Recommendation Engine Orchestrator.
@@ -75,6 +107,8 @@ class RecommendationEngineV3:
     4. Personalization: Adapts to user constraints
     5. Quality Evaluation: LLM-as-Judge validation
     6. Optimization Loop: Iterative improvement if needed
+    
+    OPTIMIZATION: Use get_v3_engine() singleton instead of creating new instances.
     """
     
     def __init__(self):
@@ -87,6 +121,9 @@ class RecommendationEngineV3:
         self.retrieval = None
         self.evidence_grader = None
         self.personalization_engine = None
+        
+        # Track initialization state
+        self._initialized = False
         
         self._initialize_components()
     

@@ -887,34 +887,26 @@ CONFIDENCE ASSESSMENT:
         V3 RECOMMENDATION ENGINE:
         Uses V3 architecture: Problem Focus → Expert Routing → Evidence Grading → Personalization → Quality Evaluation
         Falls back to prompt-only if V3 fails
+        
+        OPTIMIZATIONS:
+        - Uses singleton V3 engine (prevents re-init per category)
+        - Leverages cached RAG results
+        - Reduced logging for production
         """
         try:
             # ========================================
-            # STEP 1: Try V3 Recommendation Engine
+            # V3 RECOMMENDATION ENGINE
             # ========================================
-            print("=" * 70)
-            print(f"🚀 [AUVRA V3 ENGINE] STARTING - Category: {category.upper()}")
-            print("=" * 70)
-            logger.info("=" * 70)
-            logger.info(f"🚀 AUVRA V3 RECOMMENDATION ENGINE - Category: {category.upper()}")
-            logger.info("=" * 70)
-            logger.info(f"📋 Engine: V3 (Problem Focus → Expert Routing → Evidence Grading)")
-            logger.info(f"📋 Primary Imbalance: {getattr(user_profile, 'primaryImbalance', 'N/A')}")
-            logger.info(f"📋 Conditions: {getattr(user_profile, 'conditions', [])}")
+            logger.info(f"🚀 V3 ENGINE: {category.upper()} - Primary: {getattr(user_profile, 'primaryImbalance', 'N/A')}")
             
             try:
-                print(f"🔬 [V3] Step 1: Importing V3 components...")
-                logger.info(f"🔬 V3 Step 1: Importing components...")
                 from app.services.recommendation_engine_v3.core.v3_orchestrator import (
-                    RecommendationEngineV3,
+                    get_v3_engine,  # Use singleton instead of creating new instance
                     V3RecommendationRequest
                 )
                 from app.services.recommendation_engine_v3.utils.format_converter import (
                     convert_v3_response_to_mobile_format
                 )
-                
-                print(f"✅ [V3] Step 2: Building request...")
-                logger.info(f"✅ V3 Step 2: Components imported, building request...")
                 
                 # Safely extract fields from UserProfile (handles both pydantic model and dict-like)
                 def safe_get(obj, field, default=None):
@@ -981,23 +973,14 @@ CONFIDENCE ASSESSMENT:
                     }
                 )
                 
-                print(f"📊 [V3] Step 3: Request built - {len(all_symptoms)} symptoms, primary={primary_imbalance}")
-                logger.info(f"📊 V3 Step 3: Request built")
-                logger.info(f"   - Symptoms: {len(all_symptoms)}")
-                logger.info(f"   - Primary imbalance: {primary_imbalance}")
-                logger.info(f"   - Secondary imbalances: {secondary_imbalances}")
+                logger.info(f"   V3 Request: {len(all_symptoms)} symptoms, primary={primary_imbalance}")
                 
-                # Initialize V3 engine and generate
-                print(f"🔄 [V3] Step 4: Calling V3 orchestrator (Pinecone RAG + Experts)...")
-                logger.info(f"🔄 V3 Step 4: Calling V3 orchestrator...")
-                
-                v3_engine = RecommendationEngineV3()
+                # Use singleton engine (OPTIMIZATION: prevents re-init for each category)
+                v3_engine = get_v3_engine()
                 v3_response = await v3_engine.generate_recommendations(v3_request)
                 
                 quality_score = v3_response.quality_scores.get('overall', 0) if v3_response.quality_scores else 0
-                print(f"✅ [V3] Step 5: V3 response received, quality={quality_score:.2f}")
-                logger.info(f"✅ V3 Step 5: Response received")
-                logger.info(f"   - Quality score: {quality_score:.2f}")
+                logger.info(f"✅ V3 response: quality={quality_score:.2f}")
                 
                 # Map category to V3 response attribute
                 category_to_attr = {
@@ -1007,7 +990,6 @@ CONFIDENCE ASSESSMENT:
                 }
                 v3_recs_attr = category_to_attr.get(category, 'nutrition_recommendations')
                 v3_recs_list = getattr(v3_response, v3_recs_attr, [])
-                logger.info(f"   - Recommendations count: {len(v3_recs_list)} (from {v3_recs_attr})")
                 
                 # Convert V3 response to mobile app format
                 recommendations = convert_v3_response_to_mobile_format(v3_response, category)
@@ -1017,52 +999,21 @@ CONFIDENCE ASSESSMENT:
                     verified_count = sum(1 for r in recommendations if r.get('citation_verified', False))
                     total_pmids = sum(len(r.get('researchBacking', {}).get('studies', [])) for r in recommendations)
                     
-                    print("=" * 70)
-                    print(f"✅ [AUVRA V3 ENGINE] SUCCESS - {category.upper()}")
-                    print(f"   📱 Recommendations: {len(recommendations)}")
-                    print(f"   📚 Verified citations: {verified_count}/{len(recommendations)}")
-                    print(f"   🔬 Total PMIDs attached: {total_pmids}")
-                    print(f"   ⭐ Quality score: {quality_score:.2f}")
-                    print("=" * 70)
-                    
-                    logger.info("=" * 70)
-                    logger.info(f"✅ AUVRA V3 ENGINE SUCCESS - {category.upper()}")
-                    logger.info(f"   📱 Recommendations: {len(recommendations)}")
-                    logger.info(f"   📚 Verified citations: {verified_count}/{len(recommendations)}")
-                    logger.info(f"   🔬 Total PMIDs attached: {total_pmids}")
-                    logger.info(f"   ⭐ Quality score: {quality_score:.2f}")
-                    logger.info(f"   🏷️ RAG Version: v3_engine")
-                    logger.info("=" * 70)
+                    logger.info(f"✅ V3 SUCCESS - {category}: {len(recommendations)} recs, {verified_count} verified, {total_pmids} PMIDs, quality={quality_score:.2f}")
                     
                     return recommendations
                 else:
-                    print(f"⚠️ [V3] V3 returned empty for {category}, falling back to prompt-only")
-                    logger.warning(f"⚠️ V3 Engine: No recommendations for {category}, falling back to prompt-only")
+                    logger.warning(f"⚠️ V3 empty for {category}, falling back")
                     
             except ImportError as import_error:
-                print(f"❌ [V3 ENGINE] IMPORT ERROR: {import_error}")
-                logger.error(f"❌ V3 Engine IMPORT FAILED: {import_error}")
-                import traceback
-                print(f"❌ [V3 ENGINE] Traceback: {traceback.format_exc()}")
-                logger.error(f"❌ Import traceback: {traceback.format_exc()}")
+                logger.error(f"❌ V3 Import error: {import_error}")
             except Exception as v3_error:
-                print(f"❌ [V3 ENGINE] EXCEPTION: {str(v3_error)}")
-                logger.error(f"❌ V3 Engine EXCEPTION for {category}: {str(v3_error)}")
-                import traceback
-                print(f"❌ [V3 ENGINE] Traceback: {traceback.format_exc()}")
-                logger.error(f"❌ Exception traceback: {traceback.format_exc()}")
+                logger.error(f"❌ V3 Exception for {category}: {str(v3_error)}")
 
             # ========================================
-            # STEP 2: Fallback to prompt-only (no research)
+            # FALLBACK: prompt-only generation (no RAG)
             # ========================================
-            print("=" * 70)
-            print(f"📝 [FALLBACK] Using prompt-only generation (NO V3, NO RAG)")
-            print(f"   Category: {category}")
-            print("=" * 70)
-            logger.info("=" * 70)
-            logger.info(f"📝 FALLBACK: Using prompt-only generation for category={category}")
-            logger.info(f"   🏷️ RAG Version: prompt_only (V3 failed or returned empty)")
-            logger.info("=" * 70)
+            logger.info(f"📝 FALLBACK: prompt-only for {category} (V3 failed)")
             
             # Create prompt (without real research)
             prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile, category)

@@ -304,6 +304,14 @@ async def _generate_recommendations_background(session_id: str, service, process
     try:
         logger.info(f"Background recommendation generation started: {session_id}")
         
+        # OPTIMIZATION: Clear session caches at start of new session
+        try:
+            from app.services.cache_service import clear_session_caches
+            cache_results = clear_session_caches()
+            logger.info(f"🧹 Session caches cleared: {cache_results}")
+        except Exception as cache_err:
+            logger.warning(f"⚠️ Cache clear failed (non-fatal): {cache_err}")
+        
         # Update to processing started status
         processing_service.update_processing_started(session_id)
         

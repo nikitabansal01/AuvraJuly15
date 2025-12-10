@@ -4,12 +4,41 @@ Retrieval Component - Reusable Semantic Search
 
 This component provides reusable retrieval functionality that can be
 used across all expert modules.
+
+OPTIMIZATIONS (Production-ready):
+- Query-level caching to prevent duplicate Pinecone calls
+- Singleton retriever pattern
+- Async-first design
 """
 
 from typing import List, Dict, Any, Optional
 import logging
+import hashlib
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================
+# RAG QUERY CACHE (OPTIMIZATION)
+# ============================================
+# Caches Pinecone query results by query hash
+# Same query in same session returns cached results
+_rag_query_cache: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def clear_rag_cache():
+    """Clear the RAG query cache (call between sessions)"""
+    global _rag_query_cache
+    _rag_query_cache.clear()
+    logger.info("🧹 RAG query cache cleared")
+
+
+def get_rag_cache_stats() -> Dict[str, Any]:
+    """Get RAG cache statistics"""
+    return {
+        "cache_size": len(_rag_query_cache),
+        "keys": list(_rag_query_cache.keys())[:10]  # First 10 keys
+    }
 
 
 class RetrievalComponent:
@@ -18,6 +47,9 @@ class RetrievalComponent:
     
     This component wraps the existing Pinecone/hybrid search infrastructure
     and provides a clean interface for expert modules.
+    
+    OPTIMIZATION: Query results are cached by query hash to prevent
+    duplicate Pinecone API calls within the same session.
     """
     
     def __init__(
@@ -40,6 +72,11 @@ class RetrievalComponent:
             logger.warning(f"⚠️ RetrievalComponent: Retriever not available: {e}")
             self._retriever = None
     
+    def _get_cache_key(self, query: str, category: str, top_k: int) -> str:
+        """Generate cache key for RAG query"""
+        content = f"{query}|{category}|{top_k}"
+        return hashlib.md5(content.encode()).hexdigest()
+    
     async def retrieve(
         self,
         query: str,
@@ -51,6 +88,8 @@ class RetrievalComponent:
         """
         Retrieve relevant documents for a query.
         
+        OPTIMIZED: Results are cached by query+category+top_k hash.
+        
         Args:
             query: Search query
             top_k: Number of results to return
@@ -61,9 +100,18 @@ class RetrievalComponent:
         Returns:
             List of relevant documents with metadata
         """
+        global _rag_query_cache
+        
         if self._retriever is None:
             logger.warning("⚠️ Retriever not available, returning empty results")
             return []
+        
+        # Check cache first (OPTIMIZATION)
+        cache_key = self._get_cache_key(query, category, top_k)
+        if cache_key in _rag_query_cache:
+            cached_results = _rag_query_cache[cache_key]
+            logger.info(f"✅ RAG Cache HIT: {len(cached_results)} results for category={category}")
+            return cached_results
         
         try:
             # Use the existing RAG retriever's signature
@@ -81,7 +129,9 @@ class RetrievalComponent:
                 if r.get('score', 0) >= min_score or r.get('relevance_score', 0) >= min_score
             ]
             
-            logger.info(f"📚 Retrieved {len(filtered)} documents for: {query[:50]}...")
+            # Cache results (OPTIMIZATION)
+            _rag_query_cache[cache_key] = filtered
+            logger.info(f"📚 RAG Cache MISS: Retrieved and cached {len(filtered)} documents for category={category}")
             
             return filtered
             

@@ -1,6 +1,11 @@
 """
 RAG Retriever Module
 Hybrid search combining semantic and keyword-based retrieval
+
+OPTIMIZATIONS (Production-ready):
+- Singleton retriever pattern (prevents re-initialization)
+- Query result caching (prevents duplicate Pinecone calls)
+- Reduced verbose logging for production
 """
 
 from typing import List, Dict, Any, Optional
@@ -8,9 +13,41 @@ from dataclasses import dataclass
 import logging
 import os
 import httpx
+import hashlib
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================
+# SINGLETON & CACHE (OPTIMIZATION)
+# ============================================
+_retriever_instance: Optional['HybridRetriever'] = None
+_pinecone_query_cache: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def get_retriever() -> 'HybridRetriever':
+    """Get singleton retriever instance (OPTIMIZATION)"""
+    global _retriever_instance
+    if _retriever_instance is None:
+        _retriever_instance = HybridRetriever()
+        logger.info("✅ Singleton HybridRetriever created")
+    return _retriever_instance
+
+
+def clear_retriever_cache():
+    """Clear the Pinecone query cache (call between sessions)"""
+    global _pinecone_query_cache
+    _pinecone_query_cache.clear()
+    logger.info("🧹 Pinecone query cache cleared")
+
+
+def get_cache_stats() -> Dict[str, Any]:
+    """Get cache statistics"""
+    return {
+        "cache_size": len(_pinecone_query_cache),
+        "sample_keys": list(_pinecone_query_cache.keys())[:5]
+    }
 
 
 class StudyType(Enum):
@@ -69,19 +106,21 @@ class HybridRetriever:
     }
     
     def __init__(self):
-        logger.info("=" * 60)
         logger.info("🚀 RAG RETRIEVER INITIALIZING")
-        logger.info("=" * 60)
         
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_index = os.getenv("PINECONE_INDEX")
         
-        # Debug logging for environment variables
-        logger.info(f"🔧 OPENAI_API_KEY: {'SET (' + self.openai_api_key[:8] + '...)' if self.openai_api_key else '❌ MISSING'}")
-        logger.info(f"🔧 PINECONE_API_KEY: {'SET (' + self.pinecone_api_key[:8] + '...)' if self.pinecone_api_key else '❌ MISSING'}")
+        # Debug logging (reduced for production)
+        logger.info(f"🔧 OPENAI_API_KEY: {'SET' if self.openai_api_key else '❌ MISSING'}")
+        logger.info(f"🔧 PINECONE_API_KEY: {'SET' if self.pinecone_api_key else '❌ MISSING'}")
         logger.info(f"🔧 PINECONE_INDEX: {self.pinecone_index or '❌ MISSING'}")
-        logger.info("=" * 60)
+    
+    def _get_cache_key(self, query: str, category: str, top_k: int) -> str:
+        """Generate cache key for Pinecone query"""
+        content = f"{query}|{category}|{top_k}"
+        return hashlib.md5(content.encode()).hexdigest()
         
     async def retrieve(
         self,
@@ -91,50 +130,44 @@ class HybridRetriever:
         top_k: int = 20
     ) -> List[Dict[str, Any]]:
         """
-        Main retrieval method combining semantic and keyword search
+        Main retrieval method combining semantic and keyword search.
+        
+        OPTIMIZED: Results are cached by query hash to prevent duplicate
+        Pinecone API calls within the same session.
         """
-        print("=" * 60)
-        print(f"📚 [RAG RETRIEVER] CALLED: category={category}")
-        print("=" * 60)
-        logger.info("=" * 60)
-        logger.info(f"📚 RAG RETRIEVE CALLED: category={category}")
-        logger.info("=" * 60)
+        global _pinecone_query_cache
         
         try:
             # Step 1: Build enhanced query from user profile
             enhanced_query = self._build_enhanced_query(query, user_profile, category)
-            print(f"🔍 [RAG RETRIEVER] STEP 1: Built enhanced query: {enhanced_query[:100]}...")
-            logger.info(f"🔍 STEP 1: Built enhanced query")
-            logger.info(f"   Query: {enhanced_query[:150]}...")
+            
+            # Check cache first (OPTIMIZATION)
+            cache_key = self._get_cache_key(enhanced_query, category, top_k)
+            if cache_key in _pinecone_query_cache:
+                cached_results = _pinecone_query_cache[cache_key]
+                logger.info(f"✅ Pinecone Cache HIT: {len(cached_results)} results for {category}")
+                return cached_results
+            
+            logger.info(f"📚 RAG RETRIEVE: category={category}, query={enhanced_query[:80]}...")
             
             # Step 2: Semantic search - Pinecone returns results ALREADY sorted by similarity
-            print(f"🔍 [RAG RETRIEVER] STEP 2: Calling Pinecone semantic search (top_k={top_k})")
-            logger.info(f"🔍 STEP 2: Calling Pinecone semantic search (top_k={top_k})")
             semantic_results = await self._semantic_search(enhanced_query, top_k)
             
             if not semantic_results:
-                print(f"⚠️ [RAG RETRIEVER] STEP 2 RESULT: No results from Pinecone for {category}")
-                logger.warning(f"⚠️ STEP 2 RESULT: No results from Pinecone for {category}")
+                logger.warning(f"⚠️ No Pinecone results for {category}")
                 return []
             
-            # Log top match scores
-            top_scores = [round(r.get('score', 0), 3) for r in semantic_results[:5]]
-            top_titles = [r.get('title', 'N/A')[:50] for r in semantic_results[:3]]
+            # Log top match scores (reduced verbosity)
+            top_scores = [round(r.get('score', 0), 3) for r in semantic_results[:3]]
+            logger.info(f"✅ Retrieved {len(semantic_results)} papers, top scores: {top_scores}")
             
-            print(f"✅ [RAG RETRIEVER] STEP 2 RESULT: Retrieved {len(semantic_results)} papers")
-            print(f"   Top 5 scores: {top_scores}")
-            logger.info(f"✅ STEP 2 RESULT: Retrieved {len(semantic_results)} papers")
-            logger.info(f"   Top 5 scores: {top_scores}")
-            logger.info(f"   Top 3 titles: {top_titles}")
-            logger.info("=" * 60)
+            # Cache results (OPTIMIZATION)
+            _pinecone_query_cache[cache_key] = semantic_results
             
             return semantic_results
             
         except Exception as e:
-            print(f"❌ [RAG RETRIEVER] EXCEPTION: {str(e)}")
-            logger.error(f"❌ RAG Retriever EXCEPTION: {str(e)}")
-            import traceback
-            logger.error(f"   Traceback: {traceback.format_exc()}")
+            logger.error(f"❌ RAG Retriever error: {str(e)}")
             return []
     
     def _build_enhanced_query(
