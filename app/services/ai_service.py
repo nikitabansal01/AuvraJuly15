@@ -998,7 +998,16 @@ CONFIDENCE ASSESSMENT:
                 print(f"✅ [V3] Step 5: V3 response received, quality={quality_score:.2f}")
                 logger.info(f"✅ V3 Step 5: Response received")
                 logger.info(f"   - Quality score: {quality_score:.2f}")
-                logger.info(f"   - Recommendations count: {len(v3_response.recommendations)}")
+                
+                # Map category to V3 response attribute
+                category_to_attr = {
+                    'food': 'nutrition_recommendations',
+                    'movement': 'movement_recommendations',
+                    'mindfulness': 'mindfulness_recommendations'
+                }
+                v3_recs_attr = category_to_attr.get(category, 'nutrition_recommendations')
+                v3_recs_list = getattr(v3_response, v3_recs_attr, [])
+                logger.info(f"   - Recommendations count: {len(v3_recs_list)} (from {v3_recs_attr})")
                 
                 # Convert V3 response to mobile app format
                 recommendations = convert_v3_response_to_mobile_format(v3_response, category)
