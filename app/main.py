@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.api.v1.api import api_router
+from app.api.v3_recommendations import router as v3_router  # V3 Recommendation Engine
 from app.core.logging import setup_logging
 from app.core.firebase import initialize_firebase
 
@@ -67,6 +68,42 @@ async def lifespan(app: FastAPI):
     logger.info(f"🔧 PINECONE_API_KEY: {'SET (' + pinecone_key[:8] + '...)' if pinecone_key else 'NOT SET'}")
     logger.info(f"🔧 PINECONE_INDEX: {pinecone_index or 'NOT SET'}")
     logger.info(f"🔧 OPENAI_API_KEY: {'SET' if openai_key else 'NOT SET'}")
+    logger.info("=" * 60)
+    
+    # ========================================
+    # V3 Recommendation Engine Diagnostic
+    # ========================================
+    logger.info("=" * 60)
+    logger.info("🚀 V3 RECOMMENDATION ENGINE DIAGNOSTIC")
+    logger.info("=" * 60)
+    
+    try:
+        from app.services.recommendation_engine_v3 import RecommendationEngineV3
+        logger.info("✅ V3: RecommendationEngineV3 LOADED SUCCESSFULLY")
+        
+        from app.services.recommendation_engine_v3.core import (
+            ProblemFocusNarrower,
+            ExpertOrchestrator,
+            RecommendationEvaluator
+        )
+        logger.info("✅ V3: Core modules (ProblemNarrower, ExpertOrchestrator, Evaluator) LOADED")
+        
+        from app.services.recommendation_engine_v3.experts import (
+            NutritionExpert,
+            MovementExpert,
+            MindfulnessExpert
+        )
+        logger.info("✅ V3: Expert modules (Nutrition, Movement, Mindfulness) LOADED")
+        
+    except ImportError as e:
+        logger.error(f"❌ V3 IMPORT FAILED: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+    except Exception as e:
+        logger.error(f"❌ V3 EXCEPTION: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+    
     logger.info("=" * 60)
     
     yield
@@ -160,6 +197,9 @@ def create_application() -> FastAPI:
 
     # API router registration
     app.include_router(api_router, prefix="/api/v1")
+    
+    # V3 Recommendation Engine - Modular Architecture
+    app.include_router(v3_router, prefix="/api")
 
     # Health check endpoint
     @app.get("/health")
