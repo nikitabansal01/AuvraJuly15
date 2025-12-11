@@ -1,6 +1,65 @@
+"""
+===============================================================================
+MENSTRUAL CYCLE PHASE CALCULATION SERVICE
+===============================================================================
+
+SCIENTIFIC REFERENCE: NCBI Endotext - Physiology of the Normal Menstrual Cycle
+https://www.ncbi.nlm.nih.gov/books/NBK279054/
+
+KEY SCIENTIFIC FACTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. LUTEAL PHASE IS CONSTANT (~14 days)
+   - "The luteal phase of the cycle is relatively constant in all women, 
+      with a duration of 14 days" (NCBI Endotext)
+   - Range: 12-16 days, but remarkably consistent for each individual
+   
+2. FOLLICULAR PHASE VARIES
+   - "The variability of cycle length is usually derived from varying 
+      lengths of the follicular phase" (NCBI Endotext)
+   - This is what causes different cycle lengths (21-35+ days)
+   
+3. OVULATION TIMING
+   - Ovulation occurs approximately 14 days BEFORE the next expected period
+   - NOT 14 days after the last period (common misconception)
+   - Occurs 10-12 hours after LH peak, 34-36 hours after LH surge onset
+
+4. MENSTRUAL BLEEDING
+   - Average duration: 4-6 days (range: 2-8 days)
+   - Blood loss: 30-80ml average
+
+PHASE CALCULATION FORMULA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For ANY cycle length, calculate BACKWARD from expected next period:
+
+    ovulation_day = cycle_length - luteal_phase_length
+    
+Example calculations:
+┌─────────────────┬───────────┬─────────────┬──────────────┬────────────┐
+│ Cycle Length    │ Ovulation │ Menses      │ Follicular   │ Luteal     │
+├─────────────────┼───────────┼─────────────┼──────────────┼────────────┤
+│ 21 days         │ Day 7     │ Day 1-5     │ Day 6        │ Day 8-21   │
+│ 28 days         │ Day 14    │ Day 1-5     │ Day 6-13     │ Day 15-28  │
+│ 35 days         │ Day 21    │ Day 1-5     │ Day 6-20     │ Day 22-35  │
+│ 42 days         │ Day 28    │ Day 1-5     │ Day 6-27     │ Day 29-42  │
+└─────────────────┴───────────┴─────────────┴──────────────┴────────────┘
+
+EDGE CASES & CLINICAL CONSIDERATIONS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Polymenorrhea (<21 days): Very short follicular phase, may indicate issues
+- Oligomenorrhea (>35 days): Extended follicular phase, often seen in PCOS
+- PCOS/PCOD: Irregular/anovulatory cycles - phase determination unreliable
+- Hormonal BC: May suppress ovulation entirely
+- Irregular periods: Unpredictable ovulation timing
+
+===============================================================================
+"""
+
 import logging
 from datetime import datetime, date, timedelta
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, NamedTuple
 from sqlalchemy.orm import Session
 from app.core.database import UserResponse, UserProfile
 from app.models.cycle_models import CyclePhaseInfo
@@ -8,8 +67,104 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# CYCLE LENGTH CONFIGURATION
+# ============================================================================
+
+class CycleLengthConfig(NamedTuple):
+    """Configuration for each cycle length category"""
+    avg_days: int           # Average cycle length for this category
+    luteal_length: int      # Luteal phase length (constant ~14 days)
+    menstrual_length: int   # Expected menstrual bleeding days
+    ovulation_window: int   # Days around ovulation to consider "ovulation phase"
+    is_potentially_irregular: bool  # Whether this length may indicate irregularity
+
+
+# Cycle length configurations based on medical literature
+CYCLE_LENGTH_CONFIG: Dict[str, CycleLengthConfig] = {
+    "Less than 21 days": CycleLengthConfig(
+        avg_days=19,
+        luteal_length=12,      # May have shorter luteal phase (luteal phase defect)
+        menstrual_length=4,
+        ovulation_window=2,
+        is_potentially_irregular=True  # Polymenorrhea - may indicate hormonal issues
+    ),
+    "21-25 days": CycleLengthConfig(
+        avg_days=23,
+        luteal_length=13,
+        menstrual_length=5,
+        ovulation_window=2,
+        is_potentially_irregular=False
+    ),
+    "26-30 days": CycleLengthConfig(
+        avg_days=28,
+        luteal_length=14,      # Standard luteal phase
+        menstrual_length=5,
+        ovulation_window=2,
+        is_potentially_irregular=False
+    ),
+    "31-35 days": CycleLengthConfig(
+        avg_days=33,
+        luteal_length=14,
+        menstrual_length=5,
+        ovulation_window=2,
+        is_potentially_irregular=False
+    ),
+    "35+ days": CycleLengthConfig(
+        avg_days=42,
+        luteal_length=14,      # Luteal phase stays constant even in long cycles
+        menstrual_length=5,
+        ovulation_window=3,    # Wider window due to uncertainty in long cycles
+        is_potentially_irregular=True  # Oligomenorrhea - may indicate PCOS
+    ),
+}
+
+
+# ============================================================================
+# CONDITIONS & DESCRIPTIONS THAT MAKE PHASE UNCLEAR
+# ============================================================================
+
+# Conditions that affect ovulation regularity
+PHASE_UNCLEAR_CONDITIONS = {
+    "PCOS",              # Polycystic Ovary Syndrome - irregular/absent ovulation
+    "PCOD",              # Polycystic Ovarian Disease
+    "Amenorrhea",        # Absence of periods
+    "Cushing's Syndrome",  # Hormonal disruption affects ovulation
+    # Note: PMDD does NOT make phase unclear - symptoms are severe but cycle is trackable
+    # Note: Endometriosis - can track phase despite symptoms
+}
+
+# Period descriptions indicating unreliable phase calculation
+PHASE_UNCLEAR_DESCRIPTIONS = {
+    "Irregular",          # Cycle length varies significantly
+    "Occasional Skips",   # Sometimes misses periods
+    "I don't get periods",  # No menstruation
+    "I'm not sure",       # User doesn't know their cycle
+}
+
+# Birth control methods that suppress ovulation
+# Note: Currently NOT used to mark phase unclear, but available for future use
+OVULATION_SUPPRESSING_BC = {
+    "Hormonal Birth Control Pills",
+    "IUD (Intrauterine Device)",  # Hormonal IUD (Mirena, etc.)
+    # Note: Copper IUD does NOT suppress ovulation - natural cycle continues
+}
+
+
+# ============================================================================
+# CYCLE SERVICE CLASS
+# ============================================================================
+
 class CycleService:
-    """Menstrual cycle calculation service"""
+    """
+    Menstrual cycle calculation service with scientifically-accurate phase determination.
+    
+    Uses the key scientific insight that:
+    - Luteal phase is CONSTANT (~14 days) across all women
+    - Follicular phase VARIES - this causes different cycle lengths
+    - Ovulation occurs ~14 days BEFORE next period (not after last period)
+    """
     
     def __init__(self, db: Session):
         self.db = db
@@ -86,16 +241,25 @@ class CycleService:
                 phase=None
             )
     
-    def _calculate_cycle_phase(self, last_period_date_utc: datetime, cycle_length: str, 
-                             period_description: Optional[str], 
-                             diagnosed_conditions: Optional[list],
-                             user_timezone: str) -> Tuple[Optional[int], Optional[str]]:
+    def _calculate_cycle_phase(
+        self, 
+        last_period_date_utc: datetime, 
+        cycle_length: str, 
+        period_description: Optional[str], 
+        diagnosed_conditions: Optional[list],
+        user_timezone: str
+    ) -> Tuple[Optional[int], Optional[str]]:
         """
-        Calculate menstrual cycle and phase
+        Calculate menstrual cycle day and phase using scientifically-accurate method.
+        
+        SCIENTIFIC BASIS:
+        - Luteal phase is constant (~14 days)
+        - Follicular phase varies with total cycle length  
+        - Ovulation = cycle_length - luteal_length
         
         Args:
             last_period_date_utc: Last period start date (UTC)
-            cycle_length: Menstrual cycle length
+            cycle_length: Menstrual cycle length category
             period_description: Period status description
             diagnosed_conditions: Diagnosed conditions
             user_timezone: User's current timezone
@@ -104,146 +268,183 @@ class CycleService:
             (cycle_day, phase)
         """
         try:
-            logger.info(f"Calculation started: last_period_date_utc={last_period_date_utc}, cycle_length={cycle_length}")
-            logger.info(f"Additional data: period_description={period_description}, diagnosed_conditions={diagnosed_conditions}")
-            logger.info(f"User timezone: {user_timezone}")
+            logger.info(f"=== CYCLE CALCULATION START ===")
+            logger.info(f"Input: last_period_date_utc={last_period_date_utc}")
+            logger.info(f"Input: cycle_length={cycle_length}")
+            logger.info(f"Input: period_description={period_description}")
+            logger.info(f"Input: diagnosed_conditions={diagnosed_conditions}")
+            logger.info(f"Input: user_timezone={user_timezone}")
             
-            # Convert UTC date to user timezone
+            # Step 1: Get cycle configuration
+            config = CYCLE_LENGTH_CONFIG.get(cycle_length)
+            if not config:
+                logger.warning(f"Unknown cycle length category: {cycle_length}")
+                return None, None
+            
+            cycle_days = config.avg_days
+            luteal_length = config.luteal_length
+            menstrual_length = config.menstrual_length
+            ovulation_window = config.ovulation_window
+            
+            logger.info(f"Config: cycle_days={cycle_days}, luteal={luteal_length}, menstrual={menstrual_length}")
+            
+            # Step 2: Convert UTC date to user timezone
             from app.utils.timezone_utils import convert_from_utc
             last_period = convert_from_utc(last_period_date_utc, user_timezone)
             logger.info(f"Converted last period date: {last_period}")
             
-            # Parse cycle length
-            cycle_days = self._parse_cycle_length(cycle_length)
-            if not cycle_days:
-                logger.info(f"Failed to parse cycle length: {cycle_length}")
-                return None, None
+            # Step 3: Get current date in user's timezone
+            current_date = self._get_current_date_in_timezone(user_timezone)
+            logger.info(f"Current date (user timezone): {current_date}")
             
-            logger.info(f"Parsed cycle length: {cycle_days} days")
-            
-            # Current date (based on user timezone)
-            if not user_timezone:
-                user_timezone = "Asia/Seoul" # Default value
-                logger.warning(f"User timezone not found, using default: {user_timezone}")
-            
-            try:
-                tz = ZoneInfo(user_timezone)
-                current_date = datetime.now(tz).date()
-                logger.info(f"Current date (user timezone {user_timezone}): {current_date}")
-            except Exception as e:
-                logger.warning(f"Failed to parse timezone, using default: {e}")
-                # Use Korean timezone as default
-                korea_tz = ZoneInfo("Asia/Seoul")
-                current_date = datetime.now(korea_tz).date()
-                logger.info(f"Current date (default Korean time): {current_date}")
-            
-            # Calculate days since last period
+            # Step 4: Calculate days since last period
             days_since_last = (current_date - last_period).days
-            logger.info(f"Days since last period: {days_since_last} days")
+            logger.info(f"Days since last period: {days_since_last}")
             
-            # Negative case (future date)
+            # Handle edge case: future date
             if days_since_last < 0:
-                logger.info(f"Recognized as future date: days_since_last={days_since_last}")
+                logger.info(f"Last period date is in the future, returning None")
                 return None, None
             
-            # Calculate day within current cycle
+            # Step 5: Calculate cycle day (which cycle we're in and what day)
+            # If days_since_last >= cycle_days, we've moved to subsequent cycle(s)
             cycle_day = (days_since_last % cycle_days) + 1
-            logger.info(f"Calculated cycle day: {cycle_day} days")
+            logger.info(f"Calculated cycle day: {cycle_day}")
             
-            # Check if phase determination is difficult
+            # Step 6: Check if phase can be determined reliably
             if self._is_phase_unclear(period_description, diagnosed_conditions):
-                logger.info(f"Phase determination difficult: period_description={period_description}, diagnosed_conditions={diagnosed_conditions}")
+                logger.info(f"Phase marked unclear due to conditions/description")
                 return cycle_day, "Cycle Phase unclear"
             
-            # Calculate phase
-            phase = self._determine_phase(cycle_day, cycle_days)
-            logger.info(f"Determined phase: {phase}")
+            # Step 7: Determine phase using scientific calculation
+            phase = self._determine_phase_scientific(
+                cycle_day=cycle_day,
+                total_cycle_days=cycle_days,
+                luteal_length=luteal_length,
+                menstrual_length=menstrual_length,
+                ovulation_window=ovulation_window
+            )
             
+            logger.info(f"=== RESULT: Day {cycle_day}, Phase: {phase} ===")
             return cycle_day, phase
             
         except Exception as e:
             logger.error(f"Failed to calculate menstrual cycle: {str(e)}")
             return None, None
     
-    def _parse_date(self, date_str: str) -> Optional[date]:
-        """Parse date string"""
+    def _get_current_date_in_timezone(self, timezone_str: str) -> date:
+        """Get current date in user's timezone."""
+        if not timezone_str:
+            timezone_str = "Asia/Seoul"  # Default timezone
+            logger.warning(f"No timezone provided, using default: {timezone_str}")
+        
         try:
-            # Support various date formats
-            formats = ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"]
-            
-            for fmt in formats:
-                try:
-                    return datetime.strptime(date_str, fmt).date()
-                except ValueError:
-                    continue
-            
-            return None
-            
+            tz = ZoneInfo(timezone_str)
+            return datetime.now(tz).date()
         except Exception as e:
-            logger.error(f"Failed to parse date: {str(e)}")
-            return None
+            logger.warning(f"Failed to parse timezone '{timezone_str}': {e}")
+            # Fallback to Korea timezone
+            korea_tz = ZoneInfo("Asia/Seoul")
+            return datetime.now(korea_tz).date()
     
-    def _parse_cycle_length(self, cycle_length: str) -> Optional[int]:
-        """Parse menstrual cycle length"""
-        try:
-            if cycle_length == "Less than 21 days":
-                return 21
-            elif cycle_length == "21-25 days":
-                return 23  # Median value
-            elif cycle_length == "26-30 days":
-                return 28  # Median value
-            elif cycle_length == "31-35 days":
-                return 33  # Median value
-            elif cycle_length == "35+ days":
-                return 35
-            else:
-                return None
-                
-        except Exception as e:
-            logger.error(f"Failed to parse cycle length: {str(e)}")
-            return None
-    
-    def _is_phase_unclear(self, period_description: Optional[str], 
-                         diagnosed_conditions: Optional[list]) -> bool:
-        """Check if phase determination is difficult"""
-        try:
-            # Irregular periods
-            if period_description in ["Irregular", "Occasional Skips", "I don't get periods", "I'm not sure"]:
-                return True
-            
-            # Specific conditions
-            if diagnosed_conditions:
-                unclear_conditions = [
-                    "PCOS", "PCOD", "Endometriosis", "Amenorrhea", 
-                    "Cushing's Syndrome", "PMDD"
-                ]
-                
-                for condition in diagnosed_conditions:
-                    if condition in unclear_conditions:
-                        return True
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"Failed to check phase clarity: {str(e)}")
+    def _is_phase_unclear(
+        self, 
+        period_description: Optional[str], 
+        diagnosed_conditions: Optional[list]
+    ) -> bool:
+        """
+        Check if menstrual phase cannot be determined reliably.
+        
+        Returns True for:
+        - Irregular periods (unpredictable ovulation timing)
+        - Conditions that affect ovulation (PCOS, PCOD, Amenorrhea, etc.)
+        - Unknown cycle patterns
+        """
+        # Check period description
+        if period_description in PHASE_UNCLEAR_DESCRIPTIONS:
+            logger.info(f"Phase unclear: period_description='{period_description}'")
             return True
+        
+        # Check diagnosed conditions
+        if diagnosed_conditions:
+            for condition in diagnosed_conditions:
+                if condition in PHASE_UNCLEAR_CONDITIONS:
+                    logger.info(f"Phase unclear: diagnosed with '{condition}'")
+                    return True
+        
+        return False
     
-    def _determine_phase(self, cycle_day: int, cycle_days: int) -> str:
-        """Determine menstrual cycle phase"""
+    def _determine_phase_scientific(
+        self,
+        cycle_day: int,
+        total_cycle_days: int,
+        luteal_length: int,
+        menstrual_length: int,
+        ovulation_window: int
+    ) -> str:
+        """
+        Determine menstrual phase using SCIENTIFICALLY ACCURATE calculation.
+        
+        KEY INSIGHT: Ovulation occurs ~14 days BEFORE the next period,
+        NOT 14 days after the last period.
+        
+        CALCULATION:
+        - ovulation_day = total_cycle_days - luteal_length
+        - Menses: Day 1 to menstrual_length
+        - Follicular: Day (menstrual_length + 1) to (ovulation_day - 1)
+        - Ovulation: Day ovulation_day ± (ovulation_window / 2)
+        - Luteal: Day (ovulation_end + 1) to total_cycle_days
+        
+        EXAMPLES:
+        ┌──────────────────────────────────────────────────────────────────┐
+        │ 28-day cycle (luteal=14, menstrual=5):                          │
+        │   - Ovulation day = 28 - 14 = Day 14                            │
+        │   - Menses: Day 1-5                                             │
+        │   - Follicular: Day 6-13                                        │
+        │   - Ovulation: Day 13-15 (window of 2)                          │
+        │   - Luteal: Day 16-28                                           │
+        ├──────────────────────────────────────────────────────────────────┤
+        │ 35-day cycle (luteal=14, menstrual=5):                          │
+        │   - Ovulation day = 35 - 14 = Day 21                            │
+        │   - Menses: Day 1-5                                             │
+        │   - Follicular: Day 6-20                                        │
+        │   - Ovulation: Day 20-22 (window of 2)                          │
+        │   - Luteal: Day 23-35                                           │
+        ├──────────────────────────────────────────────────────────────────┤
+        │ 21-day cycle (luteal=13, menstrual=5):                          │
+        │   - Ovulation day = 21 - 13 = Day 8                             │
+        │   - Menses: Day 1-5                                             │
+        │   - Follicular: Day 6-7                                         │
+        │   - Ovulation: Day 7-9 (window of 2)                            │
+        │   - Luteal: Day 10-21                                           │
+        └──────────────────────────────────────────────────────────────────┘
+        """
         try:
-            # Adjust based on standard 28-day cycle
-            if cycle_days != 28:
-                # Adjust proportionally
-                adjusted_day = int((cycle_day - 1) * 28 / cycle_days) + 1
-            else:
-                adjusted_day = cycle_day
+            # Calculate ovulation day (counting backward from end of cycle)
+            ovulation_day = total_cycle_days - luteal_length
             
-            # Determine phase
-            if adjusted_day <= 5:
+            # Calculate phase boundaries
+            ovulation_start = ovulation_day - (ovulation_window // 2)
+            ovulation_end = ovulation_day + (ovulation_window // 2)
+            
+            # Ensure ovulation window doesn't overlap with menstrual phase
+            ovulation_start = max(menstrual_length + 1, ovulation_start)
+            
+            # Luteal phase starts after ovulation window
+            luteal_start = ovulation_end + 1
+            
+            logger.debug(f"Phase boundaries for {total_cycle_days}-day cycle:")
+            logger.debug(f"  - Menses: Day 1-{menstrual_length}")
+            logger.debug(f"  - Follicular: Day {menstrual_length + 1}-{ovulation_start - 1}")
+            logger.debug(f"  - Ovulation: Day {ovulation_start}-{ovulation_end} (peak: Day {ovulation_day})")
+            logger.debug(f"  - Luteal: Day {luteal_start}-{total_cycle_days}")
+            
+            # Determine which phase the current day falls into
+            if cycle_day <= menstrual_length:
                 return "Menses phase"
-            elif adjusted_day <= 14:
+            elif cycle_day < ovulation_start:
                 return "Follicular phase"
-            elif adjusted_day <= 16:
+            elif cycle_day <= ovulation_end:
                 return "Ovulation phase"
             else:
                 return "Luteal phase"
@@ -251,3 +452,12 @@ class CycleService:
         except Exception as e:
             logger.error(f"Failed to determine phase: {str(e)}")
             return "Cycle Phase unclear"
+
+
+# ============================================================================
+# FACTORY FUNCTION
+# ============================================================================
+
+def get_cycle_service(db: Session) -> CycleService:
+    """Factory function to create CycleService instance."""
+    return CycleService(db)
