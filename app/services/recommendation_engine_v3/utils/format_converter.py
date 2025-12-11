@@ -209,11 +209,26 @@ def _derive_hormones_from_root_causes(root_causes: List[str]) -> List[str]:
     hormone_mapping = {
         'insulin_resistance': ['Insulin'],
         'androgen_high': ['Testosterone', 'DHEA-S'],
+        'androgens_high': ['Testosterone', 'DHEA-S'],
         'cortisol_high': ['Cortisol'],
         'cortisol_dysregulation': ['Cortisol'],
         'estrogen_dominance': ['Estrogen', 'Progesterone'],
+        'estrogen_high': ['Estrogen'],
+        'estrogen_low': ['Estrogen'],
         'progesterone_low': ['Progesterone'],
         'thyroid': ['TSH', 'T3', 'T4'],
+        'thyroid_low': ['TSH', 'T3', 'T4'],
+        # New mappings for common root causes
+        'hormone_balance': ['Progesterone', 'Estrogen', 'Cortisol'],
+        'general_wellness': ['Cortisol', 'Insulin'],
+        'stress': ['Cortisol'],
+        'inflammation': ['Cortisol', 'Insulin'],
+        'weight_management': ['Insulin', 'Cortisol'],
+        'fatigue': ['Cortisol', 'Thyroid'],
+        'mood': ['Progesterone', 'Estrogen', 'Cortisol'],
+        'sleep': ['Cortisol', 'Melatonin'],
+        'acne': ['Androgens', 'Testosterone'],
+        'hirsutism': ['Androgens', 'Testosterone'],
     }
     
     hormones = set()
