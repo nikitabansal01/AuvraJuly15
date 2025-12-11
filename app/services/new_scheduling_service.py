@@ -267,10 +267,6 @@ class NewSchedulingService:
         }
         
         return category_defaults.get(category, 'anytime')
-            
-        except Exception as e:
-            logger.error(f"Daily assignment creation failed: {str(e)}")
-            raise
     
     def _update_next_fire_time(self, schedule: RecommendationSchedule):
         """
