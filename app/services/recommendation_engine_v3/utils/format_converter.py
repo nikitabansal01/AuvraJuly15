@@ -106,12 +106,12 @@ def _convert_single_recommendation(
     
     # FALLBACK: If still no hormones (no root_causes either), use category-based defaults
     if not hormones:
-        category_defaults = {
-            'food': ['Insulin', 'Cortisol'],
-            'movement': ['Cortisol', 'Testosterone'],
-            'mindfulness': ['Cortisol', 'Progesterone'],
+        category_default_hormones = {
+            'food': ['insulin', 'cortisol'],
+            'movement': ['cortisol', 'testosterone'],
+            'mindfulness': ['cortisol', 'progesterone'],
         }
-        hormones = category_defaults.get(category, ['Progesterone', 'Cortisol'])
+        hormones = category_default_hormones.get(category, ['progesterone', 'cortisol'])
     
     # Build mobile format recommendation
     mobile_rec = {
@@ -223,82 +223,82 @@ def _derive_hormones_from_root_causes(root_causes: List[str]) -> List[str]:
     # Comprehensive hormone mapping - covers all known root causes
     hormone_mapping = {
         # Insulin-related
-        'insulin_resistance': ['Insulin'],
-        'insulin': ['Insulin'],
-        'blood_sugar': ['Insulin'],
-        'blood_sugar_instability': ['Insulin'],
-        'diabetes': ['Insulin'],
-        'metabolic': ['Insulin', 'Cortisol'],
+        'insulin_resistance': ['insulin'],
+        'insulin': ['insulin'],
+        'blood_sugar': ['insulin'],
+        'blood_sugar_instability': ['insulin'],
+        'diabetes': ['insulin'],
+        'metabolic': ['insulin', 'cortisol'],
         
         # Androgen-related
-        'androgen_high': ['Androgens', 'Testosterone'],
-        'androgens_high': ['Androgens', 'Testosterone'],
-        'androgens': ['Androgens', 'Testosterone'],
-        'testosterone': ['Testosterone'],
-        'testosterone_high': ['Testosterone'],
-        'dhea': ['DHEA-S'],
-        'hirsutism': ['Androgens', 'Testosterone'],
-        'acne': ['Androgens', 'Testosterone'],
-        'hair_loss': ['Androgens', 'Testosterone'],
+        'androgen_high': ['androgens', 'testosterone'],
+        'androgens_high': ['androgens', 'testosterone'],
+        'androgens': ['androgens', 'testosterone'],
+        'testosterone': ['testosterone'],
+        'testosterone_high': ['testosterone'],
+        'dhea': ['dhea-s'],
+        'hirsutism': ['androgens', 'testosterone'],
+        'acne': ['androgens', 'testosterone'],
+        'hair_loss': ['androgens', 'testosterone'],
         
         # Cortisol/Stress-related
-        'cortisol_high': ['Cortisol'],
-        'cortisol_low': ['Cortisol'],
-        'cortisol_dysregulation': ['Cortisol'],
-        'cortisol': ['Cortisol'],
-        'stress': ['Cortisol'],
-        'anxiety': ['Cortisol'],
-        'adrenal': ['Cortisol', 'DHEA-S'],
-        'adrenal_fatigue': ['Cortisol'],
+        'cortisol_high': ['cortisol'],
+        'cortisol_low': ['cortisol'],
+        'cortisol_dysregulation': ['cortisol'],
+        'cortisol': ['cortisol'],
+        'stress': ['cortisol'],
+        'anxiety': ['cortisol'],
+        'adrenal': ['cortisol', 'dhea-s'],
+        'adrenal_fatigue': ['cortisol'],
         
         # Estrogen-related
-        'estrogen_dominance': ['Estrogen', 'Progesterone'],
-        'estrogen_high': ['Estrogen'],
-        'estrogen_low': ['Estrogen'],
-        'estrogen': ['Estrogen'],
+        'estrogen_dominance': ['estrogen', 'progesterone'],
+        'estrogen_high': ['estrogen'],
+        'estrogen_low': ['estrogen'],
+        'estrogen': ['estrogen'],
         
         # Progesterone-related
-        'progesterone_low': ['Progesterone'],
-        'progesterone': ['Progesterone'],
-        'luteal_phase': ['Progesterone'],
-        'luteal': ['Progesterone'],
+        'progesterone_low': ['progesterone'],
+        'progesterone': ['progesterone'],
+        'luteal_phase': ['progesterone'],
+        'luteal': ['progesterone'],
         
         # Thyroid-related
-        'thyroid': ['Thyroid'],
-        'thyroid_low': ['Thyroid'],
-        'thyroid_high': ['Thyroid'],
-        'hypothyroid': ['Thyroid'],
-        'hyperthyroid': ['Thyroid'],
-        'tsh': ['Thyroid'],
+        'thyroid': ['thyroid'],
+        'thyroid_low': ['thyroid'],
+        'thyroid_high': ['thyroid'],
+        'hypothyroid': ['thyroid'],
+        'hyperthyroid': ['thyroid'],
+        'tsh': ['thyroid'],
         
         # General/Combination conditions
-        'hormone_balance': ['Progesterone', 'Estrogen', 'Cortisol'],
-        'hormonal_imbalance': ['Progesterone', 'Estrogen', 'Cortisol'],
-        'general_wellness': ['Cortisol', 'Insulin'],
-        'pcos': ['Androgens', 'Insulin', 'Progesterone'],
-        'inflammation': ['Cortisol', 'Insulin'],
-        'inflammation_chronic': ['Cortisol', 'Insulin'],
-        'weight_gain': ['Insulin', 'Cortisol', 'Thyroid'],
-        'weight_management': ['Insulin', 'Cortisol'],
-        'fatigue': ['Cortisol', 'Thyroid'],
-        'energy': ['Cortisol', 'Thyroid', 'Insulin'],
-        'mood': ['Progesterone', 'Estrogen', 'Cortisol'],
-        'depression': ['Progesterone', 'Cortisol'],
-        'sleep': ['Cortisol', 'Melatonin'],
-        'insomnia': ['Cortisol', 'Melatonin'],
+        'hormone_balance': ['progesterone', 'estrogen', 'cortisol'],
+        'hormonal_imbalance': ['progesterone', 'estrogen', 'cortisol'],
+        'general_wellness': ['cortisol', 'insulin'],
+        'pcos': ['androgens', 'insulin', 'progesterone'],
+        'inflammation': ['cortisol', 'insulin'],
+        'inflammation_chronic': ['cortisol', 'insulin'],
+        'weight_gain': ['insulin', 'cortisol', 'thyroid'],
+        'weight_management': ['insulin', 'cortisol'],
+        'fatigue': ['cortisol', 'thyroid'],
+        'energy': ['cortisol', 'thyroid', 'insulin'],
+        'mood': ['progesterone', 'estrogen', 'cortisol'],
+        'depression': ['progesterone', 'cortisol'],
+        'sleep': ['cortisol', 'melatonin'],
+        'insomnia': ['cortisol', 'melatonin'],
         
         # Period-related
-        'irregular_periods': ['Progesterone', 'Estrogen'],
-        'painful_periods': ['Progesterone', 'Estrogen'],
-        'heavy_periods': ['Estrogen', 'Progesterone'],
-        'amenorrhea': ['Estrogen', 'Progesterone', 'Thyroid'],
-        'menstrual': ['Progesterone', 'Estrogen'],
-        'period': ['Progesterone', 'Estrogen'],
-        'cycle': ['Progesterone', 'Estrogen'],
+        'irregular_periods': ['progesterone', 'estrogen'],
+        'painful_periods': ['progesterone', 'estrogen'],
+        'heavy_periods': ['estrogen', 'progesterone'],
+        'amenorrhea': ['estrogen', 'progesterone', 'thyroid'],
+        'menstrual': ['progesterone', 'estrogen'],
+        'period': ['progesterone', 'estrogen'],
+        'cycle': ['progesterone', 'estrogen'],
         
         # Fertility-related
-        'fertility': ['Progesterone', 'Estrogen', 'LH', 'FSH'],
-        'ovulation': ['Estrogen', 'LH', 'FSH'],
+        'fertility': ['progesterone', 'estrogen', 'lh', 'fsh'],
+        'ovulation': ['estrogen', 'lh', 'fsh'],
     }
     
     hormones = set()

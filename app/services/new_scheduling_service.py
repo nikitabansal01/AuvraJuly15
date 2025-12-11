@@ -842,9 +842,9 @@ class NewSchedulingService:
             
             # Default hormones by category (fallback for legacy recommendations without hormones)
             category_default_hormones = {
-                'food': ['Insulin', 'Cortisol'],
-                'movement': ['Cortisol', 'Testosterone'],
-                'mindfulness': ['Cortisol', 'Progesterone'],
+                'food': ['insulin', 'cortisol'],
+                'movement': ['cortisol', 'testosterone'],
+                'mindfulness': ['cortisol', 'progesterone'],
             }
             
             for assignment in assignments:
@@ -859,7 +859,7 @@ class NewSchedulingService:
                 hormones = recommendation.hormones
                 if not hormones:
                     cat = (recommendation.category or '').lower()
-                    hormones = category_default_hormones.get(cat, ['Progesterone', 'Cortisol'])
+                    hormones = category_default_hormones.get(cat, ['progesterone', 'cortisol'])
                     logger.debug(f"Using default hormones for recommendation {recommendation.id}: {hormones}")
                 
                 for hormone in hormones:
