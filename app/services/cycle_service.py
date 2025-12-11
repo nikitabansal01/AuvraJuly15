@@ -136,11 +136,12 @@ PHASE_UNCLEAR_CONDITIONS = {
 }
 
 # Period descriptions indicating unreliable phase calculation
+# DISABLED FOR NOW - will show phase regardless of period regularity
 PHASE_UNCLEAR_DESCRIPTIONS = {
-    "Irregular",          # Cycle length varies significantly
-    "Occasional Skips",   # Sometimes misses periods
-    "I don't get periods",  # No menstruation
-    "I'm not sure",       # User doesn't know their cycle
+    # "Irregular",          # Cycle length varies significantly
+    # "Occasional Skips",   # Sometimes misses periods
+    "I don't get periods",  # No menstruation - this should still be unclear
+    # "I'm not sure",       # User doesn't know their cycle
 }
 
 # Birth control methods that suppress ovulation
