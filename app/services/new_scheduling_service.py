@@ -415,8 +415,8 @@ class NewSchedulingService:
             # 4. Separate completed assignments into separate section
             completed_group, reorganized_time_groups = self._reorganize_assignments_with_completed_group(time_groups)
             
-            # 5. Calculate hormone statistics
-            hormone_stats = self._calculate_hormone_stats(assignments)
+            # 5. Calculate hormone statistics (pass uid for first-time user support)
+            hormone_stats = self._calculate_hormone_stats(uid, assignments)
             
             # Place completed section at the top within assignments
             assignments_with_completed = {
@@ -900,7 +900,7 @@ class NewSchedulingService:
             logger.error(f"Selected assignment creation failed: {str(e)}")
             self.db.rollback()
     
-    def _calculate_hormone_stats(self, assignments: List[DailyAssignment]) -> Dict[str, Any]:
+    def _calculate_hormone_stats(self, uid: str, assignments: List[DailyAssignment]) -> Dict[str, Any]:
         """
         Calculate hormone statistics for the Hormone Quests display.
         
@@ -909,6 +909,7 @@ class NewSchedulingService:
         with their completion progress.
         
         Args:
+            uid: User ID (needed for first-time users with no assignments)
             assignments: List of assignments
         
         Returns:
@@ -917,16 +918,15 @@ class NewSchedulingService:
         try:
             hormone_stats = {}
             
-            # Get user's primary and secondary hormones for better defaults
+            # Get user's primary and secondary hormones from UserResponse
+            # This works even for first-time users with no assignments
             user_hormones = None
-            if assignments:
-                uid = assignments[0].uid
-                user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
-                if user_response:
-                    user_hormones = {
-                        'primary': user_response.primary_hormone,
-                        'secondary': user_response.secondary_hormones or []
-                    }
+            user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+            if user_response:
+                user_hormones = {
+                    'primary': user_response.primary_hormone,
+                    'secondary': user_response.secondary_hormones or []
+                }
             
             # Default hormones by category - use user's hormones if available
             def get_default_hormones(category: str) -> List[str]:
