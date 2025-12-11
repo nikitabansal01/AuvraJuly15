@@ -187,9 +187,8 @@ class NewSchedulingService:
                 logger.info(f"Assignment already exists: schedule_id={schedule.id}, date={assignment_date}")
                 return
             
-            # Use only first time group from optimal_times (consolidate into one assignment)
-            optimal_times = recommendation.optimal_times or ["anytime"]
-            time_group = optimal_times[0] if optimal_times else "anytime"
+            # Determine the best time group based on optimal_times and category
+            time_group = self._determine_time_group(recommendation)
             
             # Create new assignment (one assignment per recommendation)
             assignment = DailyAssignment(
@@ -203,6 +202,71 @@ class NewSchedulingService:
             
             self.db.add(assignment)
             logger.info(f"Daily assignment creation completed: schedule_id={schedule.id}, date={assignment_date}, time_group={time_group}")
+            
+        except Exception as e:
+            logger.error(f"Daily assignment creation failed: {str(e)}")
+            raise
+    
+    def _determine_time_group(self, recommendation: RecommendationRecord) -> str:
+        """
+        Determine the best time group for an assignment based on recommendation data.
+        
+        Priority:
+        1. Use optimal_times from recommendation if available
+        2. Use category-based defaults
+        3. Use title-based inference
+        
+        Args:
+            recommendation: The recommendation record
+            
+        Returns:
+            Time group string: 'morning', 'afternoon', 'evening', or 'anytime'
+        """
+        # First check optimal_times from recommendation
+        optimal_times = recommendation.optimal_times
+        if optimal_times and len(optimal_times) > 0:
+            # Use the first specified optimal time
+            time = optimal_times[0].lower()
+            # Normalize time slot names
+            time_mapping = {
+                'morning': 'morning',
+                'afternoon': 'afternoon', 
+                'evening': 'evening',
+                'night': 'evening',  # Map 'night' to 'evening' for consistency
+                'anytime': 'anytime',
+            }
+            return time_mapping.get(time, 'anytime')
+        
+        # Infer from title if no optimal_times specified
+        title_lower = (recommendation.title or '').lower()
+        category = (recommendation.category or '').lower()
+        
+        # Morning indicators
+        morning_keywords = ['breakfast', 'morning', 'seed', 'flaxseed', 'chia', 'oatmeal', 
+                           'smoothie', 'juice', 'tea', 'wake', 'start day']
+        if any(kw in title_lower for kw in morning_keywords):
+            return 'morning'
+        
+        # Afternoon indicators  
+        afternoon_keywords = ['lunch', 'afternoon', 'walk', 'cardio', 'yoga', 'stretch', 
+                             'mid-day', 'midday', 'exercise']
+        if any(kw in title_lower for kw in afternoon_keywords):
+            return 'afternoon'
+        
+        # Evening indicators
+        evening_keywords = ['dinner', 'evening', 'night', 'sleep', 'meditation', 'relax',
+                           'wind down', 'bedtime', 'strength', 'resistance']
+        if any(kw in title_lower for kw in evening_keywords):
+            return 'evening'
+        
+        # Category-based defaults
+        category_defaults = {
+            'food': 'morning',       # Most food recommendations work well in morning
+            'movement': 'afternoon',  # Exercise typically in afternoon
+            'mindfulness': 'evening', # Mindfulness/meditation often in evening
+        }
+        
+        return category_defaults.get(category, 'anytime')
             
         except Exception as e:
             logger.error(f"Daily assignment creation failed: {str(e)}")
@@ -259,12 +323,23 @@ class NewSchedulingService:
             ).all()
             
             # 3. Group by time and separate completed assignments
+            # Include both 'evening' and 'night' for frontend compatibility
             time_groups = {
                 "morning": [],
                 "afternoon": [],
-                "night": [],
+                "evening": [],  # Added for frontend compatibility
                 "anytime": []
             }
+            
+            # Time slot normalization: map 'night' to 'evening' for consistency
+            def normalize_time_group(time_group: str) -> str:
+                """Normalize time group names for frontend compatibility."""
+                normalized = time_group.lower() if time_group else 'anytime'
+                if normalized == 'night':
+                    return 'evening'
+                if normalized not in time_groups:
+                    return 'anytime'
+                return normalized
             
             completed_group = []  # Store completed assignments separately
             completed_count = 0
@@ -334,7 +409,9 @@ class NewSchedulingService:
                         "mindfulness_techniques": recommendation.mindfulness_techniques or []
                     })
                 
-                time_groups[assignment.time_group].append(assignment_info)
+                # Normalize the time group and add to appropriate group
+                normalized_time_group = normalize_time_group(assignment.time_group)
+                time_groups[normalized_time_group].append(assignment_info)
                 
                 if assignment.is_completed:
                     completed_count += 1
@@ -368,7 +445,7 @@ class NewSchedulingService:
                     "completed": [],
                     "morning": [],
                     "afternoon": [],
-                    "night": [],
+                    "evening": [],  # Use 'evening' for frontend compatibility
                     "anytime": []
                 },
                 "total_assignments": 0,
@@ -829,23 +906,53 @@ class NewSchedulingService:
     
     def _calculate_hormone_stats(self, assignments: List[DailyAssignment]) -> Dict[str, Any]:
         """
-        Calculate hormone statistics
+        Calculate hormone statistics for the Hormone Quests display.
+        
+        IMPORTANT: This function calculates the data shown in the "Your Hormone Quests" 
+        section on the home screen. It needs to properly show the user's targeted hormones
+        with their completion progress.
         
         Args:
             assignments: List of assignments
         
         Returns:
-            Hormone statistics
+            Hormone statistics dict: {"hormone_name": {"total": N, "completed": M}, ...}
         """
         try:
             hormone_stats = {}
             
-            # Default hormones by category (fallback for legacy recommendations without hormones)
-            category_default_hormones = {
-                'food': ['insulin', 'cortisol'],
-                'movement': ['cortisol', 'testosterone'],
-                'mindfulness': ['cortisol', 'progesterone'],
-            }
+            # Get user's primary and secondary hormones for better defaults
+            user_hormones = None
+            if assignments:
+                uid = assignments[0].uid
+                user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+                if user_response:
+                    user_hormones = {
+                        'primary': user_response.primary_hormone,
+                        'secondary': user_response.secondary_hormones or []
+                    }
+            
+            # Default hormones by category - use user's hormones if available
+            def get_default_hormones(category: str) -> List[str]:
+                """Get default hormones based on category and user's hormone profile."""
+                if user_hormones and user_hormones['primary']:
+                    # Use user's primary hormone plus category-appropriate secondary
+                    primary = user_hormones['primary']
+                    category_secondary = {
+                        'food': 'insulin',
+                        'movement': 'cortisol', 
+                        'mindfulness': 'cortisol',
+                    }
+                    secondary = category_secondary.get(category.lower(), 'cortisol')
+                    return [primary, secondary] if primary != secondary else [primary]
+                
+                # Fallback to category defaults
+                category_default_hormones = {
+                    'food': ['insulin', 'progesterone'],
+                    'movement': ['cortisol', 'testosterone'],
+                    'mindfulness': ['cortisol', 'progesterone'],
+                }
+                return category_default_hormones.get(category.lower(), ['progesterone'])
             
             for assignment in assignments:
                 recommendation = self.db.query(RecommendationRecord).filter(
@@ -855,21 +962,33 @@ class NewSchedulingService:
                 if not recommendation:
                     continue
                 
-                # Get hormones from recommendation, or use category defaults as fallback
+                # Get hormones from recommendation, or use smart defaults
                 hormones = recommendation.hormones
                 if not hormones:
-                    cat = (recommendation.category or '').lower()
-                    hormones = category_default_hormones.get(cat, ['progesterone', 'cortisol'])
-                    logger.debug(f"Using default hormones for recommendation {recommendation.id}: {hormones}")
+                    cat = recommendation.category or 'food'
+                    hormones = get_default_hormones(cat)
+                    logger.debug(f"Using smart default hormones for recommendation {recommendation.id}: {hormones}")
                 
                 for hormone in hormones:
-                    if hormone not in hormone_stats:
-                        hormone_stats[hormone] = {"total": 0, "completed": 0}
+                    # Normalize hormone name (lowercase for consistency)
+                    hormone_normalized = hormone.lower()
                     
-                    hormone_stats[hormone]["total"] += 1
+                    if hormone_normalized not in hormone_stats:
+                        hormone_stats[hormone_normalized] = {"total": 0, "completed": 0}
+                    
+                    hormone_stats[hormone_normalized]["total"] += 1
                     if assignment.is_completed:
-                        hormone_stats[hormone]["completed"] += 1
+                        hormone_stats[hormone_normalized]["completed"] += 1
             
+            # Ensure we always have at least the user's primary/secondary hormones shown
+            if user_hormones:
+                if user_hormones['primary'] and user_hormones['primary'].lower() not in hormone_stats:
+                    hormone_stats[user_hormones['primary'].lower()] = {"total": 0, "completed": 0}
+                for sh in (user_hormones['secondary'] or []):
+                    if sh.lower() not in hormone_stats:
+                        hormone_stats[sh.lower()] = {"total": 0, "completed": 0}
+            
+            logger.info(f"Calculated hormone stats: {hormone_stats}")
             return hormone_stats
             
         except Exception as e:
@@ -893,19 +1012,19 @@ class NewSchedulingService:
             reorganized_time_groups = {
                 "morning": [],
                 "afternoon": [], 
-                "night": [],
+                "evening": [],  # Use 'evening' for frontend compatibility
                 "anytime": []
             }
             
-            # Define time order
-            time_order = ['morning', 'afternoon', 'night', 'anytime']
+            # Define time order - use evening (which maps from night)
+            time_order = ['morning', 'afternoon', 'evening', 'anytime']
             
             # Check if any incomplete assignments exist in previous time groups
             has_incomplete_before = {}  # Check if incomplete assignments exist in previous time groups
             current_has_incomplete = False
             
             for time_group in time_order:
-                items = time_groups[time_group]
+                items = time_groups.get(time_group, [])
                 has_incomplete_before[time_group] = current_has_incomplete
                 
                 # Check if any incomplete assignments exist in the current time group
@@ -914,7 +1033,7 @@ class NewSchedulingService:
             
             # Reorganize assignments
             for time_group in time_order:
-                items = time_groups[time_group]
+                items = time_groups.get(time_group, [])
                 
                 for item in items:
                     if item["is_completed"]:

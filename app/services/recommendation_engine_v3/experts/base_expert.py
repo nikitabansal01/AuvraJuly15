@@ -303,11 +303,16 @@ class BaseExpertSubModule(ABC):
         ]
         has_verified_citations = len(verified_citations) > 0
         
+        # Map root causes to hormones for frontend display
+        root_causes = template.get('root_causes', self.TARGET_ROOT_CAUSES)
+        hormones = self._map_root_causes_to_hormones(root_causes, focused_problem)
+        
         rec = {
             'title': template.get('title', template_key),
             'purpose': template.get('purpose', ''),
             'specificAction': template.get('action', ''),
             'frequency': template.get('frequency', 'Daily'),
+            'frequency_detail': template.get('frequency_detail', 'daily:1'),
             'priority': template.get('priority', 'medium'),
             
             # FIXED: Set to 'pending_grade' - will be set by Evidence Grader
@@ -315,7 +320,7 @@ class BaseExpertSubModule(ABC):
             'evidence_strength': 'pending_grade',
             'evidence_strength_hint': template.get('evidence_strength', 'moderate'),
             
-            'root_causes_addressed': template.get('root_causes', self.TARGET_ROOT_CAUSES),
+            'root_causes_addressed': root_causes,
             'citations': citations or [],
             
             # FIXED: Store full evidence sources for Evidence Grader
@@ -331,6 +336,28 @@ class BaseExpertSubModule(ABC):
             'contraindications': template.get('contraindications', []),
             'expectedTimeline': template.get('timeline', '8-12 weeks'),
             'intensity': template.get('intensity', 'moderate'),
+            
+            # CRITICAL: Include optimal_times for time-based scheduling
+            'optimal_times': template.get('optimal_times', ['anytime']),
+            
+            # CRITICAL: Include hormones for Hormone Quests display
+            'hormones': hormones,
+            
+            # CRITICAL: Include conditions and symptoms from focused_problem
+            'conditions': self._extract_conditions(focused_problem),
+            'symptoms': self._extract_symptoms(focused_problem),
+            
+            # Category-specific fields from template
+            'food_amounts': template.get('food_amounts', []),
+            'food_items': template.get('food_items', []),
+            'exercise_durations': template.get('exercise_durations', []),
+            'exercise_types': template.get('exercise_types', []),
+            'exercise_intensities': template.get('exercise_intensities', []),
+            'mindfulness_durations': template.get('mindfulness_durations', []),
+            'mindfulness_techniques': template.get('mindfulness_techniques', []),
+            
+            # Duration for scheduling
+            'duration_weeks': template.get('duration_weeks', 8),
         }
         
         # Apply customizations
@@ -341,6 +368,91 @@ class BaseExpertSubModule(ABC):
         rec = self._personalize(rec, focused_problem)
         
         return rec
+    
+    def _map_root_causes_to_hormones(
+        self, 
+        root_causes: List[str], 
+        focused_problem: FocusedProblem
+    ) -> List[str]:
+        """
+        Map root causes to hormone names for frontend display.
+        
+        This ensures the Hormone Quests section shows proper hormone data.
+        """
+        # Root cause to hormone mapping
+        ROOT_CAUSE_TO_HORMONE = {
+            'insulin_resistance': 'insulin',
+            'blood_sugar_instability': 'insulin',
+            'leptin_resistance': 'insulin',
+            'androgen_high': 'testosterone',
+            'androgens_high': 'testosterone',
+            'hirsutism': 'testosterone',
+            'acne': 'testosterone',
+            'hair_loss': 'testosterone',
+            'estrogen_imbalance': 'estrogen',
+            'estrogen_dominance': 'estrogen',
+            'estrogen_balance': 'estrogen',
+            'progesterone_low': 'progesterone',
+            'progesterone_deficiency': 'progesterone',
+            'luteal_phase_defect': 'progesterone',
+            'cortisol_high': 'cortisol',
+            'cortisol_dysregulation': 'cortisol',
+            'stress': 'cortisol',
+            'thyroid_low': 'thyroid',
+            'thyroid_imbalance': 'thyroid',
+            'hypothyroid': 'thyroid',
+            'inflammation': 'cortisol',
+            'prostaglandin_imbalance': 'progesterone',
+        }
+        
+        hormones = set()
+        
+        # Map from root causes
+        for cause in root_causes:
+            cause_lower = cause.lower()
+            if cause_lower in ROOT_CAUSE_TO_HORMONE:
+                hormones.add(ROOT_CAUSE_TO_HORMONE[cause_lower])
+        
+        # Also include user's primary/secondary hormones if available
+        if focused_problem:
+            primary = focused_problem.primary_concern
+            if primary and hasattr(primary, 'root_causes'):
+                for cause in primary.root_causes:
+                    cause_lower = cause.lower()
+                    if cause_lower in ROOT_CAUSE_TO_HORMONE:
+                        hormones.add(ROOT_CAUSE_TO_HORMONE[cause_lower])
+        
+        # Ensure at least one hormone (use insulin as default for food, cortisol for others)
+        if not hormones:
+            hormones.add('progesterone')  # Default hormone
+        
+        return list(hormones)
+    
+    def _extract_conditions(self, focused_problem: FocusedProblem) -> List[str]:
+        """Extract conditions from focused problem for frontend display."""
+        conditions = []
+        if focused_problem:
+            if hasattr(focused_problem, 'primary_concern') and focused_problem.primary_concern:
+                if hasattr(focused_problem.primary_concern, 'related_conditions'):
+                    conditions.extend(focused_problem.primary_concern.related_conditions or [])
+            if hasattr(focused_problem, 'secondary_concerns'):
+                for concern in focused_problem.secondary_concerns:
+                    if hasattr(concern, 'related_conditions'):
+                        conditions.extend(concern.related_conditions or [])
+        return list(set(conditions))[:5]  # Limit to 5
+    
+    def _extract_symptoms(self, focused_problem: FocusedProblem) -> List[str]:
+        """Extract symptoms from focused problem for frontend display."""
+        symptoms = []
+        if focused_problem:
+            if hasattr(focused_problem, 'primary_concern') and focused_problem.primary_concern:
+                if hasattr(focused_problem.primary_concern, 'concern_type'):
+                    symptoms.append(focused_problem.primary_concern.concern_type)
+            if hasattr(focused_problem, 'secondary_concerns'):
+                for concern in focused_problem.secondary_concerns:
+                    if hasattr(concern, 'concern_type'):
+                        symptoms.append(concern.concern_type)
+        return list(set(symptoms))[:5]  # Limit to 5
     
     def _personalize(
         self,

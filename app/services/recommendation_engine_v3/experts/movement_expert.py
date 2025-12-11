@@ -53,6 +53,8 @@ class PCOSGeneralExerciseModule(BaseExpertSubModule):
             'exercise_durations': ['30 min'],
             'exercise_intensities': ['moderate'],
             'frequency': 'weekly:5',
+            'frequency_detail': 'weekly:5',
+            'optimal_times': ['afternoon'],  # Afternoon is ideal for cardio
             'priority': 'high',
             'evidence_strength': 'strong',
             'timeline': '8-12 weeks',
@@ -71,6 +73,8 @@ class PCOSGeneralExerciseModule(BaseExpertSubModule):
             'exercise_durations': ['30-45 min'],
             'exercise_intensities': ['moderate'],
             'frequency': 'weekly:3',
+            'frequency_detail': 'weekly:3',
+            'optimal_times': ['evening'],  # Evening is good for strength training
             'priority': 'high',
             'evidence_strength': 'strong',
             'timeline': '8-12 weeks',
@@ -89,6 +93,8 @@ class PCOSGeneralExerciseModule(BaseExpertSubModule):
             'exercise_durations': ['30-45 min'],
             'exercise_intensities': ['low to moderate'],
             'frequency': 'weekly:3',
+            'frequency_detail': 'weekly:3',
+            'optimal_times': ['morning', 'evening'],  # Yoga is flexible
             'priority': 'medium',
             'evidence_strength': 'moderate',
             'timeline': '8-12 weeks',

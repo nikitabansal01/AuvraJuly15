@@ -58,6 +58,28 @@ class RecommendationService:
         Save single session recommendation to DB (temporary)
         """
         try:
+            # Ensure hormones are set - use defaults if not provided
+            hormones = rec.get('hormones', [])
+            if not hormones:
+                # Default hormones based on category
+                category_default_hormones = {
+                    'food': ['insulin', 'progesterone'],
+                    'movement': ['cortisol', 'testosterone'],
+                    'mindfulness': ['cortisol', 'progesterone'],
+                }
+                hormones = category_default_hormones.get(category.lower(), ['progesterone'])
+            
+            # Ensure optimal_times is set - use defaults if not provided
+            optimal_times = rec.get('optimal_times', [])
+            if not optimal_times:
+                # Default optimal times based on category
+                category_default_times = {
+                    'food': ['morning'],
+                    'movement': ['afternoon'],
+                    'mindfulness': ['evening'],
+                }
+                optimal_times = category_default_times.get(category.lower(), ['anytime'])
+            
             # Create DB record (linked by session_id, uid is NULL)
             db_record = RecommendationRecord(
                 session_id=session_id,
@@ -77,7 +99,7 @@ class RecommendationService:
                 # Tag information
                 conditions=rec.get('conditions', []),
                 symptoms=rec.get('symptoms', []),
-                hormones=rec.get('hormones', []),
+                hormones=hormones,  # Use our ensured hormones
                 
                 # Array fields
                 food_amounts=rec.get('food_amounts', []),
@@ -87,16 +109,16 @@ class RecommendationService:
                 exercise_intensities=rec.get('exercise_intensities', []),
                 mindfulness_durations=rec.get('mindfulness_durations', []),
                 mindfulness_techniques=rec.get('mindfulness_techniques', []),
-                frequency_detail=rec.get('frequency_detail'),
-                duration_weeks=rec.get('duration_weeks'),
-                optimal_times=rec.get('optimal_times', []),
+                frequency_detail=rec.get('frequency_detail', 'daily:1'),
+                duration_weeks=rec.get('duration_weeks', 8),
+                optimal_times=optimal_times,  # Use our ensured optimal_times
                 
                 # Research backing
                 research_summary=rec.get('researchBacking', {}).get('summary') if rec.get('researchBacking') else None,
                 research_studies=rec.get('researchBacking', {}).get('studies') if rec.get('researchBacking') else None,
                 
                 # User profile snapshot
-                user_profile_snapshot=user_profile if 'user_profile' in locals() else None
+                user_profile_snapshot=None
             )
             
             self.db.add(db_record)
@@ -170,6 +192,28 @@ class RecommendationService:
             if result.userProfile:
                 user_profile_snapshot = result.userProfile.dict()
             
+            # Ensure hormones are set - use defaults if not provided
+            hormones = rec.hormones
+            if not hormones:
+                # Default hormones based on category
+                category_default_hormones = {
+                    'food': ['insulin', 'progesterone'],
+                    'movement': ['cortisol', 'testosterone'],
+                    'mindfulness': ['cortisol', 'progesterone'],
+                }
+                hormones = category_default_hormones.get(category.lower(), ['progesterone'])
+            
+            # Ensure optimal_times is set - use defaults if not provided
+            optimal_times = getattr(rec, 'optimal_times', None)
+            if not optimal_times:
+                # Default optimal times based on category
+                category_default_times = {
+                    'food': ['morning'],
+                    'movement': ['afternoon'],
+                    'mindfulness': ['evening'],
+                }
+                optimal_times = category_default_times.get(category.lower(), ['anytime'])
+            
             # Create DB record
             db_record = RecommendationRecord(
                 uid=uid,
@@ -188,7 +232,7 @@ class RecommendationService:
                 # Tag information
                 conditions=rec.conditions,
                 symptoms=rec.symptoms,
-                hormones=rec.hormones,
+                hormones=hormones,  # Use our ensured hormones
                 
                 # Category-specific action fields (plural)
                 food_amounts=rec.food_amounts,
@@ -200,6 +244,9 @@ class RecommendationService:
                 mindfulness_techniques=rec.mindfulness_techniques,
                 frequency_detail=rec.frequency_detail,
                 duration_weeks=rec.duration_weeks,
+                
+                # CRITICAL: Include optimal_times for proper time-based scheduling
+                optimal_times=optimal_times,
                 
                 # Research backing
                 research_summary=research_summary,
