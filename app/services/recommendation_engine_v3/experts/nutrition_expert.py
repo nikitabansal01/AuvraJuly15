@@ -66,6 +66,7 @@ class InsulinResistanceDietModule(BaseExpertSubModule):
                 'Include protein with every meal to lower glycemic impact',
             ],
             'frequency': 'Every meal',
+            'optimal_times': ['morning', 'afternoon', 'night'],  # All meals
             'priority': 'high',
             'evidence_strength': 'strong',
             'timeline': '8-12 weeks',
@@ -83,6 +84,7 @@ class InsulinResistanceDietModule(BaseExpertSubModule):
             'food_amounts': ['2 tbsp', '1 cup', '5 servings'],
             'food_items': ['ground flaxseed', 'legumes', 'non-starchy vegetables'],
             'frequency': 'Daily',
+            'optimal_times': ['morning'],  # Best taken in morning
             'priority': 'high',
             'evidence_strength': 'strong',
             'timeline': '4-8 weeks',
@@ -99,6 +101,7 @@ class InsulinResistanceDietModule(BaseExpertSubModule):
             'food_amounts': ['1-2g', '1/2 tsp'],
             'food_items': ['Ceylon cinnamon'],
             'frequency': 'Daily',
+            'optimal_times': ['morning'],  # Best with breakfast
             'priority': 'medium',
             'evidence_strength': 'moderate',
             'timeline': '8-12 weeks',
@@ -115,6 +118,7 @@ class InsulinResistanceDietModule(BaseExpertSubModule):
                 'Choose complex carbs over simple carbs',
             ],
             'frequency': 'Daily',
+            'optimal_times': ['morning', 'afternoon', 'night'],  # All meals
             'priority': 'high',
             'evidence_strength': 'strong',
             'timeline': '8-12 weeks',
@@ -221,6 +225,7 @@ class AndrogenReductionDietModule(BaseExpertSubModule):
             'food_items': ['spearmint tea'],
             'frequency': 'Daily',
             'frequency_detail': 'daily:2',
+            'optimal_times': ['morning', 'night'],  # Twice daily
             'priority': 'high',
             'evidence_strength': 'moderate',
             'timeline': '4-6 weeks for initial effects',
@@ -238,6 +243,7 @@ class AndrogenReductionDietModule(BaseExpertSubModule):
             'food_amounts': ['2 tbsp'],
             'food_items': ['ground flaxseed'],
             'frequency': 'Daily',
+            'optimal_times': ['morning'],  # Best with breakfast
             'priority': 'high',
             'evidence_strength': 'moderate',
             'timeline': '8-12 weeks',
@@ -255,6 +261,7 @@ class AndrogenReductionDietModule(BaseExpertSubModule):
             'food_amounts': ['100-150g', '1 oz', '1 tbsp'],
             'food_items': ['fatty fish', 'walnuts', 'chia seeds'],
             'frequency': 'weekly:3',
+            'optimal_times': ['afternoon', 'night'],  # Lunch/dinner meals
             'priority': 'medium',
             'evidence_strength': 'moderate',
             'timeline': '8-12 weeks',
@@ -270,6 +277,7 @@ class AndrogenReductionDietModule(BaseExpertSubModule):
                 'Choose dairy-free yogurt alternatives',
             ],
             'frequency': 'Daily',
+            'optimal_times': ['morning', 'afternoon', 'night'],  # All meals
             'priority': 'medium',
             'evidence_strength': 'weak',
             'timeline': '4-8 weeks',
@@ -403,6 +411,7 @@ class AntiInflammatoryDietModule(BaseExpertSubModule):
                 'Read labels - avoid added sugars and artificial ingredients',
             ],
             'frequency': 'Daily',
+            'optimal_times': ['morning', 'afternoon', 'night'],  # All meals
             'priority': 'high',
             'evidence_strength': 'moderate',
             'timeline': '4-6 weeks',
