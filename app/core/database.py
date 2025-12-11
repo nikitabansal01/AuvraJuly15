@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.pool import NullPool
 from datetime import datetime, date
 import uuid
 import hashlib
@@ -12,35 +13,30 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 # Database engine creation
-# Render PostgreSQL requires SSL
+# For Supabase Session Pooler, use NullPool (no local pooling)
+# Supabase Session Pooler already manages connection pooling on their side
 if settings.ENVIRONMENT == "production":
-    # For Render with Session Pooler, optimize settings
     database_url = settings.DATABASE_URL
     if "?" not in database_url:
         database_url += "?sslmode=require"
     
-    # Settings optimized for Session Pooler
+    # Use NullPool - Supabase Session Pooler handles all connection pooling
+    # This prevents "MaxClientsInSessionMode" errors
     engine = create_engine(
         database_url,
-        pool_size=5,           # Small size since Session Pooler manages connections
-        max_overflow=10,       # Appropriate overflow
-        pool_pre_ping=False,   # Disabled since Session Pooler manages connections
-        pool_recycle=300,      # Recreate connections every 5 minutes
-        pool_timeout=30,       # Connection wait time (seconds) - wait up to 30 seconds when max exceeded
-        pool_reset_on_return='commit',  # Reset connection with commit on return
+        poolclass=NullPool,    # No local pooling - let Supabase handle it
         echo=False             # Disable SQL logging in production
     )
 else:
-    # Connection pooling settings for development environment
+    # Development environment - use minimal pooling
     engine = create_engine(
         settings.DATABASE_URL,
-        pool_size=5,              # Default connection pool size
-        max_overflow=10,          # Maximum additional connections
-        pool_pre_ping=True,       # Connection status check (useful in development)
-        pool_recycle=3600,        # Recreate connections every hour
-        pool_timeout=30,          # Connection wait time (seconds) - wait up to 30 seconds when max exceeded
-        pool_reset_on_return='commit',  # Reset connection with commit on return
-        echo=False                 # Disable SQL query logging (performance improvement)
+        pool_size=2,              # Minimal pool size
+        max_overflow=3,           # Small overflow
+        pool_pre_ping=True,       # Connection status check
+        pool_recycle=1800,        # Recreate connections every 30 minutes
+        pool_timeout=30,          # Connection wait time
+        echo=False                # Disable SQL query logging
     )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
