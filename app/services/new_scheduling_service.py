@@ -840,15 +840,29 @@ class NewSchedulingService:
         try:
             hormone_stats = {}
             
+            # Default hormones by category (fallback for legacy recommendations without hormones)
+            category_default_hormones = {
+                'food': ['Insulin', 'Cortisol'],
+                'movement': ['Cortisol', 'Testosterone'],
+                'mindfulness': ['Cortisol', 'Progesterone'],
+            }
+            
             for assignment in assignments:
                 recommendation = self.db.query(RecommendationRecord).filter(
                     RecommendationRecord.id == assignment.recommendation_id
                 ).first()
                 
-                if not recommendation or not recommendation.hormones:
+                if not recommendation:
                     continue
                 
-                for hormone in recommendation.hormones:
+                # Get hormones from recommendation, or use category defaults as fallback
+                hormones = recommendation.hormones
+                if not hormones:
+                    cat = (recommendation.category or '').lower()
+                    hormones = category_default_hormones.get(cat, ['Progesterone', 'Cortisol'])
+                    logger.debug(f"Using default hormones for recommendation {recommendation.id}: {hormones}")
+                
+                for hormone in hormones:
                     if hormone not in hormone_stats:
                         hormone_stats[hormone] = {"total": 0, "completed": 0}
                     
