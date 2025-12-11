@@ -100,9 +100,18 @@ def _convert_single_recommendation(
     symptoms = rec.get('symptoms', [])
     hormones = rec.get('hormones', [])
     
-    # If no specific symptoms/hormones, derive from root_causes
+    # If no specific hormones, derive from root_causes
     if not hormones and root_causes:
         hormones = _derive_hormones_from_root_causes(root_causes)
+    
+    # FALLBACK: If still no hormones (no root_causes either), use category-based defaults
+    if not hormones:
+        category_defaults = {
+            'food': ['Insulin', 'Cortisol'],
+            'movement': ['Cortisol', 'Testosterone'],
+            'mindfulness': ['Cortisol', 'Progesterone'],
+        }
+        hormones = category_defaults.get(category, ['Progesterone', 'Cortisol'])
     
     # Build mobile format recommendation
     mobile_rec = {
@@ -204,37 +213,115 @@ def _map_root_causes_to_conditions(root_causes: List[str]) -> List[str]:
 
 
 def _derive_hormones_from_root_causes(root_causes: List[str]) -> List[str]:
-    """Derive affected hormones from root causes"""
+    """
+    Derive affected hormones from root causes.
     
+    Comprehensive mapping that ensures hormones are always populated.
+    Includes fallback to default hormones if no mapping found.
+    """
+    
+    # Comprehensive hormone mapping - covers all known root causes
     hormone_mapping = {
+        # Insulin-related
         'insulin_resistance': ['Insulin'],
-        'androgen_high': ['Testosterone', 'DHEA-S'],
-        'androgens_high': ['Testosterone', 'DHEA-S'],
+        'insulin': ['Insulin'],
+        'blood_sugar': ['Insulin'],
+        'blood_sugar_instability': ['Insulin'],
+        'diabetes': ['Insulin'],
+        'metabolic': ['Insulin', 'Cortisol'],
+        
+        # Androgen-related
+        'androgen_high': ['Androgens', 'Testosterone'],
+        'androgens_high': ['Androgens', 'Testosterone'],
+        'androgens': ['Androgens', 'Testosterone'],
+        'testosterone': ['Testosterone'],
+        'testosterone_high': ['Testosterone'],
+        'dhea': ['DHEA-S'],
+        'hirsutism': ['Androgens', 'Testosterone'],
+        'acne': ['Androgens', 'Testosterone'],
+        'hair_loss': ['Androgens', 'Testosterone'],
+        
+        # Cortisol/Stress-related
         'cortisol_high': ['Cortisol'],
+        'cortisol_low': ['Cortisol'],
         'cortisol_dysregulation': ['Cortisol'],
+        'cortisol': ['Cortisol'],
+        'stress': ['Cortisol'],
+        'anxiety': ['Cortisol'],
+        'adrenal': ['Cortisol', 'DHEA-S'],
+        'adrenal_fatigue': ['Cortisol'],
+        
+        # Estrogen-related
         'estrogen_dominance': ['Estrogen', 'Progesterone'],
         'estrogen_high': ['Estrogen'],
         'estrogen_low': ['Estrogen'],
+        'estrogen': ['Estrogen'],
+        
+        # Progesterone-related
         'progesterone_low': ['Progesterone'],
-        'thyroid': ['TSH', 'T3', 'T4'],
-        'thyroid_low': ['TSH', 'T3', 'T4'],
-        # New mappings for common root causes
+        'progesterone': ['Progesterone'],
+        'luteal_phase': ['Progesterone'],
+        'luteal': ['Progesterone'],
+        
+        # Thyroid-related
+        'thyroid': ['Thyroid'],
+        'thyroid_low': ['Thyroid'],
+        'thyroid_high': ['Thyroid'],
+        'hypothyroid': ['Thyroid'],
+        'hyperthyroid': ['Thyroid'],
+        'tsh': ['Thyroid'],
+        
+        # General/Combination conditions
         'hormone_balance': ['Progesterone', 'Estrogen', 'Cortisol'],
+        'hormonal_imbalance': ['Progesterone', 'Estrogen', 'Cortisol'],
         'general_wellness': ['Cortisol', 'Insulin'],
-        'stress': ['Cortisol'],
+        'pcos': ['Androgens', 'Insulin', 'Progesterone'],
         'inflammation': ['Cortisol', 'Insulin'],
+        'inflammation_chronic': ['Cortisol', 'Insulin'],
+        'weight_gain': ['Insulin', 'Cortisol', 'Thyroid'],
         'weight_management': ['Insulin', 'Cortisol'],
         'fatigue': ['Cortisol', 'Thyroid'],
+        'energy': ['Cortisol', 'Thyroid', 'Insulin'],
         'mood': ['Progesterone', 'Estrogen', 'Cortisol'],
+        'depression': ['Progesterone', 'Cortisol'],
         'sleep': ['Cortisol', 'Melatonin'],
-        'acne': ['Androgens', 'Testosterone'],
-        'hirsutism': ['Androgens', 'Testosterone'],
+        'insomnia': ['Cortisol', 'Melatonin'],
+        
+        # Period-related
+        'irregular_periods': ['Progesterone', 'Estrogen'],
+        'painful_periods': ['Progesterone', 'Estrogen'],
+        'heavy_periods': ['Estrogen', 'Progesterone'],
+        'amenorrhea': ['Estrogen', 'Progesterone', 'Thyroid'],
+        'menstrual': ['Progesterone', 'Estrogen'],
+        'period': ['Progesterone', 'Estrogen'],
+        'cycle': ['Progesterone', 'Estrogen'],
+        
+        # Fertility-related
+        'fertility': ['Progesterone', 'Estrogen', 'LH', 'FSH'],
+        'ovulation': ['Estrogen', 'LH', 'FSH'],
     }
     
     hormones = set()
+    
     for cause in root_causes:
-        if cause.lower() in hormone_mapping:
-            hormones.update(hormone_mapping[cause.lower()])
+        cause_lower = cause.lower().replace(' ', '_').replace('-', '_')
+        
+        # Direct match
+        if cause_lower in hormone_mapping:
+            hormones.update(hormone_mapping[cause_lower])
+            continue
+        
+        # Partial match - check if any key is a substring
+        for key, hormone_list in hormone_mapping.items():
+            if key in cause_lower or cause_lower in key:
+                hormones.update(hormone_list)
+                break
+    
+    # FALLBACK: If still no hormones, use default female hormones
+    # This ensures hormone_stats is NEVER empty
+    if not hormones:
+        logger.warning(f"No hormone mapping found for root_causes: {root_causes}. Using defaults.")
+        hormones = {'Progesterone', 'Cortisol'}  # Most common female hormone concerns
     
     return list(hormones)
 
