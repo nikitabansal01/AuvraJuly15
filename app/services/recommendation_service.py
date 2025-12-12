@@ -203,6 +203,76 @@ class RecommendationService:
             logger.error(f"Failed to save session recommendation: {str(e)}", exc_info=True)
             return False
     
+    def _distribute_hormones_across_recommendations(
+        self, 
+        recommendations: List[Dict[str, Any]], 
+        allowed_hormones: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Distribute user's hormones across recommendations to ensure proper balance.
+        
+        For example:
+        - 4 recommendations + 2 hormones = 2 each (2 progesterone, 2 thyroid)
+        - 3 recommendations + 2 hormones = 2 primary, 1 secondary
+        - 4 recommendations + 1 hormone = all 4 get that hormone
+        
+        Args:
+            recommendations: List of recommendation dicts from V3 engine
+            allowed_hormones: List of user's hormones ['progesterone', 'thyroid']
+            
+        Returns:
+            Recommendations with 'hormones' field updated to contain exactly ONE hormone each
+        """
+        if not recommendations:
+            return recommendations
+        
+        if not allowed_hormones:
+            # No hormones available, use default
+            allowed_hormones = ['progesterone']
+        
+        num_recs = len(recommendations)
+        num_hormones = len(allowed_hormones)
+        
+        logger.info(f"📊 Distributing {num_hormones} hormones across {num_recs} recommendations")
+        
+        # Create hormone assignment list
+        hormone_assignments = []
+        
+        if num_hormones == 1:
+            # All recommendations get the same hormone
+            hormone_assignments = [allowed_hormones[0]] * num_recs
+        else:
+            # Distribute evenly, giving primary hormone slight preference if odd number
+            primary = allowed_hormones[0]
+            secondary = allowed_hormones[1] if num_hormones > 1 else primary
+            
+            # Calculate distribution
+            per_hormone = num_recs // num_hormones
+            remainder = num_recs % num_hormones
+            
+            # Primary gets extra if there's a remainder
+            primary_count = per_hormone + remainder
+            secondary_count = per_hormone
+            
+            # Build assignment list
+            hormone_assignments = [primary] * primary_count + [secondary] * secondary_count
+        
+        # Apply hormone to each recommendation
+        result = []
+        for i, rec in enumerate(recommendations):
+            rec_copy = dict(rec)  # Make a copy
+            assigned_hormone = hormone_assignments[i] if i < len(hormone_assignments) else allowed_hormones[0]
+            rec_copy['hormones'] = [assigned_hormone.title()]  # Title case for consistency
+            result.append(rec_copy)
+            logger.debug(f"   Rec {i+1}: {assigned_hormone.title()}")
+        
+        # Log distribution stats
+        from collections import Counter
+        distribution = Counter([r['hormones'][0] for r in result])
+        logger.info(f"📊 Hormone distribution: {dict(distribution)}")
+        
+        return result
+    
     async def save_recommendations(self, uid: str, result: RecommendationResult, recommendation_type: str = "general") -> bool:
         """
         Save recommendation results to DB
