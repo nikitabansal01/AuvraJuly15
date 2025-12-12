@@ -80,20 +80,49 @@ class RecommendationService:
                     if secondary and len(secondary) > 0:
                         allowed_hormones.append(secondary[0].lower())  # Max 1 secondary
             
-            # Filter hormones to ONLY user's allowed hormones
+            # FIXED: Each recommendation should have exactly ONE hormone
+            # Map V3 engine hormones to user's primary/secondary
             rec_hormones = rec.get('hormones', [])
-            if rec_hormones and allowed_hormones:
-                # Only keep hormones that are in user's allowed list
-                hormones = [h for h in rec_hormones if h.lower() in allowed_hormones]
-            else:
-                hormones = []
+            assigned_hormone = None
             
-            # If no matching hormones, use user's hormones directly
-            if not hormones:
+            if rec_hormones and allowed_hormones:
+                # Check if any of the recommendation's hormones match user's allowed hormones
+                for rh in rec_hormones:
+                    if rh.lower() in allowed_hormones:
+                        assigned_hormone = rh.title()
+                        break
+            
+            # If no direct match, map based on hormone relationships
+            if not assigned_hormone and rec_hormones and allowed_hormones:
+                # Hormone relationship mapping - which hormones are related
+                hormone_relationships = {
+                    'insulin': ['progesterone', 'thyroid'],  # Insulin issues -> often progesterone/thyroid related
+                    'testosterone': ['progesterone', 'estrogen'],  # High androgens -> low progesterone
+                    'estrogen': ['progesterone', 'thyroid'],  # Estrogen dominance -> progesterone issue
+                    'cortisol': ['thyroid', 'progesterone'],  # Stress -> thyroid/progesterone
+                    'progesterone': ['progesterone'],
+                    'thyroid': ['thyroid'],
+                }
+                
+                for rh in rec_hormones:
+                    rh_lower = rh.lower()
+                    related = hormone_relationships.get(rh_lower, [])
+                    for rel in related:
+                        if rel in allowed_hormones:
+                            assigned_hormone = rel.title()
+                            break
+                    if assigned_hormone:
+                        break
+            
+            # Final fallback: Use PRIMARY hormone only (not all)
+            if not assigned_hormone:
                 if allowed_hormones:
-                    hormones = [h.title() for h in allowed_hormones]  # Capitalize
+                    assigned_hormone = allowed_hormones[0].title()  # Primary only
                 else:
-                    hormones = ['progesterone']  # Minimal fallback
+                    assigned_hormone = 'Progesterone'  # Ultimate fallback
+            
+            # CRITICAL: Each recommendation gets exactly ONE hormone
+            hormones = [assigned_hormone]
             
             # Ensure optimal_times is set - use defaults if not provided
             optimal_times = rec.get('optimal_times', [])

@@ -966,21 +966,32 @@ class NewSchedulingService:
                     'secondary': user_response.secondary_hormones or []
                 }
             
-            # Use user's hormones only - no category defaults that add extra hormones
-            def get_default_hormones(category: str) -> List[str]:
-                """Get default hormones based on user's hormone profile only."""
+            # Use user's hormones only - single hormone per recommendation
+            def get_default_hormone(category: str, recommendation_index: int = 0) -> List[str]:
+                """Get default hormone based on user's hormone profile.
+                
+                FIXED: Returns only ONE hormone per recommendation.
+                Alternates between primary and secondary to distribute assignments.
+                """
                 if user_hormones and user_hormones['primary']:
-                    # Only use user's actual hormones
-                    hormones = [user_hormones['primary']]
-                    if user_hormones['secondary']:
-                        # Add only the first secondary hormone (max 1)
-                        hormones.append(user_hormones['secondary'][0])
-                    return hormones
+                    primary = user_hormones['primary']
+                    secondary_list = user_hormones['secondary'] or []
+                    
+                    # If we have secondary hormones, alternate between primary and secondary
+                    if secondary_list:
+                        # Use index to distribute: even indices get primary, odd get secondary
+                        if recommendation_index % 2 == 0:
+                            return [primary]
+                        else:
+                            return [secondary_list[0]]
+                    else:
+                        # Only primary hormone
+                        return [primary]
                 
                 # Minimal fallback - single hormone
                 return ['progesterone']
             
-            for assignment in assignments:
+            for idx, assignment in enumerate(assignments):
                 recommendation = self.db.query(RecommendationRecord).filter(
                     RecommendationRecord.id == assignment.recommendation_id
                 ).first()
@@ -992,8 +1003,8 @@ class NewSchedulingService:
                 hormones = recommendation.hormones
                 if not hormones:
                     cat = recommendation.category or 'food'
-                    hormones = get_default_hormones(cat)
-                    logger.debug(f"Using smart default hormones for recommendation {recommendation.id}: {hormones}")
+                    hormones = get_default_hormone(cat, idx)  # FIXED: Use index for alternation
+                    logger.debug(f"Using smart default hormone for recommendation {recommendation.id}: {hormones}")
                 
                 # FILTER: Only count hormones that match user's primary/secondary
                 # This prevents showing unrelated hormones in the UI
