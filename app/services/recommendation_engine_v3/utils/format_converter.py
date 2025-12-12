@@ -197,39 +197,15 @@ def _map_root_causes_to_conditions(root_causes: List[str]) -> List[str]:
         'fatigue': 'Fatigue',
         'irregular_periods': 'Irregular Periods',
         'pcos': 'PCOS',
-        'mood_swings': 'Mood Support',
-        'anxiety': 'Stress & Anxiety',
-        'depression': 'Mood Support',
-        'hair_loss': 'Hair Health',
-        'hormonal_acne': 'Hormonal Acne',
-    }
-    
-    # These are generic/fallback root causes - don't display as conditions
-    skip_causes = {
-        'general_wellness',
-        'hormone_balance',
-        'hormonal_balance',
-        'hormonal_imbalance',
-        'general_health',
-        'wellness',
     }
     
     conditions = []
     for cause in root_causes:
-        cause_lower = cause.lower()
-        
-        # Skip generic/fallback conditions - they're not meaningful to users
-        if cause_lower in skip_causes:
-            continue
-            
-        if cause_lower in mapping:
-            conditions.append(mapping[cause_lower])
+        if cause.lower() in mapping:
+            conditions.append(mapping[cause.lower()])
         else:
-            # Clean up and capitalize for unknown conditions
-            cleaned = cause.replace('_', ' ').title()
-            # Skip if it's too generic after cleaning
-            if cleaned.lower() not in ['general wellness', 'hormone balance', 'wellness']:
-                conditions.append(cleaned)
+            # Clean up and capitalize
+            conditions.append(cause.replace('_', ' ').title())
     
     return conditions
 
