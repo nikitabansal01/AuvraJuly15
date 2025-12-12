@@ -641,6 +641,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             primary_level = "unknown"
         
         # Secondary: scores >= 50% of primary AND >= 3
+        # LIMIT: Only keep top 1 secondary hormone to prevent hormone explosion
         threshold = primary_score * 0.5
         secondary_imbalances = []
         secondary_levels = []
@@ -657,6 +658,11 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
                 
                 secondary_imbalances.append(h_name)
                 secondary_levels.append(h_level)
+                
+                # LIMIT: Only keep 1 secondary hormone (the highest scoring one)
+                # This prevents hormone explosion where 4+ hormones appear in UI
+                if len(secondary_imbalances) >= 1:
+                    break
         
         print(f"🧬 Hormone Analysis Complete:")
         print(f"   Primary: {primary_hormone} ({primary_level}) - Score: {primary_score}")

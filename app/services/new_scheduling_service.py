@@ -663,7 +663,7 @@ class NewSchedulingService:
     
     def _calculate_priority_score(self, recommendation: RecommendationRecord, schedule: RecommendationSchedule, target_date: date) -> float:
         """
-        Calculate priority score (Primary/Secondary hormone-based)
+        Calculate priority score (Primary/Secondary hormone-based + lifestyle_focus category weighting)
         
         Args:
             recommendation: Recommendation information
@@ -685,34 +685,51 @@ class NewSchedulingService:
             freshness_score = max(0, 30 - days_since_creation)  # Max 30 points
             score += freshness_score
             
-            # 3. Category diversity (balance between food, movement, mindfulness)
-            # This is calculated by comparing with already created assignments
+            # 3. Lifestyle focus category weighting (eat/move/pause preference)
+            # Mapping: eat -> food, move -> movement, pause -> mindfulness
+            user_profile = self.db.query(UserProfile).filter(
+                UserProfile.uid == schedule.uid
+            ).first()
             
-            # 4. Hormone importance (based on UserResponse's primary/secondary hormone)
+            if user_profile and user_profile.lifestyle_focus:
+                lifestyle_to_category = {
+                    'eat': 'food',
+                    'move': 'movement', 
+                    'pause': 'mindfulness'
+                }
+                preferred_categories = [lifestyle_to_category.get(lf.lower(), lf.lower()) for lf in user_profile.lifestyle_focus]
+                
+                rec_category = (recommendation.category or '').lower()
+                if rec_category in preferred_categories:
+                    # Boost score significantly for user's preferred categories (60 points)
+                    score += 60
+                    logger.debug(f"Category boost applied: {rec_category} is in preferred {preferred_categories}")
+            
+            # 4. Hormone importance - ONLY score user's primary and first secondary hormone
             user_response = self.db.query(UserResponse).filter(
                 UserResponse.uid == schedule.uid
             ).first()
             
             if user_response and recommendation.hormones:
+                # Get user's allowed hormones (max 2: primary + first secondary)
+                allowed_hormones = set()
+                if user_response.primary_hormone:
+                    allowed_hormones.add(user_response.primary_hormone.lower())
+                if user_response.secondary_hormones and len(user_response.secondary_hormones) > 0:
+                    allowed_hormones.add(user_response.secondary_hormones[0].lower())
+                
                 for hormone in recommendation.hormones:
                     hormone_lower = hormone.lower()
+                    # Only score if hormone is in user's allowed hormones
+                    if hormone_lower not in allowed_hormones:
+                        continue  # Skip hormones not in user's profile
+                    
                     # Primary hormone gets the highest score (50 points)
                     if user_response.primary_hormone and hormone_lower == user_response.primary_hormone.lower():
                         score += 50
                     # Secondary hormone gets medium score (30 points)
-                    elif user_response.secondary_hormones and hormone_lower in [h.lower() for h in user_response.secondary_hormones]:
+                    elif hormone_lower in allowed_hormones:
                         score += 30
-                    # Other hormones get default score (5 points)
-                    else:
-                        score += 5
-            elif recommendation.hormones:
-                # If no UserResponse, fallback to hardcoded method
-                hormone_importance = {
-                    "insulin": 20, "cortisol": 20, "estrogen": 15, 
-                    "progesterone": 15, "androgens": 10, "thyroid": 10
-                }
-                for hormone in recommendation.hormones:
-                    score += hormone_importance.get(hormone.lower(), 5)
             
             return score
             
@@ -724,23 +741,38 @@ class NewSchedulingService:
                                            max_count: int, primary_hormone: str, secondary_hormones: List[str]) -> List[RecommendationSchedule]:
         """
         Primary/Secondary hormone-based even selection
-        Odd number of assignments gives priority to primary hormone
+        Only considers first secondary hormone (max 2 hormones total)
+        Also applies lifestyle_focus category weighting
         
         Args:
             schedules: Schedules to select from
             target_date: Target date  
             max_count: Maximum number of selections
             primary_hormone: Primary hormone
-            secondary_hormones: Secondary hormones
+            secondary_hormones: Secondary hormones (only first one used)
         
         Returns:
             Selected schedules
         """
         try:
+            # Get lifestyle_focus for category weighting
+            uid = schedules[0].uid if schedules else None
+            lifestyle_focus = []
+            if uid:
+                user_profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+                if user_profile and user_profile.lifestyle_focus:
+                    lifestyle_focus = user_profile.lifestyle_focus
+            
+            # Mapping: eat -> food, move -> movement, pause -> mindfulness
+            lifestyle_to_category = {'eat': 'food', 'move': 'movement', 'pause': 'mindfulness'}
+            preferred_categories = [lifestyle_to_category.get(lf.lower(), lf.lower()) for lf in lifestyle_focus]
+            
+            # Only use first secondary hormone (max 2 hormones total)
+            first_secondary = secondary_hormones[0] if secondary_hormones else None
+            
             # Classify recommendations by hormone
             primary_schedules = []
             secondary_schedules = []
-            other_schedules = []
             
             for schedule in schedules:
                 recommendation = self.db.query(RecommendationRecord).filter(
@@ -748,8 +780,7 @@ class NewSchedulingService:
                 ).first()
                 
                 if not recommendation or not recommendation.hormones:
-                    other_schedules.append(schedule)
-                    continue
+                    continue  # Skip recommendations without hormones (only user's hormones matter)
                 
                 # Convert hormone names to lowercase for comparison
                 rec_hormones = [h.lower() for h in recommendation.hormones]
@@ -757,18 +788,32 @@ class NewSchedulingService:
                 # Check if it's a primary hormone-related recommendation
                 if primary_hormone.lower() in rec_hormones:
                     primary_schedules.append(schedule)
-                # Check if it's a secondary hormone-related recommendation
-                elif secondary_hormones and any(sh.lower() in rec_hormones for sh in secondary_hormones):
+                # Check if it's the first secondary hormone-related recommendation
+                elif first_secondary and first_secondary.lower() in rec_hormones:
                     secondary_schedules.append(schedule)
-                else:
-                    other_schedules.append(schedule)
             
-            # Sort each category by priority
+            # Sort each category by priority (lifestyle_focus weighting applied in _prioritize_schedules -> _calculate_priority_score)
             primary_schedules = self._prioritize_schedules(primary_schedules, target_date)
             secondary_schedules = self._prioritize_schedules(secondary_schedules, target_date)
-            other_schedules = self._prioritize_schedules(other_schedules, target_date)
             
-            # Even selection logic
+            # Apply lifestyle_focus category preference within each hormone group
+            # Move preferred category recommendations to front
+            if preferred_categories:
+                def sort_by_category_preference(scheds):
+                    preferred = []
+                    others = []
+                    for s in scheds:
+                        rec = self.db.query(RecommendationRecord).filter(RecommendationRecord.id == s.recommendation_id).first()
+                        if rec and rec.category and rec.category.lower() in preferred_categories:
+                            preferred.append(s)
+                        else:
+                            others.append(s)
+                    return preferred + others
+                
+                primary_schedules = sort_by_category_preference(primary_schedules)
+                secondary_schedules = sort_by_category_preference(secondary_schedules)
+            
+            # Even selection logic - ONLY from primary and secondary, no "other" hormones
             selected = []
             
             if max_count <= 0:
@@ -783,14 +828,14 @@ class NewSchedulingService:
                 selected.append(secondary_schedules[0])
                 secondary_schedules = secondary_schedules[1:]
             
-            # Distribute the remaining slots evenly
+            # Distribute the remaining slots between primary and secondary only
             # If an odd number remains, prioritize primary
             remaining_count = max_count - len(selected)
             
             while remaining_count > 0:
                 added_in_round = False
                 
-                # Add primary (prioritize odd days)
+                # Add primary (prioritize)
                 if primary_schedules and remaining_count > 0:
                     selected.append(primary_schedules[0])
                     primary_schedules = primary_schedules[1:]
@@ -804,20 +849,13 @@ class NewSchedulingService:
                     remaining_count -= 1
                     added_in_round = True
                 
-                # Add other
-                if other_schedules and remaining_count > 0:
-                    selected.append(other_schedules[0])
-                    other_schedules = other_schedules[1:]
-                    remaining_count -= 1
-                    added_in_round = True
-                
-                # If no more recommendations to add, end
+                # If no more recommendations to add, end (no other hormones used)
                 if not added_in_round:
                     break
             
-            logger.info(f"Even selection completed: primary={len([s for s in selected if self._is_primary_hormone_schedule(s, primary_hormone)])}, " +
-                       f"secondary={len([s for s in selected if self._is_secondary_hormone_schedule(s, secondary_hormones)])}, " +
-                       f"total={len(selected)}")
+            logger.info(f"Balanced selection completed: primary={len([s for s in selected if self._is_primary_hormone_schedule(s, primary_hormone)])}, " +
+                       f"secondary={len([s for s in selected if self._is_secondary_hormone_schedule(s, [first_secondary] if first_secondary else [])])}, " +
+                       f"preferred_categories={preferred_categories}, total={len(selected)}")
             
             return selected
             
@@ -928,27 +966,19 @@ class NewSchedulingService:
                     'secondary': user_response.secondary_hormones or []
                 }
             
-            # Default hormones by category - use user's hormones if available
+            # Use user's hormones only - no category defaults that add extra hormones
             def get_default_hormones(category: str) -> List[str]:
-                """Get default hormones based on category and user's hormone profile."""
+                """Get default hormones based on user's hormone profile only."""
                 if user_hormones and user_hormones['primary']:
-                    # Use user's primary hormone plus category-appropriate secondary
-                    primary = user_hormones['primary']
-                    category_secondary = {
-                        'food': 'insulin',
-                        'movement': 'cortisol', 
-                        'mindfulness': 'cortisol',
-                    }
-                    secondary = category_secondary.get(category.lower(), 'cortisol')
-                    return [primary, secondary] if primary != secondary else [primary]
+                    # Only use user's actual hormones
+                    hormones = [user_hormones['primary']]
+                    if user_hormones['secondary']:
+                        # Add only the first secondary hormone (max 1)
+                        hormones.append(user_hormones['secondary'][0])
+                    return hormones
                 
-                # Fallback to category defaults
-                category_default_hormones = {
-                    'food': ['insulin', 'progesterone'],
-                    'movement': ['cortisol', 'testosterone'],
-                    'mindfulness': ['cortisol', 'progesterone'],
-                }
-                return category_default_hormones.get(category.lower(), ['progesterone'])
+                # Minimal fallback - single hormone
+                return ['progesterone']
             
             for assignment in assignments:
                 recommendation = self.db.query(RecommendationRecord).filter(
@@ -965,9 +995,22 @@ class NewSchedulingService:
                     hormones = get_default_hormones(cat)
                     logger.debug(f"Using smart default hormones for recommendation {recommendation.id}: {hormones}")
                 
+                # FILTER: Only count hormones that match user's primary/secondary
+                # This prevents showing unrelated hormones in the UI
+                allowed_hormones = set()
+                if user_hormones:
+                    if user_hormones['primary']:
+                        allowed_hormones.add(user_hormones['primary'].lower())
+                    for sh in (user_hormones['secondary'] or []):
+                        allowed_hormones.add(sh.lower())
+                
                 for hormone in hormones:
                     # Normalize hormone name (lowercase for consistency)
                     hormone_normalized = hormone.lower()
+                    
+                    # Only count if it's in user's allowed hormones, or if no user hormones defined
+                    if allowed_hormones and hormone_normalized not in allowed_hormones:
+                        continue
                     
                     if hormone_normalized not in hormone_stats:
                         hormone_stats[hormone_normalized] = {"total": 0, "completed": 0}

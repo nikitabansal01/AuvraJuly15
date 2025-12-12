@@ -200,6 +200,7 @@ class UserProfileCreate(BaseModel):
 class SessionLinkRequest(BaseModel):
     user_profile: UserProfileCreate = Field(..., description="User profile")
     current_timezone: str = Field("Asia/Seoul", description="Current user timezone (IANA format)")
+    lifestyle_focus: Optional[List[str]] = Field(None, description="User's preferred focus areas: eat, move, pause")
 
 class UserResponseFull(BaseModel):
     id: int

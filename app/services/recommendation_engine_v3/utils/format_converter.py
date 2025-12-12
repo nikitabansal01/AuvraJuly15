@@ -104,14 +104,12 @@ def _convert_single_recommendation(
     if not hormones and root_causes:
         hormones = _derive_hormones_from_root_causes(root_causes)
     
-    # FALLBACK: If still no hormones (no root_causes either), use category-based defaults
+    # FALLBACK: If still no hormones (no root_causes either), leave empty
+    # The hormones should come from LLM or root causes - not generic category defaults
+    # This prevents showing unrelated hormones to users
     if not hormones:
-        category_default_hormones = {
-            'food': ['insulin', 'cortisol'],
-            'movement': ['cortisol', 'testosterone'],
-            'mindfulness': ['cortisol', 'progesterone'],
-        }
-        hormones = category_default_hormones.get(category, ['progesterone', 'cortisol'])
+        # Use progesterone as minimal fallback since it's relevant to most women's health
+        hormones = ['progesterone']
     
     # Build mobile format recommendation
     mobile_rec = {
@@ -317,11 +315,11 @@ def _derive_hormones_from_root_causes(root_causes: List[str]) -> List[str]:
                 hormones.update(hormone_list)
                 break
     
-    # FALLBACK: If still no hormones, use default female hormones
+    # FALLBACK: If still no hormones, use single default hormone
     # This ensures hormone_stats is NEVER empty
     if not hormones:
-        logger.warning(f"No hormone mapping found for root_causes: {root_causes}. Using defaults.")
-        hormones = {'Progesterone', 'Cortisol'}  # Most common female hormone concerns
+        logger.warning(f"No hormone mapping found for root_causes: {root_causes}. Using minimal default.")
+        hormones = {'progesterone'}  # Single fallback hormone
     
     return list(hormones)
 

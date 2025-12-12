@@ -137,6 +137,7 @@ class UserProfile(Base):
     name = Column(String(255), nullable=True)  # Retrieved from Firebase Auth
     email = Column(String(255), nullable=True)  # Retrieved from Firebase Auth
     current_timezone = Column(String(50), default="Asia/Seoul")  # Current user timezone
+    lifestyle_focus = Column(ARRAY(String), nullable=True)  # User's preferred focus areas: ["eat", "move", "pause"]
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -168,6 +169,9 @@ class UserResponse(Base):
     # Root cause analysis results
     primary_hormone = Column(String(50), nullable=True)  # Primary hormone imbalance (e.g., "progesterone")
     secondary_hormones = Column(ARRAY(String), nullable=True)  # Secondary hormone imbalances (e.g., ["testosterone"])
+    
+    # Lifestyle preference from onboarding (Eat/Move/Pause)
+    lifestyle_focus = Column(ARRAY(String), nullable=True)  # User's preferred focus areas: ["eat", "move", "pause"]
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

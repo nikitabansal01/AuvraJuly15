@@ -31,6 +31,12 @@ class RecommendationService:
             print(f"✅ [REC SERVICE] UserProfile created, calling AIService.generate_session_recommendations")
             logger.info(f"✅ UserProfile created, calling AIService.generate_session_recommendations")
             
+            # Extract user's hormone info for fallback
+            user_hormones = {
+                'primaryImbalance': user_profile_obj.primaryImbalance,
+                'secondaryImbalances': user_profile_obj.secondaryImbalances or []
+            }
+            
             # Generate AI recommendations (optimized for sessions)
             recommendations = await AIService.generate_session_recommendations(user_profile_obj, category)
             
@@ -42,9 +48,9 @@ class RecommendationService:
             print(f"✅ [REC SERVICE] Got {len(recommendations)} recommendations for {category}")
             logger.info(f"✅ RECOMMENDATION SERVICE: Got {len(recommendations)} recommendations for {category}")
             
-            # Save each recommendation for session
+            # Save each recommendation for session with user's hormone info
             for rec in recommendations:
-                await self._save_single_session_recommendation(session_id, rec, category)
+                await self._save_single_session_recommendation(session_id, rec, category, user_hormones)
             
             logger.info(f"Session recommendation generation completed: {session_id}, {category}")
             return True
@@ -53,21 +59,41 @@ class RecommendationService:
             logger.error(f"Error during session recommendation generation: {str(e)}", exc_info=True)
             return False
     
-    async def _save_single_session_recommendation(self, session_id: str, rec: Dict[str, Any], category: str) -> bool:
+    async def _save_single_session_recommendation(self, session_id: str, rec: Dict[str, Any], category: str, user_hormones: Dict[str, Any] = None) -> bool:
         """
         Save single session recommendation to DB (temporary)
+        
+        Args:
+            session_id: Session ID
+            rec: Recommendation data
+            category: food/movement/mindfulness
+            user_hormones: User's hormone info (primary_hormone, secondary_hormones)
         """
         try:
-            # Ensure hormones are set - use defaults if not provided
-            hormones = rec.get('hormones', [])
+            # Get user's allowed hormones (max 2: primary + first secondary)
+            allowed_hormones = []
+            if user_hormones:
+                primary = user_hormones.get('primary_hormone') or user_hormones.get('primaryImbalance')
+                secondary = user_hormones.get('secondary_hormones') or user_hormones.get('secondaryImbalances') or []
+                if primary:
+                    allowed_hormones.append(primary.lower())
+                    if secondary and len(secondary) > 0:
+                        allowed_hormones.append(secondary[0].lower())  # Max 1 secondary
+            
+            # Filter hormones to ONLY user's allowed hormones
+            rec_hormones = rec.get('hormones', [])
+            if rec_hormones and allowed_hormones:
+                # Only keep hormones that are in user's allowed list
+                hormones = [h for h in rec_hormones if h.lower() in allowed_hormones]
+            else:
+                hormones = []
+            
+            # If no matching hormones, use user's hormones directly
             if not hormones:
-                # Default hormones based on category
-                category_default_hormones = {
-                    'food': ['insulin', 'progesterone'],
-                    'movement': ['cortisol', 'testosterone'],
-                    'mindfulness': ['cortisol', 'progesterone'],
-                }
-                hormones = category_default_hormones.get(category.lower(), ['progesterone'])
+                if allowed_hormones:
+                    hormones = [h.title() for h in allowed_hormones]  # Capitalize
+                else:
+                    hormones = ['progesterone']  # Minimal fallback
             
             # Ensure optimal_times is set - use defaults if not provided
             optimal_times = rec.get('optimal_times', [])
@@ -192,16 +218,30 @@ class RecommendationService:
             if result.userProfile:
                 user_profile_snapshot = result.userProfile.dict()
             
-            # Ensure hormones are set - use defaults if not provided
-            hormones = rec.hormones
+            # Get user's allowed hormones (max 2: primary + first secondary)
+            allowed_hormones = []
+            if result.userProfile:
+                primary = result.userProfile.primaryImbalance
+                secondary = result.userProfile.secondaryImbalances or []
+                if primary:
+                    allowed_hormones.append(primary.lower())
+                    if secondary and len(secondary) > 0:
+                        allowed_hormones.append(secondary[0].lower())  # Max 1 secondary
+            
+            # Filter hormones to ONLY user's allowed hormones
+            rec_hormones = rec.hormones or []
+            if rec_hormones and allowed_hormones:
+                # Only keep hormones that are in user's allowed list
+                hormones = [h for h in rec_hormones if h.lower() in allowed_hormones]
+            else:
+                hormones = []
+            
+            # If no matching hormones, use user's hormones directly
             if not hormones:
-                # Default hormones based on category
-                category_default_hormones = {
-                    'food': ['insulin', 'progesterone'],
-                    'movement': ['cortisol', 'testosterone'],
-                    'mindfulness': ['cortisol', 'progesterone'],
-                }
-                hormones = category_default_hormones.get(category.lower(), ['progesterone'])
+                if allowed_hormones:
+                    hormones = [h.title() for h in allowed_hormones]  # Capitalize
+                else:
+                    hormones = ['progesterone']  # Minimal fallback
             
             # Ensure optimal_times is set - use defaults if not provided
             optimal_times = getattr(rec, 'optimal_times', None)

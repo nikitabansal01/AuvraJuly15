@@ -230,7 +230,7 @@ class QuestionService:
             current_timezone=current_timezone
         )
 
-    def link_session_to_user(self, session_id: str, uid: str, name: str, email: str, current_timezone: str = "Asia/Seoul") -> bool:
+    def link_session_to_user(self, session_id: str, uid: str, name: str, email: str, current_timezone: str = "Asia/Seoul", lifestyle_focus: list = None) -> bool:
         """
         Link session to user and save permanently
         
@@ -240,13 +240,14 @@ class QuestionService:
             name: User name
             email: User email
             current_timezone: Current user timezone
+            lifestyle_focus: User's preferred focus areas (eat, move, pause)
         
         Returns:
             Success status
         """
         try:
             logger.info(f"=== QuestionService.link_session_to_user started ===")
-            logger.info(f"Parameters: session_id={session_id}, uid={uid}, name={name}, email={email}, current_timezone={current_timezone}")
+            logger.info(f"Parameters: session_id={session_id}, uid={uid}, name={name}, email={email}, current_timezone={current_timezone}, lifestyle_focus={lifestyle_focus}")
             
             # 1. Get session data
             session = self.get_session(session_id)
@@ -255,13 +256,14 @@ class QuestionService:
                 logger.error(f"Session not found: session_id={session_id}")
                 raise Exception("Session not found or expired")
             
-            # 2. Create user profile (save current timezone)
+            # 2. Create user profile (save current timezone and lifestyle focus)
             logger.info(f"Creating user profile: uid={uid}")
             user_profile = self.create_user_profile(uid, name, email)
-            # Save current_timezone to UserProfile
+            # Save current_timezone and lifestyle_focus to UserProfile
             user_profile.current_timezone = current_timezone
+            user_profile.lifestyle_focus = lifestyle_focus
             self.db.commit()
-            logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}")
+            logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}, lifestyle_focus={lifestyle_focus}")
             
             # 3. Create UserResponse (save UTC data as is)
             response_data = self._convert_session_to_response_data(session)
@@ -286,7 +288,8 @@ class QuestionService:
                 stress_level=response_data.stress_level,
                 survey_timezone=response_data.survey_timezone,
                 primary_hormone=session.primary_hormone,
-                secondary_hormones=session.secondary_hormones
+                secondary_hormones=session.secondary_hormones,
+                lifestyle_focus=lifestyle_focus
             )
             self.db.add(user_response)
             logger.info(f"Session data saved for user {uid}")

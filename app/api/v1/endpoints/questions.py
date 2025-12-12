@@ -472,13 +472,14 @@ async def _link_session_to_user_internal(
                 detail="You can only link your own sessions"
             )
         
-        logger.info(f"Session linking service call: uid={current_user.get('uid')}, name={link_data.user_profile.name}, current_timezone={link_data.current_timezone}")
+        logger.info(f"Session linking service call: uid={current_user.get('uid')}, name={link_data.user_profile.name}, current_timezone={link_data.current_timezone}, lifestyle_focus={link_data.lifestyle_focus}")
         success = service.link_session_to_user(
             session_id, 
             current_user.get("uid"),
             link_data.user_profile.name,
             link_data.user_profile.email,
-            link_data.current_timezone
+            link_data.current_timezone,
+            link_data.lifestyle_focus
         )
         
         if success:
