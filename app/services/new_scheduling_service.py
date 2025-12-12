@@ -68,6 +68,15 @@ class NewSchedulingService:
             self.db.add(schedule)
             self.db.flush()  # Flush only for ID generation
             
+            # Create initial daily assignment for today immediately
+            # This ensures users see their assignments right after signup
+            try:
+                today_local = get_local_date(tzid)
+                self._create_daily_assignments(schedule, today_local)
+                logger.info(f"Initial daily assignment created: schedule_id={schedule.id}, date={today_local}")
+            except Exception as e:
+                logger.warning(f"Initial daily assignment creation failed (non-fatal): {str(e)}")
+            
             logger.info(f"Schedule creation completed: schedule_id={schedule.id}, timezone={tzid}")
             return schedule
             
