@@ -375,11 +375,66 @@ class BaseExpertSubModule(ABC):
         focused_problem: FocusedProblem
     ) -> List[str]:
         """
-        Map root causes to hormone names for frontend display.
+        Map recommendation to USER'S hormones (not template's root causes).
         
-        This ensures the Hormone Quests section shows proper hormone data.
+        CRITICAL: Each recommendation should be tagged with ONE of the user's
+        actual hormones (from Root Cause Engine), NOT derived from root causes.
+        
+        Logic:
+        1. Check if user has defined hormones (from Root Cause Engine)
+        2. If yes, use those hormones directly - distribute across recommendations
+        3. If no, fall back to mapping from root causes
         """
-        # Root cause to hormone mapping
+        # PRIORITY 1: Use user's actual hormones from Root Cause Engine
+        if focused_problem and hasattr(focused_problem, 'user_hormones'):
+            user_hormones = focused_problem.user_hormones
+            primary = user_hormones.get('primary', '')
+            secondary = user_hormones.get('secondary', [])
+            
+            if primary:
+                # User has defined hormones - use them
+                all_hormones = [primary]
+                if secondary:
+                    all_hormones.extend(secondary)
+                
+                # Return ONE hormone for this recommendation
+                # The specific hormone is determined by the root causes
+                # (to distribute recommendations across user's hormones)
+                
+                # Check if any root cause maps to a user's hormone
+                ROOT_CAUSE_TO_HORMONE = {
+                    'insulin_resistance': 'insulin',
+                    'blood_sugar_instability': 'insulin',
+                    'androgen_high': 'testosterone',
+                    'androgens_high': 'testosterone',
+                    'progesterone_low': 'progesterone',
+                    'progesterone_deficiency': 'progesterone',
+                    'cortisol_high': 'cortisol',
+                    'cortisol_dysregulation': 'cortisol',
+                    'thyroid_low': 'thyroid',
+                    'thyroid_imbalance': 'thyroid',
+                    'estrogen_dominance': 'estrogen',
+                    'estrogen_imbalance': 'estrogen',
+                }
+                
+                # Find which user hormone this recommendation targets
+                for cause in root_causes:
+                    cause_lower = cause.lower()
+                    mapped_hormone = ROOT_CAUSE_TO_HORMONE.get(cause_lower, '')
+                    
+                    # Check if mapped hormone matches user's primary or secondary
+                    if mapped_hormone and mapped_hormone in all_hormones:
+                        return [mapped_hormone]
+                    
+                    # Check if the root cause itself is a hormone name
+                    for uh in all_hormones:
+                        if uh in cause_lower or cause_lower in uh:
+                            return [uh]
+                
+                # No match found - return PRIMARY hormone only
+                return [primary]
+        
+        # FALLBACK: Original logic if no user hormones defined
         ROOT_CAUSE_TO_HORMONE = {
             'insulin_resistance': 'insulin',
             'blood_sugar_instability': 'insulin',
@@ -413,18 +468,9 @@ class BaseExpertSubModule(ABC):
             if cause_lower in ROOT_CAUSE_TO_HORMONE:
                 hormones.add(ROOT_CAUSE_TO_HORMONE[cause_lower])
         
-        # Also include user's primary/secondary hormones if available
-        if focused_problem:
-            primary = focused_problem.primary_concern
-            if primary and hasattr(primary, 'root_causes'):
-                for cause in primary.root_causes:
-                    cause_lower = cause.lower()
-                    if cause_lower in ROOT_CAUSE_TO_HORMONE:
-                        hormones.add(ROOT_CAUSE_TO_HORMONE[cause_lower])
-        
-        # Ensure at least one hormone (use insulin as default for food, cortisol for others)
+        # Ensure at least one hormone
         if not hormones:
-            hormones.add('progesterone')  # Default hormone
+            hormones.add('progesterone')
         
         return list(hormones)
     

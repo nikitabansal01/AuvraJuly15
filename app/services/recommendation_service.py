@@ -48,8 +48,23 @@ class RecommendationService:
             print(f"✅ [REC SERVICE] Got {len(recommendations)} recommendations for {category}")
             logger.info(f"✅ RECOMMENDATION SERVICE: Got {len(recommendations)} recommendations for {category}")
             
-            # Save each recommendation for session with user's hormone info
-            for rec in recommendations:
+            # Get user's allowed hormones for distribution
+            allowed_hormones = []
+            primary = user_hormones.get('primaryImbalance')
+            secondary = user_hormones.get('secondaryImbalances') or []
+            if primary:
+                allowed_hormones.append(primary.lower())
+                if secondary and len(secondary) > 0:
+                    allowed_hormones.append(secondary[0].lower())
+            
+            # Distribute hormones across recommendations BEFORE saving
+            # This ensures proper distribution like 3/1 or 2/2
+            recommendations_with_hormones = self._distribute_hormones_across_recommendations(
+                recommendations, allowed_hormones
+            )
+            
+            # Save each recommendation for session with assigned hormone
+            for rec in recommendations_with_hormones:
                 await self._save_single_session_recommendation(session_id, rec, category, user_hormones)
             
             logger.info(f"Session recommendation generation completed: {session_id}, {category}")
@@ -80,41 +95,33 @@ class RecommendationService:
                     if secondary and len(secondary) > 0:
                         allowed_hormones.append(secondary[0].lower())  # Max 1 secondary
             
-            # FIXED: Each recommendation should have exactly ONE hormone
-            # Map V3 engine hormones to user's primary/secondary
+            # Get hormone from V3 engine (should already be correct)
             rec_hormones = rec.get('hormones', [])
             assigned_hormone = None
             
-            if rec_hormones and allowed_hormones:
-                # Check if any of the recommendation's hormones match user's allowed hormones
-                for rh in rec_hormones:
-                    if rh.lower() in allowed_hormones:
-                        assigned_hormone = rh.title()
-                        break
-            
-            # If no direct match, map based on hormone relationships
-            if not assigned_hormone and rec_hormones and allowed_hormones:
-                # Hormone relationship mapping - which hormones are related
-                hormone_relationships = {
-                    'insulin': ['progesterone', 'thyroid'],  # Insulin issues -> often progesterone/thyroid related
-                    'testosterone': ['progesterone', 'estrogen'],  # High androgens -> low progesterone
-                    'estrogen': ['progesterone', 'thyroid'],  # Estrogen dominance -> progesterone issue
-                    'cortisol': ['thyroid', 'progesterone'],  # Stress -> thyroid/progesterone
-                    'progesterone': ['progesterone'],
-                    'thyroid': ['thyroid'],
-                }
-                
+            # V3 engine now returns the correct hormone from user's profile
+            # Trust it if it's one of the user's allowed hormones
+            if rec_hormones:
                 for rh in rec_hormones:
                     rh_lower = rh.lower()
-                    related = hormone_relationships.get(rh_lower, [])
-                    for rel in related:
-                        if rel in allowed_hormones:
-                            assigned_hormone = rel.title()
-                            break
-                    if assigned_hormone:
+                    # Direct match with user's hormones
+                    if rh_lower in allowed_hormones:
+                        assigned_hormone = rh_lower.title()
                         break
+                    # Check if it's a valid hormone name at all
+                    if rh_lower in ['progesterone', 'thyroid', 'insulin', 'cortisol', 'estrogen', 'testosterone']:
+                        # Map to user's hormone if related
+                        if rh_lower == 'insulin' and 'progesterone' in allowed_hormones:
+                            assigned_hormone = 'Progesterone'
+                            break
+                        elif rh_lower == 'cortisol' and 'thyroid' in allowed_hormones:
+                            assigned_hormone = 'Thyroid'
+                            break
+                        elif rh_lower == 'testosterone' and 'progesterone' in allowed_hormones:
+                            assigned_hormone = 'Progesterone'
+                            break
             
-            # Final fallback: Use PRIMARY hormone only (not all)
+            # Fallback: Use PRIMARY hormone only (not all)
             if not assigned_hormone:
                 if allowed_hormones:
                     assigned_hormone = allowed_hormones[0].title()  # Primary only
@@ -123,6 +130,8 @@ class RecommendationService:
             
             # CRITICAL: Each recommendation gets exactly ONE hormone
             hormones = [assigned_hormone]
+            
+            logger.debug(f"💊 Hormone assigned: {assigned_hormone} (from rec: {rec_hormones}, allowed: {allowed_hormones})")
             
             # Ensure optimal_times is set - use defaults if not provided
             optimal_times = rec.get('optimal_times', [])

@@ -65,6 +65,10 @@ class FocusedProblem:
     hormone_priorities: Dict[str, float] = field(default_factory=dict)
     lifestyle_context: Dict[str, Any] = field(default_factory=dict)
     
+    # User's actual hormones from Root Cause Engine (NOT derived from symptoms)
+    # These are the hormones that should be shown in the UI
+    user_hormones: Dict[str, Any] = field(default_factory=dict)  # {'primary': 'progesterone', 'secondary': ['thyroid']}
+    
     def to_dict(self) -> Dict[str, Any]:
         return {
             'primary_concern': {
@@ -232,18 +236,24 @@ class ProblemFocusNarrower:
         # Step 6: Build lifestyle context
         lifestyle_context = self._build_lifestyle_context(profile)
         
+        # Step 7: Extract USER'S ACTUAL HORMONES from hormone_data (Root Cause Engine output)
+        # This is critical - these are the hormones that should be shown in the UI
+        user_hormones = self._extract_user_hormones(profile)
+        
         focused_problem = FocusedProblem(
             primary_concern=primary_concern,
             secondary_concerns=secondary_concerns[:3],  # Max 3 secondary
             constraints=constraints,
             hormone_priorities=hormone_priorities,
-            lifestyle_context=lifestyle_context
+            lifestyle_context=lifestyle_context,
+            user_hormones=user_hormones
         )
         
         logger.info(f"✅ Focused problem created:")
         logger.info(f"   Primary: {focused_problem.primary_concern.concern_type}")
         logger.info(f"   Root causes: {focused_problem.primary_concern.root_causes}")
         logger.info(f"   Secondary: {[c.concern_type for c in focused_problem.secondary_concerns]}")
+        logger.info(f"   User hormones: {user_hormones}")
         
         return focused_problem
     
@@ -558,4 +568,46 @@ class ProblemFocusNarrower:
             'stress_level': profile.get('stress_level'),
             'sleep_quality': profile.get('sleep_quality'),
             'work_schedule': profile.get('work_schedule'),
+        }    
+    def _extract_user_hormones(self, profile: Dict) -> Dict[str, Any]:
+        """
+        Extract user's actual hormones from Root Cause Engine output.
+        
+        This is CRITICAL for proper hormone tagging:
+        - The Root Cause Engine determines the user's primary and secondary hormones
+        - These are the hormones that should appear in the Hormone Quests UI
+        - NOT derived from symptoms/concerns (which map to root causes)
+        
+        Returns:
+            Dict with 'primary' and 'secondary' hormone names
+        """
+        # Get hormone data from profile (passed from V3 orchestrator)
+        hormone_data = profile.get('hormone_data', {})
+        
+        # Extract primary hormone
+        primary = hormone_data.get('primary_imbalance', '')
+        
+        # Also check direct profile fields (from UserProfile model)
+        if not primary:
+            primary = profile.get('primary_imbalance', '') or profile.get('primaryImbalance', '')
+        
+        # Extract secondary hormones
+        secondary = hormone_data.get('secondary_imbalances', [])
+        if not secondary:
+            secondary = profile.get('secondary_imbalances', []) or profile.get('secondaryImbalances', [])
+        
+        # Ensure secondary is a list
+        if isinstance(secondary, str):
+            secondary = [secondary] if secondary else []
+        
+        # Limit to max 1 secondary hormone
+        secondary = secondary[:1] if secondary else []
+        
+        user_hormones = {
+            'primary': primary.lower() if primary else '',
+            'secondary': [s.lower() for s in secondary if s]
         }
+        
+        logger.info(f"🧬 Extracted user hormones: primary={user_hormones['primary']}, secondary={user_hormones['secondary']}")
+        
+        return user_hormones
