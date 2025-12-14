@@ -31,7 +31,7 @@ from app.models.chat_models import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(tags=["chat"])  # No prefix here - api.py adds /chat prefix
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
