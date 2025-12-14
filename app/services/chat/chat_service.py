@@ -263,7 +263,7 @@ class ChatService:
     async def handle_slider_response(
         self,
         user_id: str,
-        session_id: str,
+        session_id: Optional[str],
         value: int,
         context: Dict[str, Any]
     ) -> ChatMessageResponse:

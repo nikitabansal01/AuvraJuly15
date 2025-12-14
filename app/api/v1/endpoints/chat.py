@@ -60,7 +60,7 @@ class VoiceMessageUploadRequest(BaseModel):
 class SliderRequest(BaseModel):
     """Request for slider response."""
     user_id: str
-    session_id: str  # UUID string
+    session_id: Optional[str] = None  # UUID string (optional: slider can start a session)
     value: int
     context: Dict[str, Any]
 
