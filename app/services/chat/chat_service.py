@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.chat_models import (
     ChatMessageRequest, ChatMessageResponse, VoiceMessageRequest,
     ConversationContext, InputMode, ResponseType, SliderConfig, ChatAction
@@ -51,6 +52,7 @@ class ChatService:
         
         This is the main entry point for text messages.
         """
+        session = None
         try:
             logger.info(f"Processing message for user {request.user_id}")
             
@@ -68,6 +70,37 @@ class ChatService:
                 content=request.message,
                 input_mode=request.input_mode.value if request.input_mode else "type"
             )
+
+            # The LangGraph agent currently relies on OpenAI-compatible chat models
+            # via LangChain's ChatOpenAI wrapper. If OPENAI_API_KEY isn't set,
+            # fail gracefully while preserving the session for the client.
+            if not settings.OPENAI_API_KEY:
+                content = (
+                    "I'm not fully connected right now, so I can't generate a full reply. "
+                    "If this is your app, set OPENAI_API_KEY on the server and try again."
+                )
+                response = ChatMessageResponse(
+                    session_id=str(session.id),
+                    content=content,
+                    response_type=ResponseType.TEXT,
+                    timestamp=datetime.utcnow(),
+                    metadata={
+                        "error_code": "missing_openai_api_key",
+                    },
+                )
+
+                try:
+                    await self.memory_service.save_message(
+                        session_id=session.id,
+                        role="assistant",
+                        content=response.content,
+                        response_type=response.response_type.value,
+                        metadata=response.metadata,
+                    )
+                except Exception:
+                    logger.exception("Failed saving fallback assistant message")
+
+                return response
             
             # 3. Load full context
             patient_profile = await self.user_context_service.get_patient_profile(request.user_id)
@@ -118,13 +151,33 @@ class ChatService:
             return response
             
         except Exception as e:
-            logger.error(f"Error processing message: {str(e)}")
-            return ChatMessageResponse(
-                session_id="error",
+            logger.exception("Error processing message")
+            safe_session_id = str(session.id) if session is not None else "error"
+
+            response = ChatMessageResponse(
+                session_id=safe_session_id,
                 content="I'm having trouble right now. Please try again in a moment. 💜",
                 response_type=ResponseType.TEXT,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.utcnow(),
+                metadata={
+                    "error_code": "chat_processing_error",
+                    "error_type": type(e).__name__,
+                },
             )
+
+            if session is not None:
+                try:
+                    await self.memory_service.save_message(
+                        session_id=session.id,
+                        role="assistant",
+                        content=response.content,
+                        response_type=response.response_type.value,
+                        metadata=response.metadata,
+                    )
+                except Exception:
+                    logger.exception("Failed saving error fallback assistant message")
+
+            return response
     
     async def process_voice_message(
         self,
@@ -175,7 +228,7 @@ class ChatService:
             return response
             
         except Exception as e:
-            logger.error(f"Error processing voice message: {str(e)}")
+            logger.exception("Error processing voice message")
             return ChatMessageResponse(
                 session_id="error",
                 content="I had trouble with the voice message. Could you try typing instead?",

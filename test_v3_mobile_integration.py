@@ -10,9 +10,17 @@ import asyncio
 import sys
 import os
 
+import pytest
+
 # Add app to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.getenv("RUN_INTEGRATION_TESTS") != "1",
+    reason="Integration test disabled by default (set RUN_INTEGRATION_TESTS=1 to enable)",
+)
 async def test_mobile_integration():
     """Test V3 through the AIService path (same as mobile app)"""
     from app.models.ai_models import UserProfile

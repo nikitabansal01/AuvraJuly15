@@ -12,6 +12,8 @@ Run with: python test_cycle_phase_calculation.py
 import sys
 from typing import NamedTuple, Dict
 
+import pytest
+
 
 # ============================================================================
 # COPY OF THE CONFIG AND CALCULATION LOGIC FOR TESTING
@@ -125,31 +127,38 @@ def print_cycle_breakdown(cycle_length_str: str):
     print(f"  └── Luteal:     {luteal_actual} days (CONSTANT)")
 
 
+@pytest.mark.parametrize("cycle_length_str", list(CYCLE_LENGTH_CONFIG.keys()))
 def test_all_days_for_cycle(cycle_length_str: str):
-    """Test phase determination for all days in a cycle."""
+    """Test phase determination for all days in a cycle.
+
+    This file is intentionally self-contained (it carries a copy of the logic)
+    so the test can run without requiring DB/API setup.
+    """
     config = CYCLE_LENGTH_CONFIG[cycle_length_str]
     cycle_days = config.avg_days
-    
-    print(f"\n{'─'*60}")
-    print(f"Daily Phase Map for {cycle_length_str} ({cycle_days} days):")
-    print(f"{'─'*60}")
-    
+
     phases = {"Menses phase": [], "Follicular phase": [], "Ovulation phase": [], "Luteal phase": []}
-    
+
     for day in range(1, cycle_days + 1):
         phase = determine_phase_scientific(
             cycle_day=day,
             total_cycle_days=config.avg_days,
             luteal_length=config.luteal_length,
             menstrual_length=config.menstrual_length,
-            ovulation_window=config.ovulation_window
+            ovulation_window=config.ovulation_window,
         )
+        assert phase in phases, f"Unexpected phase '{phase}' for day {day} in {cycle_length_str}"
         phases[phase].append(day)
-    
-    for phase_name, days in phases.items():
-        if days:
-            day_range = f"Day {days[0]}-{days[-1]}" if len(days) > 1 else f"Day {days[0]}"
-            print(f"  {phase_name}: {day_range} ({len(days)} days)")
+
+    # Every day should be assigned exactly one phase.
+    all_days = sorted([d for days in phases.values() for d in days])
+    assert all_days == list(range(1, cycle_days + 1))
+
+    # Ovulation day (total - luteal length) should always fall within ovulation phase.
+    ovulation_day = cycle_days - config.luteal_length
+    assert ovulation_day in phases["Ovulation phase"], (
+        f"Ovulation day {ovulation_day} not in ovulation phase for {cycle_length_str}"
+    )
 
 
 def run_edge_case_tests():
