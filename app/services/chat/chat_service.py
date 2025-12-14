@@ -222,7 +222,7 @@ class ChatService:
             logger.error(f"Error getting session history: {str(e)}")
             return []
     
-    async def end_session(self, session_id: int) -> bool:
+    async def end_session(self, session_id: str) -> bool:
         """
         End a chat session and generate summary.
         """

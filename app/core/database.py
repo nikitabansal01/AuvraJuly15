@@ -408,10 +408,16 @@ class ChatSession(Base):
     # Timestamps
     started_at = Column(DateTime, default=datetime.utcnow)
     last_message_at = Column(DateTime, default=datetime.utcnow)
+    # NOTE: Several services order/filter by created_at; keep it for compatibility
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     ended_at = Column(DateTime, nullable=True)
     
-    # Metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name conflict)
-    session_metadata = Column(JSONB, default=dict)
+    # Metadata (DB column name is "metadata"; attribute name avoids SQLAlchemy reserved name conflict)
+    session_metadata = Column("metadata", JSONB, default=dict)
+
+    # Optional session-level summary text
+    summary = Column(Text, nullable=True)
     
     # Indexes
     __table_args__ = (
@@ -463,6 +469,9 @@ class ChatMessage(Base):
     
     # Evaluation scores (for quality monitoring)
     evaluation_scores = Column(JSONB, nullable=True)  # {faithfulness, relevancy, empathy, safety}
+
+    # Free-form metadata for messages (DB column exists in migrations)
+    message_metadata = Column(JSONB, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -70,9 +70,13 @@ class ChatMemoryService:
                 user_id=user_id,
                 conversation_context=conversation_context.value,
                 status="active",
-                current_step=0,
-                flow_data=metadata or {},
-                created_at=datetime.utcnow()
+                current_step="0",
+                current_flow_data=metadata or {},
+                session_metadata=metadata or {},
+                started_at=datetime.utcnow(),
+                last_message_at=datetime.utcnow(),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
             )
             self.db.add(session)
             self.db.commit()
@@ -149,6 +153,7 @@ class ChatMemoryService:
             ).first()
             if session:
                 session.updated_at = datetime.utcnow()
+                session.last_message_at = datetime.utcnow()
                 self.db.commit()
             
             return message
@@ -195,10 +200,11 @@ class ChatMemoryService:
         """
         try:
             # Get recent conversation summaries
+            start_date = (datetime.utcnow() - timedelta(days=days)).date()
             summaries = self.db.query(ConversationSummary).filter(
                 and_(
                     ConversationSummary.user_id == user_id,
-                    ConversationSummary.period_start >= datetime.utcnow() - timedelta(days=days)
+                    ConversationSummary.period_start >= start_date
                 )
             ).order_by(desc(ConversationSummary.period_start)).limit(5).all()
             
@@ -214,10 +220,10 @@ class ChatMemoryService:
             return {
                 "conversation_summaries": [
                     {
-                        "period": f"{s.period_start.date()} to {s.period_end.date()}",
-                        "summary": s.summary,
-                        "topics": s.topics_discussed,
-                        "insights": s.ai_insights
+                        "period": f"{s.period_start} to {s.period_end}",
+                        "summary": (s.summary_data or {}).get("summary"),
+                        "topics": (s.summary_data or {}).get("topics_discussed") or (s.summary_data or {}).get("topics"),
+                        "insights": (s.summary_data or {}).get("ai_insights") or (s.summary_data or {}).get("insights"),
                     }
                     for s in summaries
                 ],
@@ -301,13 +307,15 @@ class ChatMemoryService:
             # Create summary record
             summary = ConversationSummary(
                 user_id=user_id,
-                period_start=start_date,
-                period_end=end_date,
+                period_start=start_date.date(),
+                period_end=end_date.date(),
                 summary_type="weekly",
-                summary=summary_text,
-                topics_discussed=list(topics),
-                messages_count=len(all_messages),
-                sessions_count=len(sessions)
+                summary_data={
+                    "summary": summary_text,
+                    "topics_discussed": sorted(list(topics)),
+                    "messages_count": len(all_messages),
+                    "sessions_count": len(sessions),
+                },
             )
             
             self.db.add(summary)
@@ -376,7 +384,7 @@ class ChatMemoryService:
     # HELPER METHODS
     # ═══════════════════════════════════════════════════════════════════════════
     
-    async def _generate_session_summary(self, session_id: int) -> str:
+    async def _generate_session_summary(self, session_id: str) -> str:
         """
         Generate a summary of a session using AI.
         """
