@@ -8,6 +8,7 @@ from app.api.v1.endpoints import scheduling
 from app.api.v1.endpoints import progress
 from app.api.v1.endpoints import new_scheduling
 from app.api.v1.endpoints import cycle
+from app.api.v1.endpoints import chat
 
 api_router = APIRouter()
 
@@ -42,4 +43,7 @@ api_router.include_router(progress.router, prefix="/progress", tags=["progress"]
 api_router.include_router(new_scheduling.router, prefix="/new-scheduling", tags=["new-scheduling"])
 
 # Menstrual cycle router
-api_router.include_router(cycle.router, prefix="/cycle", tags=["cycle"]) 
+api_router.include_router(cycle.router, prefix="/cycle", tags=["cycle"])
+
+# AI Chatbot router (LangGraph-powered)
+api_router.include_router(chat.router, prefix="/chat", tags=["chat"]) 

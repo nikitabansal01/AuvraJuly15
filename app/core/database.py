@@ -138,6 +138,7 @@ class UserProfile(Base):
     email = Column(String(255), nullable=True)  # Retrieved from Firebase Auth
     current_timezone = Column(String(50), default="Asia/Seoul")  # Current user timezone
     lifestyle_focus = Column(ARRAY(String), nullable=True)  # User's preferred focus areas: ["eat", "move", "pause"]
+    chatbot_memory = Column(JSONB, nullable=True)  # Permanent memory for chatbot (preferences, facts)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -384,6 +385,196 @@ class DailyAssignment(Base):
         Index('idx_assignment_user_date', 'uid', 'assignment_date'),
         Index('idx_assignment_schedule_date', 'schedule_id', 'assignment_date'),
     )
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CHATBOT MODELS - Doctor-like AI Assistant
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ChatSession(Base):
+    """Chat conversation sessions"""
+    __tablename__ = "chat_sessions"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Conversation context
+    conversation_context = Column(String(50), nullable=False, default="general")  # care_plan_modal, symptom_checkin, personalise, know_body, general
+    
+    # State tracking
+    status = Column(String(20), default="active")  # active, completed, archived
+    current_step = Column(String(100), nullable=True)  # Track conversation flow position
+    current_flow_data = Column(JSONB, default=dict)  # Store temporary flow state data
+    
+    # Timestamps
+    started_at = Column(DateTime, default=datetime.utcnow)
+    last_message_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime, nullable=True)
+    
+    # Metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name conflict)
+    session_metadata = Column(JSONB, default=dict)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_chat_sessions_user_status', 'user_id', 'status'),
+        Index('idx_chat_sessions_last_msg', 'last_message_at'),
+    )
+    
+    # Relationships
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+
+
+class ChatMessage(Base):
+    """Individual chat messages"""
+    __tablename__ = "chat_messages"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Message content
+    role = Column(String(20), nullable=False)  # user, assistant, system
+    content = Column(Text, nullable=False)
+    
+    # Input metadata (for user messages)
+    input_mode = Column(String(10), nullable=True)  # tap, yap, type
+    selected_choice = Column(String(255), nullable=True)  # If tap mode, which button pressed
+    slider_value = Column(Integer, nullable=True)  # If slider input (1-9)
+    
+    # Response metadata (for assistant messages)
+    response_type = Column(String(20), nullable=True)  # text, choice_buttons, slider, confirmation
+    choices = Column(JSONB, nullable=True)  # Array of choice options shown
+    slider_config = Column(JSONB, nullable=True)  # {min, max, labels, step}
+    actions = Column(JSONB, default=list)  # Frontend actions to trigger [{type, target, params}]
+    
+    # Tool execution
+    tools_called = Column(JSONB, default=list)  # [{name, input, output, duration_ms}]
+    
+    # RAG context
+    retrieval_context = Column(JSONB, nullable=True)  # Retrieved documents/papers used
+    
+    # Voice metadata
+    audio_url = Column(String(500), nullable=True)
+    transcription_confidence = Column(Integer, nullable=True)  # 0-100
+    
+    # LLM metadata
+    model_used = Column(String(50), nullable=True)
+    tokens_input = Column(Integer, nullable=True)
+    tokens_output = Column(Integer, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    
+    # Evaluation scores (for quality monitoring)
+    evaluation_scores = Column(JSONB, nullable=True)  # {faithfulness, relevancy, empathy, safety}
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_chat_messages_session_created', 'session_id', 'created_at'),
+    )
+    
+    # Relationships
+    session = relationship("ChatSession", back_populates="messages")
+
+
+class SymptomLog(Base):
+    """User symptom tracking logs (from chatbot interactions)"""
+    __tablename__ = "symptom_logs"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Symptom data
+    symptom_type = Column(String(50), nullable=False)  # bloating, pain, mood, energy, cramps, headache, etc.
+    severity = Column(Integer, nullable=False)  # 1-9 scale
+    notes = Column(Text, nullable=True)
+    
+    # Contextual factors reported with symptom
+    factors = Column(JSONB, default=list)  # ["more_stress", "less_sleep", "ate_out", ...]
+    
+    # Cycle context (snapshot at time of logging)
+    cycle_day = Column(Integer, nullable=True)
+    phase = Column(String(30), nullable=True)  # Menses, Follicular, Ovulation, Luteal
+    
+    # Source tracking
+    logged_via = Column(String(30), default="chatbot")  # chatbot, manual, weekly_checkin
+    chat_message_id = Column(String(36), ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True)
+    
+    # Timestamps
+    logged_at = Column(DateTime, default=datetime.utcnow)
+    logged_date = Column(Date, default=date.today)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_symptom_logs_user_type_date', 'user_id', 'symptom_type', 'logged_date'),
+        Index('idx_symptom_logs_user_date', 'user_id', 'logged_date'),
+    )
+
+
+class ConversationSummary(Base):
+    """Summarized conversation insights for memory (Layer 2)"""
+    __tablename__ = "conversation_summaries"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Summary period
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    summary_type = Column(String(20), nullable=False)  # weekly, monthly
+    
+    # Summary content
+    summary_data = Column(JSONB, nullable=False)
+    # Structure:
+    # {
+    #     "symptoms_reported": [{"type": "bloating", "avg_severity": 6.5, "count": 3, "trend": "improving"}],
+    #     "common_factors": ["stress", "sleep"],
+    #     "completions": {"total": 35, "rate": 0.82, "streak_days": 5},
+    #     "concerns_mentioned": ["fatigue", "mood"],
+    #     "preferences_changed": ["added dietary restriction"],
+    #     "key_interactions": ["asked about progesterone", "skipped yoga 3x", "loved meditation"]
+    # }
+    
+    # Timestamps
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Unique constraint
+    __table_args__ = (
+        Index('idx_conv_summaries_user_period', 'user_id', 'summary_type', 'period_start', unique=True),
+    )
+
+
+class AssignmentSkipLog(Base):
+    """Track when users skip assignments (for chatbot analytics)"""
+    __tablename__ = "assignment_skip_logs"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    assignment_id = Column(BigInteger, ForeignKey("daily_assignments.id", ondelete="CASCADE"), nullable=False)
+    recommendation_id = Column(Integer, ForeignKey("recommendation_records.id", ondelete="CASCADE"), nullable=False)
+    
+    # Skip details
+    skip_reason = Column(String(100), nullable=True)  # no_time, not_feeling_well, dont_like, other
+    reason_notes = Column(Text, nullable=True)
+    
+    # Alternative offered/taken
+    alternative_offered = Column(Boolean, default=False)
+    alternative_taken_id = Column(Integer, nullable=True)  # If they chose an alternative
+    
+    # Context
+    cycle_day = Column(Integer, nullable=True)
+    phase = Column(String(30), nullable=True)
+    chat_session_id = Column(String(36), nullable=True)
+    
+    # Timestamps
+    skipped_at = Column(DateTime, default=datetime.utcnow)
+    skip_date = Column(Date, default=date.today)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_skip_logs_user_date', 'user_id', 'skip_date'),
+        Index('idx_skip_logs_recommendation', 'recommendation_id'),
+    )
+
 
 # Database table creation
 def create_tables():
