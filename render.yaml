@@ -21,7 +21,20 @@ services:
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
         sync: false
-      # Gemini LLM for "Others" text processing (new feature)
+      # OpenAI API - REQUIRED for chatbot (LangGraph agent, voice transcription, memory)
+      - key: OPENAI_API_KEY
+        sync: false
+      # Groq API - Optional fallback LLM
+      - key: GROQ_API_KEY
+        sync: false
+      # Pinecone - REQUIRED for chatbot RAG (search_health_knowledge tool)
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX
+        value: "auvra-papers"
+      - key: PINECONE_ENVIRONMENT
+        value: "us-east-1"
+      # Gemini LLM for "Others" text processing (V3 recommendations)
       - key: GEMINI_API_KEY
         sync: false
       - key: ENABLE_LLM_OTHERS
