@@ -288,6 +288,59 @@ async def send_voice_file(
         )
 
 
+@router.get("/sessions")
+async def get_sessions_query(
+    user_id: str,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+) -> List[SessionResponse]:
+    """Compatibility endpoint: get user's chat sessions via query param.
+
+    Mobile frontend calls: GET /api/v1/chat/sessions?user_id=...&limit=...
+    """
+    try:
+        # Validate user
+        if not validate_user(user_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        from app.core.database import ChatSession, ChatMessage
+        from sqlalchemy import desc, func
+
+        sessions = db.query(ChatSession).filter(
+            ChatSession.user_id == user_id
+        ).order_by(desc(ChatSession.created_at)).limit(limit).all()
+
+        result = []
+        for session in sessions:
+            # Count messages
+            msg_count = db.query(func.count(ChatMessage.id)).filter(
+                ChatMessage.session_id == session.id
+            ).scalar()
+
+            result.append(SessionResponse(
+                session_id=session.id,
+                conversation_context=session.conversation_context,
+                status=session.status,
+                created_at=session.created_at,
+                message_count=msg_count,
+                summary=session.summary
+            ))
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sessions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting sessions: {str(e)}"
+        )
+
+
 @router.get("/sessions/{user_id}")
 async def get_sessions(
     user_id: str,
@@ -467,6 +520,18 @@ async def get_greeting(
             greeting="Hi there! How can I help you today? 💜",
             triggers=None
         )
+
+
+@router.get("/greeting", response_model=GreetingResponse)
+async def get_greeting_query(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """Compatibility endpoint: get proactive greeting via query param.
+
+    Mobile frontend calls: GET /api/v1/chat/greeting?user_id=...
+    """
+    return await get_greeting(user_id=user_id, db=db)
 
 
 @router.post("/slider", response_model=ChatMessageResponse)

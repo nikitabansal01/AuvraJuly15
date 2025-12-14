@@ -1,17 +1,22 @@
 from fastapi import APIRouter, Depends
 from app.core.config import settings
 from datetime import datetime
+import os
 
 router = APIRouter()
 
 
+@router.get("")
 @router.get("/")
 async def health_check():
     """Check application health status."""
     return {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
-        "version": settings.VERSION
+        "version": settings.VERSION,
+        # Render sets this env var automatically for builds; safe to expose.
+        "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
+        "render_service_id": os.getenv("RENDER_SERVICE_ID"),
     }
 
 
@@ -22,6 +27,8 @@ async def detailed_health_check():
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
         "version": settings.VERSION,
+        "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
+        "render_service_id": os.getenv("RENDER_SERVICE_ID"),
         "debug": settings.DEBUG,
         "host": settings.HOST,
         "port": settings.PORT
