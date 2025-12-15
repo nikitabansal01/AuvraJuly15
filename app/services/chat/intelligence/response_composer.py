@@ -41,7 +41,7 @@ class SliderConfig:
     
     def __post_init__(self):
         if self.labels is None:
-            self.labels = ["None", "Mild", "Moderate", "Strong", "Extreme"]
+            self.labels = ["None 😊", "Mild", "Moderate", "Strong", "Intense 💪"]
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -86,31 +86,31 @@ class ResponseComposer:
     - Feels natural and helpful
     """
     
-    # Context-aware choice templates
+    # Context-aware choice templates (engaging and friendly)
     CONTEXTUAL_CHOICES = {
         "care_plan_modal": {
-            "general": ["Show my plan", "Mark something done", "I need to skip something"],
-            "completed_task": ["What's next?", "I'm done for now", "How am I doing?"],
-            "wants_to_skip": ["Suggest alternative", "Skip for today", "Reschedule for later"],
-            "overwhelmed": ["Just show one thing", "I need a break", "What's most important?"],
-            "motivated": ["What else can I do?", "Show my progress", "Challenge me!"],
-            "question_asked": ["Yes", "No", "Tell me more"]
+            "general": ["✨ Show my plan", "✅ Mark something done", "🔄 I need to skip something"],
+            "completed_task": ["🎯 What's next?", "😌 I'm done for now", "📊 How am I doing?"],
+            "wants_to_skip": ["💡 Suggest alternative", "⏭️ Skip for today", "📅 Reschedule for later"],
+            "overwhelmed": ["🎯 Just show one thing", "☕ I need a break", "⭐ What's most important?"],
+            "motivated": ["💪 What else can I do?", "📈 Show my progress", "🚀 Challenge me!"],
+            "question_asked": ["Yes please! 💜", "No thanks", "Tell me more 🤔"]
         },
         "symptom_checkin": {
-            "general": ["Log a symptom", "Check my trends", "I'm feeling good today"],
-            "logging_symptom": ["Log another", "That's all", "What does this mean?"],
-            "high_severity": ["What can help?", "Should I worry?", "It's manageable"],
-            "pattern_mentioned": ["Tell me more", "What can I do?", "Got it"],
-            "feeling_good": ["Track energy level", "Note what's working", "Just checking in"]
+            "general": ["📝 Log a symptom", "📊 Check my trends", "✨ I'm feeling good today!"],
+            "logging_symptom": ["➕ Log another", "✅ That's all", "🤔 What does this mean?"],
+            "high_severity": ["💊 What can help?", "🤔 Should I worry?", "👍 It's manageable"],
+            "pattern_mentioned": ["📖 Tell me more", "💪 What can I do?", "👍 Got it!"],
+            "feeling_good": ["⚡ Track energy level", "📝 Note what's working", "👋 Just checking in"]
         },
         "personalise": {
-            "general": ["Update my preferences", "See my profile", "Change notifications"],
-            "making_change": ["Save changes", "Actually, nevermind", "What else can I change?"]
+            "general": ["⚙️ Update my preferences", "👤 See my profile", "🔔 Change notifications"],
+            "making_change": ["💾 Save changes", "↩️ Actually, nevermind", "🔧 What else can I change?"]
         },
         "know_body": {
-            "general": ["Ask a question", "Explain my cycle", "Hormone basics"],
-            "answered_question": ["I have another question", "That makes sense", "Can you explain more?"],
-            "learning": ["What else should I know?", "How does this affect me?", "Got it, thanks!"]
+            "general": ["❓ Ask a question", "🌙 Explain my cycle", "🧬 Hormone basics"],
+            "answered_question": ["🙋 I have another question", "💡 That makes sense", "📚 Can you explain more?"],
+            "learning": ["📖 What else should I know?", "🎯 How does this affect me?", "👍 Got it, thanks!"]
         }
     }
     
@@ -127,15 +127,15 @@ class ResponseComposer:
         r"how would you rate"
     ]
     
-    # Symptom types for slider labeling
+    # Symptom types for slider labeling (friendly labels)
     SYMPTOM_LABELS = {
-        "bloating": ["None", "Barely there", "Mild", "Moderate", "Extreme"],
-        "cramps": ["None", "Slight", "Mild", "Moderate", "Severe"],
-        "headache": ["None", "Slight", "Mild", "Moderate", "Severe"],
-        "fatigue": ["Energized", "Good", "Okay", "Tired", "Exhausted"],
-        "mood": ["Great", "Good", "Okay", "Low", "Very low"],
-        "anxiety": ["Calm", "Slight unease", "Mild", "Moderate", "Severe"],
-        "pain": ["None", "Minimal", "Mild", "Moderate", "Severe"]
+        "bloating": ["None 😊", "Barely there", "Mild", "Noticeable", "Very bloated 😔"],
+        "cramps": ["None 😊", "Slight", "Mild", "Moderate", "Intense 😣"],
+        "headache": ["None 😊", "Slight", "Mild", "Moderate", "Severe 😔"],
+        "fatigue": ["Energized ⚡", "Good", "Okay", "Tired", "Exhausted 😴"],
+        "mood": ["Great 😊", "Good", "Okay", "Low 😔", "Very low 💙"],
+        "anxiety": ["Calm ☮️", "Slight unease", "Mild", "Moderate", "Overwhelming 😰"],
+        "pain": ["None 😊", "Minimal", "Mild", "Moderate", "Severe 😣"]
     }
     
     def __init__(self):
@@ -233,7 +233,7 @@ class ResponseComposer:
         emotional_reading: Optional[Dict[str, Any]],
         user_message: Optional[str]
     ) -> Optional[List[str]]:
-        """Generate smart, contextual choice buttons."""
+        """Generate smart, contextual, engaging choice buttons."""
         content_lower = content.lower()
         
         # Get context-specific choices
@@ -244,30 +244,32 @@ class ResponseComposer:
         # Question asked pattern
         if "would you like" in content_lower or content.rstrip().endswith("?"):
             if "yes" in content_lower or "no" in content_lower:
-                return ["Yes, please", "No, thanks", "Tell me more"]
+                return ["Yes please! 💜", "No thanks", "Tell me more 🤔"]
         
         # Celebration/completion
         if emotional_reading and emotional_reading.get("ready_to_celebrate"):
             if conversation_context == "care_plan_modal":
-                return context_choices.get("completed_task", ["What's next?", "I'm done for now"])
+                return context_choices.get("completed_task", ["🎯 What's next?", "😌 I'm done for now"])
         
         # User seems overwhelmed
         if emotional_reading and emotional_reading.get("needs_support"):
             if conversation_context == "care_plan_modal":
-                return context_choices.get("overwhelmed", ["Just show one thing", "I need a break"])
+                return context_choices.get("overwhelmed", ["🎯 Just show one thing", "☕ I need a break"])
         
         # High severity symptom mentioned
         if conversation_context == "symptom_checkin":
             if any(word in content_lower for word in ["severe", "high", "bad", "painful"]):
-                return context_choices.get("high_severity", ["What can help?", "Should I worry?"])
+                return context_choices.get("high_severity", ["💊 What can help?", "🤔 Should I worry?"])
         
-        # Pattern-based choices
+        # Pattern-based choices (engaging with emojis)
         choice_patterns = {
-            "skip": ["Suggest alternative", "Skip for today", "Maybe tomorrow"],
-            "done": ["Great! What's next?", "I'm done for now", "How am I doing?"],
-            "how are you feeling": ["Great 🌟", "Okay", "Not great", "Need support"],
-            "let me know": ["Yes please!", "Not right now", "Tell me more first"],
-            "any questions": ["Yes, I have one", "No, I'm good", "Actually..."]
+            "skip": ["💡 Suggest alternative", "⏭️ Skip for today", "📅 Maybe tomorrow"],
+            "done": ["🎉 Great! What's next?", "😌 I'm done for now", "📊 How am I doing?"],
+            "how are you feeling": ["🌟 Great!", "👍 Okay", "😔 Not great", "💙 Need support"],
+            "let me know": ["Yes please! 💜", "⏸️ Not right now", "🤔 Tell me more first"],
+            "any questions": ["🙋 Yes, I have one", "👍 No, I'm good", "🤔 Actually..."],
+            "what can i help": ["📝 Track a symptom", "📋 Check my plan", "❓ Ask a question"],
+            "anything else": ["✨ Yes, one more thing", "👍 That's all", "💭 Let me think"]
         }
         
         for pattern, choices in choice_patterns.items():

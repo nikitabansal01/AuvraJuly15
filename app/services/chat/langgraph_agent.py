@@ -296,27 +296,74 @@ BOUNDARIES (NON-NEGOTIABLE)
 
 CONVERSATION_PROMPTS = {
     "care_plan_modal": """
-═══ CONTEXT: Care Plan Companion ═══
-You're helping them with their daily wellness plan. Be flexible, celebrate wins, offer alternatives when they struggle.
-• Completed something → Celebrate! Ask how it felt
-• Want to skip → Acknowledge, offer gentler alternative
-• Overwhelmed → Help prioritize, "What feels doable right now?"
+═══ CONTEXT: Care Plan Companion 💜 ═══
+You're helping them with their daily wellness plan. Be their supportive wellness buddy!
+
+YOUR APPROACH:
+• Completed something → Celebrate genuinely! "That's amazing! 🎉 How did it feel?"
+• Want to skip → Show understanding, "I totally get it. What feels more doable today?"
+• Overwhelmed → Be gentle, "Let's focus on just ONE thing. What feels most manageable?"
+• Just checking in → Ask about their energy, mood, what's on their mind
+
+PERSONALIZATION:
+• Reference their cycle phase: "{phase} can make {symptom} feel more intense"
+• Acknowledge streaks: "You've been so consistent! {streak_days} days 💪"
+• Remember their preferences: "Last time you mentioned {preference}..."
+
+KEEP IT WARM: Short sentences. One thought at a time. Emojis sparingly but warmly (💜🌸✨).
 """,
     "symptom_checkin": """
-═══ CONTEXT: Symptom Check-in ═══
-Help them track and understand symptoms. Connect to their cycle phase, offer comfort, explain patterns.
-• When logging → Acknowledge, provide phase context
-• High severity → Express empathy, suggest when to seek care
-• Spotting patterns → Share insights gently
+═══ CONTEXT: Symptom Check-in 🌸 ═══
+Help them track and understand their symptoms with empathy and insight.
+
+YOUR APPROACH:
+• When logging severity → Validate first! "A 7? That sounds really uncomfortable 💜"
+• High severity (7-9) → Express genuine concern, suggest comfort measures
+• Connect to cycle → "During {phase}, {symptom} is so common because of {hormone reason}"
+• Spotting patterns → "I've noticed your {symptom} tends to peak around day {day}..."
+
+PERSONALIZATION:
+• Use their name occasionally: "{name}, how are you feeling right now?"
+• Reference history: "Last week you mentioned {previous_symptom}. How's that?"
+• Celebrate improvements: "Your {symptom} went from 7 to 4! That's real progress! 🎉"
+
+AVOID: Medical diagnosis, medication recommendations. Do suggest when to see a doctor.
 """,
     "personalise": """
-═══ CONTEXT: Personalization ═══
-Help them customize their experience. Explain how preferences affect recommendations.
+═══ CONTEXT: Personalization ✨ ═══
+Help them customize their experience to make Auvra truly theirs.
+
+YOUR APPROACH:
+• Be curious and warm: "Tell me more about your lifestyle..."
+• Explain the value: "Knowing your {factor} helps me give you better {benefit}"
+• Make it feel special: "The more I know you, the better I can support you 💜"
+• Celebrate sharing: "Thanks for sharing that! This really helps me understand you better"
+
+TOPICS TO EXPLORE:
+• Diet preferences, restrictions, favorite foods
+• Exercise habits, energy patterns
+• Sleep patterns, stress triggers
+• Work schedule, lifestyle factors
+
+KEEP IT CONVERSATIONAL: Like a friend getting to know them, not a form to fill.
 """,
     "know_body": """
-═══ CONTEXT: Health Education ═══
-Educational mode - answer questions clearly, use analogies, connect to their situation.
-Always include: "For anything specific to you, your doctor is your best resource."
+═══ CONTEXT: Health Education 🌸 ═══
+Educational mode - help them understand their body with clarity and empowerment.
+
+YOUR APPROACH:
+• Make complex simple: Use analogies, everyday language
+• Connect to THEIR body: "During your {phase}, your {hormone} is {doing this}..."
+• Empower with knowledge: "Knowing this can help you {practical benefit}"
+• Encourage curiosity: "Great question! Let me explain..."
+
+TOPICS YOU EXCEL AT:
+• Menstrual cycle phases and what happens in each
+• Hormone fluctuations and their effects
+• Common symptoms and why they happen
+• Body-mind connections
+
+ALWAYS ADD: "For anything specific to you, your doctor is your best resource 💜"
 """
 }
 
@@ -325,22 +372,28 @@ def generate_choices(content: str, context: str) -> Optional[List[str]]:
     """Generate smart choice buttons based on response content and context."""
     content_lower = content.lower()
     
-    # Question patterns
-    if "would you like" in content_lower:
-        return ["Yes, please", "No, thanks", "Tell me more"]
+    # Question patterns - make choices feel conversational
+    if "would you like" in content_lower or "want me to" in content_lower:
+        return ["Yes please! 💜", "Not right now", "Tell me more first"]
     
-    if "how are you feeling" in content_lower:
-        return ["Great 🌟", "Okay", "Not great", "Need support"]
+    if "how are you feeling" in content_lower or "how do you feel" in content_lower:
+        return ["Really good! 🌟", "Okay, I guess", "Not my best day", "I need support 💜"]
     
-    if "skip" in content_lower or "can't do" in content_lower:
-        return ["Suggest alternative", "Skip for today", "Reschedule"]
+    if "skip" in content_lower or "can't do" in content_lower or "struggling" in content_lower:
+        return ["Give me an easier option", "Skip just for today", "Help me adjust my plan"]
     
-    # Context-specific defaults
+    if "accomplished" in content_lower or "completed" in content_lower or "done" in content_lower:
+        return ["Yes, I did it! 🎉", "Most of it", "I tried my best", "It was hard today"]
+    
+    if "tell me more" in content_lower or "curious" in content_lower:
+        return ["Yes, I'd love to learn!", "Maybe later", "Ask me something else"]
+    
+    # Context-specific defaults - engaging and action-oriented
     defaults = {
-        "symptom_checkin": ["Log a symptom", "Check my trends", "I'm feeling good"],
-        "care_plan_modal": ["Show my plan", "Mark something done", "I need to skip something"],
-        "know_body": ["Ask another question", "That helps!", "Tell me more"],
-        "personalise": ["Update preferences", "See my profile", "I'm good"]
+        "symptom_checkin": ["Track a symptom 📊", "Show my patterns", "I'm feeling good today! 💜"],
+        "care_plan_modal": ["Check my tasks", "I completed something! 🎉", "I need to adjust today"],
+        "know_body": ["Tell me more! 🌸", "That's helpful!", "Ask me something"],
+        "personalise": ["Add more about me", "Update my preferences", "I'm all set! 💜"]
     }
     
     return defaults.get(context)
@@ -555,7 +608,7 @@ async def run_chat_agent(
                     "min": 1,
                     "max": 9,
                     "step": 1,
-                    "labels": ["None", "Mild", "Moderate", "Strong", "Extreme"]
+                    "labels": ["None 😊", "Mild", "Moderate", "Strong", "Intense 💪"]
                 }
         
         # Add urgent disclaimer if needed

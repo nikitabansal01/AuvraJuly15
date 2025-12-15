@@ -305,10 +305,11 @@ class ContextEngine:
         from app.core.database import SymptomLog
         
         # Look at symptoms from the same phase in past cycles
+        # Note: SymptomLog uses 'phase' column, not 'cycle_phase'
         similar_symptoms = self.db.query(SymptomLog).filter(
             and_(
                 SymptomLog.user_id == user_id,
-                SymptomLog.cycle_phase.ilike(f"%{phase}%")
+                SymptomLog.phase.ilike(f"%{phase}%")
             )
         ).order_by(desc(SymptomLog.logged_at)).limit(20).all()
         
