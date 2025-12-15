@@ -50,7 +50,7 @@ class UserContextService:
             ).order_by(desc(UserResponse.created_at)).first()
             
             # Get cycle info
-            cycle_info = self.cycle_service.get_cycle_info(user_id)
+            cycle_info = self.cycle_service.get_cycle_phase_info(user_id)
             
             # Build patient profile
             profile = PatientProfile(
@@ -58,10 +58,10 @@ class UserContextService:
                 name=user_profile.name if user_profile else None,
                 age=user_response.age if user_response else None,
                 
-                # Cycle info
+                # Cycle info - use getattr for optional fields not in CyclePhaseInfo
                 cycle_day=cycle_info.cycle_day if cycle_info else None,
                 phase=cycle_info.phase if cycle_info else None,
-                phase_description=cycle_info.phase_description if cycle_info else None,
+                phase_description=getattr(cycle_info, 'phase_description', None) if cycle_info else None,
                 last_period_date=user_response.last_period_date_utc.date() if user_response and user_response.last_period_date_utc else None,
                 cycle_length=user_response.cycle_length if user_response else None,
                 

@@ -530,19 +530,18 @@ async def get_cycle_info(user_id: str, db_session: Any) -> Dict[str, Any]:
     from app.services.cycle_service import CycleService
     
     cycle_service = CycleService(db_session)
-    cycle_info = cycle_service.get_cycle_info(user_id)
+    cycle_info = cycle_service.get_cycle_phase_info(user_id)
     
-    if not cycle_info:
+    if not cycle_info or not cycle_info.cycle_day:
         return {"success": False, "error": "No cycle information available"}
     
+    phase = cycle_info.phase or "unknown"
     return {
         "success": True,
         "cycle_day": cycle_info.cycle_day,
-        "phase": cycle_info.phase,
-        "phase_description": cycle_info.phase_description,
-        "days_until_next_period": cycle_info.days_until_next_period,
-        "is_fertile_window": cycle_info.is_fertile_window,
-        "phase_recommendations": _get_phase_recommendations(cycle_info.phase)
+        "phase": phase,
+        "user_name": cycle_info.user_name,
+        "phase_recommendations": _get_phase_recommendations(phase.lower().replace(" phase", ""))
     }
 
 
