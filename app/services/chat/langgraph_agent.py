@@ -414,11 +414,49 @@ ALWAYS ADD: "For anything specific to you, your doctor is your best resource �
 }
 
 
-def generate_choices(content: str, context: str) -> Optional[List[str]]:
-    """Generate smart choice buttons based on response content and context."""
-    content_lower = content.lower()
+def generate_choices(content: str, context: str, user_message: str = "", tool_results: List[Dict] = None) -> Optional[List[str]]:
+    """
+    Generate SMART choice buttons based on response content, context, and tool results.
     
-    # Question patterns - make choices feel conversational
+    These should be contextually relevant and guide the conversation forward.
+    """
+    content_lower = content.lower()
+    message_lower = user_message.lower() if user_message else ""
+    
+    # If a tool was just used, generate relevant follow-ups
+    if tool_results:
+        for result in tool_results:
+            tool_name = result.get("tool", "")
+            tool_result = result.get("result", {})
+            
+            if tool_name == "update_user_preference":
+                if tool_result.get("success"):
+                    return ["Tell me more about myself", "What else can I personalize?", "That's all for now 💜"]
+            
+            if tool_name == "complete_assignment":
+                if tool_result.get("success"):
+                    return ["What's next on my plan?", "Show my progress 📊", "I'm done for now 💜"]
+            
+            if tool_name == "log_symptom":
+                if tool_result.get("success"):
+                    return ["Track another symptom", "Show my symptom trends 📊", "What might be causing this?"]
+            
+            if tool_name == "get_user_symptoms":
+                symptoms = tool_result.get("tracked_symptoms", {})
+                if symptoms:
+                    most_common = list(symptoms.keys())[0] if symptoms else None
+                    if most_common:
+                        return [f"Update my {most_common}", "Track something new", "Show my trends 📊"]
+    
+    # Question patterns - make choices feel conversational and relevant
+    if "what would you like to" in content_lower or "what specific" in content_lower:
+        if context == "care_plan_modal":
+            return ["Change the timing", "Try different activities", "Reduce the number of tasks"]
+        elif context == "personalise":
+            return ["🥗 My diet preferences", "💪 My exercise routine", "😴 My sleep schedule"]
+        elif context == "symptom_checkin":
+            return ["📊 Track a symptom", "🔍 See my patterns", "❓ Ask about a symptom"]
+    
     if "would you like" in content_lower or "want me to" in content_lower:
         return ["Yes please! 💜", "Not right now", "Tell me more first"]
     
@@ -431,18 +469,38 @@ def generate_choices(content: str, context: str) -> Optional[List[str]]:
     if "accomplished" in content_lower or "completed" in content_lower or "done" in content_lower:
         return ["Yes, I did it! 🎉", "Most of it", "I tried my best", "It was hard today"]
     
-    if "tell me more" in content_lower or "curious" in content_lower:
-        return ["Yes, I'd love to learn!", "Maybe later", "Ask me something else"]
+    # Personalisation-specific patterns
+    if context == "personalise":
+        if "diet" in content_lower or "food" in content_lower or "eat" in content_lower:
+            return ["I'm vegetarian 🥬", "No restrictions", "I have allergies"]
+        if "exercise" in content_lower or "workout" in content_lower:
+            return ["Light exercise 🚶", "Moderate 🏃", "Intense workouts 💪", "I don't exercise much"]
+        if "sleep" in content_lower:
+            return ["Less than 6 hours", "6-8 hours", "More than 8 hours"]
+        if "stress" in content_lower:
+            return ["Very stressed 😰", "Somewhat stressed", "Managing okay", "Not stressed 😊"]
+    
+    # Symptom checkin patterns
+    if context == "symptom_checkin":
+        if "bloating" in message_lower or "bloat" in content_lower:
+            return ["Yes, it's bothering me", "A little bit", "Not really today"]
+        if "cramps" in content_lower or "pain" in content_lower:
+            return ["Severe 😣", "Moderate", "Mild", "None today 😊"]
+    
+    # Care plan patterns
+    if context == "care_plan_modal":
+        if "change" in message_lower or "adjust" in message_lower:
+            return ["⏰ Change timing", "🔄 Different actions", "📉 Fewer tasks today"]
     
     # Context-specific defaults - engaging and action-oriented
     defaults = {
-        "symptom_checkin": ["Track a symptom 📊", "Show my patterns", "I'm feeling good today! 💜"],
-        "care_plan_modal": ["Check my tasks", "I completed something! 🎉", "I need to adjust today"],
-        "know_body": ["Tell me more! 🌸", "That's helpful!", "Ask me something"],
-        "personalise": ["Add more about me", "Update my preferences", "I'm all set! 💜"]
+        "symptom_checkin": ["📊 Track a symptom", "🔍 Show my patterns", "✨ I'm feeling good today!"],
+        "care_plan_modal": ["✅ Mark something done", "⏰ Adjust my schedule", "📋 Show today's plan"],
+        "know_body": ["📚 Tell me more!", "🌸 Explain another topic", "❓ I have a question"],
+        "personalise": ["🥗 My diet", "💪 My exercise", "😴 My sleep", "🎯 My goals"]
     }
     
-    return defaults.get(context)
+    return defaults.get(context, ["Yes please! 💜", "No thanks", "Tell me more 🤔"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -586,9 +644,31 @@ async def run_chat_agent(
         }
         relationship_note = relationship_notes.get(relationship_stage, "")
         
+        # Add tool usage instructions
+        tool_instructions = """
+IMPORTANT - TOOL USAGE:
+You have access to tools to take REAL ACTIONS. USE THEM when appropriate:
+
+• When user shares preferences (diet, exercise, sleep habits, allergies):
+  → ALWAYS call update_user_preference to SAVE this information
+  → Example: User says "I'm vegetarian" → call update_user_preference(preference_type="diet", preference_value="vegetarian")
+
+• When user asks about symptoms or wants to track:
+  → Call get_user_symptoms to see what they've tracked before
+  → Ask about THEIR actual symptoms, not generic ones
+
+• When user wants to complete/skip a task:
+  → Call complete_assignment or skip_assignment
+
+• When user asks about their body/hormones:
+  → Call explain_hormone or get_hormone_analysis
+
+NEVER just acknowledge preferences without saving them. The user expects their information to be remembered!
+"""
+        
         system_prompt = MASTER_SYSTEM_PROMPT.format(
             context_section=full_context,
-            conversation_guidance=conversation_guidance + "\n" + relationship_note,
+            conversation_guidance=conversation_guidance + "\n" + relationship_note + "\n" + tool_instructions,
             emotional_guidance=emotional_guidance
         )
         
@@ -610,13 +690,71 @@ async def run_chat_agent(
         messages.append(HumanMessage(content=message))
         
         # ═══════════════════════════════════════════════════════════════════
-        # STEP 6: GENERATE RESPONSE
+        # STEP 6: GENERATE RESPONSE WITH TOOLS
         # ═══════════════════════════════════════════════════════════════════
         
-        llm = get_llm()
-        response = await llm.ainvoke(messages)
+        # Get tools for this context
+        from app.services.chat.tools import get_tools_by_context
+        tools = get_tools_by_context(conversation_context)
         
-        raw_content = response.content if hasattr(response, 'content') else str(response)
+        # Bind tools to LLM
+        llm = get_llm()
+        llm_with_tools = llm.bind_tools(tools)
+        
+        # First call - may return tool calls
+        response = await llm_with_tools.ainvoke(messages)
+        
+        tool_calls_made = []
+        
+        # Check if response contains tool calls
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            logger.info(f"🔧 Tool calls requested: {[tc['name'] for tc in response.tool_calls]}")
+            
+            # Execute each tool call
+            for tool_call in response.tool_calls:
+                tool_name = tool_call['name']
+                tool_args = tool_call['args']
+                
+                # Inject user_id and db_session
+                tool_args['user_id'] = user_id
+                tool_args['db_session'] = db_session
+                
+                # Find and execute the tool
+                for tool in tools:
+                    if tool.name == tool_name:
+                        try:
+                            tool_result = await tool.ainvoke(tool_args)
+                            tool_calls_made.append({
+                                "tool": tool_name,
+                                "args": {k: v for k, v in tool_args.items() if k != 'db_session'},
+                                "result": tool_result
+                            })
+                            logger.info(f"✅ Tool {tool_name} executed: {tool_result.get('success', 'completed')}")
+                        except Exception as e:
+                            logger.error(f"❌ Tool {tool_name} failed: {str(e)}")
+                            tool_calls_made.append({
+                                "tool": tool_name,
+                                "error": str(e)
+                            })
+                        break
+            
+            # Add tool results to messages and get final response
+            from langchain_core.messages import ToolMessage
+            
+            messages.append(response)
+            for i, tool_call in enumerate(response.tool_calls):
+                result = tool_calls_made[i].get('result', tool_calls_made[i].get('error', 'Error'))
+                messages.append(ToolMessage(
+                    content=str(result),
+                    tool_call_id=tool_call['id']
+                ))
+            
+            # Get final response after tool execution
+            final_response = await llm_with_tools.ainvoke(messages)
+            raw_content = final_response.content if hasattr(final_response, 'content') else str(final_response)
+        else:
+            raw_content = response.content if hasattr(response, 'content') else str(response)
+        
         
         # ═══════════════════════════════════════════════════════════════════
         # STEP 7: COMPOSE & ENHANCE RESPONSE
@@ -642,10 +780,10 @@ async def run_chat_agent(
                     slider_config = composed.slider_config.to_dict()
             except Exception as e:
                 logger.warning(f"Response composition error: {e}")
-                choices = generate_choices(raw_content, conversation_context)
+                choices = generate_choices(raw_content, conversation_context, message, tool_calls_made)
         else:
-            # Basic choice generation
-            choices = generate_choices(raw_content, conversation_context)
+            # Basic choice generation - include tool results for smarter choices
+            choices = generate_choices(raw_content, conversation_context, message, tool_calls_made)
             
             # Basic slider detection
             if any(phrase in raw_content.lower() for phrase in ["how severe", "scale of", "rate your", "1 to"]):
@@ -680,7 +818,7 @@ async def run_chat_agent(
             "choices": choices,
             "slider_config": slider_config,
             "actions": None,
-            "tool_calls": [],
+            "tool_calls": tool_calls_made,  # Include actual tool calls
             "safety_check": safety_check,
             "metadata": metadata
         }
@@ -829,9 +967,31 @@ async def run_chat_agent_streaming(
         }
         relationship_note = relationship_notes.get(relationship_stage, "")
         
+        # Add tool usage instructions (same as non-streaming)
+        tool_instructions = """
+IMPORTANT - TOOL USAGE:
+You have access to tools to take REAL ACTIONS. USE THEM when appropriate:
+
+• When user shares preferences (diet, exercise, sleep habits, allergies):
+  → ALWAYS call update_user_preference to SAVE this information
+  → Example: User says "I'm vegetarian" → call update_user_preference(preference_type="diet", preference_value="vegetarian")
+
+• When user asks about symptoms or wants to track:
+  → Call get_user_symptoms to see what they've tracked before
+  → Ask about THEIR actual symptoms, not generic ones
+
+• When user wants to complete/skip a task:
+  → Call complete_assignment or skip_assignment
+
+• When user asks about their body/hormones:
+  → Call explain_hormone or get_hormone_analysis
+
+NEVER just acknowledge preferences without saving them. The user expects their information to be remembered!
+"""
+        
         system_prompt = MASTER_SYSTEM_PROMPT.format(
             context_section=full_context,
-            conversation_guidance=conversation_guidance + "\n" + relationship_note,
+            conversation_guidance=conversation_guidance + "\n" + relationship_note + "\n" + tool_instructions,
             emotional_guidance=emotional_guidance
         )
         
@@ -851,11 +1011,80 @@ async def run_chat_agent_streaming(
         messages.append(HumanMessage(content=message))
         
         # ═══════════════════════════════════════════════════════════════════
+        # STEP 4.5: EXECUTE TOOLS FIRST (Before Streaming)
+        # ═══════════════════════════════════════════════════════════════════
+        # Tools execute silently, then we stream the conversational response
+        
+        tool_calls_made = []
+        tool_context = ""
+        
+        if db_session:
+            try:
+                from app.services.chat.tools import get_tools_by_context
+                tools = get_tools_by_context(conversation_context)
+                
+                # Use non-streaming LLM to check for tool calls
+                llm_with_tools = get_llm().bind_tools(tools)
+                initial_response = await llm_with_tools.ainvoke(messages)
+                
+                if hasattr(initial_response, 'tool_calls') and initial_response.tool_calls:
+                    logger.info(f"🔧 [Streaming] Tool calls requested: {[tc['name'] for tc in initial_response.tool_calls]}")
+                    
+                    # Execute each tool call
+                    for tool_call in initial_response.tool_calls:
+                        tool_name = tool_call['name']
+                        tool_args = tool_call['args']
+                        
+                        # Inject user_id and db_session
+                        tool_args['user_id'] = user_id
+                        tool_args['db_session'] = db_session
+                        
+                        # Find and execute the tool
+                        for tool in tools:
+                            if tool.name == tool_name:
+                                try:
+                                    tool_result = await tool.ainvoke(tool_args)
+                                    tool_calls_made.append({
+                                        "tool": tool_name,
+                                        "args": {k: v for k, v in tool_args.items() if k != 'db_session'},
+                                        "result": tool_result
+                                    })
+                                    logger.info(f"✅ [Streaming] Tool {tool_name} executed: {tool_result.get('success', 'completed')}")
+                                    
+                                    # Build context for the streaming response
+                                    if tool_result.get('success'):
+                                        tool_context += f"\n[{tool_name}: {tool_result.get('message', 'Done')}]"
+                                except Exception as e:
+                                    logger.error(f"❌ [Streaming] Tool {tool_name} failed: {str(e)}")
+                                break
+                    
+                    # If tools were executed, update messages to include results
+                    if tool_context:
+                        from langchain_core.messages import ToolMessage
+                        messages.append(initial_response)
+                        for i, tool_call in enumerate(initial_response.tool_calls):
+                            if i < len(tool_calls_made):
+                                result = tool_calls_made[i].get('result', {})
+                                messages.append(ToolMessage(
+                                    content=str(result),
+                                    tool_call_id=tool_call['id']
+                                ))
+            except Exception as e:
+                logger.warning(f"⚠️ [Streaming] Tool execution error (proceeding without tools): {e}")
+        
+        # ═══════════════════════════════════════════════════════════════════
         # STEP 5: STREAM RESPONSE TOKEN BY TOKEN
         # ═══════════════════════════════════════════════════════════════════
         
-        llm = get_llm(streaming=True)  # Enable streaming
+        # If tools were used, get final response with tool context
+        if tool_calls_made:
+            llm = get_llm(streaming=True)
+            llm_with_tools = llm.bind_tools(get_tools_by_context(conversation_context))
+        else:
+            llm = get_llm(streaming=True)  # Enable streaming
+            llm_with_tools = llm
         
+
         # Stream tokens as they arrive
         full_response = ""
         async for chunk in llm.astream(messages):
@@ -890,9 +1119,11 @@ async def run_chat_agent_streaming(
                     slider_config = composed.slider_config.to_dict()
             except Exception as e:
                 logger.warning(f"Response composition error: {e}")
-                choices = generate_choices(full_response, conversation_context)
+                # Include tool results for smarter choices
+                choices = generate_choices(full_response, conversation_context, message, tool_calls_made)
         else:
-            choices = generate_choices(full_response, conversation_context)
+            # Include tool results for smarter choices
+            choices = generate_choices(full_response, conversation_context, message, tool_calls_made)
             
             if any(phrase in full_response.lower() for phrase in ["how severe", "scale of", "rate your", "1 to"]):
                 response_type = "slider"

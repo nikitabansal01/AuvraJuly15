@@ -435,7 +435,7 @@ class ChatMemoryService:
         permanent_memory = await self.get_permanent_memory(user_id)
         
         return {
-            "current_session": session_messages,
+            "recent_messages": session_messages,  # Agent looks for this key in langgraph_agent.py
             "recent_memory": recent_memory,
             "permanent_memory": permanent_memory
         }

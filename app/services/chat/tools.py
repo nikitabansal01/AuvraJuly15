@@ -1169,7 +1169,202 @@ def _get_encouragement(rate: float, streak: int) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 9. NAVIGATION TOOLS
+# 9. PERSONALIZATION TOOLS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@tool
+async def update_user_preference(
+    user_id: str,
+    preference_type: str,
+    preference_value: Any,
+    db_session: Any
+) -> Dict[str, Any]:
+    """
+    Update a user's preference or personal information.
+    ALWAYS use this when user shares personal info like diet, lifestyle, etc.
+    
+    Args:
+        user_id: The user's ID
+        preference_type: Type of preference (diet, exercise, sleep, stress, allergies, restrictions, lifestyle)
+        preference_value: The value to set
+        db_session: Database session
+        
+    Returns:
+        Confirmation of preference update
+    """
+    from app.core.database import UserProfile, UserResponse
+    
+    # Map preference types to database fields
+    profile_fields = {
+        "name": "name",
+        "timezone": "timezone",
+    }
+    
+    response_fields = {
+        "diet": "diet_preference",
+        "diet_preference": "diet_preference",
+        "dietary_restrictions": "dietary_restrictions",
+        "allergies": "allergies",
+        "food_allergies": "allergies",
+        "exercise": "workout_intensity",
+        "workout": "workout_intensity",
+        "workout_intensity": "workout_intensity",
+        "sleep": "sleep_hours",
+        "sleep_hours": "sleep_hours",
+        "stress": "stress_level",
+        "stress_level": "stress_level",
+        "wake_time": "wake_time",
+        "sleep_time": "sleep_time",
+        "meal_prep": "meal_prep_time",
+    }
+    
+    # Store in chatbot_memory for preferences not in schema
+    memory_fields = [
+        "favorite_foods", "disliked_foods", "exercise_preference", 
+        "lifestyle_notes", "work_schedule", "health_goals",
+        "communication_preference", "reminder_preference"
+    ]
+    
+    preference_key = preference_type.lower().replace(" ", "_")
+    
+    try:
+        if preference_key in profile_fields:
+            # Update UserProfile
+            profile = db_session.query(UserProfile).filter(
+                UserProfile.uid == user_id
+            ).first()
+            
+            if profile:
+                setattr(profile, profile_fields[preference_key], preference_value)
+                db_session.commit()
+                
+                return {
+                    "success": True,
+                    "message": f"Got it! I've updated your {preference_type} 💜",
+                    "updated_field": preference_type,
+                    "action_taken": "profile_updated"
+                }
+        
+        elif preference_key in response_fields:
+            # Update UserResponse
+            user_response = db_session.query(UserResponse).filter(
+                UserResponse.uid == user_id
+            ).order_by(UserResponse.created_at.desc()).first()
+            
+            if user_response:
+                setattr(user_response, response_fields[preference_key], preference_value)
+                db_session.commit()
+                
+                return {
+                    "success": True,
+                    "message": f"Perfect! I've noted your {preference_type} preference 💜",
+                    "updated_field": preference_type,
+                    "action_taken": "response_updated"
+                }
+        
+        else:
+            # Store in chatbot_memory (permanent memory)
+            profile = db_session.query(UserProfile).filter(
+                UserProfile.uid == user_id
+            ).first()
+            
+            if profile:
+                memory = profile.chatbot_memory or {}
+                memory[preference_key] = {
+                    "value": preference_value,
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+                profile.chatbot_memory = memory
+                db_session.commit()
+                
+                return {
+                    "success": True,
+                    "message": f"Thanks for sharing! I'll remember that 💜",
+                    "updated_field": preference_type,
+                    "action_taken": "memory_updated"
+                }
+        
+        return {
+            "success": False,
+            "error": f"Could not update {preference_type}",
+            "suggestion": "Please try specifying: diet, exercise, sleep, stress, or allergies"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating preference: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@tool
+async def get_user_symptoms(user_id: str, db_session: Any, days: int = 30) -> Dict[str, Any]:
+    """
+    Get user's recently tracked symptoms for personalized questions.
+    Use this to know which symptoms to ask about instead of generic questions.
+    
+    Args:
+        user_id: The user's ID
+        db_session: Database session
+        days: Number of days to look back
+        
+    Returns:
+        List of symptoms the user has tracked
+    """
+    from app.core.database import SymptomLog
+    from sqlalchemy import and_, desc
+    from collections import Counter
+    
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    symptoms = db_session.query(SymptomLog).filter(
+        and_(
+            SymptomLog.user_id == user_id,
+            SymptomLog.logged_at >= start_date
+        )
+    ).order_by(desc(SymptomLog.logged_at)).all()
+    
+    if not symptoms:
+        return {
+            "success": True,
+            "has_symptoms": False,
+            "message": "No symptoms tracked yet",
+            "suggestion": "Ask about general wellbeing instead of specific symptoms"
+        }
+    
+    # Count symptom frequencies
+    symptom_counts = Counter([s.symptom_type for s in symptoms])
+    
+    # Get most recent of each type
+    recent_symptoms = {}
+    for symptom in symptoms:
+        if symptom.symptom_type not in recent_symptoms:
+            recent_symptoms[symptom.symptom_type] = {
+                "severity": symptom.severity,
+                "logged_at": symptom.logged_at.isoformat(),
+                "count": symptom_counts[symptom.symptom_type]
+            }
+    
+    # Sort by frequency
+    sorted_symptoms = sorted(
+        recent_symptoms.items(), 
+        key=lambda x: x[1]["count"], 
+        reverse=True
+    )
+    
+    return {
+        "success": True,
+        "has_symptoms": True,
+        "tracked_symptoms": dict(sorted_symptoms[:5]),  # Top 5 most tracked
+        "total_logs": len(symptoms),
+        "most_common": sorted_symptoms[0][0] if sorted_symptoms else None,
+        "suggestion": f"Ask about {sorted_symptoms[0][0] if sorted_symptoms else 'general wellbeing'}"
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. NAVIGATION TOOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @tool
@@ -1251,6 +1446,10 @@ def get_all_tools():
         # Proactive
         check_proactive_triggers,
         
+        # Personalization
+        update_user_preference,
+        get_user_symptoms,
+        
         # Navigation
         navigate_to_screen,
     ]
@@ -1272,12 +1471,14 @@ def get_tools_by_context(context: str) -> List:
         "symptom_checkin": [
             log_symptom,
             get_symptom_trends,
+            get_user_symptoms,  # Get user's actual symptoms for personalized questions
             get_cycle_info,
             explain_hormone,
             add_medical_disclaimer,
         ],
         "personalise": [
             get_patient_profile,
+            update_user_preference,  # Critical: Save user preferences
             get_cycle_info,
             get_hormone_analysis,
             search_health_knowledge,
