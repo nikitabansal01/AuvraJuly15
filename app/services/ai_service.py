@@ -882,187 +882,113 @@ CONFIDENCE ASSESSMENT:
     @staticmethod
     async def generate_session_recommendations(user_profile: UserProfile, category: str) -> List[Dict[str, Any]]:
         """
-        Generate session recommendations (for background processing)
+        Generate session recommendations using PURE PROMPT ENGINEERING.
         
-        V3 RECOMMENDATION ENGINE:
-        Uses V3 architecture: Problem Focus → Expert Routing → Evidence Grading → Personalization → Quality Evaluation
-        Falls back to prompt-only if V3 fails
+        ARCHITECTURE CHANGE (Based on Research):
+        ═══════════════════════════════════════════════════════════════════════════
+        REMOVED: V3 RAG Engine, Pinecone, Expert Orchestrator, Evidence Grader
+        USING: Pure prompt engineering with GPT-4o-mini
         
-        OPTIMIZATIONS:
-        - Uses singleton V3 engine (prevents re-init per category)
-        - Leverages cached RAG results
-        - Reduced logging for production
+        WHY:
+        - Research shows RAG is fundamentally mismatched for food recommendations
+        - Papers contain clinical evidence, but AUVRA needs practical meal plans
+        - GPT-4 already has 55-73% appropriateness for dietary advice (2024 studies)
+        - Food has wide safety margins (25g vs 35g almonds = both safe)
+        - Cost savings: 99.3-99.9% ($21K/year → $180/year for 10K users)
+        
+        REFERENCE: AUVRA Research Document - Dec 2024
+        ═══════════════════════════════════════════════════════════════════════════
         """
         try:
-            # ========================================
-            # V3 RECOMMENDATION ENGINE
-            # ========================================
-            logger.info(f"🚀 V3 ENGINE: {category.upper()} - Primary: {getattr(user_profile, 'primaryImbalance', 'N/A')}")
+            print("=" * 70)
+            print(f"🎯 PROMPT ENGINE: {category.upper()}")
+            print(f"   Primary Hormone: {getattr(user_profile, 'primaryImbalance', 'N/A')}")
+            print(f"   Architecture: Pure Prompt Engineering (No RAG)")
+            print("=" * 70)
             
-            try:
-                from app.services.recommendation_engine_v3.core.v3_orchestrator import (
-                    get_v3_engine,  # Use singleton instead of creating new instance
-                    V3RecommendationRequest
-                )
-                from app.services.recommendation_engine_v3.utils.format_converter import (
-                    convert_v3_response_to_mobile_format
-                )
-                
-                # Safely extract fields from UserProfile (handles both pydantic model and dict-like)
-                def safe_get(obj, field, default=None):
-                    """Safely get attribute from pydantic model or dict"""
-                    if hasattr(obj, field):
-                        return getattr(obj, field, default)
-                    elif hasattr(obj, '__getitem__'):
-                        try:
-                            return obj.get(field, default) if hasattr(obj, 'get') else default
-                        except:
-                            return default
-                    return default
-                
-                def safe_get_list(obj, field):
-                    """Safely get list attribute"""
-                    val = safe_get(obj, field, [])
-                    return val if isinstance(val, list) else []
-                
-                # Build V3 request from UserProfile (safely)
-                # Map session fields to V3 expected format
-                period_concerns = safe_get_list(user_profile, 'period_concerns')
-                body_concerns = safe_get_list(user_profile, 'body_concerns')
-                skin_concerns = safe_get_list(user_profile, 'skin_hair_concerns') or safe_get_list(user_profile, 'skin_concerns')
-                mood_concerns = safe_get_list(user_profile, 'mental_health_concerns') or safe_get_list(user_profile, 'mood_concerns')
-                diagnosed_conditions = safe_get_list(user_profile, 'diagnosed_conditions')
-                
-                # Also use symptoms field from UserProfile model if available
-                model_symptoms = safe_get_list(user_profile, 'symptoms')
-                all_symptoms = list(set(period_concerns + body_concerns + skin_concerns + mood_concerns + model_symptoms))
-                
-                primary_imbalance = safe_get(user_profile, 'primaryImbalance', '')
-                secondary_imbalances = safe_get_list(user_profile, 'secondaryImbalances')
-                
-                v3_request = V3RecommendationRequest(
-                    user_id=safe_get(user_profile, 'uid', 'session_user') or "session_user",
-                    user_profile={
-                        'age': safe_get(user_profile, 'age'),
-                        'period_description': safe_get(user_profile, 'period_description', ''),
-                        'birth_control': safe_get(user_profile, 'birth_control') or safe_get(user_profile, 'birthControlStatus', ''),
-                        'cycle_length': safe_get(user_profile, 'cycle_length', ''),
-                        'cycle_phase': safe_get(user_profile, 'cyclePhase', 'unknown'),
-                        'period_concerns': period_concerns,
-                        'body_concerns': body_concerns,
-                        'skin_concerns': skin_concerns,
-                        'mood_concerns': mood_concerns,
-                        'diagnosed_conditions': diagnosed_conditions,
-                        'conditions': safe_get_list(user_profile, 'conditions'),
-                        'dietary_preferences': safe_get(user_profile, 'dietary_preferences'),
-                        'workout_intensity': safe_get(user_profile, 'workout_intensity'),
-                        'stress_level': safe_get(user_profile, 'stress_level'),
-                        'sleep_duration': safe_get(user_profile, 'sleep_duration'),
-                    },
-                    hormone_data={
-                        'primary_imbalance': primary_imbalance,
-                        'secondary_imbalances': secondary_imbalances,
-                        'hormone_scores': safe_get(user_profile, 'hormoneScores'),
-                    },
-                    symptoms=all_symptoms,
-                    preferences={
-                        'dietary': safe_get(user_profile, 'dietary_preferences'),
-                    },
-                    constraints={
-                        'diagnosed_conditions': diagnosed_conditions,
-                    }
-                )
-                
-                logger.info(f"   V3 Request: {len(all_symptoms)} symptoms, primary={primary_imbalance}")
-                
-                # Use singleton engine (OPTIMIZATION: prevents re-init for each category)
-                v3_engine = get_v3_engine()
-                v3_response = await v3_engine.generate_recommendations(v3_request)
-                
-                quality_score = v3_response.quality_scores.get('overall', 0) if v3_response.quality_scores else 0
-                logger.info(f"✅ V3 response: quality={quality_score:.2f}")
-                
-                # Map category to V3 response attribute
-                category_to_attr = {
-                    'food': 'nutrition_recommendations',
-                    'movement': 'movement_recommendations',
-                    'mindfulness': 'mindfulness_recommendations'
-                }
-                v3_recs_attr = category_to_attr.get(category, 'nutrition_recommendations')
-                v3_recs_list = getattr(v3_response, v3_recs_attr, [])
-                
-                # Convert V3 response to mobile app format
-                recommendations = convert_v3_response_to_mobile_format(v3_response, category)
-                
-                if recommendations:
-                    # Count verified citations
-                    verified_count = sum(1 for r in recommendations if r.get('citation_verified', False))
-                    total_pmids = sum(len(r.get('researchBacking', {}).get('studies', [])) for r in recommendations)
-                    
-                    logger.info(f"✅ V3 SUCCESS - {category}: {len(recommendations)} recs, {verified_count} verified, {total_pmids} PMIDs, quality={quality_score:.2f}")
-                    
-                    return recommendations
-                else:
-                    logger.warning(f"⚠️ V3 empty for {category}, falling back")
-                    
-            except ImportError as import_error:
-                logger.error(f"❌ V3 Import error: {import_error}")
-            except Exception as v3_error:
-                logger.error(f"❌ V3 Exception for {category}: {str(v3_error)}")
-
-            # ========================================
-            # FALLBACK: prompt-only generation (no RAG)
-            # ========================================
-            logger.info(f"📝 FALLBACK: prompt-only for {category} (V3 failed)")
+            logger.info("=" * 70)
+            logger.info(f"🎯 PROMPT ENGINE: {category.upper()}")
+            logger.info(f"   Primary Hormone: {getattr(user_profile, 'primaryImbalance', 'N/A')}")
+            logger.info(f"   Architecture: Pure Prompt Engineering (No RAG)")
+            logger.info("=" * 70)
             
-            # Create prompt (without real research)
-            prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile, category)
-            logger.info(f"Session recommendation prompt creation completed: category={category}")
+            # Import the new prompt-only engine
+            from app.services.prompt_recommendation_engine import generate_prompt_recommendations
             
-            # Call OpenAI API
-            llm_response, actual_model = await AIService.call_ai_model(prompt)
-            logger.info(f"AI model call completed: category={category}, model={actual_model}")
+            # Convert UserProfile to dict for the engine
+            def safe_get(obj, field, default=None):
+                if hasattr(obj, field):
+                    return getattr(obj, field, default)
+                return default
             
-            # Evaluate confidence
-            confidence = AIService.evaluate_llm_confidence(llm_response)
-            logger.info(f"Confidence evaluation completed: category={category}, confidence={confidence}")
+            def safe_get_list(obj, field):
+                val = safe_get(obj, field, [])
+                return val if isinstance(val, list) else []
             
-            # Parse response
-            recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
-            logger.info(f"Response parsing completed: category={category}, recommendations_count={len(recommendations) if recommendations else 0}")
+            # Build profile dict
+            profile_dict = {
+                'uid': safe_get(user_profile, 'uid', 'session_user'),
+                'age': safe_get(user_profile, 'age', 30),
+                'primaryImbalance': safe_get(user_profile, 'primaryImbalance', 'insulin'),
+                'secondaryImbalances': safe_get_list(user_profile, 'secondaryImbalances'),
+                'conditions': safe_get_list(user_profile, 'conditions') or ['PCOS'],
+                'symptoms': safe_get_list(user_profile, 'symptoms'),
+                'cyclePhase': safe_get(user_profile, 'cyclePhase', 'unknown'),
+                'birthControlStatus': safe_get(user_profile, 'birthControlStatus', ''),
+            }
             
-            # Mark as prompt-only (unverified citations)
-            for rec in recommendations if recommendations else []:
-                rec['citation_verified'] = False
-                rec['rag_version'] = 'prompt_only'
-                rec['citation_warning'] = 'Generated without RAG - citations may be hallucinated'
+            # Add symptom categories
+            symptoms_combined = []
+            for field in ['period_concerns', 'body_concerns', 'skin_hair_concerns', 'mental_health_concerns', 'symptoms']:
+                symptoms_combined.extend(safe_get_list(user_profile, field))
+            profile_dict['symptoms'] = list(set(symptoms_combined)) if symptoms_combined else ['hormone imbalance']
             
-            # Fallback: low confidence or no recommendations → use fallback model
-            if confidence < 60 or not recommendations:
-                fallback_config = AIService.get_fallback_model_config()
-                if fallback_config["provider"] == "openai":
-                    fallback_response = await AIService.call_openai(prompt, fallback_config["model"])
-                elif fallback_config["provider"] == "groq":
-                    fallback_response = await AIService.call_groq(prompt, fallback_config["model"])
-                elif fallback_config["provider"] == "anthropic":
-                    fallback_response = await AIService.call_anthropic(prompt, fallback_config["model"])
-                elif fallback_config["provider"] == "perplexity":
-                    fallback_response = await AIService.call_perplexity(prompt, fallback_config["model"])
-                else:
-                    logger.error(f"Unsupported fallback model provider: {fallback_config['provider']}")
-                    return recommendations
+            print(f"📋 Profile: {profile_dict['primaryImbalance']} | {len(profile_dict['symptoms'])} symptoms")
+            logger.info(f"📋 Profile: {profile_dict['primaryImbalance']} | {len(profile_dict['symptoms'])} symptoms")
+            
+            # Generate recommendations using prompt engine
+            recommendations = await generate_prompt_recommendations(profile_dict, category)
+            
+            if recommendations:
+                print(f"✅ SUCCESS: {len(recommendations)} {category} recommendations generated")
+                logger.info(f"✅ SUCCESS: {len(recommendations)} {category} recommendations generated")
                 
-                fallback_confidence = AIService.evaluate_llm_confidence(fallback_response)
-                fallback_recommendations = AIService.parse_recommendations_from_llm(fallback_response, category)
-                if fallback_recommendations and fallback_confidence > confidence:
-                    # Mark fallback recommendations
-                    for rec in fallback_recommendations:
-                        rec['citation_verified'] = False
-                        rec['rag_version'] = 'prompt_only_fallback'
-                    recommendations = fallback_recommendations
+                for i, rec in enumerate(recommendations):
+                    print(f"   {i+1}. {rec.get('title', 'N/A')[:40]} | {rec.get('hormones', ['?'])[0]}")
+                    logger.info(f"   {i+1}. {rec.get('title', 'N/A')[:40]} | {rec.get('hormones', ['?'])[0]}")
+                
+                return recommendations
+            else:
+                print(f"⚠️ No recommendations generated for {category}")
+                logger.warning(f"⚠️ No recommendations generated for {category}")
+                return []
             
-            return recommendations if recommendations else []
+        except ImportError as e:
+            print(f"❌ Import error: {e}")
+            logger.error(f"❌ Prompt engine import failed: {e}")
+            # Fall back to legacy prompt method
+            return await AIService._legacy_prompt_fallback(user_profile, category)
             
         except Exception as e:
-            logger.error(f"Session recommendation generation failed (category={category}): {str(e)}")
+            print(f"❌ ERROR: {str(e)}")
+            logger.error(f"❌ Recommendation generation failed: {str(e)}")
+            return await AIService._legacy_prompt_fallback(user_profile, category)
+    
+    @staticmethod
+    async def _legacy_prompt_fallback(user_profile: UserProfile, category: str) -> List[Dict[str, Any]]:
+        """Legacy fallback using old prompt method if new engine fails."""
+        logger.info(f"📝 LEGACY FALLBACK for {category}")
+        
+        try:
+            prompt = AIService.suggest_llm_prompt_for_recommendations(user_profile, category)
+            llm_response, actual_model = await AIService.call_ai_model(prompt)
+            recommendations = AIService.parse_recommendations_from_llm(llm_response, category)
+            
+            for rec in recommendations if recommendations else []:
+                rec['citation_verified'] = False
+                rec['rag_version'] = 'legacy_fallback'
+            
+            return recommendations if recommendations else []
+        except Exception as e:
+            logger.error(f"Legacy fallback also failed: {e}")
             return [] 
