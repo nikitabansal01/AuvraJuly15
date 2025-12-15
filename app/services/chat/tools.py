@@ -336,7 +336,7 @@ async def log_symptom(
     
     # Get cycle info for context
     cycle_service = CycleService(db_session)
-    cycle_info = cycle_service.get_cycle_info(user_id)
+    cycle_info = cycle_service.get_cycle_phase_info(user_id)
     
     # Create symptom log
     symptom_log = SymptomLog(
@@ -773,7 +773,7 @@ async def check_proactive_triggers(user_id: str, db_session: Any) -> Dict[str, A
     
     # 2. Phase transition
     cycle_service = CycleService(db_session)
-    cycle_info = cycle_service.get_cycle_info(user_id)
+    cycle_info = cycle_service.get_cycle_phase_info(user_id)
     
     if cycle_info and cycle_info.cycle_day in [1, 8, 14, 22]:  # Phase transition days
         triggers.append({
