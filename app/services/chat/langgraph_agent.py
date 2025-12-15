@@ -40,8 +40,6 @@ from datetime import datetime
 import operator
 
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
@@ -65,7 +63,6 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     user_id: str
     session_id: str  # UUID string
-    db_session: Any  # Database session for tools
     
     # Context
     conversation_context: str
@@ -619,9 +616,10 @@ def create_chat_graph():
     
     workflow.add_edge("format_response", END)
     
-    # Compile with memory
-    memory = MemorySaver()
-    app = workflow.compile(checkpointer=memory)
+    # NOTE: Do not attach a checkpointer that msgpack-serializes state, because
+    # request-scoped objects (e.g., SQLAlchemy Session) are not serializable.
+    # If you later add durable memory, ensure the state remains fully serializable.
+    app = workflow.compile()
     
     return app
 
@@ -654,7 +652,6 @@ async def run_chat_agent(
             messages=[HumanMessage(content=message)],
             user_id=user_id,
             session_id=session_id,
-            db_session=db_session,
             conversation_context=conversation_context,
             patient_profile=patient_profile,
             todays_plan=todays_plan,
