@@ -630,5 +630,6 @@ async def chat_health():
     return {
         "status": "healthy",
         "service": "auvra-chatbot",
+        "version": "v2.1.0",  # Added version for deployment verification
         "timestamp": datetime.utcnow().isoformat()
     }
