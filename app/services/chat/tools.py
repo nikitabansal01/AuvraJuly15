@@ -651,7 +651,6 @@ async def search_health_knowledge(
 # 5. SAFETY TOOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@tool
 def check_emergency_keywords(message: str) -> Dict[str, Any]:
     """
     Check if message contains emergency keywords.
@@ -1247,7 +1246,6 @@ def get_all_tools():
         get_progress_stats,
         
         # Safety
-        check_emergency_keywords,
         add_medical_disclaimer,
         
         # Proactive
@@ -1269,7 +1267,6 @@ def get_tools_by_context(context: str) -> List:
             suggest_alternative_assignment,
             get_cycle_info,
             get_progress_stats,
-            check_emergency_keywords,
             navigate_to_screen,
         ],
         "symptom_checkin": [
@@ -1277,7 +1274,6 @@ def get_tools_by_context(context: str) -> List:
             get_symptom_trends,
             get_cycle_info,
             explain_hormone,
-            check_emergency_keywords,
             add_medical_disclaimer,
         ],
         "personalise": [
@@ -1285,7 +1281,6 @@ def get_tools_by_context(context: str) -> List:
             get_cycle_info,
             get_hormone_analysis,
             search_health_knowledge,
-            check_emergency_keywords,
         ],
         "know_body": [
             search_health_knowledge,
@@ -1293,7 +1288,6 @@ def get_tools_by_context(context: str) -> List:
             get_hormone_analysis,
             get_cycle_info,
             get_patient_profile,
-            check_emergency_keywords,
             add_medical_disclaimer,
         ]
     }
