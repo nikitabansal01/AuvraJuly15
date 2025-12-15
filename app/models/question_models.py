@@ -33,6 +33,8 @@ class SessionData(BaseModel):
     sleep_duration: Optional[str] = Field(None, description="Sleep duration")
     stress_level: Optional[str] = Field(None, description="Stress level")
     survey_timezone: Optional[str] = Field("Asia/Seoul", description="Timezone at survey input time")
+    # PERSONALIZATION: Eat/Move/Pause preference
+    lifestyle_focus: Optional[List[str]] = Field(None, description="User's preferred focus areas: eat, move, pause")
 
     @field_validator('age')
     @classmethod

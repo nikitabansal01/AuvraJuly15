@@ -88,6 +88,9 @@ class QuestionSession(Base):
     stress_level = Column(String(50), nullable=True)
     survey_timezone = Column(String(50), nullable=True, default="Asia/Seoul")  # Timezone at survey input time
     
+    # Lifestyle Focus: Eat/Move/Pause preference (personalization)
+    lifestyle_focus = Column(ARRAY(String), nullable=True)  # ["eat", "move", "pause"]
+    
     # Root cause analysis results
     primary_hormone = Column(String(50), nullable=True)  # Primary hormone imbalance (e.g., "progesterone")
     secondary_hormones = Column(ARRAY(String), nullable=True)  # Secondary hormone imbalances (e.g., ["testosterone"])

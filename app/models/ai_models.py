@@ -21,6 +21,9 @@ class UserProfile(BaseModel):
     ethnicity: Optional[str] = None
     cravings: Optional[List[str]] = []
     confidence: Optional[str] = 'low'
+    # Lifestyle Focus: Eat/Move/Pause preference from onboarding
+    # Maps to categories: eat→food, move→movement, pause→mindfulness
+    lifestyle_focus: Optional[List[str]] = []
 
 class ResearchBacking(BaseModel):
     summary: str

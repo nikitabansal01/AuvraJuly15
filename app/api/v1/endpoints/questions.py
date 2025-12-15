@@ -333,7 +333,9 @@ async def _generate_recommendations_background(session_id: str, service, process
                 "family_history": session_data.family_history,
                 "workout_intensity": session_data.workout_intensity,
                 "sleep_duration": session_data.sleep_duration,
-                "stress_level": session_data.stress_level
+                "stress_level": session_data.stress_level,
+                # PERSONALIZATION: Eat/Move/Pause preference
+                "lifestyle_focus": getattr(session_data, 'lifestyle_focus', None) or []
             }
             
             # Use Root cause engine to analyze hormone imbalance and add

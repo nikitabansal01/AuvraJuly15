@@ -115,6 +115,10 @@ class QuestionService:
                 session.stress_level = data.stress_level
             if data.survey_timezone is not None:
                 session.survey_timezone = data.survey_timezone
+            # PERSONALIZATION: Eat/Move/Pause preference
+            if data.lifestyle_focus is not None:
+                session.lifestyle_focus = data.lifestyle_focus
+                logger.info(f"lifestyle_focus saved: {session.lifestyle_focus}")
             
             self.db.commit()
             logger.info(f"Session data saved: {session_id}")

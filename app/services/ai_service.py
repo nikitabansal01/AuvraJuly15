@@ -935,6 +935,8 @@ CONFIDENCE ASSESSMENT:
                 'symptoms': safe_get_list(user_profile, 'symptoms'),
                 'cyclePhase': safe_get(user_profile, 'cyclePhase', 'unknown'),
                 'birthControlStatus': safe_get(user_profile, 'birthControlStatus', ''),
+                # PERSONALIZATION: Add lifestyle_focus for Eat/Move/Pause preference
+                'lifestyle_focus': safe_get_list(user_profile, 'lifestyle_focus'),
             }
             
             # Add symptom categories
@@ -943,8 +945,12 @@ CONFIDENCE ASSESSMENT:
                 symptoms_combined.extend(safe_get_list(user_profile, field))
             profile_dict['symptoms'] = list(set(symptoms_combined)) if symptoms_combined else ['hormone imbalance']
             
+            # Log lifestyle focus for visibility
+            lifestyle_focus = profile_dict.get('lifestyle_focus', [])
             print(f"📋 Profile: {profile_dict['primaryImbalance']} | {len(profile_dict['symptoms'])} symptoms")
+            print(f"🎯 Lifestyle Focus: {lifestyle_focus if lifestyle_focus else 'None (using defaults)'}")
             logger.info(f"📋 Profile: {profile_dict['primaryImbalance']} | {len(profile_dict['symptoms'])} symptoms")
+            logger.info(f"🎯 Lifestyle Focus: {lifestyle_focus if lifestyle_focus else 'None (using defaults)'}")
             
             # Generate recommendations using prompt engine
             recommendations = await generate_prompt_recommendations(profile_dict, category)

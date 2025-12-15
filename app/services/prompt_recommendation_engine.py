@@ -20,6 +20,12 @@ Architecture:
 - Zero external knowledge retrieval
 - Few-shot examples for consistency
 - Structured JSON output
+
+PERSONALIZATION (Eat/Move/Pause):
+- lifestyle_focus maps to categories: eat→food, move→movement, pause→mindfulness
+- Preferred category gets MORE recommendations (5 vs 3)
+- Non-preferred categories get FEWER but still included (3 each)
+- This creates a natural weighting toward user's chosen lifestyle focus
 """
 
 import logging
@@ -30,6 +36,21 @@ from datetime import datetime
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LIFESTYLE FOCUS MAPPING (Eat/Move/Pause → Categories)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+LIFESTYLE_TO_CATEGORY = {
+    'eat': 'food',
+    'move': 'movement',
+    'pause': 'mindfulness'
+}
+
+# Recommendation counts based on preference
+PREFERRED_CATEGORY_COUNT = 5    # User's preferred focus gets more recommendations
+NORMAL_CATEGORY_COUNT = 4       # Default if no preference
+OTHER_CATEGORY_COUNT = 3        # Non-preferred categories still get some
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -139,7 +160,7 @@ MINDFULNESS_EXAMPLE = {
 # MASTER PROMPT TEMPLATES
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def build_master_prompt(user_profile: Dict[str, Any], category: str) -> str:
+def build_master_prompt(user_profile: Dict[str, Any], category: str, rec_count: int = 4) -> str:
     """
     Build the Da Vinci-level prompt for recommendation generation.
     
@@ -148,6 +169,12 @@ def build_master_prompt(user_profile: Dict[str, Any], category: str) -> str:
     2. Specific constraints and requirements
     3. Few-shot examples for format consistency
     4. Hormone-focused personalization
+    5. Lifestyle focus personalization (Eat/Move/Pause)
+    
+    Args:
+        user_profile: User's health profile
+        category: 'food', 'movement', or 'mindfulness'
+        rec_count: Number of recommendations to generate (varies by lifestyle preference)
     """
     
     # Extract user info
@@ -156,6 +183,17 @@ def build_master_prompt(user_profile: Dict[str, Any], category: str) -> str:
     secondary_hormones = user_profile.get('secondaryImbalances', [])
     conditions = user_profile.get('conditions', ['PCOS'])
     symptoms = user_profile.get('symptoms', [])
+    lifestyle_focus = user_profile.get('lifestyle_focus', [])
+    
+    # Build strings
+    symptom_str = ', '.join(symptoms) if symptoms else 'general hormone imbalance symptoms'
+    condition_str = ', '.join(conditions) if conditions else 'PCOS'
+    
+    # Lifestyle focus context
+    lifestyle_context = ""
+    if lifestyle_focus:
+        focus_str = ', '.join([f.upper() for f in lifestyle_focus])
+        lifestyle_context = f"\n- Lifestyle Focus: {focus_str} (user's preferred approach to wellness)"
     
     # Build symptom string
     symptom_str = ', '.join(symptoms) if symptoms else 'general hormone imbalance symptoms'
@@ -185,12 +223,12 @@ USER PROFILE
 - Primary Hormone Imbalance: {primary_hormone.upper()}
 - Secondary Imbalances: {', '.join(secondary_hormones) if secondary_hormones else 'None'}
 - Diagnosed Conditions: {condition_str}
-- Current Symptoms: {symptom_str}
+- Current Symptoms: {symptom_str}{lifestyle_context}
 
 ═══════════════════════════════════════════════════════════════════════════════
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
-Generate exactly 4 {category.upper()} recommendations personalized for this user.
+Generate exactly {rec_count} {category.upper()} recommendations personalized for this user.
 
 CRITICAL RULES:
 1. Focus ONLY on {primary_hormone.upper()} hormone (primary) and {', '.join(secondary_hormones) if secondary_hormones else 'no secondary'} hormones
@@ -211,7 +249,7 @@ ESTROGEN imbalance: Focus on cruciferous vegetables (DIM), flaxseed, fiber for e
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (JSON Array)
 ═══════════════════════════════════════════════════════════════════════════════
-Return ONLY a valid JSON array with exactly 4 recommendations.
+Return ONLY a valid JSON array with exactly {rec_count} recommendations.
 
 REQUIRED FIELDS for each recommendation:
 - title: 1-3 word name (e.g., "Cinnamon Supplementation")
@@ -239,7 +277,7 @@ EXAMPLE OUTPUT
 {json.dumps([example], indent=2)}
 
 ═══════════════════════════════════════════════════════════════════════════════
-GENERATE 4 RECOMMENDATIONS NOW
+GENERATE {rec_count} RECOMMENDATIONS NOW
 ═══════════════════════════════════════════════════════════════════════════════
 Return ONLY the JSON array, no other text. Make each recommendation UNIQUE and PRACTICAL."""
 
@@ -267,7 +305,37 @@ class PromptRecommendationEngine:
         logger.info("🚀 PROMPT ENGINE INITIALIZED")
         logger.info(f"   Model: {self.model}")
         logger.info(f"   Architecture: Pure Prompt Engineering (No RAG)")
+        logger.info(f"   Personalization: Eat/Move/Pause preference weighting enabled")
         logger.info("=" * 60)
+    
+    def _get_recommendation_count(self, user_profile: Dict[str, Any], category: str) -> int:
+        """
+        Determine how many recommendations to generate based on lifestyle_focus.
+        
+        If user has a lifestyle focus preference:
+        - Preferred category gets 5 recommendations
+        - Other categories get 3 recommendations
+        
+        If no preference, all categories get 4 recommendations.
+        
+        Mapping: eat→food, move→movement, pause→mindfulness
+        """
+        lifestyle_focus = user_profile.get('lifestyle_focus', [])
+        
+        if not lifestyle_focus:
+            return NORMAL_CATEGORY_COUNT  # Default: 4 for all
+        
+        # Map lifestyle preferences to categories
+        preferred_categories = [LIFESTYLE_TO_CATEGORY.get(lf.lower(), lf.lower()) for lf in lifestyle_focus]
+        
+        if category.lower() in preferred_categories:
+            logger.info(f"🎯 PREFERRED CATEGORY: {category} - generating {PREFERRED_CATEGORY_COUNT} recommendations")
+            print(f"🎯 PREFERRED CATEGORY: {category} - generating {PREFERRED_CATEGORY_COUNT} recommendations")
+            return PREFERRED_CATEGORY_COUNT
+        else:
+            logger.info(f"📋 Standard category: {category} - generating {OTHER_CATEGORY_COUNT} recommendations")
+            print(f"📋 Standard category: {category} - generating {OTHER_CATEGORY_COUNT} recommendations")
+            return OTHER_CATEGORY_COUNT
     
     async def generate_recommendations(
         self,
@@ -277,8 +345,13 @@ class PromptRecommendationEngine:
         """
         Generate recommendations using pure prompt engineering.
         
+        PERSONALIZATION (Eat/Move/Pause):
+        - If lifestyle_focus includes 'eat', food gets more recommendations
+        - If lifestyle_focus includes 'move', movement gets more recommendations
+        - If lifestyle_focus includes 'pause', mindfulness gets more recommendations
+        
         Args:
-            user_profile: User's health profile
+            user_profile: User's health profile (should include 'lifestyle_focus' array)
             category: 'food', 'movement', or 'mindfulness'
             
         Returns:
@@ -286,16 +359,28 @@ class PromptRecommendationEngine:
         """
         start_time = datetime.now()
         
+        # Determine recommendation count based on lifestyle preference
+        rec_count = self._get_recommendation_count(user_profile, category)
+        lifestyle_focus = user_profile.get('lifestyle_focus', [])
+        
         logger.info("=" * 60)
         logger.info(f"📝 GENERATING {category.upper()} RECOMMENDATIONS")
         logger.info(f"   User Age: {user_profile.get('age', 'N/A')}")
         logger.info(f"   Primary Hormone: {user_profile.get('primaryImbalance', 'N/A')}")
+        logger.info(f"   Lifestyle Focus: {lifestyle_focus if lifestyle_focus else 'None'}")
+        logger.info(f"   Recommendation Count: {rec_count} (based on lifestyle preference)")
         logger.info(f"   Symptoms: {user_profile.get('symptoms', [])[:3]}...")
         logger.info("=" * 60)
         
+        print("=" * 60)
+        print(f"📝 GENERATING {category.upper()} RECOMMENDATIONS")
+        print(f"   Lifestyle Focus: {lifestyle_focus if lifestyle_focus else 'None'}")
+        print(f"   Recommendation Count: {rec_count}")
+        print("=" * 60)
+        
         try:
-            # Build prompt
-            prompt = build_master_prompt(user_profile, category)
+            # Build prompt with personalized rec_count
+            prompt = build_master_prompt(user_profile, category, rec_count)
             logger.info(f"📋 Prompt built: {len(prompt)} chars")
             
             # Call OpenAI
@@ -315,6 +400,7 @@ class PromptRecommendationEngine:
             logger.info("=" * 60)
             logger.info(f"✅ {category.upper()} COMPLETE")
             logger.info(f"   Recommendations: {len(recommendations)}")
+            logger.info(f"   Lifestyle Preference Applied: {'Yes' if lifestyle_focus else 'No'}")
             logger.info(f"   Time: {elapsed_ms:.0f}ms")
             logger.info(f"   Est. Cost: ${self._estimate_cost(prompt, response):.4f}")
             logger.info("=" * 60)
