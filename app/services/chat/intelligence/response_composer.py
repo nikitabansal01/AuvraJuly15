@@ -470,3 +470,91 @@ def soften_advice(content: str) -> str:
         result = result.replace(original.lower(), replacement.lower())
     
     return result
+
+
+def generate_smart_follow_up(user_message: str, context: Dict[str, Any]) -> Optional[str]:
+    """
+    Generate intelligent follow-up questions that show curiosity and care.
+    
+    Goes deeper - if user says "tired", explore why, when, patterns.
+    """
+    message_lower = user_message.lower()
+    
+    # Tired/Exhausted → Explore deeper
+    if any(word in message_lower for word in ["tired", "exhausted", "drained", "low energy"]):
+        follow_ups = [
+            "When did you start feeling this way? Was it sudden or gradual?",
+            "How's your sleep been lately? Getting enough rest?",
+            "Is this a new feeling or have you noticed this pattern before?",
+            "What do you think might be contributing to this?"
+        ]
+        import random
+        return random.choice(follow_ups)
+    
+    # Stressed/Anxious → Explore triggers
+    if any(word in message_lower for word in ["stressed", "anxious", "overwhelmed", "worried"]):
+        follow_ups = [
+            "What's weighing on you most right now?",
+            "When do you notice this feeling most - morning, evening, specific situations?",
+            "Is this related to something specific or more of a general feeling?",
+            "Have you noticed what makes it better or worse?"
+        ]
+        import random
+        return random.choice(follow_ups)
+    
+    # Pain → Get specifics
+    if any(word in message_lower for word in ["pain", "hurts", "cramps", "ache"]):
+        follow_ups = [
+            "On a scale of 1-9, how intense is it right now?",
+            "Where exactly do you feel it? Does it radiate anywhere?",
+            "When did it start? Has it been constant or coming and going?",
+            "Does anything make it better or worse?"
+        ]
+        import random
+        return random.choice(follow_ups)
+    
+    # Sleep issues → Pattern exploration
+    if any(word in message_lower for word in ["can't sleep", "insomnia", "waking up", "sleep badly"]):
+        follow_ups = [
+            "Tell me more - is it trouble falling asleep or staying asleep?",
+            "How many nights this week has this happened?",
+            "Do you notice any patterns with your cycle?",
+            "What have you tried that's helped, even a little?"
+        ]
+        import random
+        return random.choice(follow_ups)
+    
+    # Mood changes → Timing and patterns
+    if any(word in message_lower for word in ["mood", "emotional", "crying", "irritable", "angry"]):
+        follow_ups = [
+            "When did you start noticing this shift?",
+            "Do you see any connection to your cycle timing?",
+            "Is this familiar or does it feel different than usual?",
+            "What usually helps when you feel this way?"
+        ]
+        import random
+        return random.choice(follow_ups)
+    
+    # Accomplishment → Build on success
+    if any(word in message_lower for word in ["completed", "finished", "did it", "accomplished", "done"]):
+        follow_ups = [
+            "That's amazing! What made you decide to tackle it today?",
+            "I'm proud of you! How do you feel now that it's done?",
+            "Awesome! What was the hardest part?",
+            "What helped you get it done?"
+        ]
+        import random
+        return random.choice(follow_ups)
+    
+    # Change mentioned → Understand better
+    if any(word in message_lower for word in ["different", "changed", "new", "unusual"]):
+        follow_ups = [
+            "Interesting - tell me more about what's different.",
+            "When did you first notice this change?",
+            "How does it compare to how things usually are for you?",
+            "Do you have any sense of what might have triggered it?"
+        ]
+        import random
+        return random.choice(follow_ups)
+    
+    return None

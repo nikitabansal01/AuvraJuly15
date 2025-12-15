@@ -41,12 +41,67 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def get_llm(model: str = "gpt-4o-mini", temperature: float = 0.7):
-    """Get configured LLM instance."""
+# ═══════════════════════════════════════════════════════════════════════════════
+# ERROR HANDLING & RETRY LOGIC
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def retry_with_backoff(func, max_retries: int = 3, initial_delay: float = 1.0):
+    """
+    Retry async function with exponential backoff.
+    
+    Ensures resilience against temporary API failures.
+    """
+    import asyncio
+    
+    for attempt in range(max_retries):
+        try:
+            return await func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise  # Final attempt failed
+            
+            delay = initial_delay * (2 ** attempt)
+            logger.warning(f"⚠️ Attempt {attempt + 1} failed: {str(e)}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INTELLIGENCE SYSTEM ACTIVATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# CRITICAL: Set to True to activate ALL intelligence modules
+# This enables: Memory, Emotional Intelligence, Context Awareness, etc.
+INTELLIGENCE_AVAILABLE = True
+
+# Import intelligence modules
+if INTELLIGENCE_AVAILABLE:
+    try:
+        from app.services.chat.intelligence.emotional_intelligence import EmotionalIntelligence
+        from app.services.chat.intelligence.memory_engine import MemoryEngine
+        from app.services.chat.intelligence.context_engine import ContextEngine
+        from app.services.chat.intelligence.prompt_architect import PromptArchitect
+        from app.services.chat.intelligence.response_composer import ResponseComposer
+        from app.services.chat.intelligence.proactive_engine import ProactiveEngine
+        from app.services.chat.intelligence.wellness_score import WellnessScoreCalculator
+        from app.services.chat.intelligence.symptom_predictor import SymptomPredictor
+        from app.services.chat.intelligence.intelligent_cache import get_cache
+        from app.services.chat.intelligence.session_summarizer import SessionSummarizer
+        
+        logger.info("🧠 Intelligence modules loaded successfully (including wellness, prediction, caching)")
+    except ImportError as e:
+        logger.warning(f"⚠️ Intelligence modules not available: {e}")
+        INTELLIGENCE_AVAILABLE = False
+else:
+    logger.info("Intelligence modules disabled")
+
+
+def get_llm(model: str = "gpt-4o-mini", temperature: float = 0.7, streaming: bool = False):
+    """Get configured LLM instance with optional streaming."""
     return ChatOpenAI(
         model=model,
         temperature=temperature,
-        openai_api_key=settings.OPENAI_API_KEY
+        openai_api_key=settings.OPENAI_API_KEY,
+        streaming=streaming  # Enable token-by-token streaming
     )
 
 
@@ -123,26 +178,17 @@ You don't have to go through this alone. These resources have trained people rea
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TRY IMPORTING INTELLIGENCE MODULES (GRACEFUL FALLBACK)
+# NOTE: Intelligence modules already imported above (lines 75-91)
+# Import additional formatting functions here if not already imported
 # ═══════════════════════════════════════════════════════════════════════════════
 
-try:
-    from app.services.chat.intelligence.memory_engine import MemoryEngine, format_memory_for_prompt
-    from app.services.chat.intelligence.emotional_intelligence import (
-        EmotionalIntelligence, 
-        format_emotional_guidance_for_prompt
-    )
-    from app.services.chat.intelligence.context_engine import (
-        ContextEngine,
-        format_context_for_prompt
-    )
-    from app.services.chat.intelligence.prompt_architect import PromptArchitect
-    from app.services.chat.intelligence.response_composer import ResponseComposer
-    INTELLIGENCE_AVAILABLE = True
-    logger.info("✨ Intelligence modules loaded successfully")
-except ImportError as e:
-    logger.warning(f"Intelligence modules not available: {e}. Using basic mode.")
-    INTELLIGENCE_AVAILABLE = False
+if INTELLIGENCE_AVAILABLE:
+    try:
+        from app.services.chat.intelligence.memory_engine import format_memory_for_prompt
+        from app.services.chat.intelligence.emotional_intelligence import format_emotional_guidance_for_prompt
+        from app.services.chat.intelligence.context_engine import format_context_for_prompt
+    except ImportError:
+        pass  # Main imports already handled above
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -654,3 +700,249 @@ async def run_chat_agent(
 
 # For backward compatibility
 chat_graph = None
+
+
+async def run_chat_agent_streaming(
+    user_id: str,
+    session_id: str,
+    message: str,
+    conversation_context: str,
+    input_mode: str,
+    patient_profile: Dict[str, Any],
+    todays_plan: Dict[str, Any],
+    recent_summary: Dict[str, Any],
+    memory_context: Dict[str, Any],
+    db_session: Any = None
+):
+    """
+    Run the intelligent chat agent with STREAMING support.
+    
+    Yields tokens as they're generated for real-time display.
+    This makes the chatbot feel ALIVE and responsive.
+    """
+    try:
+        logger.info(f"🧠 Running streaming agent for user {user_id}")
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 1: SAFETY CHECK (Non-negotiable)
+        # ═══════════════════════════════════════════════════════════════════
+        safety_check = check_emergency_keywords(message)
+        if safety_check.get("is_emergency") or safety_check.get("is_crisis"):
+            yield {
+                "type": "final",
+                "content": safety_check["message"],
+                "response_type": "text",
+                "choices": ["I'm safe now", "Connect me to support"],
+                "safety_check": safety_check
+            }
+            return
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 2: INITIALIZE INTELLIGENCE (IF AVAILABLE)
+        # ═══════════════════════════════════════════════════════════════════
+        emotional_reading = None
+        tone_guidance = None
+        deep_memory = None
+        rich_context = None
+        relationship_stage = "building_trust"
+        
+        if INTELLIGENCE_AVAILABLE and db_session:
+            try:
+                # Initialize modules
+                emotional_intel = EmotionalIntelligence()
+                memory_engine = MemoryEngine(db_session)
+                context_engine = ContextEngine(db_session)
+                
+                # Load deep memory
+                try:
+                    deep_memory = await memory_engine.load_full_memory(user_id, session_id)
+                    if deep_memory and deep_memory.get("relationship"):
+                        relationship_stage = deep_memory["relationship"].get("relationship_stage", "building_trust")
+                    logger.info(f"💜 Loaded memory for {user_id}, relationship stage: {relationship_stage}")
+                except Exception as e:
+                    logger.warning(f"Could not load deep memory: {e}")
+                
+                # Load rich context
+                timezone = patient_profile.get("timezone", "UTC")
+                try:
+                    rich_context = await context_engine.build_full_context(user_id, timezone)
+                    logger.info(f"🎯 Loaded rich context for {user_id}")
+                except Exception as e:
+                    logger.warning(f"Could not load rich context: {e}")
+                
+                # Analyze emotional state
+                emotional_memory = deep_memory.get("emotional", {}) if deep_memory else {}
+                emotional_reading = emotional_intel.analyze_message(
+                    message,
+                    context={"conversation_context": conversation_context},
+                    memory_emotional=emotional_memory
+                )
+                tone_guidance = emotional_intel.get_tone_guidance(emotional_reading)
+                logger.info(f"💭 Emotional state: {emotional_reading.primary_emotion.value if emotional_reading else 'unknown'}")
+                
+            except Exception as e:
+                logger.warning(f"Intelligence modules error: {e}. Using basic mode.")
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 3: BUILD INTELLIGENT PROMPT (Same as non-streaming)
+        # ═══════════════════════════════════════════════════════════════════
+        
+        basic_context = format_basic_context(patient_profile, todays_plan, recent_summary)
+        
+        memory_section = ""
+        if INTELLIGENCE_AVAILABLE and deep_memory:
+            try:
+                memory_section = format_memory_for_prompt(deep_memory)
+            except Exception:
+                pass
+        
+        context_section = ""
+        if INTELLIGENCE_AVAILABLE and rich_context:
+            try:
+                context_section = format_context_for_prompt(rich_context)
+            except Exception:
+                pass
+        
+        emotional_guidance = ""
+        if INTELLIGENCE_AVAILABLE and emotional_reading and tone_guidance:
+            try:
+                emotional_guidance = format_emotional_guidance_for_prompt(emotional_reading, tone_guidance)
+            except Exception:
+                pass
+        
+        full_context = f"""
+{basic_context}
+{memory_section}
+{context_section}
+""".strip()
+        
+        conversation_guidance = CONVERSATION_PROMPTS.get(
+            conversation_context, 
+            CONVERSATION_PROMPTS["care_plan_modal"]
+        )
+        
+        relationship_notes = {
+            "new_acquaintance": "🆕 NEW USER: Be extra welcoming, introduce yourself briefly.",
+            "building_trust": "",
+            "established": "💜 ESTABLISHED: Can be more familiar, reference your history.",
+            "deep_relationship": "💜 DEEP RELATIONSHIP: Very familiar, anticipate needs."
+        }
+        relationship_note = relationship_notes.get(relationship_stage, "")
+        
+        system_prompt = MASTER_SYSTEM_PROMPT.format(
+            context_section=full_context,
+            conversation_guidance=conversation_guidance + "\n" + relationship_note,
+            emotional_guidance=emotional_guidance
+        )
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 4: BUILD MESSAGE HISTORY
+        # ═══════════════════════════════════════════════════════════════════
+        
+        messages = [SystemMessage(content=system_prompt)]
+        
+        if memory_context and memory_context.get("recent_messages"):
+            for msg in memory_context.get("recent_messages", [])[-8:]:
+                if msg.get("role") == "user":
+                    messages.append(HumanMessage(content=msg.get("content", "")))
+                elif msg.get("role") == "assistant":
+                    messages.append(AIMessage(content=msg.get("content", "")))
+        
+        messages.append(HumanMessage(content=message))
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 5: STREAM RESPONSE TOKEN BY TOKEN
+        # ═══════════════════════════════════════════════════════════════════
+        
+        llm = get_llm(streaming=True)  # Enable streaming
+        
+        # Stream tokens as they arrive
+        full_response = ""
+        async for chunk in llm.astream(messages):
+            if hasattr(chunk, 'content') and chunk.content:
+                token = chunk.content
+                full_response += token
+                yield {
+                    "type": "token",
+                    "content": token
+                }
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 6: COMPOSE & ENHANCE FINAL RESPONSE
+        # ═══════════════════════════════════════════════════════════════════
+        
+        response_type = "text"
+        choices = None
+        slider_config = None
+        
+        if INTELLIGENCE_AVAILABLE and emotional_reading:
+            try:
+                response_composer = ResponseComposer()
+                composed = response_composer.compose_response(
+                    raw_content=full_response,
+                    conversation_context=conversation_context,
+                    emotional_reading=emotional_reading.to_dict(),
+                    user_message=message
+                )
+                response_type = composed.response_type.value
+                choices = composed.choices
+                if composed.slider_config:
+                    slider_config = composed.slider_config.to_dict()
+            except Exception as e:
+                logger.warning(f"Response composition error: {e}")
+                choices = generate_choices(full_response, conversation_context)
+        else:
+            choices = generate_choices(full_response, conversation_context)
+            
+            if any(phrase in full_response.lower() for phrase in ["how severe", "scale of", "rate your", "1 to"]):
+                response_type = "slider"
+                slider_config = {
+                    "min": 1,
+                    "max": 9,
+                    "step": 1,
+                    "labels": ["None 😊", "Mild", "Moderate", "Strong", "Intense 💪"]
+                }
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 7: SEND FINAL METADATA
+        # ═══════════════════════════════════════════════════════════════════
+        
+        metadata = {
+            "intelligence_mode": "full" if INTELLIGENCE_AVAILABLE else "basic",
+            "relationship_stage": relationship_stage
+        }
+        
+        if emotional_reading:
+            metadata["emotional_state"] = emotional_reading.primary_emotion.value
+            metadata["communication_approach"] = emotional_reading.communication_approach
+        
+        yield {
+            "type": "final",
+            "content": full_response,
+            "response_type": response_type,
+            "choices": choices,
+            "slider_config": slider_config,
+            "metadata": metadata
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Streaming chat agent error: {str(e)}", exc_info=True)
+        
+        # Provide helpful error message based on error type
+        error_msg = "I'm having trouble processing that right now."
+        
+        if "rate" in str(e).lower() or "quota" in str(e).lower():
+            error_msg = "I'm getting a lot of requests right now. Please try again in a moment. 💜"
+        elif "timeout" in str(e).lower():
+            error_msg = "That took longer than expected. Could you try again? 💜"
+        elif "connection" in str(e).lower() or "network" in str(e).lower():
+            error_msg = "I'm having connection issues. Please check your internet and try again. 💜"
+        else:
+            error_msg = "Something went wrong on my end. Could you try again? 💜"
+        
+        yield {
+            "type": "error",
+            "content": error_msg,
+            "error": str(e),
+            "retry_suggested": True
+        }

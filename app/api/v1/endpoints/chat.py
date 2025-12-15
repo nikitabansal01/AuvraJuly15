@@ -16,11 +16,13 @@ Endpoints:
 
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
+import json
 
 from app.core.database import get_db, UserProfile
 from app.services.chat.chat_service import ChatService
@@ -105,9 +107,10 @@ def parse_conversation_context(context_str: str) -> ConversationContext:
         "care_plan_modal": ConversationContext.CARE_PLAN_MODAL,
         "symptom_checkin": ConversationContext.SYMPTOM_CHECKIN,
         "personalise": ConversationContext.PERSONALISE,
-        "know_body": ConversationContext.KNOW_BODY
+        "know_body": ConversationContext.KNOW_BODY,
+        "general": ConversationContext.GENERAL
     }
-    return context_map.get(context_str, ConversationContext.CARE_PLAN_MODAL)
+    return context_map.get(context_str, ConversationContext.GENERAL)
 
 
 def parse_input_mode(mode_str: str) -> InputMode:
@@ -132,7 +135,8 @@ async def send_message(
     """
     Send a text message to the chatbot.
     
-    This is the main endpoint for chat interactions.
+    This is the main endpoint for chat interactions (non-streaming).
+    For streaming responses, use /message/stream
     
     Args:
         request: The message request containing user_id, message, context, etc.
@@ -171,6 +175,68 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing message: {str(e)}"
+        )
+
+
+@router.post("/message/stream")
+async def send_message_streaming(
+    request: TextMessageRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Send a text message to the chatbot with STREAMING response.
+    
+    This endpoint returns Server-Sent Events (SSE) for real-time token streaming.
+    Makes the chatbot feel ALIVE and responsive!
+    
+    Args:
+        request: The message request containing user_id, message, context, etc.
+        
+    Returns:
+        StreamingResponse with SSE format
+    """
+    try:
+        # Validate user
+        if not validate_user(request.user_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Build internal request
+        chat_request = ChatMessageRequest(
+            user_id=request.user_id,
+            message=request.message,
+            conversation_context=parse_conversation_context(request.conversation_context),
+            input_mode=parse_input_mode(request.input_mode),
+            session_id=request.session_id,
+            metadata=request.metadata
+        )
+        
+        # Create streaming generator
+        async def generate():
+            chat_service = ChatService(db)
+            async for chunk in chat_service.process_message_streaming(chat_request):
+                # Format as SSE (Server-Sent Events)
+                yield f"data: {json.dumps(chunk)}\n\n"
+        
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in send_message_streaming: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing streaming message: {str(e)}"
         )
 
 
@@ -285,6 +351,78 @@ async def send_voice_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing voice file: {str(e)}"
+        )
+
+
+@router.post("/voice-response")
+async def generate_voice_response(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Generate voice (audio) response from text.
+    
+    Makes Auvra SPEAK! Premium conversational experience.
+    
+    Request body:
+        {
+            "text": "Response text to convert to speech",
+            "voice": "nova",  // alloy, echo, fable, onyx, nova, shimmer
+            "speed": 1.0,     // 0.25 to 4.0
+            "model": "tts-1"  // tts-1 or tts-1-hd
+        }
+    
+    Returns:
+        Audio file (MP3) as response
+    """
+    try:
+        from app.services.chat.voice_service import VoiceService
+        
+        text = request.get("text")
+        if not text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Text is required"
+            )
+        
+        voice = request.get("voice", "nova")
+        speed = request.get("speed", 1.0)
+        model = request.get("model", "tts-1")
+        
+        logger.info(f"🎤 Generating voice response: {len(text)} chars")
+        
+        voice_service = VoiceService()
+        result = await voice_service.generate_speech(text, voice, speed, model)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"TTS generation failed: {result.get('error')}"
+            )
+        
+        # Return audio as streaming response
+        from io import BytesIO
+        audio_stream = BytesIO(result["audio_bytes"])
+        
+        return StreamingResponse(
+            audio_stream,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "attachment; filename=auvra_response.mp3",
+                "X-Voice": voice,
+                "X-Model": model,
+                "X-Text-Length": str(result["text_length"]),
+                "X-Audio-Size-KB": str(result["audio_size_kb"])
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error generating voice response: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating voice response: {str(e)}"
         )
 
 
@@ -630,6 +768,453 @@ async def chat_health():
     return {
         "status": "healthy",
         "service": "auvra-chatbot",
-        "version": "v2.1.0",  # Added version for deployment verification
+        "version": "v3.0.0",  # Updated with new intelligence features
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEW INTELLIGENCE FEATURES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/wellness-score/{user_id}")
+async def get_wellness_score(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get daily wellness score for user.
+    
+    Calculates holistic wellness from sleep, mood, symptoms, habits, etc.
+    Returns score 0-100 with dimension breakdown and recommendations.
+    """
+    try:
+        from app.services.chat.intelligence.wellness_score import WellnessScoreCalculator
+        
+        # Validate user
+        if not validate_user(user_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        logger.info(f"Calculating wellness score for {user_id}")
+        
+        # Load mood data from in-memory storage
+        user_moods = _mood_storage.get(user_id, [])
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_mood = next((m for m in user_moods if m["date"] == today), None)
+        
+        # Build mood data from today's entry or defaults
+        mood_data = {
+            "mood": today_mood.get("mood_level", 5) if today_mood else 5,
+            "energy": today_mood.get("energy_level", 3) if today_mood else 3,
+            "stress": 5  # Default, could add stress tracking later
+        }
+        
+        # TODO: Load actual sleep, symptom, and habit data from database
+        # For now, use reasonable defaults
+        calculator = WellnessScoreCalculator()
+        score = calculator.calculate_daily_score(
+            sleep_data={"hours": 7, "quality": 7},  # TODO: from sleep tracking
+            mood_data=mood_data,
+            symptom_data=[],  # TODO: from symptom tracking
+            habit_data={"completed": 3, "total": 5}  # TODO: from habit tracking
+        )
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "date": today,
+            **score
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating wellness score: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating wellness score: {str(e)}"
+        )
+
+
+@router.get("/predict-symptoms/{user_id}")
+async def predict_symptoms(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Predict upcoming symptoms based on cycle + historical patterns.
+    
+    Returns predictions for next 2-3 days with proactive advice.
+    """
+    try:
+        from app.services.chat.intelligence.symptom_predictor import SymptomPredictor
+        from app.services.chat.user_context_service import UserContextService
+        
+        # Validate user
+        if not validate_user(user_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        logger.info(f"Predicting symptoms for {user_id}")
+        
+        # Load user's cycle data
+        user_context_service = UserContextService(db)
+        patient_profile = await user_context_service.get_patient_profile(user_id)
+        profile_dict = patient_profile.model_dump() if patient_profile else {}
+        
+        # Get current phase and cycle info
+        current_phase = profile_dict.get("phase", "luteal")
+        cycle_day = profile_dict.get("cycle_day", 14)
+        cycle_length = 28  # Default, could get from profile
+        days_until_period = max(0, cycle_length - cycle_day)
+        
+        predictor = SymptomPredictor()
+        predictions = predictor.predict_upcoming_symptoms(
+            user_id=user_id,
+            current_phase=current_phase,
+            days_until_period=days_until_period,
+            historical_symptoms=[],  # TODO: Load from symptom tracking table
+            db_session=db
+        )
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            **predictions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error predicting symptoms: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error predicting symptoms: {str(e)}"
+        )
+
+
+@router.get("/session-summary/{session_id}")
+async def get_session_summary(
+    session_id: str,
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get intelligent summary of conversation session.
+    
+    Returns key topics, emotional journey, action items, insights.
+    """
+    try:
+        from app.services.chat.intelligence.session_summarizer import SessionSummarizer
+        from app.core.database import ChatSession, ChatMessage
+        
+        # Validate user
+        if not validate_user(user_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        logger.info(f"Generating session summary for {session_id}")
+        
+        # Load actual messages from database
+        messages_query = db.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).order_by(ChatMessage.created_at).all()
+        
+        messages = [
+            {
+                "role": msg.role,
+                "content": msg.content,
+                "timestamp": msg.created_at.isoformat() if msg.created_at else None
+            }
+            for msg in messages_query
+        ]
+        
+        # Get session info
+        session = db.query(ChatSession).filter(
+            ChatSession.id == session_id
+        ).first()
+        
+        session_metadata = {
+            "user_id": user_id, 
+            "session_id": session_id,
+            "conversation_context": session.conversation_context if session else "general",
+            "message_count": len(messages)
+        }
+        
+        summarizer = SessionSummarizer()
+        summary = summarizer.summarize_session(
+            messages=messages,
+            emotional_states=["neutral", "hopeful"],  # TODO: Extract from messages
+            session_metadata=session_metadata
+        )
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "user_id": user_id,
+            **summary
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating session summary: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating session summary: {str(e)}"
+        )
+
+
+@router.get("/cache/stats")
+async def get_cache_stats():
+    """Get cache performance statistics."""
+    try:
+        from app.services.chat.intelligence.intelligent_cache import get_cache
+        
+        cache = get_cache()
+        stats = cache.get_stats()
+        
+        return {
+            "success": True,
+            "cache_stats": stats,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting cache stats: {str(e)}"
+        )
+
+
+@router.post("/cache/clear")
+async def clear_cache(
+    cache_type: Optional[str] = None,
+    user_id: Optional[str] = None
+):
+    """Clear cache entries."""
+    try:
+        from app.services.chat.intelligence.intelligent_cache import get_cache
+        
+        cache = get_cache()
+        
+        if user_id:
+            cache.invalidate_user(user_id)
+            return {"success": True, "message": f"Cleared cache for user {user_id}"}
+        elif cache_type:
+            cache.invalidate_type(cache_type)
+            return {"success": True, "message": f"Cleared cache type {cache_type}"}
+        else:
+            cache.clear_expired()
+            return {"success": True, "message": "Cleared expired cache entries"}
+        
+    except Exception as e:
+        logger.error(f"Error clearing cache: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error clearing cache: {str(e)}"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MOOD TRACKING ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class MoodLogRequest(BaseModel):
+    """Request for mood logging."""
+    user_id: str
+    mood_level: int = Field(..., ge=1, le=7, description="Mood level 1-7")
+    energy_level: int = Field(..., ge=1, le=5, description="Energy level 1-5")
+    notes: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+class MoodEntry(BaseModel):
+    """Response model for mood entry."""
+    id: str
+    user_id: str
+    mood_level: int
+    energy_level: int
+    notes: Optional[str]
+    timestamp: str
+    date: str
+
+
+# In-memory mood storage (TODO: Replace with database table for persistence)
+# This data is lost on server restart - implement MoodLog table in database.py
+_mood_storage: Dict[str, List[Dict[str, Any]]] = {}
+
+
+@router.post("/mood-log")
+async def log_mood(request: MoodLogRequest, db: Session = Depends(get_db)):
+    """Log user's daily mood and energy level."""
+    try:
+        import uuid
+        
+        # Validate user
+        if not validate_user(request.user_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        logger.info(f"Logging mood for user {request.user_id}: mood={request.mood_level}, energy={request.energy_level}")
+        
+        # Create mood entry
+        timestamp = request.timestamp or datetime.now().isoformat()
+        date = timestamp.split("T")[0]
+        
+        entry = {
+            "id": str(uuid.uuid4()),
+            "user_id": request.user_id,
+            "mood_level": request.mood_level,
+            "energy_level": request.energy_level,
+            "notes": request.notes,
+            "timestamp": timestamp,
+            "date": date
+        }
+        
+        # Store in memory (TODO: Store in database)
+        if request.user_id not in _mood_storage:
+            _mood_storage[request.user_id] = []
+        
+        # Remove existing entry for today if any
+        _mood_storage[request.user_id] = [
+            m for m in _mood_storage[request.user_id] if m["date"] != date
+        ]
+        
+        # Add new entry
+        _mood_storage[request.user_id].append(entry)
+        
+        # Calculate streak
+        streak = calculate_mood_streak(request.user_id)
+        
+        return {
+            "success": True,
+            "entry": entry,
+            "streak": streak,
+            "message": "Mood logged successfully! 🌟"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error logging mood: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error logging mood: {str(e)}"
+        )
+
+
+@router.get("/mood-history/{user_id}")
+async def get_mood_history(
+    user_id: str,
+    days: int = 7,
+    db: Session = Depends(get_db)
+):
+    """Get mood history for user."""
+    try:
+        logger.info(f"Fetching mood history for user {user_id}, last {days} days")
+        
+        # Validate user
+        if not validate_user(user_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Get from storage
+        user_moods = _mood_storage.get(user_id, [])
+        
+        # Filter by date range - use timedelta for correct date math
+        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_str = cutoff_date.strftime("%Y-%m-%d")
+        
+        recent_moods = [
+            m for m in user_moods
+            if m["date"] >= cutoff_str
+        ]
+        
+        # Sort by date descending
+        recent_moods.sort(key=lambda x: x["date"], reverse=True)
+        
+        # Calculate statistics
+        if recent_moods:
+            avg_mood = sum(m["mood_level"] for m in recent_moods) / len(recent_moods)
+            avg_energy = sum(m["energy_level"] for m in recent_moods) / len(recent_moods)
+            trend = calculate_mood_trend(recent_moods)
+        else:
+            avg_mood = 0
+            avg_energy = 0
+            trend = "no_data"
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "entries": recent_moods,
+            "statistics": {
+                "average_mood": round(avg_mood, 1),
+                "average_energy": round(avg_energy, 1),
+                "total_entries": len(recent_moods),
+                "trend": trend
+            },
+            "streak": calculate_mood_streak(user_id)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting mood history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting mood history: {str(e)}"
+        )
+
+
+def calculate_mood_streak(user_id: str) -> int:
+    """Calculate consecutive days of mood logging."""
+    user_moods = _mood_storage.get(user_id, [])
+    if not user_moods:
+        return 0
+    
+    # Get unique dates sorted descending
+    dates = sorted(set(m["date"] for m in user_moods), reverse=True)
+    
+    if not dates:
+        return 0
+    
+    # Check if today is logged
+    today = datetime.now().strftime("%Y-%m-%d")
+    if dates[0] != today:
+        return 0
+    
+    # Count consecutive days - use timedelta for correct date math
+    streak = 1
+    for i in range(1, len(dates)):
+        expected_date = datetime.now() - timedelta(days=i)
+        expected_str = expected_date.strftime("%Y-%m-%d")
+        
+        if dates[i] == expected_str:
+            streak += 1
+        else:
+            break
+    
+    return streak
+
+
+def calculate_mood_trend(moods: List[Dict[str, Any]]) -> str:
+    """Calculate mood trend from recent entries."""
+    if len(moods) < 2:
+        return "stable"
+    
+    # Compare first half vs second half
+    half = len(moods) // 2
+    recent_avg = sum(m["mood_level"] for m in moods[:half]) / half
+    older_avg = sum(m["mood_level"] for m in moods[half:]) / (len(moods) - half)
+    
+    diff = recent_avg - older_avg
+    
+    if diff > 0.5:
+        return "improving"
+    elif diff < -0.5:
+        return "declining"
+    return "stable"
+

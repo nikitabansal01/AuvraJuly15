@@ -273,3 +273,110 @@ class VoiceService:
             "max_size_mb": max_size,
             "message": "Audio size valid" if size_mb <= max_size else f"Audio too large ({size_mb:.2f}MB > {max_size}MB)"
         }
+    
+    async def generate_speech(
+        self,
+        text: str,
+        voice: str = "nova",
+        speed: float = 1.0,
+        model: str = "tts-1"
+    ) -> Dict[str, Any]:
+        """
+        Generate speech from text using OpenAI TTS.
+        
+        This makes Auvra SPEAK! Premium conversational experience.
+        
+        Args:
+            text: Text to convert to speech
+            voice: Voice to use (alloy, echo, fable, onyx, nova, shimmer)
+            speed: Speed of speech (0.25 to 4.0)
+            model: TTS model (tts-1 for speed, tts-1-hd for quality)
+        
+        Returns:
+            Dict with audio bytes and metadata
+        """
+        try:
+            logger.info(f"🎤 Generating speech: {len(text)} chars, voice={voice}, model={model}")
+            
+            # Validate voice
+            valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+            if voice not in valid_voices:
+                logger.warning(f"Invalid voice '{voice}', defaulting to 'nova'")
+                voice = "nova"
+            
+            # Validate speed
+            speed = max(0.25, min(4.0, speed))
+            
+            # Generate speech
+            response = await self.client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=text,
+                speed=speed
+            )
+            
+            # Get audio bytes
+            audio_bytes = response.content
+            
+            logger.info(f"✅ Speech generated: {len(audio_bytes)} bytes")
+            
+            return {
+                "success": True,
+                "audio_bytes": audio_bytes,
+                "audio_base64": base64.b64encode(audio_bytes).decode('utf-8'),
+                "format": "mp3",
+                "voice": voice,
+                "model": model,
+                "text_length": len(text),
+                "audio_size_kb": round(len(audio_bytes) / 1024, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ TTS generation error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "audio_bytes": None
+            }
+    
+    async def generate_speech_streaming(
+        self,
+        text: str,
+        voice: str = "nova",
+        speed: float = 1.0
+    ):
+        """
+        Stream speech generation for longer responses.
+        Yields audio chunks as they're generated.
+        """
+        try:
+            logger.info(f"🎤 Streaming speech generation: voice={voice}")
+            
+            # For now, OpenAI doesn't support true TTS streaming
+            # So we generate full audio and yield it in chunks
+            result = await self.generate_speech(text, voice, speed)
+            
+            if result["success"]:
+                audio_bytes = result["audio_bytes"]
+                chunk_size = 4096  # 4KB chunks
+                
+                for i in range(0, len(audio_bytes), chunk_size):
+                    chunk = audio_bytes[i:i + chunk_size]
+                    yield {
+                        "type": "audio_chunk",
+                        "data": base64.b64encode(chunk).decode('utf-8'),
+                        "chunk_index": i // chunk_size,
+                        "is_final": i + chunk_size >= len(audio_bytes)
+                    }
+            else:
+                yield {
+                    "type": "error",
+                    "error": result.get("error", "TTS generation failed")
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Streaming TTS error: {str(e)}")
+            yield {
+                "type": "error",
+                "error": str(e)
+            }
