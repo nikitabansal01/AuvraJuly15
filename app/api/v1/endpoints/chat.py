@@ -20,7 +20,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.database import get_db, UserProfile
 from app.services.chat.chat_service import ChatService
@@ -58,11 +58,11 @@ class VoiceMessageUploadRequest(BaseModel):
 
 
 class SliderRequest(BaseModel):
-    """Request for slider response."""
+    """Request for slider response. session_id is OPTIONAL - slider can start a new session."""
     user_id: str
-    session_id: Optional[str] = None  # UUID string (optional: slider can start a session)
     value: int
     context: Dict[str, Any]
+    session_id: Optional[str] = Field(default=None, description="UUID string (optional: slider can start a session)")
 
 
 class ChoiceRequest(BaseModel):
