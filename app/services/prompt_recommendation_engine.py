@@ -230,6 +230,12 @@ def build_master_prompt(user_profile: Dict[str, Any], category: str, rec_count: 
     age = user_profile.get('age', 30)
     primary_hormone = user_profile.get('primaryImbalance', 'insulin')
     secondary_hormones = user_profile.get('secondaryImbalances', [])
+    
+    # Focus on TOP 2 hormones only (primary + first secondary)
+    top_2_hormones = [primary_hormone]
+    if secondary_hormones:
+        top_2_hormones.append(secondary_hormones[0])
+    
     conditions = user_profile.get('conditions', ['PCOS'])
     symptoms = user_profile.get('symptoms', [])
     lifestyle_focus = user_profile.get('lifestyle_focus', [])
@@ -269,8 +275,10 @@ def build_master_prompt(user_profile: Dict[str, Any], category: str, rec_count: 
 USER PROFILE
 ═══════════════════════════════════════════════════════════════════════════════
 - Age: {age}
-- Primary Hormone Imbalance: {primary_hormone.upper()}
-- Secondary Imbalances: {', '.join(secondary_hormones) if secondary_hormones else 'None'}
+- 🎯 TOP 2 HORMONE PRIORITIES: {', '.join([h.upper() for h in top_2_hormones])}
+  • Primary: {primary_hormone.upper()} (HIGHEST priority)
+  • Secondary: {secondary_hormones[0].upper() if secondary_hormones else 'None'}
+- Other Imbalances: {', '.join(secondary_hormones[1:]) if len(secondary_hormones) > 1 else 'None'}
 - Diagnosed Conditions: {condition_str}
 - Current Symptoms: {symptom_str}{lifestyle_context}
 
@@ -280,7 +288,7 @@ YOUR TASK
 Generate exactly {rec_count} {category.upper()} recommendations personalized for this user.
 
 CRITICAL RULES:
-1. Focus ONLY on {primary_hormone.upper()} hormone (primary) and {', '.join(secondary_hormones) if secondary_hormones else 'no secondary'} hormones
+1. 🎯 ONLY target TOP 2 hormones: {', '.join([h.upper() for h in top_2_hormones])} - These are the user's PRIORITY hormones!
 2. Every recommendation MUST have specific, measurable actions (exact amounts, durations, frequencies)
 3. Use REAL research-backed approaches (no made-up remedies)
 4. Include PRACTICAL details (cost, prep time, where to get items)
@@ -311,7 +319,7 @@ REQUIRED FIELDS for each recommendation:
 - contraindications: Array of warnings
 - conditions: Array like ["PCOS"]
 - symptoms: Array of symptoms this helps (use user's symptoms)
-- hormones: Array with ONLY user's hormones [{[f'"{primary_hormone}"'] + [f', "{h}"' for h in secondary_hormones]}]
+- hormones: Array with TOP 2 hormones ONLY: {[f'"{h}"' for h in top_2_hormones]} (each recommendation can target 1-2 of these)
 - frequency_detail: Format "daily:1" or "weekly:3"
 - duration_weeks: Number (8, 12, 16)
 - optimal_times: Array ["morning"], ["afternoon"], ["evening"], or ["anytime"]
@@ -603,9 +611,11 @@ class PromptRecommendationEngine:
         
         primary_hormone = user_profile.get('primaryImbalance', 'insulin')
         secondary_hormones = user_profile.get('secondaryImbalances', [])
-        allowed_hormones = [primary_hormone.lower()]
+        
+        # TOP 2 hormones only (primary + first secondary)
+        top_2_hormones = [primary_hormone.lower()]
         if secondary_hormones:
-            allowed_hormones.append(secondary_hormones[0].lower())
+            top_2_hormones.append(secondary_hormones[0].lower())
         
         processed = []
         
@@ -625,12 +635,14 @@ class PromptRecommendationEngine:
             rec.setdefault('duration_weeks', 8)
             rec.setdefault('optimal_times', ['morning'] if category == 'food' else ['afternoon'] if category == 'movement' else ['evening'])
             
-            # CRITICAL: Ensure hormones are from user's profile
+            # CRITICAL: Ensure hormones are from TOP 2 hormones only
             rec_hormones = rec.get('hormones', [])
-            valid_hormones = [h for h in rec_hormones if h.lower() in allowed_hormones]
+            valid_hormones = [h for h in rec_hormones if h.lower() in top_2_hormones]
             if not valid_hormones:
+                # Default to primary hormone if none match
                 valid_hormones = [primary_hormone.title()]
-            rec['hormones'] = valid_hormones[:1]  # Exactly ONE hormone per recommendation
+            # Allow 1-2 hormones per recommendation (from TOP 2)
+            rec['hormones'] = valid_hormones[:2]
             
             # Ensure research backing structure
             if not rec.get('researchBacking') or not isinstance(rec.get('researchBacking'), dict):
