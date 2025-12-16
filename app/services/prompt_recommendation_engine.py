@@ -206,6 +206,32 @@ MINDFULNESS_EXAMPLE = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# HORMONE KNOWLEDGE DATABASE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+HORMONE_KNOWLEDGE = {
+    'insulin': 'Focus on blood sugar stabilizing foods, low-glycemic options, cinnamon, berberine, chromium, fiber-rich foods, protein-first eating, strength training, HIIT intervals',
+    'cortisol': 'Focus on adaptogenic herbs (ashwagandha, rhodiola), magnesium-rich foods, gentle exercise (yoga, walking), sleep hygiene, stress reduction, no caffeine after noon',
+    'progesterone': 'Focus on vitamin B6 foods, zinc-rich foods, chasteberry, seed cycling, moderate exercise, stress reduction, adequate sleep',
+    'thyroid': 'Focus on selenium (Brazil nuts), iodine, zinc, avoiding goitrogens, gentle cardio, stress management',
+    'estrogen': 'Focus on cruciferous vegetables (DIM), flaxseed, fiber for estrogen metabolism, avoiding xenoestrogens, moderate exercise'
+}
+
+def _build_hormone_knowledge(hormones: List[str]) -> str:
+    """Build hormone knowledge section for ONLY the user's 2 hormones."""
+    knowledge_lines = []
+    for hormone in hormones:
+        h_lower = hormone.lower()
+        if h_lower in HORMONE_KNOWLEDGE:
+            knowledge_lines.append(f"{hormone.upper()} imbalance: {HORMONE_KNOWLEDGE[h_lower]}")
+    
+    if not knowledge_lines:
+        # Fallback if hormone not found
+        return f"{hormones[0].upper()}: Focus on lifestyle approaches that support this hormone"
+    
+    return '\n'.join(knowledge_lines)
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MASTER PROMPT TEMPLATES
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -275,33 +301,36 @@ def build_master_prompt(user_profile: Dict[str, Any], category: str, rec_count: 
 USER PROFILE
 ═══════════════════════════════════════════════════════════════════════════════
 - Age: {age}
-- 🎯 TOP 2 HORMONE PRIORITIES: {', '.join([h.upper() for h in top_2_hormones])}
-  • Primary: {primary_hormone.upper()} (HIGHEST priority)
-  • Secondary: {secondary_hormones[0].upper() if secondary_hormones else 'None'}
-- Other Imbalances: {', '.join(secondary_hormones[1:]) if len(secondary_hormones) > 1 else 'None'}
+- 🎯 HORMONE ASSESSMENT RESULTS (ONLY THESE 2):
+  1️⃣ PRIMARY: {primary_hormone.upper()} (MAIN FOCUS)
+  2️⃣ SECONDARY: {secondary_hormones[0].upper() if secondary_hormones else 'None'}
 - Diagnosed Conditions: {condition_str}
 - Current Symptoms: {symptom_str}{lifestyle_context}
+
+⚠️ CRITICAL: Generate recommendations ONLY for these 2 hormones. DO NOT include any other hormones.
 
 ═══════════════════════════════════════════════════════════════════════════════
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 Generate exactly {rec_count} {category.upper()} recommendations personalized for this user.
 
-CRITICAL RULES:
-1. 🎯 ONLY target TOP 2 hormones: {', '.join([h.upper() for h in top_2_hormones])} - These are the user's PRIORITY hormones!
+🚨 CRITICAL RULES - READ CAREFULLY:
+1. ⛔ ONLY TARGET THESE 2 HORMONES: {', '.join([h.upper() for h in top_2_hormones])}
+   - DO NOT mention insulin, cortisol, thyroid, estrogen, progesterone, or ANY hormone outside these 2
+   - Each recommendation must target ONE or BOTH of these 2 hormones
+   - If you include ANY other hormone, the recommendation will be REJECTED
+
 2. Every recommendation MUST have specific, measurable actions (exact amounts, durations, frequencies)
 3. Use REAL research-backed approaches (no made-up remedies)
 4. Include PRACTICAL details (cost, prep time, where to get items)
 5. Safety first - include relevant contraindications
 
 ═══════════════════════════════════════════════════════════════════════════════
-HORMONE KNOWLEDGE BASE
+YOUR HORMONE KNOWLEDGE BASE (ONLY THESE 2 HORMONES ALLOWED)
 ═══════════════════════════════════════════════════════════════════════════════
-INSULIN imbalance: Focus on blood sugar stabilizing foods, low-glycemic options, cinnamon, berberine, chromium, fiber-rich foods, protein-first eating, strength training, HIIT intervals
-CORTISOL imbalance: Focus on adaptogenic herbs (ashwagandha, rhodiola), magnesium-rich foods, gentle exercise (yoga, walking), sleep hygiene, stress reduction, no caffeine after noon
-PROGESTERONE imbalance: Focus on vitamin B6 foods, zinc-rich foods, chasteberry, seed cycling, moderate exercise, stress reduction, adequate sleep
-THYROID imbalance: Focus on selenium (Brazil nuts), iodine, zinc, avoiding goitrogens, gentle cardio, stress management
-ESTROGEN imbalance: Focus on cruciferous vegetables (DIM), flaxseed, fiber for estrogen metabolism, avoiding xenoestrogens, moderate exercise
+{_build_hormone_knowledge(top_2_hormones)}
+
+⚠️ REMEMBER: Use ONLY the hormone knowledge above. DO NOT reference other hormones.
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (JSON Array)
