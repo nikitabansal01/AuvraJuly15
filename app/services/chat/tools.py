@@ -735,7 +735,6 @@ def add_medical_disclaimer(topic: str, response: str) -> str:
 # 6. PROACTIVE TOOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@tool
 async def check_proactive_triggers(user_id: str, db_session: Any) -> Dict[str, Any]:
     """
     Check for proactive engagement triggers.
@@ -835,6 +834,16 @@ async def check_proactive_triggers(user_id: str, db_session: Any) -> Dict[str, A
         "triggers": triggers,
         "top_trigger": triggers[0] if triggers else None
     }
+
+
+@tool
+async def check_proactive_triggers_tool(user_id: str, db_session: Any) -> Dict[str, Any]:
+    """Tool wrapper for proactive trigger detection.
+
+    The API/server code calls `check_proactive_triggers(...)` as a normal async
+    function. The LangChain/LangGraph agent needs a `@tool` wrapper.
+    """
+    return await check_proactive_triggers(user_id=user_id, db_session=db_session)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1444,7 +1453,7 @@ def get_all_tools():
         add_medical_disclaimer,
         
         # Proactive
-        check_proactive_triggers,
+        check_proactive_triggers_tool,
         
         # Personalization
         update_user_preference,
