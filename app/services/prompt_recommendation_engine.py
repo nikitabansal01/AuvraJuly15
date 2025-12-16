@@ -21,11 +21,29 @@ Architecture:
 - Few-shot examples for consistency
 - Structured JSON output
 
-PERSONALIZATION (Eat/Move/Pause):
-- lifestyle_focus maps to categories: eat→food, move→movement, pause→mindfulness
-- Preferred category gets MORE recommendations (5 vs 3)
-- Non-preferred categories get FEWER but still included (3 each)
-- This creates a natural weighting toward user's chosen lifestyle focus
+SMART PERSONALIZATION (Eat/Move/Pause) - Based on Customer Psychology:
+═══════════════════════════════════════════════════════════════════════════════
+Distribution: Users get MORE of what they prefer, but stay balanced
+
+┌─────────────────────────┬──────┬──────────┬─────────────┬───────┐
+│ User Preference         │ Food │ Movement │ Mindfulness │ Total │
+├─────────────────────────┼──────┼──────────┼─────────────┼───────┤
+│ None (default)          │  4   │    4     │      4      │  12   │
+│ "Eat" only              │  5   │    3     │      2      │  10   │
+│ "Move" only             │  2   │    5     │      3      │  10   │
+│ "Pause" only            │  2   │    3     │      5      │  10   │
+│ "Eat" + "Move"          │  4   │    4     │      2      │  10   │
+│ "Eat" + "Pause"         │  4   │    2     │      4      │  10   │
+│ "Move" + "Pause"        │  2   │    4     │      4      │  10   │
+│ All three               │  4   │    4     │      4      │  12   │
+└─────────────────────────┴──────┴──────────┴─────────────┴───────┘
+
+Business Logic:
+- Single preference: Preferred=5, Adjacent=3, Opposite=2
+- Dual preference: Both=4, Third=2
+- No preference: Balanced 4-4-4
+
+This keeps total manageable (10-12) while honoring user choice.
 """
 
 import logging
