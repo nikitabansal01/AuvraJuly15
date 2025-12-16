@@ -63,12 +63,18 @@ class RecommendationService:
                 recommendations, allowed_hormones
             )
             
-            # Save each recommendation for session with assigned hormone
-            for rec in recommendations_with_hormones:
-                await self._save_single_session_recommendation(session_id, rec, category, user_hormones)
+            # OPTIMIZATION: Save all recommendations in PARALLEL (not sequential)
+            import asyncio
+            save_tasks = [
+                self._save_single_session_recommendation(session_id, rec, category, user_hormones)
+                for rec in recommendations_with_hormones
+            ]
+            results = await asyncio.gather(*save_tasks, return_exceptions=True)
             
-            logger.info(f"Session recommendation generation completed: {session_id}, {category}")
-            return True
+            # Check results
+            success_count = sum(1 for r in results if r is True)
+            logger.info(f"Session recommendation generation completed: {session_id}, {category}, saved={success_count}/{len(recommendations_with_hormones)}")
+            return success_count > 0
             
         except Exception as e:
             logger.error(f"Error during session recommendation generation: {str(e)}", exc_info=True)

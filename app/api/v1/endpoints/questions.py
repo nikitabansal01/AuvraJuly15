@@ -351,38 +351,54 @@ async def _generate_recommendations_background(session_id: str, service, process
                 session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
                 db.commit()
             
-            # Generate recommendations for each category (improved error handling)
+            # Generate recommendations for ALL categories in PARALLEL (3x faster!)
             categories = ["food", "movement", "mindfulness"]
             successful_categories = []
             failed_categories = []
             
+            # Mark all categories as processing
             for category in categories:
+                processing_service.update_category_status(session_id, category, "processing", f"{category} recommendation generation in progress")
+            
+            # Helper function for parallel execution
+            async def generate_category(category: str) -> tuple:
                 try:
-                    # Start category processing
-                    processing_service.update_category_status(session_id, category, "processing", f"{category} recommendation generation in progress")
-                    
                     success = await recommendation_service.generate_and_save_session_recommendations(
                         session_id=session_id,
                         user_profile=temp_user_profile,
                         category=category
                     )
-                    
-                    if success:
-                        successful_categories.append(category)
-                        processing_service.update_category_status(session_id, category, "completed", f"{category} recommendation completed")
-                        logger.info(f"Category recommendation generation successful: {session_id}, {category}")
-                    else:
-                        failed_categories.append(category)
-                        processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation failed")
-                        logger.error(f"Category recommendation generation failed: {session_id}, {category}")
-                        
+                    return (category, success, None)
                 except Exception as e:
+                    return (category, False, str(e))
+            
+            # Run ALL categories in PARALLEL - this is the key optimization!
+            import asyncio
+            results = await asyncio.gather(
+                generate_category("food"),
+                generate_category("movement"),
+                generate_category("mindfulness"),
+                return_exceptions=True
+            )
+            
+            # Process results
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Category generation exception: {result}")
+                    continue
+                    
+                category, success, error = result
+                if success:
+                    successful_categories.append(category)
+                    processing_service.update_category_status(session_id, category, "completed", f"{category} recommendation completed")
+                    logger.info(f"Category recommendation generation successful: {session_id}, {category}")
+                else:
                     failed_categories.append(category)
-                    processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation error")
-                    logger.error(f"Exception during category recommendation generation: {session_id}, {category}, error={str(e)}")
-                
-                # Update heartbeat
-                processing_service.update_heartbeat(session_id)
+                    processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation failed: {error}")
+                    logger.error(f"Category recommendation generation failed: {session_id}, {category}, error={error}")
+            
+            # Update heartbeat
+            processing_service.update_heartbeat(session_id)
             
             # Complete overall processing (regardless of success/failure)
             result_summary = {
