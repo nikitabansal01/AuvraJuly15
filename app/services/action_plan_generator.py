@@ -40,8 +40,14 @@ HORMONE_PERSONAS = {
         "name": "Cortisol",
         "emoji": "🌸",
         "personality": "your calming companion",
-        "intro_template": "Hey love, I'm Cortisol. I noticed you might be running a bit high on stress vibes today. Let's ease into something soothing together.",
+        "phase_behavior": {
+            "menstrual": "I tend to spike during your period, which can make you feel more stressed or anxious",
+            "follicular": "I'm usually balanced in your follicular phase, but stress can still throw me off",
+            "ovulation": "I can rise during ovulation, affecting your mood and energy",
+            "luteal": "I tend to spike in your luteal phase, which can cause anxiety or tension"
+        },
         "focus": "stress reduction and adrenal support",
+        "benefit": "calmer and more relaxed",
         "supportive_foods": ["magnesium-rich foods", "adaptogens", "omega-3s", "vitamin C foods"],
         "supportive_movement": ["yoga", "gentle stretching", "walking in nature", "tai chi"],
         "supportive_mindfulness": ["meditation", "deep breathing", "journaling", "body scan"]
@@ -50,8 +56,14 @@ HORMONE_PERSONAS = {
         "name": "Progesterone",
         "emoji": "🌙",
         "personality": "your peaceful guide",
-        "intro_template": "Hello beautiful, I'm Progesterone. Your body is calling for some nurturing energy. Let's support your natural rhythm together.",
+        "phase_behavior": {
+            "menstrual": "I'm at my lowest during your period, which can affect your mood and sleep",
+            "follicular": "I'm starting to build up in your follicular phase, preparing your body",
+            "ovulation": "I begin to rise after ovulation to support potential pregnancy",
+            "luteal": "I tend to dip in your luteal phase, causing mood swings or cramps"
+        },
         "focus": "hormonal balance and calm",
+        "benefit": "calmer and more balanced",
         "supportive_foods": ["zinc-rich foods", "vitamin B6 foods", "healthy fats", "fiber-rich foods"],
         "supportive_movement": ["gentle yoga", "swimming", "pilates", "restorative movement"],
         "supportive_mindfulness": ["sleep hygiene", "relaxation techniques", "gratitude practice", "evening rituals"]
@@ -60,8 +72,14 @@ HORMONE_PERSONAS = {
         "name": "Estrogen",
         "emoji": "✨",
         "personality": "your radiant friend",
-        "intro_template": "Hi gorgeous, I'm Estrogen! Let's give your body some love and support that beautiful glow from within.",
+        "phase_behavior": {
+            "menstrual": "I'm at my lowest during your period, which can cause fatigue and low mood",
+            "follicular": "I'm rising in your follicular phase, boosting your energy and mood",
+            "ovulation": "I peak during ovulation, making you feel confident and vibrant",
+            "luteal": "I start to drop in your luteal phase, which can affect your skin and mood"
+        },
         "focus": "estrogen balance and vitality",
+        "benefit": "glowing and energized",
         "supportive_foods": ["phytoestrogen foods", "cruciferous vegetables", "flaxseed", "berries"],
         "supportive_movement": ["strength training", "HIIT", "dancing", "cardio"],
         "supportive_mindfulness": ["confidence building", "self-care rituals", "social connection", "creative expression"]
@@ -70,8 +88,14 @@ HORMONE_PERSONAS = {
         "name": "Testosterone",
         "emoji": "🔥",
         "personality": "your energizing coach",
-        "intro_template": "Hey warrior, I'm Testosterone! Let's channel that inner strength and bring some powerful energy to your day.",
+        "phase_behavior": {
+            "menstrual": "I'm lower during your period, which can reduce your drive and energy",
+            "follicular": "I'm rising in your follicular phase, boosting your motivation",
+            "ovulation": "I peak around ovulation, giving you extra confidence and energy",
+            "luteal": "I tend to drop in your luteal phase, reducing your drive and strength"
+        },
         "focus": "energy and vitality",
+        "benefit": "stronger and more energized",
         "supportive_foods": ["protein-rich foods", "zinc foods", "vitamin D foods", "healthy fats"],
         "supportive_movement": ["weight training", "HIIT", "sprints", "power yoga"],
         "supportive_mindfulness": ["goal setting", "affirmations", "cold exposure", "achievement tracking"]
@@ -80,8 +104,14 @@ HORMONE_PERSONAS = {
         "name": "Insulin",
         "emoji": "🌿",
         "personality": "your balance keeper",
-        "intro_template": "Hello sweetheart, I'm Insulin. Let's keep your energy steady and balanced throughout the day.",
+        "phase_behavior": {
+            "menstrual": "I can be less sensitive during your period, causing blood sugar fluctuations",
+            "follicular": "I work more efficiently in your follicular phase, keeping energy stable",
+            "ovulation": "I'm balanced around ovulation, helping maintain steady energy",
+            "luteal": "I become less sensitive in your luteal phase, causing cravings and energy crashes"
+        },
         "focus": "blood sugar stability",
+        "benefit": "steady and balanced",
         "supportive_foods": ["low glycemic foods", "protein with carbs", "fiber-rich foods", "cinnamon"],
         "supportive_movement": ["walking after meals", "resistance training", "steady-state cardio", "dancing"],
         "supportive_mindfulness": ["mindful eating", "stress management", "regular meal timing", "sleep optimization"]
@@ -90,8 +120,14 @@ HORMONE_PERSONAS = {
         "name": "Thyroid",
         "emoji": "🦋",
         "personality": "your metabolism friend",
-        "intro_template": "Hi love, I'm Thyroid. Let's give your metabolism a gentle boost and support your energy levels.",
+        "phase_behavior": {
+            "menstrual": "I can slow down during your period, affecting your energy and metabolism",
+            "follicular": "I'm more active in your follicular phase, boosting your metabolism",
+            "ovulation": "I work efficiently around ovulation, keeping your energy high",
+            "luteal": "I can slow down in your luteal phase, causing fatigue and sluggishness"
+        },
         "focus": "metabolic support",
+        "benefit": "energized and balanced",
         "supportive_foods": ["selenium foods", "iodine foods", "zinc foods", "anti-inflammatory foods"],
         "supportive_movement": ["moderate cardio", "strength training", "yoga", "swimming"],
         "supportive_mindfulness": ["stress reduction", "sleep quality", "cold exposure", "energy management"]
@@ -103,8 +139,14 @@ DEFAULT_PERSONA = {
     "name": "Hormone",
     "emoji": "💜",
     "personality": "your wellness guide",
-    "intro_template": "Hello beautiful, I'm your Hormone guide. Let's create some balance and bring more wellness into your day.",
+    "phase_behavior": {
+        "menstrual": "I can fluctuate during your period, affecting your overall wellness",
+        "follicular": "I'm adjusting in your follicular phase as your body prepares",
+        "ovulation": "I'm active around ovulation, supporting your body's natural rhythm",
+        "luteal": "I tend to shift in your luteal phase, which can affect how you feel"
+    },
     "focus": "overall wellness",
+    "benefit": "balanced and well",
     "supportive_foods": ["whole foods", "vegetables", "lean proteins", "healthy fats"],
     "supportive_movement": ["varied exercise", "walking", "yoga", "strength training"],
     "supportive_mindfulness": ["meditation", "breathing", "journaling", "self-care"]
@@ -146,6 +188,15 @@ Examples:
 - "Bowl of steel-cut oatmeal with berries and nuts, professional food photography, natural morning light, clean minimalist background, warm inviting tones"
 - "Woman doing gentle morning yoga stretch, professional wellness photography, natural lighting, serene background, calming atmosphere"
 - "Peaceful meditation corner with candles and plants, professional lifestyle photography, soft natural light, minimalist aesthetic"
+
+HORMONE PERSONA INTRO FORMAT (CRITICAL - follow this exact format):
+The hormone_persona_intro MUST follow this exact pattern:
+"I'm [Hormone Name] — in your [cycle_phase] phase, [phase_behavior]. [Food/Action Name] is/are packed with [key nutrients/benefits] that help boost me and keep you [user_benefit]."
+
+EXAMPLES:
+- "I'm Progesterone — in your luteal phase, I tend to dip, causing mood swings or cramps. Pumpkin seeds are packed with zinc and magnesium that help boost me and keep you calmer."
+- "I'm Cortisol — in your follicular phase, I'm usually balanced but stress can throw me off. This morning yoga routine helps lower me and keep you relaxed and focused."
+- "I'm Estrogen — in your menstrual phase, I'm at my lowest which can cause fatigue. These berries are packed with antioxidants that help boost me and keep you energized."
 """
 
 ACTION_GENERATION_PROMPT = """Generate {num_actions} personalized daily wellness actions for this user.
@@ -161,6 +212,9 @@ USER PROFILE:
 - Stress Level: {stress_level}
 - Sleep Duration: {sleep_duration}
 - Workout Intensity: {workout_intensity}
+
+HORMONE CONTEXT FOR THIS CYCLE PHASE:
+{hormone_phase_context}
 
 USER FEEDBACK MEMORY (avoid similar actions to disliked ones):
 {feedback_memory}
@@ -180,7 +234,8 @@ For each action, provide:
 4. specific_action: Detailed, actionable description (50-100 words)
 5. purpose: Why this helps the target hormone (1-2 sentences)
 6. target_hormone: The hormone this action supports
-7. hormone_persona_intro: Personalized intro from the hormone persona
+7. hormone_persona_intro: MUST follow this EXACT format:
+   "I'm [Hormone] — in your {cycle_phase} phase, [what happens to this hormone]. [Food/Activity name] is/are packed with [nutrients/benefits] that help boost me and keep you [benefit]."
 8. image_prompt: Detailed prompt for generating an appealing image
 9. research_studies: Array of 1-2 real research citations
 10. variants: Array of 3 alternative ways to do this action with image prompts
@@ -531,6 +586,31 @@ class ActionPlanGenerator:
             logger.error("OpenAI API key not configured")
             return (None, 0.0)
         
+        # Get cycle phase for hormone context
+        cycle_phase = user_context.get("cycle_phase", "follicular").lower()
+        primary_hormone = user_context["primary_hormone"].lower()
+        secondary_hormone = user_context["secondary_hormone"].lower()
+        
+        # Get hormone personas
+        primary_persona = HORMONE_PERSONAS.get(primary_hormone, DEFAULT_PERSONA)
+        secondary_persona = HORMONE_PERSONAS.get(secondary_hormone, DEFAULT_PERSONA)
+        
+        # Build hormone phase context for the prompt
+        primary_behavior = primary_persona.get("phase_behavior", {}).get(cycle_phase, "I fluctuate during this phase")
+        secondary_behavior = secondary_persona.get("phase_behavior", {}).get(cycle_phase, "I fluctuate during this phase")
+        
+        hormone_phase_context = f"""
+For {primary_persona['name']} ({user_context["primary_hormone"]}):
+- Phase behavior: "{primary_behavior}"
+- User benefit: "{primary_persona.get('benefit', 'balanced')}"
+- Focus: {primary_persona['focus']}
+
+For {secondary_persona['name']} ({user_context["secondary_hormone"]}):
+- Phase behavior: "{secondary_behavior}"
+- User benefit: "{secondary_persona.get('benefit', 'balanced')}"
+- Focus: {secondary_persona['focus']}
+"""
+        
         # Build the prompt
         prompt = ACTION_GENERATION_PROMPT.format(
             num_actions=4,
@@ -547,29 +627,25 @@ class ActionPlanGenerator:
             feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
             primary_count=2,
             secondary_count=2,
-            category_guidance=self._get_category_guidance(user_context.get("lifestyle_focus", []))
+            category_guidance=self._get_category_guidance(user_context.get("lifestyle_focus", [])),
+            hormone_phase_context=hormone_phase_context
         )
         
-        # Add hormone persona info to system prompt
-        primary_persona = HORMONE_PERSONAS.get(
-            user_context["primary_hormone"].lower(),
-            DEFAULT_PERSONA
-        )
-        secondary_persona = HORMONE_PERSONAS.get(
-            user_context["secondary_hormone"].lower(),
-            DEFAULT_PERSONA
-        )
-        
+        # Enhanced system prompt with persona examples
         enhanced_system = SYSTEM_PROMPT + f"""
 
 HORMONE PERSONAS TO USE:
-For {user_context["primary_hormone"]} actions, use persona "{primary_persona['name']}" {primary_persona['emoji']}
-- Intro style: "{primary_persona['intro_template']}"
-- Focus: {primary_persona['focus']}
+For {user_context["primary_hormone"]} actions:
+- Hormone speaks as: "{primary_persona['name']}"
+- Phase behavior to mention: "{primary_behavior}"
+- User benefit to promise: "{primary_persona.get('benefit', 'balanced and well')}"
+- Example intro: "I'm {primary_persona['name']} — in your {cycle_phase} phase, {primary_behavior}. [Food/Action] is packed with [nutrients] that help boost me and keep you {primary_persona.get('benefit', 'balanced')}."
 
-For {user_context["secondary_hormone"]} actions, use persona "{secondary_persona['name']}" {secondary_persona['emoji']}
-- Intro style: "{secondary_persona['intro_template']}"
-- Focus: {secondary_persona['focus']}
+For {user_context["secondary_hormone"]} actions:
+- Hormone speaks as: "{secondary_persona['name']}"
+- Phase behavior to mention: "{secondary_behavior}"
+- User benefit to promise: "{secondary_persona.get('benefit', 'balanced and well')}"
+- Example intro: "I'm {secondary_persona['name']} — in your {cycle_phase} phase, {secondary_behavior}. [Food/Action] is packed with [nutrients] that help boost me and keep you {secondary_persona.get('benefit', 'balanced')}."
 """
         
         try:
