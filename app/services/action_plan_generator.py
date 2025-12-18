@@ -385,15 +385,22 @@ class ActionPlanGenerator:
         Generate a completely new action plan.
         
         Steps:
-        1. Load user context
-        2. Generate actions via GPT
-        3. Generate images for each action
-        4. Store in database
+        1. Double-check no plan exists (handles race conditions)
+        2. Load user context
+        3. Generate actions via GPT
+        4. Generate images for each action
+        5. Store in database
         """
         start_time = time.time()
         total_cost = 0.0
         
         try:
+            # Double-check for existing plan (in case of race condition)
+            existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+            if existing_plan:
+                logger.info(f"Plan already exists for {user_id} on {plan_date} (race condition handled)")
+                return await self._format_plan_response(existing_plan, db)
+            
             # Step 1: Load user context
             user_context = await self._load_user_context(user_id, db)
             
@@ -1007,8 +1014,22 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             return plan
             
         except Exception as e:
-            logger.error(f"Error storing plan: {e}")
             await db.rollback()
+            
+            # Check if this is a duplicate key error (race condition)
+            if "UniqueViolationError" in str(e) or "duplicate key" in str(e).lower():
+                logger.warning(f"Race condition detected for user {user_id} on {plan_date}, fetching existing plan")
+                
+                # Fetch the existing plan that was created by the concurrent request
+                existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                if existing_plan:
+                    logger.info(f"Found existing plan {existing_plan.id} created by concurrent request")
+                    return existing_plan
+                else:
+                    logger.error(f"Could not find existing plan after duplicate key error")
+                    raise
+            
+            logger.error(f"Error storing plan: {e}")
             raise
     
     async def _format_plan_response(
