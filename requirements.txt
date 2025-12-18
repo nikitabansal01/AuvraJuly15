@@ -8,6 +8,7 @@ pydantic-settings==2.1.0
 sqlalchemy==2.0.23
 alembic==1.13.1
 psycopg2-binary==2.9.9
+asyncpg==0.29.0
 
 celery==5.3.4
 httpx==0.28.1
