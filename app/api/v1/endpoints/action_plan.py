@@ -758,5 +758,6 @@ def _convert_to_legacy_format(result: dict) -> dict:
         "plan_id": result.get("plan_id"),
         "primary_hormone": result.get("primary_hormone"),
         "cycle_phase": result.get("cycle_phase"),
+        "show_feedback_prompt_after_seconds": 30,  # 30-second feedback prompt
         "generation_source": "action_plan"
     }
