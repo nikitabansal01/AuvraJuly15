@@ -280,7 +280,7 @@ class ImageLibraryService:
                     .where(ImageLibrary.id == image_id)
                     .values(
                         usage_count=ImageLibrary.usage_count + 1,
-                        last_used_at=datetime.now(timezone.utc),
+                        last_used_at=datetime.utcnow(),
                         used_by_users=used_by
                     )
                 )
@@ -533,9 +533,9 @@ class ImageLibraryService:
                 image_width=512,
                 image_height=512,
                 usage_count=1,
-                last_used_at=datetime.now(timezone.utc),
+                last_used_at=datetime.utcnow(),
                 used_by_users=[user_id],
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow()
             )
             
             db.add(new_image)

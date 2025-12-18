@@ -937,8 +937,8 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                 generation_cost=str(total_cost),
                 generation_time_ms=generation_time_ms,
                 gpt_model_used=self.GPT_MODEL,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
             
             db.add(plan)
@@ -960,8 +960,8 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                     hero_image_url=action.get("hero_image_url"),
                     hero_image_prompt=action.get("image_prompt"),
                     research_studies=action.get("research_studies", []),
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
                 )
                 
                 # Add category-specific fields
@@ -988,7 +988,7 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                         description=variant.get("description", ""),
                         image_url=variant.get("image_url"),
                         image_prompt=variant.get("image_prompt"),
-                        created_at=datetime.now(timezone.utc)
+                        created_at=datetime.utcnow()
                     )
                     db.add(variant_record)
             
@@ -1125,8 +1125,8 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                 target_hormone=original.target_hormone,
                 replacement_reason=reason,
                 was_replaced=True,
-                feedback_given_at=datetime.now(timezone.utc),
-                created_at=datetime.now(timezone.utc)
+                feedback_given_at=datetime.utcnow(),
+                created_at=datetime.utcnow()
             )
             db.add(feedback)
             
@@ -1196,7 +1196,7 @@ Respond with valid JSON object only."""
             
             # Mark original as replaced
             original.is_replaced = True
-            original.replaced_at = datetime.now(timezone.utc)
+            original.replaced_at = datetime.utcnow()
             original.replacement_reason = reason
             
             # Create new action item
@@ -1216,8 +1216,8 @@ Respond with valid JSON object only."""
                 hero_image_url=hero_url,
                 hero_image_prompt=replacement_action.get("image_prompt"),
                 research_studies=replacement_action.get("research_studies", []),
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
             
             db.add(new_item)
@@ -1240,7 +1240,7 @@ Respond with valid JSON object only."""
                     description=variant.get("description", ""),
                     image_url=variant_url,
                     image_prompt=variant.get("image_prompt"),
-                    created_at=datetime.now(timezone.utc)
+                    created_at=datetime.utcnow()
                 )
                 db.add(variant_record)
             
@@ -1407,7 +1407,7 @@ Respond with valid JSON array only."""
                 
                 # Mark original as replaced
                 original.is_replaced = True
-                original.replaced_at = datetime.now(timezone.utc)
+                original.replaced_at = datetime.utcnow()
                 original.replacement_reason = reasons.get(original.id, "user disliked")
                 
                 # Create new action item
@@ -1425,8 +1425,8 @@ Respond with valid JSON array only."""
                     hero_image_url=hero_url,
                     hero_image_prompt=replacement_action.get("image_prompt"),
                     research_studies=replacement_action.get("research_studies", []),
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
                 )
                 
                 db.add(new_item)
@@ -1450,7 +1450,7 @@ Respond with valid JSON array only."""
                         description=variant.get("description", ""),
                         image_url=variant_url,
                         image_prompt=variant.get("image_prompt"),
-                        created_at=datetime.now(timezone.utc)
+                        created_at=datetime.utcnow()
                     )
                     db.add(variant_record)
                 

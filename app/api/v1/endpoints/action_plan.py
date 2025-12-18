@@ -324,7 +324,7 @@ async def complete_action(
         
         # Mark as completed
         item.is_completed = True
-        item.completed_at = datetime.now(timezone.utc)
+        item.completed_at = datetime.utcnow()
         db.commit()
         
         logger.info(f"Action completed: item_id={item_id}, uid={uid}")
@@ -404,14 +404,14 @@ async def submit_plan_satisfaction(
                         action_title=item.title,
                         action_category=item.category,
                         target_hormone=item.target_hormone,
-                        created_at=datetime.now(timezone.utc)
+                        created_at=datetime.utcnow()
                     )
                     db.add(feedback)
             
             # Update plan metadata
             plan_metadata = plan.generation_metadata or {}
             plan_metadata["user_satisfaction"] = "works_for_me"
-            plan_metadata["satisfaction_submitted_at"] = datetime.now(timezone.utc).isoformat()
+            plan_metadata["satisfaction_submitted_at"] = datetime.utcnow().isoformat()
             plan_metadata["all_items_liked"] = True
             plan.generation_metadata = plan_metadata
             
@@ -444,7 +444,7 @@ async def submit_plan_satisfaction(
                         action_category=item.category,
                         target_hormone=item.target_hormone,
                         replacement_reason=request.feedback_text,
-                        created_at=datetime.now(timezone.utc)
+                        created_at=datetime.utcnow()
                     )
                     db.add(feedback)
                 elif not item.is_completed:
@@ -457,7 +457,7 @@ async def submit_plan_satisfaction(
                         action_title=item.title,
                         action_category=item.category,
                         target_hormone=item.target_hormone,
-                        created_at=datetime.now(timezone.utc)
+                        created_at=datetime.utcnow()
                     )
                     db.add(feedback)
             
@@ -486,7 +486,7 @@ async def submit_plan_satisfaction(
             plan_metadata = plan.generation_metadata or {}
             plan_metadata["user_satisfaction"] = "want_to_change"
             plan_metadata["items_replaced"] = items_to_replace
-            plan_metadata["satisfaction_submitted_at"] = datetime.now(timezone.utc).isoformat()
+            plan_metadata["satisfaction_submitted_at"] = datetime.utcnow().isoformat()
             plan.generation_metadata = plan_metadata
             
             db.commit()
