@@ -906,7 +906,13 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             
             # Generate variant images
             variants = action.get("variants", [])
+            valid_variants = []
             for i, variant in enumerate(variants):
+                # Skip invalid variants (sometimes GPT returns strings instead of dicts)
+                if not isinstance(variant, dict):
+                    logger.warning(f"Skipping invalid variant (not a dict): {type(variant)}")
+                    continue
+                    
                 variant_url, was_cached, cost = await self.image_service.get_or_generate_image(
                     prompt=variant.get("image_prompt", variant.get("title", action["title"])),
                     category=action["category"],
@@ -918,7 +924,10 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                 
                 variant["image_url"] = variant_url
                 variant["image_cached"] = was_cached
+                valid_variants.append(variant)
             
+            # Update action with only valid variants
+            action["variants"] = valid_variants
             actions_with_images.append(action)
         
         logger.info(f"Generated {len(actions) * 4} images (cost: ${total_cost:.4f})")
@@ -995,6 +1004,10 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                 
                 # Create variants
                 for variant in action.get("variants", []):
+                    # Skip invalid variants
+                    if not isinstance(variant, dict):
+                        continue
+                        
                     variant_record = ActionPlanItemVariant(
                         item_id=item.id,
                         variant_type=variant.get("variant_type", "alternative"),
