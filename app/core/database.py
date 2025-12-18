@@ -667,7 +667,7 @@ class ActionPlanItem(Base):
     symptoms = Column(ARRAY(String), nullable=True)  # ["acne", "fatigue"]
     
     # Images (hero + 3 variants = 4 images per action)
-    hero_image_url = Column(String(500), nullable=True)
+    hero_image_url = Column(Text, nullable=True)  # Can be URL or base64 data URL
     hero_image_prompt = Column(Text, nullable=True)
     
     # Research/Citations
@@ -714,7 +714,7 @@ class ActionPlanItemVariant(Base):
     description = Column(Text, nullable=True)  # How to do this variant
     
     # Image
-    image_url = Column(String(500), nullable=True)
+    image_url = Column(Text, nullable=True)  # Can be URL or base64 data URL
     image_prompt = Column(Text, nullable=True)
     
     # Timestamps
@@ -774,7 +774,7 @@ class ImageLibrary(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Image identification
-    image_url = Column(String(500), nullable=False)  # Supabase Storage URL
+    image_url = Column(Text, nullable=False)  # URL or base64 data URL
     
     # Generation info
     prompt_text = Column(Text, nullable=False)  # The prompt used to generate
