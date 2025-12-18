@@ -1,7 +1,7 @@
 """Fix image URL column sizes for base64 data URLs
 
 Revision ID: fix_image_url_sizes
-Revises: fe16aed4dbbb
+Revises: add_action_plan_tables
 Create Date: 2025-12-18 17:55:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'fix_image_url_sizes'
-down_revision = None  # This runs independently
+down_revision = 'add_action_plan_tables'  # Chain after action plan tables creation
 branch_labels = None
 depends_on = None
 
