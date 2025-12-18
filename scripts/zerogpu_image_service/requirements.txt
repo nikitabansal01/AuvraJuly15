@@ -1,0 +1,18 @@
+# AUVRA Food Image Generator - HuggingFace Space Requirements
+# For ZeroGPU deployment
+
+# Core ML
+torch>=2.1.0
+diffusers>=0.25.0
+transformers>=4.36.0
+accelerate>=0.25.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Gradio for UI/API
+gradio>=4.0.0
+spaces  # ZeroGPU decorator
+
+# Utilities
+safetensors>=0.4.0

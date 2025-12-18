@@ -1,0 +1,1095 @@
+"""
+AUVRA Action Plan Generator Service
+
+Generates 4 personalized daily actions using GPT-4o-mini:
+- 2 actions targeting PRIMARY hormone
+- 2 actions targeting SECONDARY hormone  
+- Categories based on user's lifestyle_focus (eat/move/pause)
+- Each action has 4 images (hero + 3 variants)
+
+Features:
+- Hormone-aware persona introductions
+- Real research citations (journal, year, participants)
+- Consistent prompt style for semantic image matching
+- Integration with ImageLibraryService for image generation
+"""
+
+import os
+import json
+import logging
+import time
+import asyncio
+from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, timezone, date, timedelta
+
+import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
+
+from app.services.image_library_service import get_image_library_service
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# HORMONE PERSONAS - Used for personalized introductions
+# ============================================================================
+
+HORMONE_PERSONAS = {
+    "cortisol": {
+        "name": "Cora",
+        "emoji": "🌸",
+        "personality": "your calming companion",
+        "intro_template": "Hey love, {name} here. I noticed you might be running a bit high on stress vibes today. Let's ease into something soothing together.",
+        "focus": "stress reduction and adrenal support",
+        "supportive_foods": ["magnesium-rich foods", "adaptogens", "omega-3s", "vitamin C foods"],
+        "supportive_movement": ["yoga", "gentle stretching", "walking in nature", "tai chi"],
+        "supportive_mindfulness": ["meditation", "deep breathing", "journaling", "body scan"]
+    },
+    "progesterone": {
+        "name": "Luna",
+        "emoji": "🌙",
+        "personality": "your peaceful guide",
+        "intro_template": "Hello beautiful, {name} here. Your body is calling for some nurturing energy. Let's support your natural rhythm together.",
+        "focus": "hormonal balance and calm",
+        "supportive_foods": ["zinc-rich foods", "vitamin B6 foods", "healthy fats", "fiber-rich foods"],
+        "supportive_movement": ["gentle yoga", "swimming", "pilates", "restorative movement"],
+        "supportive_mindfulness": ["sleep hygiene", "relaxation techniques", "gratitude practice", "evening rituals"]
+    },
+    "estrogen": {
+        "name": "Aria",
+        "emoji": "✨",
+        "personality": "your radiant friend",
+        "intro_template": "Hi gorgeous, {name} here! Let's give your body some love and support that beautiful glow from within.",
+        "focus": "estrogen balance and vitality",
+        "supportive_foods": ["phytoestrogen foods", "cruciferous vegetables", "flaxseed", "berries"],
+        "supportive_movement": ["strength training", "HIIT", "dancing", "cardio"],
+        "supportive_mindfulness": ["confidence building", "self-care rituals", "social connection", "creative expression"]
+    },
+    "testosterone": {
+        "name": "Terra",
+        "emoji": "🔥",
+        "personality": "your energizing coach",
+        "intro_template": "Hey warrior, {name} here! Let's channel that inner strength and bring some powerful energy to your day.",
+        "focus": "energy and vitality",
+        "supportive_foods": ["protein-rich foods", "zinc foods", "vitamin D foods", "healthy fats"],
+        "supportive_movement": ["weight training", "HIIT", "sprints", "power yoga"],
+        "supportive_mindfulness": ["goal setting", "affirmations", "cold exposure", "achievement tracking"]
+    },
+    "insulin": {
+        "name": "Iris",
+        "emoji": "🌿",
+        "personality": "your balance keeper",
+        "intro_template": "Hello sweetheart, {name} here. Let's keep your energy steady and balanced throughout the day.",
+        "focus": "blood sugar stability",
+        "supportive_foods": ["low glycemic foods", "protein with carbs", "fiber-rich foods", "cinnamon"],
+        "supportive_movement": ["walking after meals", "resistance training", "steady-state cardio", "dancing"],
+        "supportive_mindfulness": ["mindful eating", "stress management", "regular meal timing", "sleep optimization"]
+    },
+    "thyroid": {
+        "name": "Thea",
+        "emoji": "🦋",
+        "personality": "your metabolism friend",
+        "intro_template": "Hi love, {name} here. Let's give your metabolism a gentle boost and support your energy levels.",
+        "focus": "metabolic support",
+        "supportive_foods": ["selenium foods", "iodine foods", "zinc foods", "anti-inflammatory foods"],
+        "supportive_movement": ["moderate cardio", "strength training", "yoga", "swimming"],
+        "supportive_mindfulness": ["stress reduction", "sleep quality", "cold exposure", "energy management"]
+    }
+}
+
+# Default persona for unknown hormones
+DEFAULT_PERSONA = {
+    "name": "Harmony",
+    "emoji": "💜",
+    "personality": "your wellness guide",
+    "intro_template": "Hello beautiful, {name} here. Let's create some balance and bring more wellness into your day.",
+    "focus": "overall wellness",
+    "supportive_foods": ["whole foods", "vegetables", "lean proteins", "healthy fats"],
+    "supportive_movement": ["varied exercise", "walking", "yoga", "strength training"],
+    "supportive_mindfulness": ["meditation", "breathing", "journaling", "self-care"]
+}
+
+
+# ============================================================================
+# GPT PROMPT TEMPLATES
+# ============================================================================
+
+SYSTEM_PROMPT = """You are AUVRA's personalized wellness AI that creates daily action plans for women's hormonal health. 
+
+IMPORTANT GUIDELINES:
+1. Each action must target EXACTLY ONE hormone - the specified target hormone
+2. Actions should be specific, actionable, and achievable in one day
+3. Include REAL research citations with actual journal names, years, and participant counts
+4. Time slots should be appropriate: morning (6-11am), afternoon (12-5pm), evening (6-10pm)
+5. Image prompts should follow a consistent photography style for better semantic matching
+
+CATEGORY DEFINITIONS:
+- "food" (eat): Specific meals, recipes, or food recommendations
+- "movement" (move): Exercise, stretching, physical activities
+- "mindfulness" (pause): Meditation, breathing, relaxation, mental wellness
+
+RESEARCH CITATION FORMAT:
+{
+    "title": "Actual study title",
+    "journal": "Real journal name (e.g., Journal of Clinical Endocrinology, Nutrients, etc.)",
+    "year": 2020,
+    "participants": 156,
+    "finding": "Brief key finding relevant to the action"
+}
+
+IMAGE PROMPT STYLE (for consistent semantic matching):
+All prompts should follow this pattern:
+"[Subject/food/activity], professional photography, natural lighting, clean minimalist background, warm inviting tones, wellness aesthetic"
+
+Examples:
+- "Bowl of steel-cut oatmeal with berries and nuts, professional food photography, natural morning light, clean minimalist background, warm inviting tones"
+- "Woman doing gentle morning yoga stretch, professional wellness photography, natural lighting, serene background, calming atmosphere"
+- "Peaceful meditation corner with candles and plants, professional lifestyle photography, soft natural light, minimalist aesthetic"
+"""
+
+ACTION_GENERATION_PROMPT = """Generate {num_actions} personalized daily wellness actions for this user.
+
+USER PROFILE:
+- Cycle Day: {cycle_day}
+- Cycle Phase: {cycle_phase}
+- Primary Hormone to Support: {primary_hormone}
+- Secondary Hormone to Support: {secondary_hormone}
+- Lifestyle Focus: {lifestyle_focus}
+- Top Concern: {top_concern}
+- Diagnosed Conditions: {diagnosed_conditions}
+- Stress Level: {stress_level}
+- Sleep Duration: {sleep_duration}
+- Workout Intensity: {workout_intensity}
+
+USER FEEDBACK MEMORY (avoid similar actions to disliked ones):
+{feedback_memory}
+
+REQUIREMENTS:
+1. Generate exactly {num_actions} actions total
+2. Actions targeting PRIMARY hormone ({primary_hormone}): {primary_count}
+3. Actions targeting SECONDARY hormone ({secondary_hormone}): {secondary_count}
+4. Category distribution based on lifestyle_focus: {category_guidance}
+5. Each action must be unique and specific
+6. Time slots should be varied (mix of morning, afternoon, evening)
+
+For each action, provide:
+1. title: Short, catchy title (3-5 words)
+2. category: "food", "movement", or "mindfulness"
+3. time_slot: "morning", "afternoon", or "evening"
+4. specific_action: Detailed, actionable description (50-100 words)
+5. purpose: Why this helps the target hormone (1-2 sentences)
+6. target_hormone: The hormone this action supports
+7. hormone_persona_intro: Personalized intro from the hormone persona
+8. image_prompt: Detailed prompt for generating an appealing image
+9. research_studies: Array of 1-2 real research citations
+10. variants: Array of 3 alternative ways to do this action with image prompts
+
+VARIANT TYPES by category:
+- food: "tasty" (indulgent version), "easy" (quick/simple), "healthy" (most nutritious)
+- movement: "gentle" (low intensity), "energizing" (higher intensity), "quick" (time-efficient)
+- mindfulness: "guided" (with instruction), "solo" (self-directed), "brief" (5-min version)
+
+Respond with valid JSON array only, no markdown formatting."""
+
+VARIANT_PROMPT_TEMPLATE = """For the {category} action "{title}", create 3 variants:
+
+Original action: {specific_action}
+
+Create variants based on these types:
+{variant_types}
+
+For each variant provide:
+1. variant_type: The type name
+2. title: Short variant title
+3. description: How this variant differs (1-2 sentences)
+4. image_prompt: Specific image prompt following the photography style
+
+Respond with valid JSON array only."""
+
+
+# ============================================================================
+# ACTION PLAN GENERATOR SERVICE
+# ============================================================================
+
+class ActionPlanGenerator:
+    """
+    Main orchestrator for generating personalized daily action plans.
+    
+    Flow:
+    1. Check if today's plan exists
+    2. Get user context (hormones, cycle, preferences, feedback)
+    3. Generate 4 actions via GPT-4o-mini
+    4. Generate images for each action (16 total)
+    5. Store plan in database
+    """
+    
+    GPT_MODEL = "gpt-4o-mini"
+    GPT_TEMPERATURE = 0.7
+    MAX_RETRIES = 3
+    
+    def __init__(self):
+        """Initialize the generator."""
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.client = httpx.AsyncClient(timeout=120.0)
+        self.image_service = get_image_library_service()
+        
+        logger.info(f"ActionPlanGenerator initialized")
+        logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
+    
+    async def get_or_generate_today_plan(
+        self,
+        user_id: str,
+        user_timezone: str,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Get today's action plan or generate a new one.
+        
+        This is the main entry point called on app open.
+        """
+        from app.core.database import ActionPlan
+        
+        # Get today's date in user's timezone
+        today = self._get_user_today(user_timezone)
+        
+        # Check if plan exists
+        existing_plan = await self._get_existing_plan(user_id, today, db)
+        
+        if existing_plan:
+            logger.info(f"Found existing plan for user {user_id} on {today}")
+            return await self._format_plan_response(existing_plan, db)
+        
+        # Generate new plan
+        logger.info(f"Generating new plan for user {user_id} on {today}")
+        return await self.generate_new_plan(user_id, today, user_timezone, db)
+    
+    async def generate_new_plan(
+        self,
+        user_id: str,
+        plan_date: date,
+        user_timezone: str,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Generate a completely new action plan.
+        
+        Steps:
+        1. Load user context
+        2. Generate actions via GPT
+        3. Generate images for each action
+        4. Store in database
+        """
+        start_time = time.time()
+        total_cost = 0.0
+        
+        try:
+            # Step 1: Load user context
+            user_context = await self._load_user_context(user_id, db)
+            
+            if not user_context:
+                logger.error(f"Could not load user context for {user_id}")
+                return {"success": False, "error": "User profile not found"}
+            
+            # Step 2: Generate actions via GPT-4o-mini
+            actions, gpt_cost = await self._generate_actions_via_gpt(user_context)
+            total_cost += gpt_cost
+            
+            if not actions:
+                logger.error("Failed to generate actions via GPT")
+                return {"success": False, "error": "Failed to generate actions"}
+            
+            # Step 3: Generate images for all actions (16 total: 4 actions × 4 images)
+            actions_with_images, image_cost = await self._generate_all_images(
+                actions, user_id, db
+            )
+            total_cost += image_cost
+            
+            # Step 4: Store plan in database
+            plan = await self._store_plan(
+                user_id=user_id,
+                plan_date=plan_date,
+                user_context=user_context,
+                actions=actions_with_images,
+                total_cost=total_cost,
+                generation_time_ms=int((time.time() - start_time) * 1000),
+                db=db
+            )
+            
+            elapsed = time.time() - start_time
+            logger.info(f"✅ Plan generated in {elapsed:.2f}s, cost: ${total_cost:.4f}")
+            
+            return await self._format_plan_response(plan, db)
+            
+        except Exception as e:
+            logger.error(f"Error generating plan: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _get_user_today(self, timezone_str: str) -> date:
+        """Get today's date in user's timezone."""
+        from zoneinfo import ZoneInfo
+        
+        try:
+            tz = ZoneInfo(timezone_str)
+            return datetime.now(tz).date()
+        except Exception:
+            # Fallback to UTC
+            return datetime.now(timezone.utc).date()
+    
+    async def _get_existing_plan(
+        self,
+        user_id: str,
+        plan_date: date,
+        db: AsyncSession
+    ) -> Optional[Any]:
+        """Check if a plan already exists for this user/date."""
+        from app.core.database import ActionPlan
+        
+        try:
+            result = await db.execute(
+                select(ActionPlan).where(
+                    and_(
+                        ActionPlan.uid == user_id,
+                        ActionPlan.plan_date == plan_date
+                    )
+                )
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Error checking existing plan: {e}")
+            return None
+    
+    async def _load_user_context(
+        self,
+        user_id: str,
+        db: AsyncSession
+    ) -> Optional[Dict[str, Any]]:
+        """Load all user context needed for action generation."""
+        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback
+        
+        try:
+            # Get user profile
+            profile_result = await db.execute(
+                select(UserProfile).where(UserProfile.uid == user_id)
+            )
+            profile = profile_result.scalar_one_or_none()
+            
+            if not profile:
+                return None
+            
+            # Get user responses (assessment data)
+            response_result = await db.execute(
+                select(UserResponse).where(UserResponse.uid == user_id).order_by(
+                    UserResponse.created_at.desc()
+                ).limit(1)
+            )
+            user_response = response_result.scalar_one_or_none()
+            
+            if not user_response:
+                return None
+            
+            # Get recent feedback for memory
+            feedback_result = await db.execute(
+                select(ActionPlanFeedback).where(
+                    ActionPlanFeedback.uid == user_id
+                ).order_by(ActionPlanFeedback.created_at.desc()).limit(20)
+            )
+            recent_feedback = feedback_result.scalars().all()
+            
+            # Calculate cycle day and phase
+            cycle_day, cycle_phase = self._calculate_cycle_info(
+                user_response.last_period_date_utc,
+                user_response.cycle_length
+            )
+            
+            # Get lifestyle focus (what user prefers: eat/move/pause)
+            lifestyle_focus = profile.lifestyle_focus or user_response.lifestyle_focus or ["eat", "move", "pause"]
+            
+            # Get primary and secondary hormones
+            primary_hormone = user_response.primary_hormone or "cortisol"
+            secondary_hormones = user_response.secondary_hormones or []
+            secondary_hormone = secondary_hormones[0] if secondary_hormones else "progesterone"
+            
+            # Format feedback memory for GPT
+            feedback_memory = self._format_feedback_memory(recent_feedback)
+            
+            return {
+                "user_id": user_id,
+                "primary_hormone": primary_hormone,
+                "secondary_hormone": secondary_hormone,
+                "cycle_day": cycle_day,
+                "cycle_phase": cycle_phase,
+                "lifestyle_focus": lifestyle_focus,
+                "top_concern": user_response.top_concern,
+                "diagnosed_conditions": user_response.diagnosed_conditions or [],
+                "stress_level": user_response.stress_level,
+                "sleep_duration": user_response.sleep_duration,
+                "workout_intensity": user_response.workout_intensity,
+                "feedback_memory": feedback_memory,
+                "chatbot_memory": profile.chatbot_memory or {}
+            }
+            
+        except Exception as e:
+            logger.error(f"Error loading user context: {e}")
+            return None
+    
+    def _calculate_cycle_info(
+        self,
+        last_period_date: Optional[datetime],
+        cycle_length_str: Optional[str]
+    ) -> Tuple[Optional[int], Optional[str]]:
+        """Calculate current cycle day and phase."""
+        if not last_period_date:
+            return (None, None)
+        
+        # Parse cycle length
+        try:
+            if cycle_length_str and cycle_length_str.isdigit():
+                cycle_length = int(cycle_length_str)
+            elif cycle_length_str and "-" in cycle_length_str:
+                # Handle ranges like "26-30"
+                parts = cycle_length_str.split("-")
+                cycle_length = (int(parts[0]) + int(parts[1])) // 2
+            else:
+                cycle_length = 28  # Default
+        except:
+            cycle_length = 28
+        
+        # Calculate days since last period
+        if last_period_date.tzinfo is None:
+            last_period_date = last_period_date.replace(tzinfo=timezone.utc)
+        
+        now = datetime.now(timezone.utc)
+        days_since = (now - last_period_date).days
+        cycle_day = (days_since % cycle_length) + 1
+        
+        # Determine phase
+        if cycle_day <= 5:
+            phase = "menstrual"
+        elif cycle_day <= 13:
+            phase = "follicular"
+        elif cycle_day <= 16:
+            phase = "ovulation"
+        else:
+            phase = "luteal"
+        
+        return (cycle_day, phase)
+    
+    def _format_feedback_memory(self, feedback_list: List[Any]) -> str:
+        """Format recent feedback for GPT context."""
+        if not feedback_list:
+            return "No previous feedback available."
+        
+        liked = []
+        disliked = []
+        
+        for fb in feedback_list:
+            if fb.feedback_type == "like":
+                liked.append(f"- {fb.action_category}: {fb.action_title}")
+            elif fb.feedback_type == "dislike":
+                disliked.append(f"- {fb.action_category}: {fb.action_title} (reason: {fb.replacement_reason or 'unspecified'})")
+        
+        memory_parts = []
+        
+        if liked:
+            memory_parts.append(f"LIKED actions (create similar):\n" + "\n".join(liked[:5]))
+        
+        if disliked:
+            memory_parts.append(f"DISLIKED actions (avoid similar):\n" + "\n".join(disliked[:5]))
+        
+        return "\n\n".join(memory_parts) if memory_parts else "No previous feedback available."
+    
+    def _get_category_guidance(self, lifestyle_focus: List[str]) -> str:
+        """Generate category distribution guidance based on lifestyle focus."""
+        focus_map = {
+            "eat": "food",
+            "move": "movement",
+            "pause": "mindfulness"
+        }
+        
+        preferred = [focus_map.get(f, f) for f in lifestyle_focus if f in focus_map]
+        
+        if len(preferred) == 3:
+            return "Balanced mix of food, movement, and mindfulness (1-2 each)"
+        elif len(preferred) == 2:
+            return f"Focus on {' and '.join(preferred)} (2 each, or 3+1)"
+        elif len(preferred) == 1:
+            return f"Heavy focus on {preferred[0]} (3 of this, 1 other)"
+        else:
+            return "Balanced mix of food, movement, and mindfulness"
+    
+    async def _generate_actions_via_gpt(
+        self,
+        user_context: Dict[str, Any]
+    ) -> Tuple[Optional[List[Dict]], float]:
+        """
+        Generate actions using GPT-4o-mini.
+        
+        Returns (actions, cost)
+        """
+        if not self.openai_api_key:
+            logger.error("OpenAI API key not configured")
+            return (None, 0.0)
+        
+        # Build the prompt
+        prompt = ACTION_GENERATION_PROMPT.format(
+            num_actions=4,
+            cycle_day=user_context.get("cycle_day", "unknown"),
+            cycle_phase=user_context.get("cycle_phase", "unknown"),
+            primary_hormone=user_context["primary_hormone"],
+            secondary_hormone=user_context["secondary_hormone"],
+            lifestyle_focus=", ".join(user_context.get("lifestyle_focus", ["eat", "move", "pause"])),
+            top_concern=user_context.get("top_concern", "general wellness"),
+            diagnosed_conditions=", ".join(user_context.get("diagnosed_conditions", [])) or "none",
+            stress_level=user_context.get("stress_level", "moderate"),
+            sleep_duration=user_context.get("sleep_duration", "7-8 hours"),
+            workout_intensity=user_context.get("workout_intensity", "moderate"),
+            feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
+            primary_count=2,
+            secondary_count=2,
+            category_guidance=self._get_category_guidance(user_context.get("lifestyle_focus", []))
+        )
+        
+        # Add hormone persona info to system prompt
+        primary_persona = HORMONE_PERSONAS.get(
+            user_context["primary_hormone"].lower(),
+            DEFAULT_PERSONA
+        )
+        secondary_persona = HORMONE_PERSONAS.get(
+            user_context["secondary_hormone"].lower(),
+            DEFAULT_PERSONA
+        )
+        
+        enhanced_system = SYSTEM_PROMPT + f"""
+
+HORMONE PERSONAS TO USE:
+For {user_context["primary_hormone"]} actions, use persona "{primary_persona['name']}" {primary_persona['emoji']}
+- Intro style: "{primary_persona['intro_template']}"
+- Focus: {primary_persona['focus']}
+
+For {user_context["secondary_hormone"]} actions, use persona "{secondary_persona['name']}" {secondary_persona['emoji']}
+- Intro style: "{secondary_persona['intro_template']}"
+- Focus: {secondary_persona['focus']}
+"""
+        
+        try:
+            response = await self.client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self.GPT_MODEL,
+                    "messages": [
+                        {"role": "system", "content": enhanced_system},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": self.GPT_TEMPERATURE,
+                    "max_tokens": 4000
+                }
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            # Calculate cost (GPT-4o-mini pricing)
+            input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+            output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+            cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+            
+            # Parse response
+            content = data["choices"][0]["message"]["content"]
+            
+            # Clean up JSON if wrapped in markdown
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            
+            actions = json.loads(content.strip())
+            
+            logger.info(f"Generated {len(actions)} actions via GPT-4o-mini (cost: ${cost:.4f})")
+            
+            return (actions, cost)
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse GPT response as JSON: {e}")
+            return (None, 0.0)
+        except Exception as e:
+            logger.error(f"Error calling GPT: {e}")
+            return (None, 0.0)
+    
+    async def _generate_all_images(
+        self,
+        actions: List[Dict],
+        user_id: str,
+        db: AsyncSession
+    ) -> Tuple[List[Dict], float]:
+        """
+        Generate all images for all actions (16 total).
+        
+        For each of 4 actions:
+        - 1 hero image
+        - 3 variant images
+        """
+        total_cost = 0.0
+        actions_with_images = []
+        
+        for action in actions:
+            # Generate hero image
+            hero_url, was_cached, cost = await self.image_service.get_or_generate_image(
+                prompt=action.get("image_prompt", action["title"]),
+                category=action["category"],
+                variant_type="hero",
+                user_id=user_id,
+                db=db
+            )
+            total_cost += cost
+            
+            action["hero_image_url"] = hero_url
+            action["hero_image_cached"] = was_cached
+            
+            # Generate variant images
+            variants = action.get("variants", [])
+            for i, variant in enumerate(variants):
+                variant_url, was_cached, cost = await self.image_service.get_or_generate_image(
+                    prompt=variant.get("image_prompt", variant.get("title", action["title"])),
+                    category=action["category"],
+                    variant_type=variant.get("variant_type", f"variant_{i}"),
+                    user_id=user_id,
+                    db=db
+                )
+                total_cost += cost
+                
+                variant["image_url"] = variant_url
+                variant["image_cached"] = was_cached
+            
+            actions_with_images.append(action)
+        
+        logger.info(f"Generated {len(actions) * 4} images (cost: ${total_cost:.4f})")
+        
+        return (actions_with_images, total_cost)
+    
+    async def _store_plan(
+        self,
+        user_id: str,
+        plan_date: date,
+        user_context: Dict[str, Any],
+        actions: List[Dict],
+        total_cost: float,
+        generation_time_ms: int,
+        db: AsyncSession
+    ) -> Any:
+        """Store the complete plan in the database."""
+        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant
+        
+        try:
+            # Create plan record
+            plan = ActionPlan(
+                uid=user_id,
+                plan_date=plan_date,
+                primary_hormone=user_context["primary_hormone"],
+                secondary_hormones=[user_context["secondary_hormone"]],
+                cycle_day=user_context.get("cycle_day"),
+                cycle_phase=user_context.get("cycle_phase"),
+                lifestyle_focus=user_context.get("lifestyle_focus"),
+                generation_cost=str(total_cost),
+                generation_time_ms=generation_time_ms,
+                gpt_model_used=self.GPT_MODEL,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
+            )
+            
+            db.add(plan)
+            await db.flush()  # Get the plan ID
+            
+            # Create action items
+            for slot, action in enumerate(actions, start=1):
+                item = ActionPlanItem(
+                    plan_id=plan.id,
+                    uid=user_id,
+                    slot=slot,
+                    time_slot=action.get("time_slot", "morning"),
+                    category=action["category"],
+                    title=action["title"],
+                    specific_action=action.get("specific_action", ""),
+                    purpose=action.get("purpose", ""),
+                    target_hormone=action.get("target_hormone", user_context["primary_hormone"]),
+                    hormone_persona_intro=action.get("hormone_persona_intro", ""),
+                    hero_image_url=action.get("hero_image_url"),
+                    hero_image_prompt=action.get("image_prompt"),
+                    research_studies=action.get("research_studies", []),
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
+                )
+                
+                # Add category-specific fields
+                if action["category"] == "food":
+                    item.food_items = action.get("food_items", [])
+                    item.food_amounts = action.get("food_amounts", [])
+                elif action["category"] == "movement":
+                    item.exercise_types = action.get("exercise_types", [])
+                    item.exercise_durations = action.get("exercise_durations", [])
+                    item.exercise_intensities = action.get("exercise_intensities", [])
+                elif action["category"] == "mindfulness":
+                    item.mindfulness_techniques = action.get("mindfulness_techniques", [])
+                    item.mindfulness_durations = action.get("mindfulness_durations", [])
+                
+                db.add(item)
+                await db.flush()
+                
+                # Create variants
+                for variant in action.get("variants", []):
+                    variant_record = ActionPlanItemVariant(
+                        item_id=item.id,
+                        variant_type=variant.get("variant_type", "alternative"),
+                        title=variant.get("title", ""),
+                        description=variant.get("description", ""),
+                        image_url=variant.get("image_url"),
+                        image_prompt=variant.get("image_prompt"),
+                        created_at=datetime.now(timezone.utc)
+                    )
+                    db.add(variant_record)
+            
+            await db.commit()
+            await db.refresh(plan)
+            
+            logger.info(f"Stored plan {plan.id} with {len(actions)} actions")
+            
+            return plan
+            
+        except Exception as e:
+            logger.error(f"Error storing plan: {e}")
+            await db.rollback()
+            raise
+    
+    async def _format_plan_response(
+        self,
+        plan: Any,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """Format plan for API response."""
+        from app.core.database import ActionPlanItem, ActionPlanItemVariant
+        
+        try:
+            # Get all items for this plan
+            items_result = await db.execute(
+                select(ActionPlanItem).where(
+                    ActionPlanItem.plan_id == plan.id
+                ).order_by(ActionPlanItem.slot)
+            )
+            items = items_result.scalars().all()
+            
+            actions = []
+            for item in items:
+                # Get variants for this item
+                variants_result = await db.execute(
+                    select(ActionPlanItemVariant).where(
+                        ActionPlanItemVariant.item_id == item.id
+                    )
+                )
+                variants = variants_result.scalars().all()
+                
+                action_data = {
+                    "id": item.id,
+                    "slot": item.slot,
+                    "time_slot": item.time_slot,
+                    "category": item.category,
+                    "title": item.title,
+                    "specific_action": item.specific_action,
+                    "purpose": item.purpose,
+                    "target_hormone": item.target_hormone,
+                    "hormone_persona_intro": item.hormone_persona_intro,
+                    "hero_image_url": item.hero_image_url,
+                    "research_studies": item.research_studies or [],
+                    "is_completed": item.is_completed,
+                    "is_replaced": item.is_replaced,
+                    "variants": [
+                        {
+                            "variant_type": v.variant_type,
+                            "title": v.title,
+                            "description": v.description,
+                            "image_url": v.image_url
+                        }
+                        for v in variants
+                    ]
+                }
+                
+                # Add category-specific data
+                if item.category == "food":
+                    action_data["food_items"] = item.food_items
+                    action_data["food_amounts"] = item.food_amounts
+                elif item.category == "movement":
+                    action_data["exercise_types"] = item.exercise_types
+                    action_data["exercise_durations"] = item.exercise_durations
+                    action_data["exercise_intensities"] = item.exercise_intensities
+                elif item.category == "mindfulness":
+                    action_data["mindfulness_techniques"] = item.mindfulness_techniques
+                    action_data["mindfulness_durations"] = item.mindfulness_durations
+                
+                actions.append(action_data)
+            
+            return {
+                "success": True,
+                "plan_id": plan.id,
+                "plan_date": plan.plan_date.isoformat(),
+                "primary_hormone": plan.primary_hormone,
+                "secondary_hormones": plan.secondary_hormones,
+                "cycle_day": plan.cycle_day,
+                "cycle_phase": plan.cycle_phase,
+                "actions": actions,
+                "generation_cost": plan.generation_cost,
+                "generation_time_ms": plan.generation_time_ms
+            }
+            
+        except Exception as e:
+            logger.error(f"Error formatting plan response: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def replace_action(
+        self,
+        user_id: str,
+        item_id: int,
+        reason: Optional[str],
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Replace a disliked action with a new one.
+        
+        New action must target the SAME hormone but can be different category.
+        """
+        from app.core.database import ActionPlanItem, ActionPlanFeedback
+        
+        try:
+            # Get the original action
+            result = await db.execute(
+                select(ActionPlanItem).where(ActionPlanItem.id == item_id)
+            )
+            original = result.scalar_one_or_none()
+            
+            if not original:
+                return {"success": False, "error": "Action not found"}
+            
+            if original.uid != user_id:
+                return {"success": False, "error": "Unauthorized"}
+            
+            # Record feedback
+            feedback = ActionPlanFeedback(
+                uid=user_id,
+                plan_id=original.plan_id,
+                item_id=item_id,
+                feedback_type="dislike",
+                action_title=original.title,
+                action_category=original.category,
+                target_hormone=original.target_hormone,
+                replacement_reason=reason,
+                was_replaced=True,
+                feedback_given_at=datetime.now(timezone.utc),
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(feedback)
+            
+            # Load user context for replacement
+            user_context = await self._load_user_context(user_id, db)
+            
+            if not user_context:
+                return {"success": False, "error": "Could not load user context"}
+            
+            # Generate a replacement action targeting the same hormone
+            replacement_prompt = f"""Generate 1 replacement wellness action.
+
+REQUIREMENTS:
+- Must target hormone: {original.target_hormone}
+- Should be DIFFERENT from: {original.title} (user disliked this)
+- Dislike reason: {reason or 'not specified'}
+- Can be any category (food, movement, or mindfulness)
+- User's lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
+
+USER CONTEXT:
+- Cycle phase: {user_context.get('cycle_phase')}
+- Stress level: {user_context.get('stress_level')}
+- Previous disliked actions: {user_context.get('feedback_memory', '')}
+
+Generate a single action with all required fields (title, category, time_slot, specific_action, purpose, target_hormone, hormone_persona_intro, image_prompt, research_studies, variants).
+
+Respond with valid JSON object only."""
+
+            # Generate replacement via GPT
+            response = await self.client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self.GPT_MODEL,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": replacement_prompt}
+                    ],
+                    "temperature": 0.8,  # Higher temp for more variety
+                    "max_tokens": 1500
+                }
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            
+            # Parse replacement action
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            
+            replacement_action = json.loads(content.strip())
+            
+            # Generate images for replacement
+            hero_url, _, _ = await self.image_service.get_or_generate_image(
+                prompt=replacement_action.get("image_prompt", replacement_action["title"]),
+                category=replacement_action["category"],
+                variant_type="hero",
+                user_id=user_id,
+                db=db
+            )
+            
+            # Mark original as replaced
+            original.is_replaced = True
+            original.replaced_at = datetime.now(timezone.utc)
+            original.replacement_reason = reason
+            
+            # Create new action item
+            from app.core.database import ActionPlanItemVariant
+            
+            new_item = ActionPlanItem(
+                plan_id=original.plan_id,
+                uid=user_id,
+                slot=original.slot,  # Same slot
+                time_slot=replacement_action.get("time_slot", original.time_slot),
+                category=replacement_action["category"],
+                title=replacement_action["title"],
+                specific_action=replacement_action.get("specific_action", ""),
+                purpose=replacement_action.get("purpose", ""),
+                target_hormone=original.target_hormone,  # Must be same
+                hormone_persona_intro=replacement_action.get("hormone_persona_intro", ""),
+                hero_image_url=hero_url,
+                hero_image_prompt=replacement_action.get("image_prompt"),
+                research_studies=replacement_action.get("research_studies", []),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
+            )
+            
+            db.add(new_item)
+            await db.flush()
+            
+            # Generate variant images
+            for variant in replacement_action.get("variants", [])[:3]:
+                variant_url, _, _ = await self.image_service.get_or_generate_image(
+                    prompt=variant.get("image_prompt", variant.get("title")),
+                    category=replacement_action["category"],
+                    variant_type=variant.get("variant_type"),
+                    user_id=user_id,
+                    db=db
+                )
+                
+                variant_record = ActionPlanItemVariant(
+                    item_id=new_item.id,
+                    variant_type=variant.get("variant_type", "alternative"),
+                    title=variant.get("title", ""),
+                    description=variant.get("description", ""),
+                    image_url=variant_url,
+                    image_prompt=variant.get("image_prompt"),
+                    created_at=datetime.now(timezone.utc)
+                )
+                db.add(variant_record)
+            
+            await db.commit()
+            
+            logger.info(f"Replaced action {item_id} with {new_item.id}")
+            
+            return {
+                "success": True,
+                "original_id": item_id,
+                "replacement_id": new_item.id,
+                "replacement_action": {
+                    "id": new_item.id,
+                    "slot": new_item.slot,
+                    "category": new_item.category,
+                    "title": new_item.title,
+                    "specific_action": new_item.specific_action,
+                    "hero_image_url": new_item.hero_image_url,
+                    "target_hormone": new_item.target_hormone
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error replacing action: {e}")
+            await db.rollback()
+            return {"success": False, "error": str(e)}
+    
+    async def record_feedback(
+        self,
+        user_id: str,
+        item_id: int,
+        feedback_type: str,  # "like" or "dislike"
+        time_shown: datetime,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """Record user feedback for an action."""
+        from app.core.database import ActionPlanItem, ActionPlanFeedback
+        
+        try:
+            # Get the action
+            result = await db.execute(
+                select(ActionPlanItem).where(ActionPlanItem.id == item_id)
+            )
+            item = result.scalar_one_or_none()
+            
+            if not item or item.uid != user_id:
+                return {"success": False, "error": "Action not found"}
+            
+            # Calculate time to feedback
+            now = datetime.now(timezone.utc)
+            time_to_feedback = int((now - time_shown).total_seconds())
+            
+            # Create feedback record
+            feedback = ActionPlanFeedback(
+                uid=user_id,
+                plan_id=item.plan_id,
+                item_id=item_id,
+                feedback_type=feedback_type,
+                action_title=item.title,
+                action_category=item.category,
+                target_hormone=item.target_hormone,
+                action_shown_at=time_shown,
+                feedback_given_at=now,
+                time_to_feedback_seconds=time_to_feedback,
+                created_at=now
+            )
+            
+            db.add(feedback)
+            await db.commit()
+            
+            return {
+                "success": True,
+                "feedback_id": feedback.id,
+                "time_to_feedback_seconds": time_to_feedback
+            }
+            
+        except Exception as e:
+            logger.error(f"Error recording feedback: {e}")
+            await db.rollback()
+            return {"success": False, "error": str(e)}
+
+
+# Global instance
+_action_plan_generator: Optional[ActionPlanGenerator] = None
+
+
+def get_action_plan_generator() -> ActionPlanGenerator:
+    """Get or create the action plan generator singleton."""
+    global _action_plan_generator
+    if _action_plan_generator is None:
+        _action_plan_generator = ActionPlanGenerator()
+    return _action_plan_generator

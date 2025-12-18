@@ -588,6 +588,226 @@ class AssignmentSkipLog(Base):
     )
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ACTION PLAN SYSTEM - Daily Personalized Recommendations
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ActionPlan(Base):
+    """Daily action plan for a user - generated once per day"""
+    __tablename__ = "action_plans"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Plan date (user's local date when plan was generated)
+    plan_date = Column(Date, nullable=False, index=True)
+    
+    # User context snapshot at generation time
+    primary_hormone = Column(String(50), nullable=True)  # e.g., "progesterone"
+    secondary_hormones = Column(ARRAY(String), nullable=True)  # e.g., ["testosterone", "insulin"]
+    cycle_day = Column(Integer, nullable=True)
+    cycle_phase = Column(String(50), nullable=True)  # Menses, Follicular, Ovulation, Luteal
+    lifestyle_focus = Column(ARRAY(String), nullable=True)  # ["eat", "move", "pause"]
+    
+    # Generation metadata
+    generation_cost = Column(String(50), nullable=True)  # Cost tracking
+    generation_time_ms = Column(Integer, nullable=True)
+    gpt_model_used = Column(String(50), default="gpt-4o-mini")
+    
+    # Status
+    is_regenerated = Column(Boolean, default=False)  # If user requested regeneration
+    feedback_collected = Column(Boolean, default=False)  # If 30-second feedback was given
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Unique constraint: one plan per user per day
+    __table_args__ = (
+        Index('idx_action_plan_user_date', 'uid', 'plan_date', unique=True),
+    )
+    
+    # Relationships
+    items = relationship("ActionPlanItem", back_populates="plan", cascade="all, delete-orphan")
+
+
+class ActionPlanItem(Base):
+    """Individual action item within a daily plan"""
+    __tablename__ = "action_plan_items"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    uid = Column(String(255), nullable=False, index=True)  # Denormalized for easy queries
+    
+    # Item position and timing
+    slot = Column(Integer, nullable=False)  # 1, 2, 3, 4
+    time_slot = Column(String(20), nullable=False)  # morning, afternoon, evening, anytime
+    
+    # Core content
+    category = Column(String(20), nullable=False)  # food, movement, mindfulness
+    title = Column(String(255), nullable=False)  # e.g., "Pumpkin Seeds"
+    specific_action = Column(Text, nullable=False)  # e.g., "Eat at least 1 tbsp of Pumpkin Seeds"
+    purpose = Column(Text, nullable=True)  # Why this helps (hormone connection)
+    
+    # Hormone targeting (ONE hormone per action)
+    target_hormone = Column(String(50), nullable=False)  # e.g., "progesterone"
+    hormone_persona_intro = Column(Text, nullable=True)  # "Hi, I'm Progesterone! I help you..."
+    
+    # Category-specific details
+    food_amounts = Column(ARRAY(String), nullable=True)  # ["1 tbsp", "2 tablespoons"]
+    food_items = Column(ARRAY(String), nullable=True)  # ["pumpkin seeds", "flaxseeds"]
+    exercise_durations = Column(ARRAY(String), nullable=True)  # ["15 min", "20 minutes"]
+    exercise_types = Column(ARRAY(String), nullable=True)  # ["yoga", "walking"]
+    exercise_intensities = Column(ARRAY(String), nullable=True)  # ["low", "moderate"]
+    mindfulness_durations = Column(ARRAY(String), nullable=True)  # ["5 min", "10 minutes"]
+    mindfulness_techniques = Column(ARRAY(String), nullable=True)  # ["deep breathing", "meditation"]
+    
+    # Tagging
+    conditions = Column(ARRAY(String), nullable=True)  # ["PCOS", "endometriosis"]
+    symptoms = Column(ARRAY(String), nullable=True)  # ["acne", "fatigue"]
+    
+    # Images (hero + 3 variants = 4 images per action)
+    hero_image_url = Column(String(500), nullable=True)
+    hero_image_prompt = Column(Text, nullable=True)
+    
+    # Research/Citations
+    research_studies = Column(JSONB, nullable=True)
+    # Structure: [{"title": "...", "journal": "...", "year": 2023, "participants": "150 women", "results": "..."}]
+    
+    # Status
+    is_completed = Column(Boolean, default=False)
+    completed_at = Column(DateTime, nullable=True)
+    is_replaced = Column(Boolean, default=False)  # If user replaced this action
+    replaced_at = Column(DateTime, nullable=True)
+    replacement_reason = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_action_item_plan', 'plan_id'),
+        Index('idx_action_item_user_date', 'uid', 'created_at'),
+    )
+    
+    # Relationships
+    plan = relationship("ActionPlan", back_populates="items")
+    variants = relationship("ActionPlanItemVariant", back_populates="item", cascade="all, delete-orphan")
+
+
+class ActionPlanItemVariant(Base):
+    """Variant ways to do an action (Easy/Tasty/Healthy for food, etc.)"""
+    __tablename__ = "action_plan_item_variants"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("action_plan_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Variant type
+    variant_type = Column(String(20), nullable=False)
+    # Food: "tasty", "healthiest", "easy"
+    # Movement: "quick", "effective", "gentle"
+    # Mindfulness: "calming", "energizing", "grounding"
+    
+    # Content
+    title = Column(String(255), nullable=False)  # e.g., "Roasted Pumpkin Seeds"
+    description = Column(Text, nullable=True)  # How to do this variant
+    
+    # Image
+    image_url = Column(String(500), nullable=True)
+    image_prompt = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    item = relationship("ActionPlanItem", back_populates="variants")
+
+
+class ActionPlanFeedback(Base):
+    """User feedback on action plan items - stored for GPT context"""
+    __tablename__ = "action_plan_feedback"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=False)
+    item_id = Column(Integer, ForeignKey("action_plan_items.id", ondelete="CASCADE"), nullable=True)
+    
+    # Feedback type
+    feedback_type = Column(String(20), nullable=False)  # "liked", "disliked", "completed", "skipped"
+    
+    # Details
+    action_title = Column(String(255), nullable=True)  # Denormalized for easy memory lookup
+    action_category = Column(String(20), nullable=True)  # food, movement, mindfulness
+    target_hormone = Column(String(50), nullable=True)  # For context
+    
+    # Replacement info (if disliked and replaced)
+    replacement_reason = Column(Text, nullable=True)
+    was_replaced = Column(Boolean, default=False)
+    
+    # Context at time of feedback
+    cycle_day = Column(Integer, nullable=True)
+    cycle_phase = Column(String(50), nullable=True)
+    
+    # Time tracking (for 30-second rule)
+    action_shown_at = Column(DateTime, nullable=True)
+    feedback_given_at = Column(DateTime, default=datetime.utcnow)
+    time_to_feedback_seconds = Column(Integer, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_feedback_user', 'uid', 'created_at'),
+        Index('idx_feedback_type', 'feedback_type'),
+    )
+
+
+class ImageLibrary(Base):
+    """
+    Semantic image library for reuse across users.
+    Stores generated images with their prompts and embeddings for matching.
+    """
+    __tablename__ = "image_library"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Image identification
+    image_url = Column(String(500), nullable=False)  # Supabase Storage URL
+    
+    # Generation info
+    prompt_text = Column(Text, nullable=False)  # The prompt used to generate
+    prompt_embedding = Column(JSONB, nullable=True)  # 1536-dim embedding as JSON array (for pgvector migration later)
+    
+    # Categorization
+    category = Column(String(20), nullable=False)  # food, movement, mindfulness
+    variant_type = Column(String(20), nullable=True)  # hero, tasty, easy, healthy, etc.
+    
+    # Generation metadata
+    generation_model = Column(String(50), default="flux-schnell")
+    generation_cost = Column(String(50), nullable=True)
+    generation_time_ms = Column(Integer, nullable=True)
+    image_width = Column(Integer, default=512)
+    image_height = Column(Integer, default=512)
+    
+    # Usage tracking
+    usage_count = Column(Integer, default=1)
+    last_used_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Avoid showing same image to same user
+    used_by_users = Column(JSONB, default=list)  # List of user IDs who have seen this image
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_image_library_category', 'category', 'variant_type'),
+        Index('idx_image_library_usage', 'usage_count'),
+    )
+
+
 # Database table creation
 def create_tables():
     """Create tables"""

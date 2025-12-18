@@ -1,0 +1,643 @@
+"""
+AUVRA Image Library Service
+
+Semantic image caching and generation using:
+- RunPod Flux Schnell for image generation ($0.0006/image)
+- OpenAI ada-002 for embeddings ($0.0001/call)  
+- Supabase Storage for image hosting
+- PostgreSQL for semantic matching
+
+Features:
+- Semantic embedding matching (cosine similarity > 0.85)
+- Cross-user image reuse (never same image for same user)
+- All 16 images generated per day (4 actions × 4 variants)
+"""
+
+import os
+import base64
+import hashlib
+import logging
+import time
+import json
+from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, timezone
+
+import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, func
+from sqlalchemy.dialects.postgresql import insert
+
+logger = logging.getLogger(__name__)
+
+
+class ImageLibraryService:
+    """
+    Image generation and semantic caching service.
+    
+    Uses RunPod Flux Schnell for fast, high-quality images.
+    Stores all images with embeddings for semantic reuse.
+    """
+    
+    # Similarity threshold for reusing cached images
+    SIMILARITY_THRESHOLD = 0.85
+    
+    # RunPod pricing
+    COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
+    
+    # Embedding model
+    EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
+    EMBEDDING_DIMENSION = 1536
+    
+    def __init__(self):
+        """Initialize the image library service."""
+        # RunPod configuration
+        self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
+        self.runpod_endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID")
+        
+        # OpenAI for embeddings
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        # Supabase for image storage
+        self.supabase_url = os.getenv("SUPABASE_URL")
+        self.supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        self.storage_bucket = "action-plan-images"
+        
+        # HTTP clients
+        self.client = httpx.AsyncClient(timeout=120.0)
+        
+        # In-memory cache for embeddings (avoid repeated API calls)
+        self._embedding_cache: Dict[str, List[float]] = {}
+        
+        logger.info(f"ImageLibraryService initialized")
+        logger.info(f"  RunPod configured: {bool(self.runpod_api_key and self.runpod_endpoint_id)}")
+        logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
+        logger.info(f"  Supabase configured: {bool(self.supabase_url and self.supabase_key)}")
+    
+    async def get_or_generate_image(
+        self,
+        prompt: str,
+        category: str,
+        variant_type: Optional[str],
+        user_id: str,
+        db: AsyncSession
+    ) -> Tuple[str, bool, float]:
+        """
+        Get a cached image or generate a new one.
+        
+        Args:
+            prompt: The image generation prompt
+            category: "food", "movement", or "mindfulness"
+            variant_type: "hero", "tasty", "easy", "healthy", etc.
+            user_id: User's UID to avoid showing same image twice
+            db: Database session
+        
+        Returns:
+            Tuple of (image_url, was_cached, cost)
+        """
+        start_time = time.time()
+        
+        try:
+            # Step 1: Get embedding for the prompt
+            prompt_embedding = await self._get_embedding(prompt)
+            
+            if not prompt_embedding:
+                logger.error("Failed to generate embedding for prompt")
+                return await self._generate_and_store_image(
+                    prompt, category, variant_type, user_id, None, db
+                )
+            
+            # Step 2: Search for semantically similar cached images
+            cached_image = await self._find_similar_image(
+                prompt_embedding, 
+                category, 
+                variant_type, 
+                user_id, 
+                db
+            )
+            
+            if cached_image:
+                # Found a semantically similar image!
+                await self._update_image_usage(cached_image["id"], user_id, db)
+                elapsed = time.time() - start_time
+                logger.info(f"✅ Cache hit! Similarity: {cached_image['similarity']:.3f} "
+                           f"Time: {elapsed:.2f}s")
+                return (cached_image["image_url"], True, 0.0)
+            
+            # Step 3: No cache hit - generate new image
+            return await self._generate_and_store_image(
+                prompt, category, variant_type, user_id, prompt_embedding, db
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in get_or_generate_image: {e}")
+            # Fallback: try to generate without caching
+            return await self._generate_and_store_image(
+                prompt, category, variant_type, user_id, None, db
+            )
+    
+    async def _get_embedding(self, text: str) -> Optional[List[float]]:
+        """
+        Generate embedding using OpenAI ada-002.
+        
+        Cost: $0.0001 per 1K tokens (~$0.0001 per call for typical prompts)
+        """
+        # Check in-memory cache first
+        cache_key = hashlib.md5(text.encode()).hexdigest()
+        if cache_key in self._embedding_cache:
+            return self._embedding_cache[cache_key]
+        
+        if not self.openai_api_key:
+            logger.warning("OpenAI API key not configured for embeddings")
+            return None
+        
+        try:
+            response = await self.client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "input": text,
+                    "model": self.EMBEDDING_MODEL
+                }
+            )
+            response.raise_for_status()
+            data = response.json()
+            embedding = data["data"][0]["embedding"]
+            
+            # Cache it
+            self._embedding_cache[cache_key] = embedding
+            
+            return embedding
+            
+        except Exception as e:
+            logger.error(f"Error getting embedding: {e}")
+            return None
+    
+    async def _find_similar_image(
+        self,
+        prompt_embedding: List[float],
+        category: str,
+        variant_type: Optional[str],
+        user_id: str,
+        db: AsyncSession
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find a semantically similar image that hasn't been shown to this user.
+        
+        Uses cosine similarity on stored embeddings.
+        """
+        from app.core.database import ImageLibrary
+        
+        try:
+            # Query all images in this category
+            query = select(ImageLibrary).where(
+                ImageLibrary.category == category
+            )
+            
+            if variant_type:
+                query = query.where(ImageLibrary.variant_type == variant_type)
+            
+            result = await db.execute(query)
+            images = result.scalars().all()
+            
+            if not images:
+                return None
+            
+            # Find best match that user hasn't seen
+            best_match = None
+            best_similarity = 0.0
+            
+            for image in images:
+                # Check if user has already seen this image
+                used_by = image.used_by_users or []
+                if user_id in used_by:
+                    continue
+                
+                # Calculate cosine similarity
+                stored_embedding = image.prompt_embedding
+                if not stored_embedding:
+                    continue
+                
+                similarity = self._cosine_similarity(prompt_embedding, stored_embedding)
+                
+                if similarity > self.SIMILARITY_THRESHOLD and similarity > best_similarity:
+                    best_similarity = similarity
+                    best_match = {
+                        "id": image.id,
+                        "image_url": image.image_url,
+                        "prompt_text": image.prompt_text,
+                        "similarity": similarity
+                    }
+            
+            return best_match
+            
+        except Exception as e:
+            logger.error(f"Error finding similar image: {e}")
+            return None
+    
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors."""
+        import math
+        
+        if len(vec1) != len(vec2):
+            return 0.0
+        
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        norm1 = math.sqrt(sum(a * a for a in vec1))
+        norm2 = math.sqrt(sum(b * b for b in vec2))
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        
+        return dot_product / (norm1 * norm2)
+    
+    async def _update_image_usage(
+        self,
+        image_id: int,
+        user_id: str,
+        db: AsyncSession
+    ) -> None:
+        """Update image usage statistics."""
+        from app.core.database import ImageLibrary
+        
+        try:
+            # Get current image
+            result = await db.execute(
+                select(ImageLibrary).where(ImageLibrary.id == image_id)
+            )
+            image = result.scalar_one_or_none()
+            
+            if image:
+                # Update usage count and user list
+                used_by = image.used_by_users or []
+                if user_id not in used_by:
+                    used_by.append(user_id)
+                
+                await db.execute(
+                    update(ImageLibrary)
+                    .where(ImageLibrary.id == image_id)
+                    .values(
+                        usage_count=ImageLibrary.usage_count + 1,
+                        last_used_at=datetime.now(timezone.utc),
+                        used_by_users=used_by
+                    )
+                )
+                await db.commit()
+                
+        except Exception as e:
+            logger.error(f"Error updating image usage: {e}")
+            await db.rollback()
+    
+    async def _generate_and_store_image(
+        self,
+        prompt: str,
+        category: str,
+        variant_type: Optional[str],
+        user_id: str,
+        prompt_embedding: Optional[List[float]],
+        db: AsyncSession
+    ) -> Tuple[str, bool, float]:
+        """
+        Generate a new image using RunPod Flux Schnell and store it.
+        """
+        start_time = time.time()
+        
+        try:
+            # Generate image via RunPod
+            image_data, generation_time_ms = await self._call_runpod_flux(prompt)
+            
+            if not image_data:
+                logger.error("Failed to generate image via RunPod")
+                return ("", False, 0.0)
+            
+            # Upload to Supabase Storage
+            image_url = await self._upload_to_supabase(image_data, category, variant_type)
+            
+            if not image_url:
+                logger.error("Failed to upload image to Supabase")
+                return ("", False, 0.0)
+            
+            # Store in image library for future semantic matching
+            await self._store_in_library(
+                image_url=image_url,
+                prompt_text=prompt,
+                prompt_embedding=prompt_embedding,
+                category=category,
+                variant_type=variant_type,
+                user_id=user_id,
+                generation_time_ms=generation_time_ms,
+                db=db
+            )
+            
+            elapsed = time.time() - start_time
+            logger.info(f"🎨 New image generated. Time: {elapsed:.2f}s, Cost: ${self.COST_PER_IMAGE}")
+            
+            return (image_url, False, self.COST_PER_IMAGE)
+            
+        except Exception as e:
+            logger.error(f"Error generating and storing image: {e}")
+            return ("", False, 0.0)
+    
+    async def _call_runpod_flux(self, prompt: str) -> Tuple[Optional[bytes], int]:
+        """
+        Call RunPod Flux Schnell endpoint.
+        
+        Returns (image_bytes, generation_time_ms)
+        """
+        if not self.runpod_api_key or not self.runpod_endpoint_id:
+            logger.warning("RunPod not configured, using placeholder")
+            return await self._generate_placeholder_image(prompt)
+        
+        start_time = time.time()
+        
+        try:
+            # RunPod Serverless API
+            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint_id}/runsync"
+            
+            # Enhance prompt for better food/wellness images
+            enhanced_prompt = self._enhance_prompt(prompt)
+            
+            payload = {
+                "input": {
+                    "prompt": enhanced_prompt,
+                    "width": 512,
+                    "height": 512,
+                    "num_inference_steps": 4,  # Schnell is optimized for 4 steps
+                    "guidance_scale": 0.0,  # Schnell doesn't need guidance
+                    "seed": None  # Random seed
+                }
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {self.runpod_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            response = await self.client.post(
+                endpoint_url,
+                json=payload,
+                headers=headers,
+                timeout=120.0
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"RunPod returned {response.status_code}: {response.text}")
+                return (None, 0)
+            
+            result = response.json()
+            
+            # Handle RunPod response
+            if result.get("status") == "COMPLETED":
+                output = result.get("output", {})
+                
+                # Flux Schnell typically returns base64 image
+                if "image" in output:
+                    image_base64 = output["image"]
+                    if image_base64.startswith("data:"):
+                        # Strip data URL prefix
+                        image_base64 = image_base64.split(",")[1]
+                    image_data = base64.b64decode(image_base64)
+                    elapsed_ms = int((time.time() - start_time) * 1000)
+                    return (image_data, elapsed_ms)
+                
+                # Alternative: image URL
+                if "image_url" in output:
+                    image_response = await self.client.get(output["image_url"])
+                    if image_response.status_code == 200:
+                        elapsed_ms = int((time.time() - start_time) * 1000)
+                        return (image_response.content, elapsed_ms)
+            
+            logger.error(f"Unexpected RunPod response: {result}")
+            return (None, 0)
+            
+        except Exception as e:
+            logger.error(f"Error calling RunPod: {e}")
+            return (None, 0)
+    
+    def _enhance_prompt(self, prompt: str) -> str:
+        """
+        Enhance the prompt for better image generation.
+        
+        Following consistent style for better semantic matching.
+        """
+        # Add photography style for food/wellness images
+        style_suffix = (
+            "professional food photography, natural lighting, "
+            "clean minimalist background, warm tones, high quality, "
+            "8k resolution, appetizing presentation"
+        )
+        
+        # Combine original prompt with style
+        enhanced = f"{prompt}, {style_suffix}"
+        
+        return enhanced
+    
+    async def _generate_placeholder_image(self, prompt: str) -> Tuple[bytes, int]:
+        """
+        Generate a placeholder image when RunPod is not configured.
+        Uses a simple colored rectangle with text.
+        """
+        # Create a simple placeholder using PIL if available
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            import io
+            
+            # Create image
+            img = Image.new('RGB', (512, 512), color=(240, 240, 240))
+            draw = ImageDraw.Draw(img)
+            
+            # Add text
+            text = prompt[:50] + "..." if len(prompt) > 50 else prompt
+            draw.text((50, 230), text, fill=(100, 100, 100))
+            draw.text((150, 260), "🍃 AUVRA", fill=(100, 150, 100))
+            
+            # Convert to bytes
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+            
+            return (buffer.getvalue(), 100)
+            
+        except ImportError:
+            logger.warning("PIL not available for placeholder images")
+            return (None, 0)
+    
+    async def _upload_to_supabase(
+        self,
+        image_data: bytes,
+        category: str,
+        variant_type: Optional[str]
+    ) -> Optional[str]:
+        """Upload image to Supabase Storage and return public URL."""
+        if not self.supabase_url or not self.supabase_key:
+            logger.warning("Supabase not configured, returning base64 data URL")
+            base64_data = base64.b64encode(image_data).decode()
+            return f"data:image/png;base64,{base64_data}"
+        
+        try:
+            # Generate unique filename
+            timestamp = int(time.time() * 1000)
+            file_hash = hashlib.md5(image_data).hexdigest()[:8]
+            variant_str = f"_{variant_type}" if variant_type else ""
+            filename = f"{category}{variant_str}_{timestamp}_{file_hash}.png"
+            file_path = f"generated/{category}/{filename}"
+            
+            url = f"{self.supabase_url}/storage/v1/object/{self.storage_bucket}/{file_path}"
+            
+            headers = {
+                "Authorization": f"Bearer {self.supabase_key}",
+                "Content-Type": "image/png",
+                "x-upsert": "true"
+            }
+            
+            response = await self.client.post(url, content=image_data, headers=headers)
+            
+            if response.status_code in [200, 201]:
+                # Return public URL
+                public_url = f"{self.supabase_url}/storage/v1/object/public/{self.storage_bucket}/{file_path}"
+                return public_url
+            else:
+                logger.error(f"Supabase upload failed: {response.status_code} {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error uploading to Supabase: {e}")
+            return None
+    
+    async def _store_in_library(
+        self,
+        image_url: str,
+        prompt_text: str,
+        prompt_embedding: Optional[List[float]],
+        category: str,
+        variant_type: Optional[str],
+        user_id: str,
+        generation_time_ms: int,
+        db: AsyncSession
+    ) -> None:
+        """Store generated image in the library for future semantic matching."""
+        from app.core.database import ImageLibrary
+        
+        try:
+            new_image = ImageLibrary(
+                image_url=image_url,
+                prompt_text=prompt_text,
+                prompt_embedding=prompt_embedding,
+                category=category,
+                variant_type=variant_type,
+                generation_model="flux-schnell",
+                generation_cost=str(self.COST_PER_IMAGE),
+                generation_time_ms=generation_time_ms,
+                image_width=512,
+                image_height=512,
+                usage_count=1,
+                last_used_at=datetime.now(timezone.utc),
+                used_by_users=[user_id],
+                created_at=datetime.now(timezone.utc)
+            )
+            
+            db.add(new_image)
+            await db.commit()
+            
+            logger.info(f"📚 Image stored in library: {category}/{variant_type}")
+            
+        except Exception as e:
+            logger.error(f"Error storing in library: {e}")
+            await db.rollback()
+    
+    async def generate_batch_images(
+        self,
+        prompts: List[Dict[str, Any]],
+        user_id: str,
+        db: AsyncSession
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate multiple images efficiently.
+        
+        Args:
+            prompts: List of {"prompt": str, "category": str, "variant_type": str}
+            user_id: User's UID
+            db: Database session
+        
+        Returns:
+            List of {"image_url": str, "was_cached": bool, "cost": float}
+        """
+        results = []
+        total_cost = 0.0
+        cache_hits = 0
+        
+        for prompt_info in prompts:
+            image_url, was_cached, cost = await self.get_or_generate_image(
+                prompt=prompt_info["prompt"],
+                category=prompt_info["category"],
+                variant_type=prompt_info.get("variant_type"),
+                user_id=user_id,
+                db=db
+            )
+            
+            results.append({
+                "prompt": prompt_info["prompt"],
+                "category": prompt_info["category"],
+                "variant_type": prompt_info.get("variant_type"),
+                "image_url": image_url,
+                "was_cached": was_cached,
+                "cost": cost
+            })
+            
+            total_cost += cost
+            if was_cached:
+                cache_hits += 1
+        
+        logger.info(f"📸 Batch complete: {len(prompts)} images, "
+                   f"{cache_hits} cached, ${total_cost:.4f} total cost")
+        
+        return results
+    
+    async def get_library_stats(self, db: AsyncSession) -> Dict[str, Any]:
+        """Get statistics about the image library."""
+        from app.core.database import ImageLibrary
+        
+        try:
+            # Total images
+            total_result = await db.execute(select(func.count(ImageLibrary.id)))
+            total_images = total_result.scalar()
+            
+            # By category
+            category_result = await db.execute(
+                select(
+                    ImageLibrary.category,
+                    func.count(ImageLibrary.id)
+                ).group_by(ImageLibrary.category)
+            )
+            by_category = {row[0]: row[1] for row in category_result.all()}
+            
+            # Total usage
+            usage_result = await db.execute(
+                select(func.sum(ImageLibrary.usage_count))
+            )
+            total_usage = usage_result.scalar() or 0
+            
+            return {
+                "total_images": total_images,
+                "by_category": by_category,
+                "total_usage": total_usage,
+                "cache_hit_rate": (total_usage - total_images) / total_usage if total_usage > 0 else 0
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting library stats: {e}")
+            return {}
+
+
+# Global instance
+_image_library_service: Optional[ImageLibraryService] = None
+
+
+def get_image_library_service() -> ImageLibraryService:
+    """Get or create the image library service singleton."""
+    global _image_library_service
+    if _image_library_service is None:
+        _image_library_service = ImageLibraryService()
+    return _image_library_service

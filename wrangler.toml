@@ -1,0 +1,26 @@
+# Cloudflare R2 Configuration for AUVRA Food Images
+# =================================================
+# 
+# This file contains wrangler configuration for Cloudflare R2
+# and optional Workers for image serving
+
+name = "auvra-food-images"
+main = "workers/image-cache.ts"
+compatibility_date = "2024-01-01"
+
+# R2 Bucket Binding
+[[r2_buckets]]
+binding = "FOOD_IMAGES"
+bucket_name = "auvra-food-images"
+
+# Environment Variables (set via dashboard or wrangler secret)
+[vars]
+ENVIRONMENT = "production"
+
+# Production Environment
+[env.production]
+route = { pattern = "images.auvra.com/*", zone_name = "auvra.com" }
+
+# Development Environment
+[env.development]
+route = { pattern = "dev-images.auvra.com/*", zone_name = "auvra.com" }
