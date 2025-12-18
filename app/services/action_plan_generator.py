@@ -851,6 +851,13 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             
             logger.info(f"Generated {len(actions)} actions via GPT-4o-mini (cost: ${cost:.4f})")
             
+            # Debug: Log research_studies for each action
+            for i, action in enumerate(actions):
+                research = action.get("research_studies", [])
+                logger.info(f"  Action {i+1} '{action.get('title', 'unknown')}': {len(research)} research studies")
+                if research:
+                    logger.info(f"    First study: {research[0].get('title', 'No title')[:50]}...")
+            
             return (actions, cost)
             
         except json.JSONDecodeError as e:
