@@ -29,9 +29,11 @@ from app.models.action_plan_models import (
     ActionPlanFeedbackRequest,
     ActionReplacementRequest,
     ActionCompletionRequest,
+    PlanSatisfactionRequest,
     FeedbackResponse,
     ReplacementResponse,
     CompletionResponse,
+    PlanSatisfactionResponse,
     LegacyAssignmentResponse,
     LegacyAssignmentInfo,
     VariantInfo
@@ -337,6 +339,74 @@ async def complete_action(
         logger.error(f"Failed to complete action: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to complete action")
+
+
+@router.post("/plan-satisfaction", response_model=PlanSatisfactionResponse)
+async def submit_plan_satisfaction(
+    request: PlanSatisfactionRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Submit overall plan satisfaction (triggered 30 seconds after plan renders).
+    
+    This endpoint captures:
+    - 'yes' - Plan works well for user
+    - 'no' - Plan doesn't work, user can specify issues
+    - 'partial' - Some actions work, some don't
+    
+    The feedback is used to improve future plan generation.
+    """
+    try:
+        uid = current_user.get("uid")
+        if not uid:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        
+        if request.satisfaction not in ["yes", "no", "partial"]:
+            raise HTTPException(status_code=400, detail="Invalid satisfaction value")
+        
+        from app.core.database import ActionPlan
+        
+        # Get the plan
+        plan = db.query(ActionPlan).filter(
+            and_(ActionPlan.id == request.plan_id, ActionPlan.uid == uid)
+        ).first()
+        
+        if not plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        
+        # Store satisfaction feedback in plan metadata
+        plan_metadata = plan.generation_metadata or {}
+        plan_metadata["user_satisfaction"] = request.satisfaction
+        plan_metadata["satisfaction_feedback"] = request.feedback_text
+        plan_metadata["satisfaction_issues"] = request.specific_issues
+        plan_metadata["satisfaction_submitted_at"] = datetime.now(timezone.utc).isoformat()
+        plan.generation_metadata = plan_metadata
+        
+        db.commit()
+        
+        logger.info(f"Plan satisfaction submitted: plan_id={request.plan_id}, satisfaction={request.satisfaction}, uid={uid}")
+        
+        # Return appropriate message
+        if request.satisfaction == "yes":
+            message = "Great! We'll keep creating similar plans for you! 💜"
+        elif request.satisfaction == "no":
+            message = "Thanks for letting us know! We'll adjust your future plans. 💜"
+        else:
+            message = "Got it! We'll fine-tune your future plans. 💜"
+        
+        return PlanSatisfactionResponse(
+            success=True,
+            message=message,
+            will_adjust_future_plans=request.satisfaction != "yes"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit plan satisfaction: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to submit satisfaction")
 
 
 # ============================================================================

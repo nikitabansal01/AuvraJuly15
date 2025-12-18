@@ -30,6 +30,13 @@ class ActionCompletionRequest(BaseModel):
     notes: Optional[str] = Field(None, description="Optional completion notes")
     variant_used: Optional[str] = Field(None, description="Which variant was used if any")
 
+class PlanSatisfactionRequest(BaseModel):
+    """Request model for overall plan satisfaction (30-second prompt response)."""
+    plan_id: int = Field(..., description="ID of the action plan")
+    satisfaction: str = Field(..., description="'yes', 'no', or 'partial'")
+    feedback_text: Optional[str] = Field(None, description="Optional text feedback")
+    specific_issues: Optional[List[str]] = Field(None, description="Specific issues: ['too_hard', 'not_relevant', 'no_time', 'dont_like_foods', 'other']")
+
 
 # ============================================================================
 # RESPONSE MODELS
@@ -99,6 +106,10 @@ class ActionPlanResponse(BaseModel):
     total_actions: int = 0
     completed_actions: int = 0
     
+    # Feedback prompt timing
+    show_feedback_prompt_after_seconds: int = 30  # Show "Does this plan work for you?" after 30s
+    feedback_prompt_message: str = "Does this plan work for you? 💜"
+    
     # Error handling
     error: Optional[str] = None
 
@@ -116,6 +127,13 @@ class ReplacementResponse(BaseModel):
     original_id: Optional[int] = None
     replacement_id: Optional[int] = None
     replacement_action: Optional[ActionItemInfo] = None
+    error: Optional[str] = None
+
+class PlanSatisfactionResponse(BaseModel):
+    """Response model for plan satisfaction feedback."""
+    success: bool
+    message: str = "Thank you for your feedback! 💜"
+    will_adjust_future_plans: bool = True
     error: Optional[str] = None
 
 class CompletionResponse(BaseModel):

@@ -213,44 +213,87 @@ For MINDFULNESS actions:
 
 ACTION_GENERATION_PROMPT = """Generate {num_actions} personalized daily wellness actions for this user.
 
-USER PROFILE:
+══════════════════════════════════════════════════════════════════════
+HEALTH PROFILE
+══════════════════════════════════════════════════════════════════════
+- Age: {age}
 - Cycle Day: {cycle_day}
 - Cycle Phase: {cycle_phase}
 - Primary Hormone to Support: {primary_hormone}
 - Secondary Hormone to Support: {secondary_hormone}
-- Lifestyle Focus: {lifestyle_focus}
+
+HEALTH CONCERNS:
 - Top Concern: {top_concern}
 - Diagnosed Conditions: {diagnosed_conditions}
+- Period Concerns: {period_concerns}
+- Body Concerns: {body_concerns}
+- Skin/Hair Concerns: {skin_hair_concerns}
+- Mental Health Concerns: {mental_health_concerns}
+- Family History: {family_history}
+
+══════════════════════════════════════════════════════════════════════
+PERSONALIZATION FACTORS
+══════════════════════════════════════════════════════════════════════
+- Lifestyle Focus: {lifestyle_focus}
+- Diet Preference: {diet_preference}
+- Food Allergies/Restrictions: {food_allergies}
 - Stress Level: {stress_level}
 - Sleep Duration: {sleep_duration}
 - Workout Intensity: {workout_intensity}
+- Birth Control: {birth_control}
 
-HORMONE CONTEXT FOR THIS CYCLE PHASE:
+══════════════════════════════════════════════════════════════════════
+HORMONE CONTEXT FOR {cycle_phase} PHASE
+══════════════════════════════════════════════════════════════════════
 {hormone_phase_context}
 
-USER FEEDBACK MEMORY (avoid similar actions to disliked ones):
+══════════════════════════════════════════════════════════════════════
+FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
+══════════════════════════════════════════════════════════════════════
 {feedback_memory}
 
-REQUIREMENTS:
+══════════════════════════════════════════════════════════════════════
+CHATBOT CONVERSATION CONTEXT
+══════════════════════════════════════════════════════════════════════
+{chatbot_context}
+
+══════════════════════════════════════════════════════════════════════
+REQUIREMENTS
+══════════════════════════════════════════════════════════════════════
 1. Generate exactly {num_actions} actions total
 2. Actions targeting PRIMARY hormone ({primary_hormone}): {primary_count}
 3. Actions targeting SECONDARY hormone ({secondary_hormone}): {secondary_count}
 4. Category distribution based on lifestyle_focus: {category_guidance}
 5. Each action must be unique and specific
 6. Time slots should be varied (mix of morning, afternoon, evening)
+7. RESPECT food allergies - NEVER recommend foods the user is allergic to
+8. RESPECT diet preferences - if vegetarian, no meat; if vegan, no animal products
+9. Consider diagnosed conditions when recommending (e.g., no high-intensity for certain conditions)
+10. Learn from feedback - create actions SIMILAR to liked ones, AVOID patterns from disliked ones
 
-For each action, provide:
+══════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT (for each action)
+══════════════════════════════════════════════════════════════════════
 1. title: Short, catchy title (3-5 words)
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: Detailed, actionable description (50-100 words)
 5. purpose: Why this helps the target hormone (1-2 sentences)
 6. target_hormone: The hormone this action supports
-7. hormone_persona_intro: MUST follow this EXACT format:
-   "I'm [Hormone] — in your {cycle_phase} phase, [what happens to this hormone]. [Food/Activity name] is/are packed with [nutrients/benefits] that help boost me and keep you [benefit]."
+7. hormone_persona_intro: Write naturally following the example style in system prompt
 8. image_prompt: Detailed prompt for generating an appealing image
-9. research_studies: Array of 1-2 real research citations
+9. research_studies: Array of 1-2 REAL research citations (see format below)
 10. variants: Array of 3 alternative ways to do this action with image prompts
+
+RESEARCH STUDIES - CRITICAL REQUIREMENTS:
+- Use REAL published studies from reputable journals
+- Examples of real journals: "Nutrients", "Journal of Clinical Endocrinology & Metabolism", 
+  "Psychoneuroendocrinology", "American Journal of Clinical Nutrition", "PLOS ONE",
+  "Frontiers in Nutrition", "Journal of Women's Health", "Endocrine Reviews"
+- Include actual year of publication (prefer 2015-2024)
+- Estimate realistic participant counts (typically 20-500 for nutrition studies)
+- The finding should be specific and evidence-based
+- DO NOT make up fake journal names or fake studies
 
 VARIANT TYPES by category:
 - food: "tasty" (indulgent version), "easy" (quick/simple), "healthy" (most nutritious)
@@ -455,11 +498,11 @@ class ActionPlanGenerator:
             if not user_response:
                 return None
             
-            # Get recent feedback for memory
+            # Get recent feedback for memory (last 30 days)
             feedback_result = await db.execute(
                 select(ActionPlanFeedback).where(
                     ActionPlanFeedback.uid == user_id
-                ).order_by(ActionPlanFeedback.created_at.desc()).limit(20)
+                ).order_by(ActionPlanFeedback.created_at.desc()).limit(50)
             )
             recent_feedback = feedback_result.scalars().all()
             
@@ -477,28 +520,86 @@ class ActionPlanGenerator:
             secondary_hormones = user_response.secondary_hormones or []
             secondary_hormone = secondary_hormones[0] if secondary_hormones else "progesterone"
             
-            # Format feedback memory for GPT
+            # Format feedback memory for GPT (enhanced with patterns)
             feedback_memory = self._format_feedback_memory(recent_feedback)
+            
+            # Extract chatbot memory preferences
+            chatbot_memory = profile.chatbot_memory or {}
+            chatbot_context = self._format_chatbot_context(chatbot_memory)
+            
+            # Extract diet preferences and allergies from chatbot memory
+            diet_preference = chatbot_memory.get("diet_preference", "no preference specified")
+            food_allergies = chatbot_memory.get("food_allergies", [])
+            if isinstance(food_allergies, list):
+                food_allergies = ", ".join(food_allergies) if food_allergies else "none specified"
             
             return {
                 "user_id": user_id,
+                # Hormones
                 "primary_hormone": primary_hormone,
                 "secondary_hormone": secondary_hormone,
+                # Cycle info
                 "cycle_day": cycle_day,
                 "cycle_phase": cycle_phase,
-                "lifestyle_focus": lifestyle_focus,
-                "top_concern": user_response.top_concern,
+                # Health profile
+                "age": user_response.age or "not specified",
+                "top_concern": user_response.top_concern or "general wellness",
                 "diagnosed_conditions": user_response.diagnosed_conditions or [],
-                "stress_level": user_response.stress_level,
-                "sleep_duration": user_response.sleep_duration,
-                "workout_intensity": user_response.workout_intensity,
+                "period_concerns": self._format_concerns(user_response.period_concerns),
+                "body_concerns": self._format_concerns(user_response.body_concerns),
+                "skin_hair_concerns": self._format_concerns(user_response.skin_hair_concerns),
+                "mental_health_concerns": self._format_concerns(user_response.mental_health_concerns),
+                "family_history": ", ".join(user_response.family_history) if user_response.family_history else "none specified",
+                "birth_control": ", ".join(user_response.birth_control) if user_response.birth_control else "none",
+                # Personalization
+                "lifestyle_focus": lifestyle_focus,
+                "diet_preference": diet_preference,
+                "food_allergies": food_allergies,
+                "stress_level": user_response.stress_level or "moderate",
+                "sleep_duration": user_response.sleep_duration or "7-8 hours",
+                "workout_intensity": user_response.workout_intensity or "moderate",
+                # Feedback and context
                 "feedback_memory": feedback_memory,
-                "chatbot_memory": profile.chatbot_memory or {}
+                "chatbot_memory": chatbot_memory,
+                "chatbot_context": chatbot_context
             }
             
         except Exception as e:
             logger.error(f"Error loading user context: {e}")
             return None
+    
+    def _format_concerns(self, concerns: Any) -> str:
+        """Format concern data (JSONB) to string."""
+        if not concerns:
+            return "none specified"
+        if isinstance(concerns, dict):
+            return ", ".join([f"{k}: {v}" for k, v in concerns.items() if v])
+        if isinstance(concerns, list):
+            return ", ".join(concerns)
+        return str(concerns)
+    
+    def _format_chatbot_context(self, chatbot_memory: Dict[str, Any]) -> str:
+        """Format chatbot memory into context for GPT."""
+        if not chatbot_memory:
+            return "No additional context from conversations."
+        
+        context_parts = []
+        
+        # Extract relevant preferences discussed in chat
+        if chatbot_memory.get("food_preferences"):
+            context_parts.append(f"Food preferences discussed: {chatbot_memory['food_preferences']}")
+        if chatbot_memory.get("exercise_preferences"):
+            context_parts.append(f"Exercise preferences: {chatbot_memory['exercise_preferences']}")
+        if chatbot_memory.get("schedule_constraints"):
+            context_parts.append(f"Schedule constraints: {chatbot_memory['schedule_constraints']}")
+        if chatbot_memory.get("dislikes"):
+            context_parts.append(f"Things user dislikes: {chatbot_memory['dislikes']}")
+        if chatbot_memory.get("goals"):
+            context_parts.append(f"User's goals: {chatbot_memory['goals']}")
+        if chatbot_memory.get("notes"):
+            context_parts.append(f"Other notes: {chatbot_memory['notes']}")
+        
+        return "\n".join(context_parts) if context_parts else "No additional context from conversations."
     
     def _calculate_cycle_info(
         self,
@@ -543,26 +644,64 @@ class ActionPlanGenerator:
         return (cycle_day, phase)
     
     def _format_feedback_memory(self, feedback_list: List[Any]) -> str:
-        """Format recent feedback for GPT context."""
+        """Format recent feedback for GPT context with pattern analysis."""
         if not feedback_list:
-            return "No previous feedback available."
+            return "No previous feedback available - this is likely a new user."
         
         liked = []
         disliked = []
+        skipped = []
+        completed = []
+        
+        # Analyze patterns
+        liked_categories = {}
+        disliked_categories = {}
+        liked_hormones = {}
+        disliked_hormones = {}
         
         for fb in feedback_list:
+            category = fb.action_category or "unknown"
+            hormone = fb.target_hormone or "unknown"
+            
             if fb.feedback_type == "like":
-                liked.append(f"- {fb.action_category}: {fb.action_title}")
+                liked.append(f"- {category}: {fb.action_title}")
+                liked_categories[category] = liked_categories.get(category, 0) + 1
+                liked_hormones[hormone] = liked_hormones.get(hormone, 0) + 1
             elif fb.feedback_type == "dislike":
-                disliked.append(f"- {fb.action_category}: {fb.action_title} (reason: {fb.replacement_reason or 'unspecified'})")
+                reason = fb.replacement_reason or "unspecified"
+                disliked.append(f"- {category}: {fb.action_title} (reason: {reason})")
+                disliked_categories[category] = disliked_categories.get(category, 0) + 1
+                disliked_hormones[hormone] = disliked_hormones.get(hormone, 0) + 1
+            elif fb.feedback_type == "skip":
+                skipped.append(f"- {category}: {fb.action_title}")
+            
+            if fb.is_completed:
+                completed.append(f"- {category}: {fb.action_title}")
         
         memory_parts = []
         
+        # Summary patterns
+        if liked_categories or disliked_categories:
+            patterns = []
+            if liked_categories:
+                top_liked = max(liked_categories.items(), key=lambda x: x[1])
+                patterns.append(f"User tends to LIKE {top_liked[0]} actions ({top_liked[1]} likes)")
+            if disliked_categories:
+                top_disliked = max(disliked_categories.items(), key=lambda x: x[1])
+                patterns.append(f"User tends to DISLIKE {top_disliked[0]} actions ({top_disliked[1]} dislikes)")
+            memory_parts.append("PATTERNS DETECTED:\n" + "\n".join(patterns))
+        
         if liked:
-            memory_parts.append(f"LIKED actions (create similar):\n" + "\n".join(liked[:5]))
+            memory_parts.append(f"LIKED actions (create SIMILAR ones):\n" + "\n".join(liked[:7]))
         
         if disliked:
-            memory_parts.append(f"DISLIKED actions (avoid similar):\n" + "\n".join(disliked[:5]))
+            memory_parts.append(f"DISLIKED actions (AVOID similar types):\n" + "\n".join(disliked[:7]))
+        
+        if skipped:
+            memory_parts.append(f"SKIPPED actions (user didn't engage):\n" + "\n".join(skipped[:5]))
+        
+        if completed:
+            memory_parts.append(f"COMPLETED actions (user followed through):\n" + "\n".join(completed[:5]))
         
         return "\n\n".join(memory_parts) if memory_parts else "No previous feedback available."
     
@@ -623,20 +762,36 @@ For {secondary_persona['name']} ({user_context["secondary_hormone"]}):
 - Focus: {secondary_persona['focus']}
 """
         
-        # Build the prompt
+        # Build the prompt with ALL user context
         prompt = ACTION_GENERATION_PROMPT.format(
             num_actions=4,
+            # Cycle info
             cycle_day=user_context.get("cycle_day", "unknown"),
             cycle_phase=user_context.get("cycle_phase", "unknown"),
+            # Hormones
             primary_hormone=user_context["primary_hormone"],
             secondary_hormone=user_context["secondary_hormone"],
-            lifestyle_focus=", ".join(user_context.get("lifestyle_focus", ["eat", "move", "pause"])),
+            # Health profile
+            age=user_context.get("age", "not specified"),
             top_concern=user_context.get("top_concern", "general wellness"),
             diagnosed_conditions=", ".join(user_context.get("diagnosed_conditions", [])) or "none",
+            period_concerns=user_context.get("period_concerns", "none specified"),
+            body_concerns=user_context.get("body_concerns", "none specified"),
+            skin_hair_concerns=user_context.get("skin_hair_concerns", "none specified"),
+            mental_health_concerns=user_context.get("mental_health_concerns", "none specified"),
+            family_history=user_context.get("family_history", "none specified"),
+            birth_control=user_context.get("birth_control", "none"),
+            # Personalization
+            lifestyle_focus=", ".join(user_context.get("lifestyle_focus", ["eat", "move", "pause"])),
+            diet_preference=user_context.get("diet_preference", "no preference specified"),
+            food_allergies=user_context.get("food_allergies", "none specified"),
             stress_level=user_context.get("stress_level", "moderate"),
             sleep_duration=user_context.get("sleep_duration", "7-8 hours"),
             workout_intensity=user_context.get("workout_intensity", "moderate"),
+            # Feedback and context
             feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
+            chatbot_context=user_context.get("chatbot_context", "No additional context"),
+            # Generation params
             primary_count=2,
             secondary_count=2,
             category_guidance=self._get_category_guidance(user_context.get("lifestyle_focus", [])),
