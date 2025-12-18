@@ -1268,6 +1268,239 @@ Respond with valid JSON object only."""
             await db.rollback()
             return {"success": False, "error": str(e)}
     
+    async def batch_replace_actions(
+        self,
+        user_id: str,
+        plan_id: int,
+        item_ids: List[int],
+        reasons: Optional[Dict[int, str]] = None,
+        db: AsyncSession = None
+    ) -> Dict[str, Any]:
+        """
+        Replace multiple actions at once (30-second feedback flow).
+        
+        Each replacement targets the SAME hormone as the original.
+        Generates new actions and images for all items in batch.
+        """
+        from app.core.database import ActionPlanItem, ActionPlanItemVariant
+        
+        if not item_ids:
+            return {"success": False, "error": "No items to replace"}
+        
+        reasons = reasons or {}
+        total_cost = 0.0
+        replacements = []
+        
+        try:
+            # Get all original items
+            result = await db.execute(
+                select(ActionPlanItem).where(
+                    ActionPlanItem.id.in_(item_ids),
+                    ActionPlanItem.plan_id == plan_id,
+                    ActionPlanItem.uid == user_id
+                )
+            )
+            original_items = result.scalars().all()
+            
+            if len(original_items) != len(item_ids):
+                return {"success": False, "error": "Some items not found or unauthorized"}
+            
+            # Load user context
+            user_context = await self._load_user_context(user_id, db)
+            if not user_context:
+                return {"success": False, "error": "Could not load user context"}
+            
+            # Build batch replacement prompt
+            items_to_replace = []
+            for item in original_items:
+                items_to_replace.append({
+                    "slot": item.slot,
+                    "original_title": item.title,
+                    "original_category": item.category,
+                    "target_hormone": item.target_hormone,
+                    "reason": reasons.get(item.id, "user disliked")
+                })
+            
+            batch_prompt = f"""Generate {len(item_ids)} replacement wellness actions.
+
+ITEMS TO REPLACE:
+{json.dumps(items_to_replace, indent=2)}
+
+REQUIREMENTS FOR EACH REPLACEMENT:
+- Must target the SAME hormone as original
+- Should be DIFFERENT from the original (user disliked it)
+- Can be any category (food, movement, or mindfulness)
+- Make them varied and interesting
+
+USER CONTEXT:
+- Cycle phase: {user_context.get('cycle_phase')}
+- Lifestyle focus: {user_context.get('lifestyle_focus')}
+- Diet preference: {user_context.get('diet_preference', 'none')}
+- Food allergies: {user_context.get('food_allergies', 'none')}
+- Stress level: {user_context.get('stress_level')}
+- Feedback patterns: {user_context.get('feedback_memory', '')}
+
+Generate {len(item_ids)} actions, each with:
+- slot (same as original)
+- title, category, time_slot, specific_action, purpose
+- target_hormone (MUST match original)
+- hormone_persona_intro, image_prompt
+- research_studies (array with 1-2 real citations)
+- variants (array with 3 alternatives)
+
+Respond with valid JSON array only."""
+
+            # Generate replacements via GPT
+            response = await self.client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self.GPT_MODEL,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": batch_prompt}
+                    ],
+                    "temperature": 0.8,
+                    "max_tokens": 4000
+                }
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            # Calculate GPT cost
+            input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+            output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+            gpt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+            total_cost += gpt_cost
+            
+            content = data["choices"][0]["message"]["content"]
+            
+            # Parse response
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            
+            replacement_actions = json.loads(content.strip())
+            
+            if not isinstance(replacement_actions, list):
+                replacement_actions = [replacement_actions]
+            
+            # Process each replacement
+            new_actions = []
+            for i, replacement_action in enumerate(replacement_actions):
+                original = original_items[i] if i < len(original_items) else original_items[0]
+                
+                # Generate hero image
+                hero_url, _, image_cost = await self.image_service.get_or_generate_image(
+                    prompt=replacement_action.get("image_prompt", replacement_action.get("title", "")),
+                    category=replacement_action.get("category", "food"),
+                    variant_type="hero",
+                    user_id=user_id,
+                    db=db
+                )
+                total_cost += image_cost
+                
+                # Mark original as replaced
+                original.is_replaced = True
+                original.replaced_at = datetime.now(timezone.utc)
+                original.replacement_reason = reasons.get(original.id, "user disliked")
+                
+                # Create new action item
+                new_item = ActionPlanItem(
+                    plan_id=plan_id,
+                    uid=user_id,
+                    slot=replacement_action.get("slot", original.slot),
+                    time_slot=replacement_action.get("time_slot", original.time_slot),
+                    category=replacement_action.get("category", "food"),
+                    title=replacement_action.get("title", ""),
+                    specific_action=replacement_action.get("specific_action", ""),
+                    purpose=replacement_action.get("purpose", ""),
+                    target_hormone=original.target_hormone,  # MUST be same
+                    hormone_persona_intro=replacement_action.get("hormone_persona_intro", ""),
+                    hero_image_url=hero_url,
+                    hero_image_prompt=replacement_action.get("image_prompt"),
+                    research_studies=replacement_action.get("research_studies", []),
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
+                )
+                
+                db.add(new_item)
+                await db.flush()
+                
+                # Generate variant images (up to 3)
+                for variant in replacement_action.get("variants", [])[:3]:
+                    variant_url, _, variant_cost = await self.image_service.get_or_generate_image(
+                        prompt=variant.get("image_prompt", variant.get("title", "")),
+                        category=replacement_action.get("category", "food"),
+                        variant_type=variant.get("variant_type", "alternative"),
+                        user_id=user_id,
+                        db=db
+                    )
+                    total_cost += variant_cost
+                    
+                    variant_record = ActionPlanItemVariant(
+                        item_id=new_item.id,
+                        variant_type=variant.get("variant_type", "alternative"),
+                        title=variant.get("title", ""),
+                        description=variant.get("description", ""),
+                        image_url=variant_url,
+                        image_prompt=variant.get("image_prompt"),
+                        created_at=datetime.now(timezone.utc)
+                    )
+                    db.add(variant_record)
+                
+                replacements.append({
+                    "original_id": original.id,
+                    "new_id": new_item.id,
+                    "new_action": {
+                        "id": new_item.id,
+                        "slot": new_item.slot,
+                        "category": new_item.category,
+                        "title": new_item.title,
+                        "specific_action": new_item.specific_action,
+                        "purpose": new_item.purpose,
+                        "target_hormone": new_item.target_hormone,
+                        "hormone_persona_intro": new_item.hormone_persona_intro,
+                        "hero_image_url": new_item.hero_image_url,
+                        "time_slot": new_item.time_slot
+                    }
+                })
+                
+                new_actions.append({
+                    "id": new_item.id,
+                    "slot": new_item.slot,
+                    "category": new_item.category,
+                    "title": new_item.title,
+                    "specific_action": new_item.specific_action,
+                    "purpose": new_item.purpose,
+                    "target_hormone": new_item.target_hormone,
+                    "hormone_persona_intro": new_item.hormone_persona_intro,
+                    "hero_image_url": new_item.hero_image_url,
+                    "time_slot": new_item.time_slot
+                })
+            
+            await db.commit()
+            
+            logger.info(f"Batch replaced {len(replacements)} actions, cost: ${total_cost:.4f}")
+            
+            return {
+                "success": True,
+                "replaced_count": len(replacements),
+                "replacements": replacements,
+                "new_actions": new_actions,
+                "generation_cost": f"${total_cost:.4f}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in batch replacement: {e}")
+            await db.rollback()
+            return {"success": False, "error": str(e)}
+    
     async def record_feedback(
         self,
         user_id: str,

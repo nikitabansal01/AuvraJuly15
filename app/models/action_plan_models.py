@@ -24,6 +24,12 @@ class ActionReplacementRequest(BaseModel):
     item_id: int = Field(..., description="ID of the action item to replace")
     reason: Optional[str] = Field(None, description="Why the user disliked this action")
 
+class BatchReplacementRequest(BaseModel):
+    """Request model for replacing multiple actions at once (30-second feedback flow)."""
+    plan_id: int = Field(..., description="ID of the action plan")
+    item_ids_to_replace: List[int] = Field(..., description="List of action item IDs to replace")
+    reasons: Optional[Dict[int, str]] = Field(None, description="Optional reasons per item: {item_id: reason}")
+
 class ActionCompletionRequest(BaseModel):
     """Request model for marking an action as completed."""
     item_id: int = Field(..., description="ID of the action item")
@@ -33,7 +39,8 @@ class ActionCompletionRequest(BaseModel):
 class PlanSatisfactionRequest(BaseModel):
     """Request model for overall plan satisfaction (30-second prompt response)."""
     plan_id: int = Field(..., description="ID of the action plan")
-    satisfaction: str = Field(..., description="'yes', 'no', or 'partial'")
+    satisfaction: str = Field(..., description="'works_for_me' or 'want_to_change'")
+    items_to_replace: Optional[List[int]] = Field(None, description="Item IDs to replace if satisfaction='want_to_change'")
     feedback_text: Optional[str] = Field(None, description="Optional text feedback")
     specific_issues: Optional[List[str]] = Field(None, description="Specific issues: ['too_hard', 'not_relevant', 'no_time', 'dont_like_foods', 'other']")
 
@@ -134,6 +141,17 @@ class PlanSatisfactionResponse(BaseModel):
     success: bool
     message: str = "Thank you for your feedback! 💜"
     will_adjust_future_plans: bool = True
+    # If user chose to replace, return the updated plan
+    replaced_items: Optional[List[int]] = None
+    new_actions: Optional[List[ActionItemInfo]] = None
+    error: Optional[str] = None
+
+class BatchReplacementResponse(BaseModel):
+    """Response model for batch action replacement."""
+    success: bool
+    replaced_count: int = 0
+    replacements: List[Dict[str, Any]] = []  # [{original_id, new_id, new_action}]
+    generation_cost: Optional[str] = None
     error: Optional[str] = None
 
 class CompletionResponse(BaseModel):

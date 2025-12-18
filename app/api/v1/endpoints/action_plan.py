@@ -30,10 +30,12 @@ from app.models.action_plan_models import (
     ActionReplacementRequest,
     ActionCompletionRequest,
     PlanSatisfactionRequest,
+    BatchReplacementRequest,
     FeedbackResponse,
     ReplacementResponse,
     CompletionResponse,
     PlanSatisfactionResponse,
+    BatchReplacementResponse,
     LegacyAssignmentResponse,
     LegacyAssignmentInfo,
     VariantInfo
@@ -348,24 +350,33 @@ async def submit_plan_satisfaction(
     db: Session = Depends(get_db)
 ):
     """
-    Submit overall plan satisfaction (triggered 30 seconds after plan renders).
+    30-Second Feedback Flow - Main endpoint.
     
-    This endpoint captures:
-    - 'yes' - Plan works well for user
-    - 'no' - Plan doesn't work, user can specify issues
-    - 'partial' - Some actions work, some don't
+    Triggered 30 seconds after action plan renders.
+    Modal asks: "How does your action plan look today?"
     
-    The feedback is used to improve future plan generation.
+    Options:
+    - 'works_for_me' (👍) → Store all 4 actions as LIKED, close modal
+    - 'want_to_change' (👎) → Replace specified items
+    
+    If want_to_change:
+    - Frontend shows checkboxes for each action (only items NOT marked complete)
+    - User selects items to replace
+    - Backend stores selected items as DISLIKED
+    - Calls GPT-4o-mini for replacements targeting SAME hormones
+    - Generates images for new items
+    - Updates action plan in database
+    - Returns new actions for frontend refresh
     """
     try:
         uid = current_user.get("uid")
         if not uid:
             raise HTTPException(status_code=400, detail="User ID not found")
         
-        if request.satisfaction not in ["yes", "no", "partial"]:
-            raise HTTPException(status_code=400, detail="Invalid satisfaction value")
+        if request.satisfaction not in ["works_for_me", "want_to_change"]:
+            raise HTTPException(status_code=400, detail="Invalid satisfaction value. Use 'works_for_me' or 'want_to_change'")
         
-        from app.core.database import ActionPlan
+        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanFeedback
         
         # Get the plan
         plan = db.query(ActionPlan).filter(
@@ -375,31 +386,120 @@ async def submit_plan_satisfaction(
         if not plan:
             raise HTTPException(status_code=404, detail="Plan not found")
         
-        # Store satisfaction feedback in plan metadata
-        plan_metadata = plan.generation_metadata or {}
-        plan_metadata["user_satisfaction"] = request.satisfaction
-        plan_metadata["satisfaction_feedback"] = request.feedback_text
-        plan_metadata["satisfaction_issues"] = request.specific_issues
-        plan_metadata["satisfaction_submitted_at"] = datetime.now(timezone.utc).isoformat()
-        plan.generation_metadata = plan_metadata
+        # Get all items in the plan
+        items = db.query(ActionPlanItem).filter(
+            ActionPlanItem.plan_id == request.plan_id
+        ).all()
         
-        db.commit()
+        if request.satisfaction == "works_for_me":
+            # 👍 User likes the plan - mark ALL non-completed items as LIKED
+            for item in items:
+                if not item.is_completed:
+                    # Record as liked in feedback table
+                    feedback = ActionPlanFeedback(
+                        uid=uid,
+                        plan_id=request.plan_id,
+                        item_id=item.id,
+                        feedback_type="like",
+                        action_title=item.title,
+                        action_category=item.category,
+                        target_hormone=item.target_hormone,
+                        created_at=datetime.now(timezone.utc)
+                    )
+                    db.add(feedback)
+            
+            # Update plan metadata
+            plan_metadata = plan.generation_metadata or {}
+            plan_metadata["user_satisfaction"] = "works_for_me"
+            plan_metadata["satisfaction_submitted_at"] = datetime.now(timezone.utc).isoformat()
+            plan_metadata["all_items_liked"] = True
+            plan.generation_metadata = plan_metadata
+            
+            db.commit()
+            
+            logger.info(f"Plan satisfaction: ALL LIKED, plan_id={request.plan_id}, uid={uid}")
+            
+            return PlanSatisfactionResponse(
+                success=True,
+                message="Great! We'll keep creating similar plans for you! 💜",
+                will_adjust_future_plans=False
+            )
         
-        logger.info(f"Plan satisfaction submitted: plan_id={request.plan_id}, satisfaction={request.satisfaction}, uid={uid}")
-        
-        # Return appropriate message
-        if request.satisfaction == "yes":
-            message = "Great! We'll keep creating similar plans for you! 💜"
-        elif request.satisfaction == "no":
-            message = "Thanks for letting us know! We'll adjust your future plans. 💜"
         else:
-            message = "Got it! We'll fine-tune your future plans. 💜"
-        
-        return PlanSatisfactionResponse(
-            success=True,
-            message=message,
-            will_adjust_future_plans=request.satisfaction != "yes"
-        )
+            # 👎 User wants to change some items
+            items_to_replace = request.items_to_replace or []
+            
+            if not items_to_replace:
+                raise HTTPException(status_code=400, detail="Please specify items_to_replace when satisfaction='want_to_change'")
+            
+            # Mark selected items as DISLIKED
+            for item in items:
+                if item.id in items_to_replace and not item.is_completed:
+                    feedback = ActionPlanFeedback(
+                        uid=uid,
+                        plan_id=request.plan_id,
+                        item_id=item.id,
+                        feedback_type="dislike",
+                        action_title=item.title,
+                        action_category=item.category,
+                        target_hormone=item.target_hormone,
+                        replacement_reason=request.feedback_text,
+                        created_at=datetime.now(timezone.utc)
+                    )
+                    db.add(feedback)
+                elif not item.is_completed:
+                    # Items not selected for replacement are implicitly liked
+                    feedback = ActionPlanFeedback(
+                        uid=uid,
+                        plan_id=request.plan_id,
+                        item_id=item.id,
+                        feedback_type="like",
+                        action_title=item.title,
+                        action_category=item.category,
+                        target_hormone=item.target_hormone,
+                        created_at=datetime.now(timezone.utc)
+                    )
+                    db.add(feedback)
+            
+            db.commit()
+            
+            # Now generate replacements via async
+            async_db = await get_async_db_session()
+            
+            generator = get_action_plan_generator()
+            replacement_result = await generator.batch_replace_actions(
+                user_id=uid,
+                plan_id=request.plan_id,
+                item_ids=items_to_replace,
+                db=async_db
+            )
+            
+            await async_db.close()
+            
+            if not replacement_result.get("success"):
+                raise HTTPException(
+                    status_code=500,
+                    detail=replacement_result.get("error", "Failed to generate replacements")
+                )
+            
+            # Update plan metadata
+            plan_metadata = plan.generation_metadata or {}
+            plan_metadata["user_satisfaction"] = "want_to_change"
+            plan_metadata["items_replaced"] = items_to_replace
+            plan_metadata["satisfaction_submitted_at"] = datetime.now(timezone.utc).isoformat()
+            plan.generation_metadata = plan_metadata
+            
+            db.commit()
+            
+            logger.info(f"Plan satisfaction: REPLACED {len(items_to_replace)} items, plan_id={request.plan_id}, uid={uid}")
+            
+            return PlanSatisfactionResponse(
+                success=True,
+                message=f"Done! We've replaced {len(items_to_replace)} action(s) for you. 💜",
+                will_adjust_future_plans=True,
+                replaced_items=items_to_replace,
+                new_actions=replacement_result.get("new_actions", [])
+            )
         
     except HTTPException:
         raise
@@ -407,6 +507,60 @@ async def submit_plan_satisfaction(
         logger.error(f"Failed to submit plan satisfaction: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to submit satisfaction")
+
+
+@router.post("/batch-replace", response_model=BatchReplacementResponse)
+async def batch_replace_actions(
+    request: BatchReplacementRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Replace multiple actions at once.
+    
+    This is an alternative to the plan-satisfaction flow for direct batch replacement.
+    Each replaced action targets the SAME hormone as the original.
+    """
+    try:
+        uid = current_user.get("uid")
+        if not uid:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        
+        if not request.item_ids_to_replace:
+            raise HTTPException(status_code=400, detail="No items specified for replacement")
+        
+        # Get async session
+        async_db = await get_async_db_session()
+        
+        generator = get_action_plan_generator()
+        result = await generator.batch_replace_actions(
+            user_id=uid,
+            plan_id=request.plan_id,
+            item_ids=request.item_ids_to_replace,
+            reasons=request.reasons,
+            db=async_db
+        )
+        
+        await async_db.close()
+        
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("error", "Failed to replace actions")
+            )
+        
+        return BatchReplacementResponse(
+            success=True,
+            replaced_count=result.get("replaced_count", 0),
+            replacements=result.get("replacements", []),
+            generation_cost=result.get("generation_cost")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to batch replace actions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to replace actions")
 
 
 # ============================================================================
