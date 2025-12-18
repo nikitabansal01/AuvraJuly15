@@ -37,60 +37,60 @@ logger = logging.getLogger(__name__)
 
 HORMONE_PERSONAS = {
     "cortisol": {
-        "name": "Cora",
+        "name": "Cortisol",
         "emoji": "🌸",
         "personality": "your calming companion",
-        "intro_template": "Hey love, {name} here. I noticed you might be running a bit high on stress vibes today. Let's ease into something soothing together.",
+        "intro_template": "Hey love, I'm Cortisol. I noticed you might be running a bit high on stress vibes today. Let's ease into something soothing together.",
         "focus": "stress reduction and adrenal support",
         "supportive_foods": ["magnesium-rich foods", "adaptogens", "omega-3s", "vitamin C foods"],
         "supportive_movement": ["yoga", "gentle stretching", "walking in nature", "tai chi"],
         "supportive_mindfulness": ["meditation", "deep breathing", "journaling", "body scan"]
     },
     "progesterone": {
-        "name": "Luna",
+        "name": "Progesterone",
         "emoji": "🌙",
         "personality": "your peaceful guide",
-        "intro_template": "Hello beautiful, {name} here. Your body is calling for some nurturing energy. Let's support your natural rhythm together.",
+        "intro_template": "Hello beautiful, I'm Progesterone. Your body is calling for some nurturing energy. Let's support your natural rhythm together.",
         "focus": "hormonal balance and calm",
         "supportive_foods": ["zinc-rich foods", "vitamin B6 foods", "healthy fats", "fiber-rich foods"],
         "supportive_movement": ["gentle yoga", "swimming", "pilates", "restorative movement"],
         "supportive_mindfulness": ["sleep hygiene", "relaxation techniques", "gratitude practice", "evening rituals"]
     },
     "estrogen": {
-        "name": "Aria",
+        "name": "Estrogen",
         "emoji": "✨",
         "personality": "your radiant friend",
-        "intro_template": "Hi gorgeous, {name} here! Let's give your body some love and support that beautiful glow from within.",
+        "intro_template": "Hi gorgeous, I'm Estrogen! Let's give your body some love and support that beautiful glow from within.",
         "focus": "estrogen balance and vitality",
         "supportive_foods": ["phytoestrogen foods", "cruciferous vegetables", "flaxseed", "berries"],
         "supportive_movement": ["strength training", "HIIT", "dancing", "cardio"],
         "supportive_mindfulness": ["confidence building", "self-care rituals", "social connection", "creative expression"]
     },
     "testosterone": {
-        "name": "Terra",
+        "name": "Testosterone",
         "emoji": "🔥",
         "personality": "your energizing coach",
-        "intro_template": "Hey warrior, {name} here! Let's channel that inner strength and bring some powerful energy to your day.",
+        "intro_template": "Hey warrior, I'm Testosterone! Let's channel that inner strength and bring some powerful energy to your day.",
         "focus": "energy and vitality",
         "supportive_foods": ["protein-rich foods", "zinc foods", "vitamin D foods", "healthy fats"],
         "supportive_movement": ["weight training", "HIIT", "sprints", "power yoga"],
         "supportive_mindfulness": ["goal setting", "affirmations", "cold exposure", "achievement tracking"]
     },
     "insulin": {
-        "name": "Iris",
+        "name": "Insulin",
         "emoji": "🌿",
         "personality": "your balance keeper",
-        "intro_template": "Hello sweetheart, {name} here. Let's keep your energy steady and balanced throughout the day.",
+        "intro_template": "Hello sweetheart, I'm Insulin. Let's keep your energy steady and balanced throughout the day.",
         "focus": "blood sugar stability",
         "supportive_foods": ["low glycemic foods", "protein with carbs", "fiber-rich foods", "cinnamon"],
         "supportive_movement": ["walking after meals", "resistance training", "steady-state cardio", "dancing"],
         "supportive_mindfulness": ["mindful eating", "stress management", "regular meal timing", "sleep optimization"]
     },
     "thyroid": {
-        "name": "Thea",
+        "name": "Thyroid",
         "emoji": "🦋",
         "personality": "your metabolism friend",
-        "intro_template": "Hi love, {name} here. Let's give your metabolism a gentle boost and support your energy levels.",
+        "intro_template": "Hi love, I'm Thyroid. Let's give your metabolism a gentle boost and support your energy levels.",
         "focus": "metabolic support",
         "supportive_foods": ["selenium foods", "iodine foods", "zinc foods", "anti-inflammatory foods"],
         "supportive_movement": ["moderate cardio", "strength training", "yoga", "swimming"],
@@ -100,10 +100,10 @@ HORMONE_PERSONAS = {
 
 # Default persona for unknown hormones
 DEFAULT_PERSONA = {
-    "name": "Harmony",
+    "name": "Hormone",
     "emoji": "💜",
     "personality": "your wellness guide",
-    "intro_template": "Hello beautiful, {name} here. Let's create some balance and bring more wellness into your day.",
+    "intro_template": "Hello beautiful, I'm your Hormone guide. Let's create some balance and bring more wellness into your day.",
     "focus": "overall wellness",
     "supportive_foods": ["whole foods", "vegetables", "lean proteins", "healthy fats"],
     "supportive_movement": ["varied exercise", "walking", "yoga", "strength training"],
