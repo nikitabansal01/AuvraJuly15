@@ -189,14 +189,26 @@ Examples:
 - "Woman doing gentle morning yoga stretch, professional wellness photography, natural lighting, serene background, calming atmosphere"
 - "Peaceful meditation corner with candles and plants, professional lifestyle photography, soft natural light, minimalist aesthetic"
 
-HORMONE PERSONA INTRO FORMAT (CRITICAL - follow this exact format):
-The hormone_persona_intro MUST follow this exact pattern:
-"I'm [Hormone Name] — in your [cycle_phase] phase, [phase_behavior]. [Food/Action Name] is/are packed with [key nutrients/benefits] that help boost me and keep you [user_benefit]."
+HORMONE PERSONA INTRO STYLE:
+The hormone speaks in first person, explaining what's happening in the user's current cycle phase and how the recommended action helps. Write naturally and warmly.
 
-EXAMPLES:
+EXAMPLE INTROS (adapt this style naturally):
+
+For FOOD actions:
 - "I'm Progesterone — in your luteal phase, I tend to dip, causing mood swings or cramps. Pumpkin seeds are packed with zinc and magnesium that help boost me and keep you calmer."
-- "I'm Cortisol — in your follicular phase, I'm usually balanced but stress can throw me off. This morning yoga routine helps lower me and keep you relaxed and focused."
-- "I'm Estrogen — in your menstrual phase, I'm at my lowest which can cause fatigue. These berries are packed with antioxidants that help boost me and keep you energized."
+- "I'm Estrogen — in your menstrual phase, I'm at my lowest which can cause fatigue and low mood. Salmon is rich in omega-3s that help support me and keep you feeling vibrant."
+- "I'm Insulin — in your luteal phase, I become less sensitive, causing cravings and energy crashes. This protein-rich snack helps stabilize me and keep your energy steady."
+- "I'm Cortisol — when stress is high, I spike and can disrupt your sleep. Dark chocolate with magnesium helps calm me down and keep you relaxed."
+
+For MOVEMENT actions:
+- "I'm Cortisol — in your follicular phase, I'm usually balanced but stress can still throw me off. This gentle yoga flow helps lower me and keep you centered and calm."
+- "I'm Testosterone — around ovulation, I peak giving you extra strength. This power workout helps channel me and keep you feeling strong and confident."
+- "I'm Thyroid — in your luteal phase, I can slow down causing sluggishness. This brisk walk helps activate me and keep your metabolism humming."
+
+For MINDFULNESS actions:
+- "I'm Progesterone — in your luteal phase, I dip which can disrupt your sleep. This evening meditation helps support me and keep you sleeping soundly."
+- "I'm Cortisol — when I'm elevated, anxiety can creep in. This breathing exercise helps lower me and keep you feeling peaceful."
+- "I'm Estrogen — in your follicular phase, I'm rising and boosting your mood. This gratitude practice helps amplify me and keep you feeling radiant."
 """
 
 ACTION_GENERATION_PROMPT = """Generate {num_actions} personalized daily wellness actions for this user.
@@ -631,21 +643,18 @@ For {secondary_persona['name']} ({user_context["secondary_hormone"]}):
             hormone_phase_context=hormone_phase_context
         )
         
-        # Enhanced system prompt with persona examples
+        # Enhanced system prompt with persona context (examples already in SYSTEM_PROMPT)
         enhanced_system = SYSTEM_PROMPT + f"""
 
-HORMONE PERSONAS TO USE:
-For {user_context["primary_hormone"]} actions:
-- Hormone speaks as: "{primary_persona['name']}"
-- Phase behavior to mention: "{primary_behavior}"
-- User benefit to promise: "{primary_persona.get('benefit', 'balanced and well')}"
-- Example intro: "I'm {primary_persona['name']} — in your {cycle_phase} phase, {primary_behavior}. [Food/Action] is packed with [nutrients] that help boost me and keep you {primary_persona.get('benefit', 'balanced')}."
+CURRENT USER'S HORMONE CONTEXT:
+- Cycle Phase: {cycle_phase}
+- Primary Hormone: {user_context["primary_hormone"]} - {primary_behavior}
+- Secondary Hormone: {user_context["secondary_hormone"]} - {secondary_behavior}
 
-For {user_context["secondary_hormone"]} actions:
-- Hormone speaks as: "{secondary_persona['name']}"
-- Phase behavior to mention: "{secondary_behavior}"
-- User benefit to promise: "{secondary_persona.get('benefit', 'balanced and well')}"
-- Example intro: "I'm {secondary_persona['name']} — in your {cycle_phase} phase, {secondary_behavior}. [Food/Action] is packed with [nutrients] that help boost me and keep you {secondary_persona.get('benefit', 'balanced')}."
+Write the hormone_persona_intro naturally, following the example style above. The hormone should:
+1. Introduce itself by name ("I'm Progesterone...")
+2. Explain what's happening in this cycle phase
+3. Connect the recommended action to how it helps the hormone and the user
 """
         
         try:
