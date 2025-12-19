@@ -682,7 +682,7 @@ class ActionPlanGenerator:
             elif fb.feedback_type == "skip":
                 skipped.append(f"- {category}: {fb.action_title}")
             
-            if fb.is_completed:
+            if fb.feedback_type == "completed":
                 completed.append(f"- {category}: {fb.action_title}")
         
         memory_parts = []
