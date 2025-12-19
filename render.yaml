@@ -34,12 +34,6 @@ services:
         value: "true"
       - key: LLM_OTHERS_TIMEOUT
         value: "30"
-      # Action Plan System - Image Generation
+    
       - key: RUNPOD_API_KEY
-        sync: false
-      - key: RUNPOD_ENDPOINT_ID
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
         sync: false

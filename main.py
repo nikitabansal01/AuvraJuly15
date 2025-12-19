@@ -1,3 +1,5 @@
+"""AUVRA Backend Entry Point."""
+
 import uvicorn
 from app.core.config import settings
 
@@ -9,4 +11,4 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),
         access_log=True,
-    ) 
+    )

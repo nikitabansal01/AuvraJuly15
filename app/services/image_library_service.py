@@ -19,6 +19,7 @@ import hashlib
 import logging
 import time
 import json
+import asyncio
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 
@@ -50,9 +51,10 @@ class ImageLibraryService:
     
     def __init__(self):
         """Initialize the image library service."""
-        # RunPod configuration
+        # RunPod configuration - uses serverless Flux Schnell endpoint
         self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
-        self.runpod_endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID")
+        # Use the official serverless Flux Schnell endpoint
+        self.runpod_endpoint = "black-forest-labs-flux-1-schnell"
         
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -69,7 +71,7 @@ class ImageLibraryService:
         self._embedding_cache: Dict[str, List[float]] = {}
         
         logger.info(f"ImageLibraryService initialized")
-        logger.info(f"  RunPod configured: {bool(self.runpod_api_key and self.runpod_endpoint_id)}")
+        logger.info(f"  RunPod configured: {bool(self.runpod_api_key)}")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
         logger.info(f"  Supabase configured: {bool(self.supabase_url and self.supabase_key)}")
     
@@ -305,18 +307,25 @@ class ImageLibraryService:
         start_time = time.time()
         
         try:
-            # Generate image via RunPod
-            image_data, generation_time_ms = await self._call_runpod_flux(prompt)
+            # Generate image via RunPod - returns (image_data_or_url, generation_time_ms)
+            result, generation_time_ms = await self._call_runpod_flux(prompt)
             
-            if not image_data:
+            if not result:
                 logger.error("Failed to generate image via RunPod")
                 return ("", False, 0.0)
             
-            # Upload to Supabase Storage
-            image_url = await self._upload_to_supabase(image_data, category, variant_type)
-            
-            if not image_url:
-                logger.error("Failed to upload image to Supabase")
+            # Check if result is already a URL (from RunPod) or bytes
+            if isinstance(result, str) and result.startswith("http"):
+                # RunPod returned a URL directly - use it
+                image_url = result
+            elif isinstance(result, bytes):
+                # We have image bytes - upload to Supabase or return as base64
+                image_url = await self._upload_to_supabase(result, category, variant_type)
+                if not image_url:
+                    logger.error("Failed to upload image to Supabase")
+                    return ("", False, 0.0)
+            else:
+                logger.error(f"Unexpected result type: {type(result)}")
                 return ("", False, 0.0)
             
             # Store in image library for future semantic matching
@@ -340,21 +349,23 @@ class ImageLibraryService:
             logger.error(f"Error generating and storing image: {e}")
             return ("", False, 0.0)
     
-    async def _call_runpod_flux(self, prompt: str) -> Tuple[Optional[bytes], int]:
+    async def _call_runpod_flux(self, prompt: str) -> Tuple[Optional[Any], int]:
         """
-        Call RunPod Flux Schnell endpoint.
+        Call RunPod Flux Schnell serverless endpoint.
         
-        Returns (image_bytes, generation_time_ms)
+        Returns (image_url_or_bytes, generation_time_ms)
+        - Returns URL string if RunPod provides image_url
+        - Returns bytes if RunPod provides base64 image
         """
-        if not self.runpod_api_key or not self.runpod_endpoint_id:
-            logger.warning("RunPod not configured, using placeholder")
+        if not self.runpod_api_key:
+            logger.warning("RunPod API key not configured, using placeholder")
             return await self._generate_placeholder_image(prompt)
         
         start_time = time.time()
         
         try:
-            # RunPod Serverless API
-            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint_id}/runsync"
+            # RunPod Serverless API - use async run endpoint
+            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
             
             # Enhance prompt for better food/wellness images
             enhanced_prompt = self._enhance_prompt(prompt)
@@ -364,9 +375,11 @@ class ImageLibraryService:
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 4,  # Schnell is optimized for 4 steps
-                    "guidance_scale": 0.0,  # Schnell doesn't need guidance
-                    "seed": None  # Random seed
+                    "num_inference_steps": 4,
+                    "guidance": 7,
+                    "seed": -1,
+                    "negative_prompt": "",
+                    "image_format": "png"
                 }
             }
             
@@ -375,46 +388,85 @@ class ImageLibraryService:
                 "Content-Type": "application/json"
             }
             
+            # Submit the job
             response = await self.client.post(
                 endpoint_url,
                 json=payload,
                 headers=headers,
-                timeout=120.0
+                timeout=30.0
             )
             
             if response.status_code != 200:
-                logger.error(f"RunPod returned {response.status_code}: {response.text}")
-                return (None, 0)
+                logger.error(f"RunPod submit returned {response.status_code}: {response.text}")
+                return await self._generate_placeholder_image(prompt)
             
             result = response.json()
+            job_id = result.get("id")
             
-            # Handle RunPod response
-            if result.get("status") == "COMPLETED":
-                output = result.get("output", {})
+            if not job_id:
+                logger.error(f"No job ID in RunPod response: {result}")
+                return await self._generate_placeholder_image(prompt)
+            
+            # Poll for completion
+            status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
+            max_attempts = 60  # 60 seconds max wait
+            
+            for attempt in range(max_attempts):
+                await asyncio.sleep(1)  # Wait 1 second between polls
                 
-                # Flux Schnell typically returns base64 image
-                if "image" in output:
-                    image_base64 = output["image"]
-                    if image_base64.startswith("data:"):
-                        # Strip data URL prefix
-                        image_base64 = image_base64.split(",")[1]
-                    image_data = base64.b64decode(image_base64)
+                status_response = await self.client.get(status_url, headers=headers)
+                if status_response.status_code != 200:
+                    continue
+                
+                status_result = status_response.json()
+                status = status_result.get("status")
+                
+                if status == "COMPLETED":
+                    output = status_result.get("output", {})
                     elapsed_ms = int((time.time() - start_time) * 1000)
-                    return (image_data, elapsed_ms)
+                    
+                    # Handle different output formats
+                    if isinstance(output, dict):
+                        # Prefer image_url (returns URL string directly)
+                        if output.get("image_url"):
+                            image_url = output["image_url"]
+                            logger.info(f"RunPod image generated in {elapsed_ms}ms: {image_url}")
+                            return (image_url, elapsed_ms)
+                        
+                        # Fallback to base64 image
+                        image_base64 = output.get("image") or output.get("image_base64")
+                        if image_base64:
+                            if image_base64.startswith("data:"):
+                                image_base64 = image_base64.split(",")[1]
+                            image_data = base64.b64decode(image_base64)
+                            logger.info(f"RunPod image generated in {elapsed_ms}ms (base64)")
+                            return (image_data, elapsed_ms)
+                    
+                    elif isinstance(output, str):
+                        # Output is direct base64 string
+                        if output.startswith("data:"):
+                            output = output.split(",")[1]
+                        image_data = base64.b64decode(output)
+                        logger.info(f"RunPod image generated in {elapsed_ms}ms (base64 string)")
+                        return (image_data, elapsed_ms)
+                    
+                    logger.error(f"Could not extract image from output: {output}")
+                    return await self._generate_placeholder_image(prompt)
                 
-                # Alternative: image URL
-                if "image_url" in output:
-                    image_response = await self.client.get(output["image_url"])
-                    if image_response.status_code == 200:
-                        elapsed_ms = int((time.time() - start_time) * 1000)
-                        return (image_response.content, elapsed_ms)
+                elif status == "FAILED":
+                    error = status_result.get("error", "Unknown error")
+                    logger.error(f"RunPod job failed: {error}")
+                    return await self._generate_placeholder_image(prompt)
+                
+                elif status in ["IN_QUEUE", "IN_PROGRESS"]:
+                    continue
             
-            logger.error(f"Unexpected RunPod response: {result}")
-            return (None, 0)
+            logger.error("RunPod job timed out")
+            return await self._generate_placeholder_image(prompt)
             
         except Exception as e:
             logger.error(f"Error calling RunPod: {e}")
-            return (None, 0)
+            return await self._generate_placeholder_image(prompt)
     
     def _enhance_prompt(self, prompt: str) -> str:
         """
