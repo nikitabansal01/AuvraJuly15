@@ -969,6 +969,15 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             
             # Create action items
             for slot, action in enumerate(actions, start=1):
+                # Get conditions from action or user context
+                action_conditions = action.get("conditions", [])
+                if not action_conditions:
+                    # Use user's diagnosed conditions if action doesn't specify
+                    action_conditions = user_context.get("diagnosed_conditions", [])
+                
+                # Get symptoms from action (if GPT generated them) 
+                action_symptoms = action.get("symptoms", [])
+                
                 item = ActionPlanItem(
                     plan_id=plan.id,
                     uid=user_id,
@@ -983,6 +992,8 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                     hero_image_url=action.get("hero_image_url"),
                     hero_image_prompt=action.get("image_prompt"),
                     research_studies=action.get("research_studies", []),
+                    conditions=action_conditions,
+                    symptoms=action_symptoms,
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow()
                 )
@@ -1084,6 +1095,8 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                     "hormone_persona_intro": item.hormone_persona_intro,
                     "hero_image_url": item.hero_image_url,
                     "research_studies": item.research_studies or [],
+                    "conditions": item.conditions or [],
+                    "symptoms": item.symptoms or [],
                     "is_completed": item.is_completed,
                     "is_replaced": item.is_replaced,
                     "variants": [
@@ -1243,6 +1256,10 @@ Respond with valid JSON object only."""
             # Create new action item
             from app.core.database import ActionPlanItemVariant
             
+            # Get conditions from user context
+            action_conditions = user_context.get("diagnosed_conditions", [])
+            action_symptoms = replacement_action.get("symptoms", [])
+            
             new_item = ActionPlanItem(
                 plan_id=original.plan_id,
                 uid=user_id,
@@ -1257,6 +1274,8 @@ Respond with valid JSON object only."""
                 hero_image_url=hero_url,
                 hero_image_prompt=replacement_action.get("image_prompt"),
                 research_studies=replacement_action.get("research_studies", []),
+                conditions=action_conditions,
+                symptoms=action_symptoms,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
@@ -1452,6 +1471,10 @@ Respond with valid JSON array only."""
                 original.replacement_reason = reasons.get(original.id, "user disliked")
                 
                 # Create new action item
+                # Get conditions from user context
+                action_conditions = user_context.get("diagnosed_conditions", [])
+                action_symptoms = replacement_action.get("symptoms", [])
+                
                 new_item = ActionPlanItem(
                     plan_id=plan_id,
                     uid=user_id,
@@ -1466,6 +1489,8 @@ Respond with valid JSON array only."""
                     hero_image_url=hero_url,
                     hero_image_prompt=replacement_action.get("image_prompt"),
                     research_studies=replacement_action.get("research_studies", []),
+                    conditions=action_conditions,
+                    symptoms=action_symptoms,
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow()
                 )
