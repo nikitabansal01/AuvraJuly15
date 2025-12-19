@@ -59,7 +59,12 @@ class ImageLibraryService:
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         
-        # Supabase for image storage
+        # Cloudinary for image storage (preferred)
+        self.cloudinary_cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+        self.cloudinary_api_key = os.getenv("CLOUDINARY_API_KEY")
+        self.cloudinary_api_secret = os.getenv("CLOUDINARY_API_SECRET")
+        
+        # Supabase for image storage (fallback)
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
         self.storage_bucket = "action-plan-images"
@@ -73,6 +78,7 @@ class ImageLibraryService:
         logger.info(f"ImageLibraryService initialized")
         logger.info(f"  RunPod configured: {bool(self.runpod_api_key)}")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
+        logger.info(f"  Cloudinary configured: {bool(self.cloudinary_cloud_name and self.cloudinary_api_key)}")
         logger.info(f"  Supabase configured: {bool(self.supabase_url and self.supabase_key)}")
     
     async def get_or_generate_image(
@@ -316,13 +322,18 @@ class ImageLibraryService:
             
             # Check if result is already a URL (from RunPod) or bytes
             if isinstance(result, str) and result.startswith("http"):
-                # RunPod returned a URL directly - use it
-                image_url = result
-            elif isinstance(result, bytes):
-                # We have image bytes - upload to Supabase or return as base64
-                image_url = await self._upload_to_supabase(result, category, variant_type)
+                # RunPod returned a URL directly - upload to Cloudinary for permanent storage
+                image_url = await self._upload_to_cloudinary_from_url(result, category, variant_type)
                 if not image_url:
-                    logger.error("Failed to upload image to Supabase")
+                    # Fallback: use RunPod URL directly (may expire)
+                    image_url = result
+            elif isinstance(result, bytes):
+                # We have image bytes - upload to Cloudinary or Supabase
+                image_url = await self._upload_to_cloudinary(result, category, variant_type)
+                if not image_url:
+                    image_url = await self._upload_to_supabase(result, category, variant_type)
+                if not image_url:
+                    logger.error("Failed to upload image to any storage")
                     return ("", False, 0.0)
             else:
                 logger.error(f"Unexpected result type: {type(result)}")
@@ -515,6 +526,106 @@ class ImageLibraryService:
         except ImportError:
             logger.warning("PIL not available for placeholder images")
             return (None, 0)
+    
+    async def _upload_to_cloudinary(
+        self,
+        image_data: bytes,
+        category: str,
+        variant_type: Optional[str]
+    ) -> Optional[str]:
+        """Upload image bytes to Cloudinary and return public URL."""
+        if not self.cloudinary_cloud_name or not self.cloudinary_api_key:
+            logger.warning("Cloudinary not configured")
+            return None
+        
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            
+            # Configure cloudinary
+            cloudinary.config(
+                cloud_name=self.cloudinary_cloud_name,
+                api_key=self.cloudinary_api_key,
+                api_secret=self.cloudinary_api_secret
+            )
+            
+            # Generate unique public_id
+            timestamp = int(time.time() * 1000)
+            file_hash = hashlib.md5(image_data).hexdigest()[:8]
+            variant_str = f"_{variant_type}" if variant_type else ""
+            public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
+            
+            # Upload image bytes
+            result = cloudinary.uploader.upload(
+                image_data,
+                public_id=public_id,
+                folder="action-plan-images",
+                resource_type="image"
+            )
+            
+            image_url = result.get("secure_url")
+            if image_url:
+                logger.info(f"📤 Image uploaded to Cloudinary: {image_url}")
+                return image_url
+            
+            return None
+            
+        except ImportError:
+            logger.warning("cloudinary package not installed")
+            return None
+        except Exception as e:
+            logger.error(f"Error uploading to Cloudinary: {e}")
+            return None
+    
+    async def _upload_to_cloudinary_from_url(
+        self,
+        image_url: str,
+        category: str,
+        variant_type: Optional[str]
+    ) -> Optional[str]:
+        """Upload image from URL to Cloudinary for permanent storage."""
+        if not self.cloudinary_cloud_name or not self.cloudinary_api_key:
+            logger.warning("Cloudinary not configured")
+            return None
+        
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            
+            # Configure cloudinary
+            cloudinary.config(
+                cloud_name=self.cloudinary_cloud_name,
+                api_key=self.cloudinary_api_key,
+                api_secret=self.cloudinary_api_secret
+            )
+            
+            # Generate unique public_id
+            timestamp = int(time.time() * 1000)
+            file_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
+            variant_str = f"_{variant_type}" if variant_type else ""
+            public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
+            
+            # Upload from URL
+            result = cloudinary.uploader.upload(
+                image_url,
+                public_id=public_id,
+                folder="action-plan-images",
+                resource_type="image"
+            )
+            
+            cloudinary_url = result.get("secure_url")
+            if cloudinary_url:
+                logger.info(f"📤 Image uploaded to Cloudinary from URL: {cloudinary_url}")
+                return cloudinary_url
+            
+            return None
+            
+        except ImportError:
+            logger.warning("cloudinary package not installed")
+            return None
+        except Exception as e:
+            logger.error(f"Error uploading to Cloudinary from URL: {e}")
+            return None
     
     async def _upload_to_supabase(
         self,
