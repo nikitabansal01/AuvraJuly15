@@ -481,18 +481,24 @@ class ImageLibraryService:
     
     def _enhance_prompt(self, prompt: str) -> str:
         """
-        Enhance the prompt for better image generation.
+        Enhance the prompt for FLUX.1 Schnell image generation.
         
-        Following consistent style for better semantic matching.
+        FLUX.1 Schnell best practices:
+        - Specify composition, lighting, lens/style cues
+        - Clear scene descriptions
+        - Focus on appetizing food photography for health app
         """
-        # Add photography style for food/wellness images
+        # Enhanced style for food/wellness images
         style_suffix = (
-            "professional food photography, natural lighting, "
-            "clean minimalist background, warm tones, high quality, "
-            "8k resolution, appetizing presentation"
+            "top-down overhead shot, professional food photography, "
+            "soft diffused natural daylight from window, "
+            "clean white marble surface, fresh ingredients visible, "
+            "shallow depth of field f/2.8, warm inviting tones, "
+            "vibrant colors, Instagram-worthy presentation, "
+            "photorealistic, ultra detailed, 4K quality"
         )
         
-        # Combine original prompt with style
+        # Add negative prompt elements inline for better results
         enhanced = f"{prompt}, {style_suffix}"
         
         return enhanced

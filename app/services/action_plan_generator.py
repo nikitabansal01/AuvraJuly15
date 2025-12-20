@@ -1563,7 +1563,19 @@ Respond with valid JSON array only."""
                 await db.flush()
                 
                 # Generate variant images (up to 3)
-                for variant in replacement_action.get("variants", [])[:3]:
+                raw_variants = replacement_action.get("variants", [])
+                # Ensure variants is a list
+                if isinstance(raw_variants, str):
+                    raw_variants = []
+                elif not isinstance(raw_variants, list):
+                    raw_variants = []
+                
+                for variant in raw_variants[:3]:
+                    # Skip if variant is not a dict
+                    if not isinstance(variant, dict):
+                        logger.warning(f"Skipping invalid variant: {type(variant)}")
+                        continue
+                    
                     variant_url, _, variant_cost = await self.image_service.get_or_generate_image(
                         prompt=variant.get("image_prompt", variant.get("title", "")),
                         category=replacement_action.get("category", "food"),
