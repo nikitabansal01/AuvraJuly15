@@ -274,16 +274,34 @@ REQUIREMENTS
 ══════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (for each action)
 ══════════════════════════════════════════════════════════════════════
-1. title: Short, catchy title (3-5 words)
+1. title: Short, catchy title (3-5 words, e.g., "Pumpkin Seed Power")
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: Detailed, actionable description (50-100 words)
 5. purpose: Why this helps the target hormone (1-2 sentences)
 6. target_hormone: The hormone this action supports
 7. hormone_persona_intro: Write naturally following the example style in system prompt
-8. image_prompt: Detailed prompt for generating an appealing image
+8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array of 1-2 REAL research citations (see format below)
-10. variants: Array of 3 alternative ways to do this action with image prompts
+10. variants: Array of 3 variant objects with REQUIRED fields (see VARIANT FORMAT below)
+
+IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
+Generate professional, appetizing, calming visuals that work in a mobile wellness app:
+- For FOOD: "Professional food photography of [specific dish], overhead view, natural lighting, rustic wooden table background, fresh ingredients visible, warm color tones, appetizing presentation, 4K quality"
+- For MOVEMENT: "Serene photograph of woman practicing [specific exercise], soft natural lighting, peaceful indoor/outdoor setting, wellness aesthetic, warm earth tones, calm atmosphere, 4K quality"
+- For MINDFULNESS: "Peaceful zen scene with [specific elements like candles, tea, cushion], soft diffused lighting, minimalist aesthetic, calming colors, cozy atmosphere, 4K quality"
+
+VARIANT FORMAT (REQUIRED structure):
+Each variant MUST be an object with these exact fields:
+- variant_type: MUST be one of the allowed types (see below)
+- title: Specific name of this variant (e.g., "Roasted Pumpkin Seeds with Sea Salt", "Avocado Toast with Pumpkin Topping")
+- description: How to prepare or do this variant (1-2 sentences)
+- image_prompt: FLUX.1 Schnell optimized prompt for this specific variant
+
+VARIANT TYPES by category (use exact string values):
+- food: "tasty" (indulgent version), "easy" (quick/simple), "healthy" (most nutritious)
+- movement: "gentle" (low intensity), "energizing" (higher intensity), "quick" (time-efficient)
+- mindfulness: "guided" (with instruction), "solo" (self-directed), "brief" (5-min version)
 
 RESEARCH STUDIES - CRITICAL REQUIREMENTS:
 - Use REAL published studies from reputable journals
@@ -294,11 +312,6 @@ RESEARCH STUDIES - CRITICAL REQUIREMENTS:
 - Estimate realistic participant counts (typically 20-500 for nutrition studies)
 - The finding should be specific and evidence-based
 - DO NOT make up fake journal names or fake studies
-
-VARIANT TYPES by category:
-- food: "tasty" (indulgent version), "easy" (quick/simple), "healthy" (most nutritious)
-- movement: "gentle" (low intensity), "energizing" (higher intensity), "quick" (time-efficient)
-- mindfulness: "guided" (with instruction), "solo" (self-directed), "brief" (5-min version)
 
 Respond with valid JSON array only, no markdown formatting."""
 
