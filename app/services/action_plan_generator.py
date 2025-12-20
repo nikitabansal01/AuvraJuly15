@@ -923,12 +923,25 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             
             logger.info(f"Generated {len(actions)} actions via GPT-4o-mini (cost: ${cost:.4f})")
             
-            # Debug: Log research_studies for each action
+            # Debug: Log all fields for each action to verify GPT response
             for i, action in enumerate(actions):
                 research = action.get("research_studies", [])
-                logger.info(f"  Action {i+1} '{action.get('title', 'unknown')}': {len(research)} research studies")
-                if research:
-                    logger.info(f"    First study: {research[0].get('title', 'No title')[:50]}...")
+                category = action.get("category", "unknown")
+                
+                # Log category-specific fields to verify GPT is returning them
+                if category == "food":
+                    logger.info(f"  Action {i+1} '{action.get('title')}' [FOOD]: "
+                               f"food_amounts={action.get('food_amounts', 'MISSING')}, "
+                               f"food_items={action.get('food_items', 'MISSING')}")
+                elif category == "movement":
+                    logger.info(f"  Action {i+1} '{action.get('title')}' [MOVEMENT]: "
+                               f"exercise_durations={action.get('exercise_durations', 'MISSING')}")
+                elif category == "mindfulness":
+                    logger.info(f"  Action {i+1} '{action.get('title')}' [MINDFULNESS]: "
+                               f"mindfulness_durations={action.get('mindfulness_durations', 'MISSING')}")
+                
+                logger.info(f"    {len(research)} research studies, "
+                           f"hormone_persona_intro={bool(action.get('hormone_persona_intro'))}")
             
             return (actions, cost)
             

@@ -639,6 +639,17 @@ def _build_plan_response(plan, db) -> dict:
         
         actions.append(action_data)
         
+        # Debug: Log category-specific fields to verify they are being returned
+        if item.category == "food":
+            logger.info(f"API Response - Action {item.id} '{item.title}' [FOOD]: "
+                       f"food_amounts={item.food_amounts}, food_items={item.food_items}")
+        elif item.category == "movement":
+            logger.info(f"API Response - Action {item.id} '{item.title}' [MOVEMENT]: "
+                       f"exercise_durations={item.exercise_durations}")
+        elif item.category == "mindfulness":
+            logger.info(f"API Response - Action {item.id} '{item.title}' [MINDFULNESS]: "
+                       f"mindfulness_durations={item.mindfulness_durations}")
+        
         if item.is_completed:
             completed_count += 1
     
