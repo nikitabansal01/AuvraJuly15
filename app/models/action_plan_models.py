@@ -32,7 +32,7 @@ class BatchReplacementRequest(BaseModel):
 
 class ActionCompletionRequest(BaseModel):
     """Request model for marking an action as completed."""
-    item_id: int = Field(..., description="ID of the action item")
+    # Note: item_id comes from URL path, not body
     notes: Optional[str] = Field(None, description="Optional completion notes")
     variant_used: Optional[str] = Field(None, description="Which variant was used if any")
 

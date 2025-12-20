@@ -598,7 +598,11 @@ class ActionPlanGenerator:
                 # Health profile
                 "age": user_response.age or "not specified",
                 "top_concern": user_response.top_concern or "general wellness",
-                "diagnosed_conditions": user_response.diagnosed_conditions or [],
+                # Ensure diagnosed_conditions is always a list (could be string in DB)
+                "diagnosed_conditions": (
+                    [user_response.diagnosed_conditions] if isinstance(user_response.diagnosed_conditions, str)
+                    else (user_response.diagnosed_conditions or [])
+                ),
                 "period_concerns": self._format_concerns(user_response.period_concerns),
                 "body_concerns": self._format_concerns(user_response.body_concerns),
                 "skin_hair_concerns": self._format_concerns(user_response.skin_hair_concerns),
@@ -1518,9 +1522,22 @@ Respond with valid JSON array only."""
                 original.replacement_reason = reasons.get(original.id, "user disliked")
                 
                 # Create new action item
-                # Get conditions from user context
-                action_conditions = user_context.get("diagnosed_conditions", [])
-                action_symptoms = replacement_action.get("symptoms", [])
+                # Get conditions from user context with type safety
+                raw_conditions = user_context.get("diagnosed_conditions", [])
+                if isinstance(raw_conditions, str):
+                    action_conditions = [raw_conditions] if raw_conditions and raw_conditions.lower() != "none of the above" else []
+                elif isinstance(raw_conditions, list):
+                    action_conditions = [c for c in raw_conditions if c and str(c).lower() != "none of the above"]
+                else:
+                    action_conditions = []
+                
+                raw_symptoms = replacement_action.get("symptoms", [])
+                if isinstance(raw_symptoms, str):
+                    action_symptoms = [raw_symptoms] if raw_symptoms else []
+                elif isinstance(raw_symptoms, list):
+                    action_symptoms = raw_symptoms
+                else:
+                    action_symptoms = []
                 
                 new_item = ActionPlanItem(
                     plan_id=plan_id,
