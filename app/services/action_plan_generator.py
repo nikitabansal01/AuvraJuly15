@@ -515,8 +515,42 @@ class ActionPlanGenerator:
             )
             user_response = response_result.scalar_one_or_none()
             
+            # If no user response, create default context
             if not user_response:
-                return None
+                logger.info(f"No UserResponse for {user_id}, using defaults")
+                # Get lifestyle focus from profile if available
+                lifestyle_focus = profile.lifestyle_focus or ["eat", "move", "pause"]
+                
+                return {
+                    "user_id": user_id,
+                    # Hormones - sensible defaults
+                    "primary_hormone": "cortisol",
+                    "secondary_hormone": "progesterone",
+                    # Cycle info - defaults for first-time users
+                    "cycle_day": 1,
+                    "cycle_phase": "follicular",
+                    # Health profile defaults
+                    "age": "not specified",
+                    "top_concern": "general wellness",
+                    "diagnosed_conditions": [],
+                    "period_concerns": "none specified",
+                    "body_concerns": "none specified",
+                    "skin_hair_concerns": "none specified",
+                    "mental_health_concerns": "none specified",
+                    "family_history": "none specified",
+                    "birth_control": "none",
+                    # Personalization
+                    "lifestyle_focus": lifestyle_focus,
+                    "diet_preference": "no preference specified",
+                    "food_allergies": "none specified",
+                    "stress_level": "moderate",
+                    "sleep_duration": "7-8 hours",
+                    "workout_intensity": "moderate",
+                    # Feedback and context
+                    "feedback_memory": "No previous feedback",
+                    "chatbot_memory": {},
+                    "chatbot_context": ""
+                }
             
             # Get recent feedback for memory (last 30 days)
             feedback_result = await db.execute(
