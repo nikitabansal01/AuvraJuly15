@@ -408,12 +408,9 @@ async def submit_plan_satisfaction(
                     )
                     db.add(feedback)
             
-            # Update plan metadata
-            plan_metadata = plan.generation_metadata or {}
-            plan_metadata["user_satisfaction"] = "works_for_me"
-            plan_metadata["satisfaction_submitted_at"] = datetime.utcnow().isoformat()
-            plan_metadata["all_items_liked"] = True
-            plan.generation_metadata = plan_metadata
+            
+            # Mark feedback as collected (feedback_collected column exists on ActionPlan model)
+            plan.feedback_collected = True
             
             db.commit()
             
@@ -482,12 +479,9 @@ async def submit_plan_satisfaction(
                     detail=replacement_result.get("error", "Failed to generate replacements")
                 )
             
-            # Update plan metadata
-            plan_metadata = plan.generation_metadata or {}
-            plan_metadata["user_satisfaction"] = "want_to_change"
-            plan_metadata["items_replaced"] = items_to_replace
-            plan_metadata["satisfaction_submitted_at"] = datetime.utcnow().isoformat()
-            plan.generation_metadata = plan_metadata
+            
+            # Mark feedback as collected
+            plan.feedback_collected = True
             
             db.commit()
             

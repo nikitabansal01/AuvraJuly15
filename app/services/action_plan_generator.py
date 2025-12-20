@@ -285,6 +285,20 @@ OUTPUT FORMAT (for each action)
 9. research_studies: Array of 1-2 REAL research citations (see format below)
 10. variants: Array of 3 variant objects with REQUIRED fields (see VARIANT FORMAT below)
 
+CATEGORY-SPECIFIC REQUIRED FIELDS:
+For FOOD actions, MUST include:
+- food_amounts: Array like ["1 tbsp", "2 tablespoons", "handful"]
+- food_items: Array like ["pumpkin seeds", "flaxseeds"]
+
+For MOVEMENT actions, MUST include:
+- exercise_durations: Array like ["15 min", "20 minutes walk"]
+- exercise_types: Array like ["yoga", "walking", "stretching"]
+- exercise_intensities: Array like ["low", "moderate"]
+
+For MINDFULNESS actions, MUST include:
+- mindfulness_durations: Array like ["5 min", "10 minutes"]
+- mindfulness_techniques: Array like ["deep breathing", "meditation"]
+
 IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
 Generate professional, appetizing, calming visuals that work in a mobile wellness app:
 - For FOOD: "Professional food photography of [specific dish], overhead view, natural lighting, rustic wooden table background, fresh ingredients visible, warm color tones, appetizing presentation, 4K quality"
