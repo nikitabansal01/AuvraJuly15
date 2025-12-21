@@ -190,25 +190,18 @@ Examples:
 - "Peaceful meditation corner with candles and plants, professional lifestyle photography, soft natural light, minimalist aesthetic"
 
 HORMONE PERSONA INTRO STYLE:
-The hormone speaks in first person, explaining what's happening in the user's current cycle phase and how the recommended action helps. Write naturally and warmly.
+The hormone speaks in first person, identifying itself and explaining what's happening in the user's current cycle phase (1 sentence). 
+CRITICAL: Do NOT explain how the action helps here. That goes in the 'purpose' field. Write naturally and warmly.
 
-EXAMPLE INTROS (adapt this style naturally):
-
-For FOOD actions:
-- "I'm Progesterone — in your luteal phase, I tend to dip, causing mood swings or cramps. Pumpkin seeds are packed with zinc and magnesium that help boost me and keep you calmer."
-- "I'm Estrogen — in your menstrual phase, I'm at my lowest which can cause fatigue and low mood. Salmon is rich in omega-3s that help support me and keep you feeling vibrant."
-- "I'm Insulin — in your luteal phase, I become less sensitive, causing cravings and energy crashes. This protein-rich snack helps stabilize me and keep your energy steady."
-- "I'm Cortisol — when stress is high, I spike and can disrupt your sleep. Dark chocolate with magnesium helps calm me down and keep you relaxed."
-
-For MOVEMENT actions:
-- "I'm Cortisol — in your follicular phase, I'm usually balanced but stress can still throw me off. This gentle yoga flow helps lower me and keep you centered and calm."
-- "I'm Testosterone — around ovulation, I peak giving you extra strength. This power workout helps channel me and keep you feeling strong and confident."
-- "I'm Thyroid — in your luteal phase, I can slow down causing sluggishness. This brisk walk helps activate me and keep your metabolism humming."
-
-For MINDFULNESS actions:
-- "I'm Progesterone — in your luteal phase, I dip which can disrupt your sleep. This evening meditation helps support me and keep you sleeping soundly."
-- "I'm Cortisol — when I'm elevated, anxiety can creep in. This breathing exercise helps lower me and keep you feeling peaceful."
-- "I'm Estrogen — in your follicular phase, I'm rising and boosting your mood. This gratitude practice helps amplify me and keep you feeling radiant."
+EXAMPLE INTROS (Persona part only):
+- "I'm Progesterone — in your luteal phase, I tend to dip, causing mood swings or cramps."
+- "I'm Estrogen — in your menstrual phase, I'm at my lowest which can cause fatigue and low mood."
+- "I'm Insulin — in your luteal phase, I become less sensitive, causing cravings and energy crashes."
+- "I'm Cortisol — when stress is high, I spike and can disrupt your body's natural rhythm."
+- "I'm Cortisol — in your follicular phase, I'm usually balanced but stress can still throw me off."
+- "I'm Testosterone — around ovulation, I peak giving you extra confidence and drive."
+- "I'm Thyroid — in your luteal phase, I can slow down causing sluggishness."
+- "I'm Estrogen — in your follicular phase, I'm rising and boosting your mood."
 """
 
 ACTION_GENERATION_PROMPT = """Generate {num_actions} personalized daily wellness actions for this user.
@@ -278,7 +271,7 @@ OUTPUT FORMAT (for each action)
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: Detailed, actionable description (50-100 words)
-5. purpose: Why this helps the target hormone (1-2 sentences)
+5. purpose: One clear sentence explaining exactly how this specific action/food helps balance or support the target hormone (e.g., "Pumpkin seeds are packed with zinc and magnesium that help boost me and keep you calmer.")
 6. target_hormone: The hormone this action supports
 7. hormone_persona_intro: Write naturally following the example style in system prompt
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
