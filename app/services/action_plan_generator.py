@@ -24,7 +24,7 @@ from datetime import datetime, timezone, date, timedelta
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, update
 
 from app.services.image_library_service import get_image_library_service
 
@@ -1099,9 +1099,19 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                     if not isinstance(variant, dict):
                         continue
                         
+                    v_type = variant.get("variant_type")
+                    if not v_type or v_type == "alternative":
+                        category = action.get("category", "food")
+                        defaults = {
+                            "food": ["healthy", "easy", "tasty"],
+                            "movement": ["gentle", "quick", "energizing"],
+                            "mindfulness": ["brief", "guided", "solo"]
+                        }.get(category, ["alternative"])
+                        v_type = defaults[action.get("variants", []).index(variant) % len(defaults)]
+                        
                     variant_record = ActionPlanItemVariant(
                         item_id=item.id,
-                        variant_type=variant.get("variant_type", "alternative"),
+                        variant_type=v_type,
                         title=variant.get("title", ""),
                         description=variant.get("description", ""),
                         image_url=variant.get("image_url"),
@@ -1148,7 +1158,10 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             # Get all items for this plan
             items_result = await db.execute(
                 select(ActionPlanItem).where(
-                    ActionPlanItem.plan_id == plan.id
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_replaced.isnot(True)
+                    )
                 ).order_by(ActionPlanItem.slot)
             )
             items = items_result.scalars().all()
@@ -1264,6 +1277,17 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             )
             db.add(feedback)
             
+            # SQL-direct deactivation of original item
+            await db.execute(
+                update(ActionPlanItem)
+                .where(ActionPlanItem.id == item_id)
+                .values(
+                    is_replaced=True,
+                    replaced_at=datetime.utcnow(),
+                    replacement_reason=reason
+                )
+            )
+            
             # Load user context for replacement
             user_context = await self._load_user_context(user_id, db)
             
@@ -1364,18 +1388,33 @@ Respond with valid JSON object only."""
             await db.flush()
             
             # Generate variant images
-            for variant in replacement_action.get("variants", [])[:3]:
+            raw_variants = replacement_action.get("variants", [])
+            for variant in raw_variants[:3]:
+                # Skip if variant is not a dict
+                if not isinstance(variant, dict):
+                    continue
+                    
+                v_type = variant.get("variant_type")
+                if not v_type or v_type == "alternative":
+                    category = replacement_action.get("category", "food")
+                    defaults = {
+                        "food": ["healthy", "easy", "tasty"],
+                        "movement": ["gentle", "quick", "energizing"],
+                        "mindfulness": ["brief", "guided", "solo"]
+                    }.get(category, ["alternative"])
+                    v_type = defaults[raw_variants.index(variant) % len(defaults)]
+                
                 variant_url, _, _ = await self.image_service.get_or_generate_image(
                     prompt=variant.get("image_prompt", variant.get("title")),
                     category=replacement_action["category"],
-                    variant_type=variant.get("variant_type"),
+                    variant_type=v_type,
                     user_id=user_id,
                     db=db
                 )
                 
                 variant_record = ActionPlanItemVariant(
                     item_id=new_item.id,
-                    variant_type=variant.get("variant_type", "alternative"),
+                    variant_type=v_type,
                     title=variant.get("title", ""),
                     description=variant.get("description", ""),
                     image_url=variant_url,
@@ -1486,9 +1525,14 @@ Generate {len(item_ids)} actions, each with:
 - target_hormone (MUST match original)
 - hormone_persona_intro, image_prompt
 - research_studies (array with 1-2 real citations)
-- variants (array with 3 alternatives)
+- variants (array with EXACTLY 3 variants, using the correct types from the list below)
 
-Respond with valid JSON array only."""
+VARIANT TYPES BY CATEGORY:
+- food: "tasty", "easy", "healthy"
+- movement: "gentle", "energizing", "quick"
+- mindfulness: "guided", "solo", "brief"
+
+Respond with valid JSON array only. Do not add any text outside the JSON."""
 
             # Generate replacements via GPT
             response = await self.client.post(
@@ -1545,10 +1589,16 @@ Respond with valid JSON array only."""
                 )
                 total_cost += image_cost
                 
-                # Mark original as replaced
-                original.is_replaced = True
-                original.replaced_at = datetime.utcnow()
-                original.replacement_reason = reasons.get(original.id, "user disliked")
+                # SQL-direct deactivation of original item
+                await db.execute(
+                    update(ActionPlanItem)
+                    .where(ActionPlanItem.id == original.id)
+                    .values(
+                        is_replaced=True,
+                        replaced_at=datetime.utcnow(),
+                        replacement_reason=reasons.get(original.id, "user disliked")
+                    )
+                )
                 
                 # Create new action item
                 # Get conditions from user context with type safety
@@ -1605,10 +1655,20 @@ Respond with valid JSON array only."""
                         logger.warning(f"Skipping invalid variant: {type(variant)}")
                         continue
                     
+                    v_type = variant.get("variant_type")
+                    if not v_type or v_type == "alternative":
+                        category = replacement_action.get("category", "food")
+                        defaults = {
+                            "food": ["healthy", "easy", "tasty"],
+                            "movement": ["gentle", "quick", "energizing"],
+                            "mindfulness": ["brief", "guided", "solo"]
+                        }.get(category, ["alternative"])
+                        v_type = defaults[raw_variants.index(variant) % len(defaults)]
+                    
                     variant_url, _, variant_cost = await self.image_service.get_or_generate_image(
                         prompt=variant.get("image_prompt", variant.get("title", "")),
                         category=replacement_action.get("category", "food"),
-                        variant_type=variant.get("variant_type", "alternative"),
+                        variant_type=v_type,
                         user_id=user_id,
                         db=db
                     )
@@ -1616,7 +1676,7 @@ Respond with valid JSON array only."""
                     
                     variant_record = ActionPlanItemVariant(
                         item_id=new_item.id,
-                        variant_type=variant.get("variant_type", "alternative"),
+                        variant_type=v_type,
                         title=variant.get("title", ""),
                         description=variant.get("description", ""),
                         image_url=variant_url,

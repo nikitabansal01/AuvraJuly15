@@ -587,9 +587,13 @@ def _build_plan_response(plan, db) -> dict:
     from app.core.database import ActionPlanItem, ActionPlanItemVariant
     
     items = db.query(ActionPlanItem).filter(
-        ActionPlanItem.plan_id == plan.id
+        and_(
+            ActionPlanItem.plan_id == plan.id,
+            ActionPlanItem.is_replaced.isnot(True)
+        )
     ).order_by(ActionPlanItem.slot).all()
     
+
     actions = []
     completed_count = 0
     
