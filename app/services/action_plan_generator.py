@@ -284,6 +284,8 @@ OUTPUT FORMAT (for each action)
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array of 1-2 REAL research citations (see format below)
 10. variants: Array of 3 variant objects with REQUIRED fields (see VARIANT FORMAT below)
+11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., ["acne", "fatigue", "bloating"])
+12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
 
 CATEGORY-SPECIFIC REQUIRED FIELDS:
 For FOOD actions, MUST include:
@@ -941,6 +943,8 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                                f"mindfulness_durations={action.get('mindfulness_durations', 'MISSING')}")
                 
                 logger.info(f"    {len(research)} research studies, "
+                           f"symptoms={action.get('symptoms')}, "
+                           f"conditions={action.get('conditions')}, "
                            f"hormone_persona_intro={bool(action.get('hormone_persona_intro'))}")
             
             return (actions, cost)
@@ -1055,6 +1059,11 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                 
                 # Get symptoms from action (if GPT generated them) 
                 action_symptoms = action.get("symptoms", [])
+                if not action_symptoms:
+                    # Fallback to top concern if no specific symptoms generated
+                    top_concern = user_context.get("top_concern")
+                    if top_concern and top_concern.lower() != "general wellness":
+                        action_symptoms = [top_concern]
                 
                 item = ActionPlanItem(
                     plan_id=plan.id,
