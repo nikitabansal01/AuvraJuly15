@@ -809,9 +809,9 @@ class ActionPlanGenerator:
             logger.info(f"📊 Feedback count for user {user_id}: {current_count}, threshold: 100")
             
             # Return existing summary if count hasn't grown much
-            if profile.feedback_summary and current_count < (profile.feedback_last_count + 20):
-                logger.info(f"📋 Using existing feedback summary (last updated: {profile.feedback_summary_updated_at})")
-                return profile.feedback_summary
+            if getattr(profile, 'feedback_summary', None) and current_count < (getattr(profile, 'feedback_last_count', 0) + 20):
+                logger.info(f"📋 Using existing feedback summary (last updated: {getattr(profile, 'feedback_summary_updated_at', 'unknown')})")
+                return getattr(profile, 'feedback_summary', None)
             
             # If count > 100, summarize
             if current_count >= 100:
@@ -905,7 +905,7 @@ Format as bullet points."""
                     return None
             
             # Less than 100 feedback - no summary needed yet
-            return profile.feedback_summary if profile.feedback_summary else None
+            return getattr(profile, 'feedback_summary', None)
             
         except Exception as e:
             logger.error(f"❌ Error in feedback summarization: {e}")
