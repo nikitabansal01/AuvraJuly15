@@ -1801,6 +1801,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     "hormone_persona_intro": new_item.hormone_persona_intro,
                     "hero_image_url": new_item.hero_image_url,
                     "time_slot": new_item.time_slot,
+                    "research_studies": new_item.research_studies or [],
                     # Add category-specific fields
                     "food_items": new_item.food_items if category == "food" else None,
                     "food_amounts": new_item.food_amounts if category == "food" else None,
@@ -1821,6 +1822,23 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             
             
             await db.commit()
+            
+            # Fetch variants for each new action to include in response
+            from app.core.database import ActionPlanItemVariant
+            for action_dict in new_actions:
+                result = await db.execute(
+                    select(ActionPlanItemVariant).where(ActionPlanItemVariant.item_id == action_dict["id"])
+                )
+                variants = result.scalars().all()
+                action_dict["variants"] = [
+                    {
+                        "variant_type": v.variant_type,
+                        "title": v.title,
+                        "description": v.description,
+                        "image_url": v.image_url
+                    }
+                    for v in variants
+                ]
             
             logger.info(f"Batch replaced {len(replacements)} actions, cost: ${total_cost:.4f}")
             
