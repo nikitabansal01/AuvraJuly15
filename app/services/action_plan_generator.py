@@ -1524,74 +1524,135 @@ Respond with valid JSON object only."""
             
             batch_prompt = f"""Generate {len(item_ids)} replacement wellness actions.
 
-ITEMS TO REPLACE:
+══════════════════════════════════════════════════════════════════════
+ITEMS TO REPLACE (user disliked these)
+══════════════════════════════════════════════════════════════════════
 {json.dumps(items_to_replace, indent=2)}
 
-REQUIREMENTS FOR EACH REPLACEMENT:
-- Must target the SAME hormone as original
-- Should be DIFFERENT from the original (user disliked it)
-- Can be any category (food, movement, or mindfulness)
-- Make them varied and interesting
+══════════════════════════════════════════════════════════════════════
+HEALTH PROFILE
+══════════════════════════════════════════════════════════════════════
+- Age: {user_context.get('age', 'Not specified')}
+- Cycle Day: {user_context.get('cycle_day', 'Unknown')}
+- Cycle Phase: {user_context.get('cycle_phase')}
+- Primary Hormone to Support: {user_context.get('primary_hormone')}
+- Secondary Hormone: {user_context.get('secondary_hormone', 'Not specified')}
 
-USER CONTEXT:
-- Cycle phase: {user_context.get('cycle_phase')}
-- Lifestyle focus: {user_context.get('lifestyle_focus')}
-- Diet preference: {user_context.get('diet_preference', 'none')}
-- Food allergies: {user_context.get('food_allergies', 'none')}
-- Stress level: {user_context.get('stress_level')}
-- Feedback patterns: {user_context.get('feedback_memory', '')}
+HEALTH CONCERNS:
+- Top Concern: {user_context.get('top_concern', 'Not specified')}
+- Diagnosed Conditions: {user_context.get('diagnosed_conditions', 'none')}
+- Period Concerns: {user_context.get('period_concerns', 'none')}
 
-Generate {len(item_ids)} actions, each with:
-- slot (same as original)
-- title, category, time_slot, specific_action, purpose
-- target_hormone (MUST match original)
-- hormone_persona_intro, image_prompt
-- research_studies (array with EXACTLY 1 real citation focused on women/females)
-- variants (array with EXACTLY 3 variant OBJECTS - each variant must be an object, not a string)
+══════════════════════════════════════════════════════════════════════
+PERSONALIZATION FACTORS
+══════════════════════════════════════════════════════════════════════
+- Lifestyle Focus: {user_context.get('lifestyle_focus')}
+- Diet Preference: {user_context.get('diet_preference', 'none')}
+- Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
+- Stress Level: {user_context.get('stress_level')}
 
-CATEGORY-SPECIFIC REQUIRED FIELDS:
-For FOOD category, MUST include:
-- food_amounts: ["1 tbsp", "2 tablespoons"]
-- food_items: ["pumpkin seeds", "flaxseeds"]
+══════════════════════════════════════════════════════════════════════
+FEEDBACK MEMORY (Critical - avoid disliked patterns)
+══════════════════════════════════════════════════════════════════════
+{user_context.get('feedback_memory', 'No previous feedback')}
 
-For MOVEMENT category, MUST include:
-- exercise_durations: ["15 min", "20 minutes"]
-- exercise_types: ["yoga", "walking"]
-- exercise_intensities: ["low", "moderate"]
+══════════════════════════════════════════════════════════════════════
+REQUIREMENTS FOR EACH REPLACEMENT
+══════════════════════════════════════════════════════════════════════
+1. Must target the SAME hormone as the original
+2. Should be DIFFERENT from the original (user disliked it)
+3. Can be any category (food, movement, or mindfulness)
+4. RESPECT food allergies - NEVER recommend foods the user is allergic to
+5. RESPECT diet preferences
+6. Make actions specific, actionable, and achievable in one day
 
-For MINDFULNESS category, MUST include:
-- mindfulness_durations: ["5 min", "10 minutes"]
-- mindfulness_techniques: ["deep breathing", "meditation"]
+══════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT (for each replacement action)
+══════════════════════════════════════════════════════════════════════
+1. slot: Keep same as original
+2. title: Short, catchy title (3-5 words)
+3. category: "food", "movement", or "mindfulness"
+4. time_slot: "morning", "afternoon", or "evening"
+5. specific_action: Detailed, actionable description (50-100 words)
+6. purpose: One clear sentence explaining how this helps the target hormone
+7. target_hormone: MUST match original (e.g., "insulin", "estrogen")
+8. hormone_persona_intro: Natural first-person intro (see examples in system prompt)
+9. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
+10. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
+11. variants: Array of 3 variant objects (see VARIANT FORMAT below)
 
-VARIANT TYPES BY CATEGORY:
-- food: "tasty", "easy", "healthy"
-- movement: "gentle", "energizing", "quick"
-- mindfulness: "guided", "solo", "brief"
+CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
+For FOOD actions, MUST include:
+- food_amounts: Array like ["1 tbsp", "2 tablespoons", "handful"]
+- food_items: Array like ["pumpkin seeds", "flaxseeds"]
 
-VARIANT FORMAT (each variant MUST be an object like this):
-{{
-  "variant_type": "tasty",
-  "title": "Roasted Version",
-  "description": "How to make this variant",
-  "image_prompt": "Professional photo of..."
-}}
+For MOVEMENT actions, MUST include:
+- exercise_durations: Array like ["15 min", "20 minutes"]
+- exercise_types: Array like ["yoga", "walking", "stretching"]
+- exercise_intensities: Array like ["low", "moderate"]
 
+For MINDFULNESS actions, MUST include:
+- mindfulness_durations: Array like ["5 min", "10 minutes"]
+- mindfulness_techniques: Array like ["deep breathing", "meditation"]
 
-CRITICAL EXAMPLE - Complete FOOD replacement JSON must include food_amounts and food_items:
+IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
+- For FOOD: "Professional food photography of [specific dish], overhead view, natural lighting, rustic wooden table background, fresh ingredients visible, warm color tones, appetizing presentation, 4K quality"
+- For MOVEMENT: "Serene photograph of woman practicing [specific exercise], soft natural lighting, peaceful setting, wellness aesthetic, warm earth tones, calm atmosphere, 4K quality"
+- For MINDFULNESS: "Peaceful zen scene with [specific elements], soft diffused lighting, minimalist aesthetic, calming colors, cozy atmosphere, 4K quality"
+
+VARIANT FORMAT (REQUIRED structure):
+Each variant MUST be an object with these exact fields:
+- variant_type: MUST be one of: "tasty"/"easy"/"healthy" (food), "gentle"/"energizing"/"quick" (movement), "guided"/"solo"/"brief" (mindfulness)
+- title: Specific name of this variant
+- description: How to prepare or do this variant (1-2 sentences)
+- image_prompt: FLUX.1 Schnell optimized prompt for this specific variant
+
+RESEARCH STUDIES - CRITICAL REQUIREMENTS:
+- Provide EXACTLY 1 study (not 2)
+- Study MUST focus on WOMEN/FEMALES specifically
+- Use REAL published studies from reputable journals
+- Include actual year (prefer 2015-2024), realistic participant count (20-500, all female)
+
+EXAMPLE OUTPUT for FOOD replacement:
 [{{
   "slot": 1,
   "category": "food",
   "title": "Savory Quinoa Bowl",
-  "food_amounts": ["1 cup", "1/2 cup"],
-  "food_items": ["quinoa", "lentils"],
+  "food_amounts": ["1 cup", "1/2 cup", "1 tbsp"],
+  "food_items": ["cooked quinoa", "cooked lentils", "olive oil"],
   "time_slot": "morning",
-  "specific_action": "Cook together...",
-  "purpose": "Stabilizes insulin",
+  "specific_action": "Cook 1 cup of quinoa and 1/2 cup of lentils together with vegetable broth. Season with turmeric, cumin, and black pepper. Drizzle with 1 tbsp olive oil. This creates a filling, insulin-friendly meal.",
+  "purpose": "This meal combines complex carbs with fiber and protein to help stabilize insulin levels throughout the morning.",
   "target_hormone": "insulin",
-  "hormone_persona_intro": "I'm Insulin...",
-  "image_prompt": "Bowl of quinoa...",
-  "research_studies": [{{...}}],
-  "variants": [{{...}}, {{...}}, {{...}}]
+  "hormone_persona_intro": "I'm Insulin — in your menstrual phase, I can be sensitive to diet changes, so keeping my levels steady is key.",
+  "image_prompt": "Professional food photography of quinoa and lentil bowl, overhead view, natural lighting, rustic wooden table, fresh herbs garnish, warm color tones, appetizing presentation, 4K quality",
+  "research_studies": [{{
+    "title": "Effect of Quinoa on Insulin Response in Women",  
+    "journal": "Nutrients",
+    "year": 2021,
+    "participants": 145,
+    "finding": "Quinoa consumption improved insulin sensitivity in premenopausal women"
+  }}],
+  "variants": [
+    {{
+      "variant_type": "tasty",
+      "title": "Maple Pecan Quinoa",
+      "description": "Add maple syrup and toasted pecans for a sweet twist.",
+      "image_prompt": "Professional food photography of quinoa with maple syrup and pecans..."
+    }},
+    {{
+      "variant_type": "easy",
+      "title": "One-Pot Quinoa",
+      "description": "Cook everything in one pot for quick cleanup.",
+      "image_prompt": "Professional food photography of one-pot quinoa..."
+    }},
+    {{
+      "variant_type": "healthy",
+      "title": "Green Quinoa Bowl",
+      "description": "Add spinach and kale for extra nutrients.",
+      "image_prompt": "Professional food photography of quinoa with leafy greens..."
+    }}
+  ]
 }}]
 
 Respond with valid JSON array only. Do not add any text outside the JSON."""
