@@ -181,7 +181,7 @@ REPLACEMENT_ACTION_SCHEMA = {
                         "finding": {"type": "string"}
                     },
                     "required": ["title", "journal", "year", "participants", "finding"],
-                    "additionalProperties": False
+                    "additionalProperties": false
                 },
                 "minItems": 1,
                 "maxItems": 1
@@ -197,12 +197,11 @@ REPLACEMENT_ACTION_SCHEMA = {
                         "image_prompt": {"type": "string"}
                     },
                     "required": ["variant_type", "title", "description", "image_prompt"],
-                    "additionalProperties": False
+                    "additionalProperties": false
                 },
                 "minItems": 3,
                 "maxItems": 3
             },
-            # Category-specific fields (conditionally required)
             "food_amounts": {"type": "array", "items": {"type": "string"}},
             "food_items": {"type": "array", "items": {"type": "string"}},
             "exercise_durations": {"type": "array", "items": {"type": "string"}},
@@ -214,23 +213,12 @@ REPLACEMENT_ACTION_SCHEMA = {
         "required": [
             "slot", "category", "title", "time_slot", "specific_action", "purpose",
             "target_hormone", "hormone_persona_intro", "image_prompt",
-            "research_studies", "variants"
+            "research_studies", "variants",
+            "food_amounts", "food_items",
+            "exercise_durations", "exercise_types", "exercise_intensities",
+            "mindfulness_durations", "mindfulness_techniques"
         ],
-        "allOf": [
-            {
-                "if": {"properties": {"category": {"const": "food"}}},
-                "then": {"required": ["food_amounts", "food_items"]}
-            },
-            {
-                "if": {"properties": {"category": {"const": "movement"}}},
-                "then": {"required": ["exercise_durations", "exercise_types", "exercise_intensities"]}
-            },
-            {
-                "if": {"properties": {"category": {"const": "mindfulness"}}},
-                "then": {"required": ["mindfulness_durations", "mindfulness_techniques"]}
-            }
-        ],
-        "additionalProperties": False
+        "additionalProperties": false
     }
 }
 
