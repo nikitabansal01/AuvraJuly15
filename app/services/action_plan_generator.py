@@ -998,6 +998,7 @@ For {secondary_persona['name']} ({user_context["secondary_hormone"]}):
             # Feedback and context
             feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
             chatbot_context=user_context.get("chatbot_context", "No additional context"),
+            feedback_summary=user_context.get("feedback_summary", "No summary yet"),
             # Generation params
             primary_count=2,
             secondary_count=2,
