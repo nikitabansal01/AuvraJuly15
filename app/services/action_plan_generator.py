@@ -1773,7 +1773,15 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     "target_hormone": new_item.target_hormone,
                     "hormone_persona_intro": new_item.hormone_persona_intro,
                     "hero_image_url": new_item.hero_image_url,
-                    "time_slot": new_item.time_slot
+                    "time_slot": new_item.time_slot,
+                    # Add category-specific fields
+                    "food_items": new_item.food_items if category == "food" else None,
+                    "food_amounts": new_item.food_amounts if category == "food" else None,
+                    "exercise_types": new_item.exercise_types if category == "movement" else None,
+                    "exercise_durations": new_item.exercise_durations if category == "movement" else None,
+                    "exercise_intensities": new_item.exercise_intensities if category == "movement" else None,
+                    "mindfulness_techniques": new_item.mindfulness_techniques if category == "mindfulness" else None,
+                    "mindfulness_durations": new_item.mindfulness_durations if category == "mindfulness" else None
                 })
             
             await db.commit()
