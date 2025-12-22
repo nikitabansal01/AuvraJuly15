@@ -449,22 +449,24 @@ async def submit_plan_satisfaction(
             # Mark selected items as DISLIKED
             for item in items:
                 if item.id in items_to_replace and not item.is_completed:
-                    # Check for existing dislike feedback
+                    # Check for ANY existing feedback (could be "like" or "dislike")
                     existing_feedback = db.query(ActionPlanFeedback).filter(
                         and_(
                             ActionPlanFeedback.uid == uid,
-                            ActionPlanFeedback.action_title == item.title,
-                            ActionPlanFeedback.feedback_type == "dislike"
+                            ActionPlanFeedback.action_title == item.title
                         )
                     ).first()
                     
                     if existing_feedback:
+                        # Update existing feedback to "dislike" (might change from "like")
+                        existing_feedback.feedback_type = "dislike"
                         existing_feedback.created_at = datetime.utcnow()
                         existing_feedback.plan_id = request.plan_id
                         existing_feedback.item_id = item.id
                         existing_feedback.replacement_reason = request.feedback_text
-                        logger.info(f"Updated existing 'dislike' feedback for: {item.title}")
+                        logger.info(f"Updated feedback to 'dislike' for: {item.title}")
                     else:
+                        # No previous feedback - create new dislike
                         feedback = ActionPlanFeedback(
                             uid=uid,
                             plan_id=request.plan_id,
@@ -478,34 +480,9 @@ async def submit_plan_satisfaction(
                         )
                         db.add(feedback)
                         logger.info(f"Created new 'dislike' feedback for: {item.title}")
-                elif not item.is_completed:
-                    # Items not selected for replacement are implicitly liked
-                    existing_feedback = db.query(ActionPlanFeedback).filter(
-                        and_(
-                            ActionPlanFeedback.uid == uid,
-                            ActionPlanFeedback.action_title == item.title,
-                            ActionPlanFeedback.feedback_type == "like"
-                        )
-                    ).first()
-                    
-                    if existing_feedback:
-                        existing_feedback.created_at = datetime.utcnow()
-                        existing_feedback.plan_id = request.plan_id
-                        existing_feedback.item_id = item.id
-                        logger.info(f"Updated existing 'like' feedback for: {item.title}")
-                    else:
-                        feedback = ActionPlanFeedback(
-                            uid=uid,
-                            plan_id=request.plan_id,
-                            item_id=item.id,
-                            feedback_type="like",
-                            action_title=item.title,
-                            action_category=item.category,
-                            target_hormone=item.target_hormone,
-                            created_at=datetime.utcnow()
-                        )
-                        db.add(feedback)
-                        logger.info(f"Created new 'like' feedback for: {item.title}")
+                # NOTE: Non-selected items are intentionally NOT updated here
+                # They should already have "like" feedback from previous "works_for_me"
+                # This prevents duplicate feedback records
             
             db.commit()
             
