@@ -1618,6 +1618,29 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             if not isinstance(replacement_actions, list):
                 replacement_actions = [replacement_actions]
             
+            # Debug: Log all fields for each replacement action to verify GPT response
+            logger.info(f"📋 GPT returned {len(replacement_actions)} replacement actions")
+            for i, replacement_action in enumerate(replacement_actions):
+                research = replacement_action.get("research_studies", [])
+                category = replacement_action.get("category", "unknown")
+                
+                # Log category-specific fields to verify GPT is returning them
+                if category == "food":
+                    logger.info(f"  Replacement {i+1} '{replacement_action.get('title')}' [FOOD]: "
+                               f"food_amounts={replacement_action.get('food_amounts', 'MISSING')}, "
+                               f"food_items={replacement_action.get('food_items', 'MISSING')}")
+                elif category == "movement":
+                    logger.info(f"  Replacement {i+1} '{replacement_action.get('title')}' [MOVEMENT]: "
+                               f"exercise_durations={replacement_action.get('exercise_durations', 'MISSING')}, "
+                               f"exercise_types={replacement_action.get('exercise_types', 'MISSING')}")
+                elif category == "mindfulness":
+                    logger.info(f"  Replacement {i+1} '{replacement_action.get('title')}' [MINDFULNESS]: "
+                               f"mindfulness_durations={replacement_action.get('mindfulness_durations', 'MISSING')}")
+                
+                logger.info(f"    {len(research)} research studies, "
+                           f"variants={len(replacement_action.get('variants', []))}, "
+                           f"hormone_persona_intro={bool(replacement_action.get('hormone_persona_intro'))}")
+            
             # Process each replacement
             new_actions = []
             for i, replacement_action in enumerate(replacement_actions):
