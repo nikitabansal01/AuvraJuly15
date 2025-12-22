@@ -532,42 +532,40 @@ class ActionPlanGenerator:
             )
             user_response = response_result.scalar_one_or_none()
             
-            # If no user response, create default context
+            # Load base context with defaults
+            context = {
+                "user_id": user_id,
+                "primary_hormone": "cortisol",
+                "secondary_hormone": "progesterone",
+                "cycle_day": 1,
+                "cycle_phase": "follicular",
+                "age": "not specified",
+                "top_concern": "general wellness",
+                "diagnosed_conditions": [],
+                "period_concerns": "none specified",
+                "body_concerns": "none specified",
+                "skin_hair_concerns": "none specified",
+                "mental_health_concerns": "none specified",
+                "family_history": "none specified",
+                "birth_control": "none",
+                "lifestyle_focus": ["eat", "move", "pause"],
+                "diet_preference": "no preference specified",
+                "food_allergies": "none specified",
+                "stress_level": "moderate",
+                "sleep_duration": "7-8 hours",
+                "workout_intensity": "moderate",
+                "feedback_summary": "No summary yet",
+                "feedback_memory": "No previous feedback",
+                "chatbot_memory": {},
+                "chatbot_context": "No additional context"
+            }
+
             if not user_response:
                 logger.info(f"No UserResponse for {user_id}, using defaults")
-                # Get lifestyle focus from profile if available
-                lifestyle_focus = profile.lifestyle_focus or ["eat", "move", "pause"]
-                
-                return {
-                    "user_id": user_id,
-                    # Hormones - sensible defaults
-                    "primary_hormone": "cortisol",
-                    "secondary_hormone": "progesterone",
-                    # Cycle info - defaults for first-time users
-                    "cycle_day": 1,
-                    "cycle_phase": "follicular",
-                    # Health profile defaults
-                    "age": "not specified",
-                    "top_concern": "general wellness",
-                    "diagnosed_conditions": [],
-                    "period_concerns": "none specified",
-                    "body_concerns": "none specified",
-                    "skin_hair_concerns": "none specified",
-                    "mental_health_concerns": "none specified",
-                    "family_history": "none specified",
-                    "birth_control": "none",
-                    # Personalization
-                    "lifestyle_focus": lifestyle_focus,
-                    "diet_preference": "no preference specified",
-                    "food_allergies": "none specified",
-                    "stress_level": "moderate",
-                    "sleep_duration": "7-8 hours",
-                    "workout_intensity": "moderate",
-                    # Feedback and context
-                    "feedback_memory": "No previous feedback",
-                    "chatbot_memory": {},
-                    "chatbot_context": ""
-                }
+                # Update focus if available in profile
+                if profile.lifestyle_focus:
+                    context["lifestyle_focus"] = profile.lifestyle_focus
+                return context
             
             # Get recent feedback for memory (last 30 days)
             feedback_result = await db.execute(
@@ -607,18 +605,14 @@ class ActionPlanGenerator:
             if isinstance(food_allergies, list):
                 food_allergies = ", ".join(food_allergies) if food_allergies else "none specified"
             
-            return {
-                "user_id": user_id,
-                # Hormones
+            # Update context with real data
+            context.update({
                 "primary_hormone": primary_hormone,
                 "secondary_hormone": secondary_hormone,
-                # Cycle info
                 "cycle_day": cycle_day,
                 "cycle_phase": cycle_phase,
-                # Health profile
                 "age": user_response.age or "not specified",
                 "top_concern": user_response.top_concern or "general wellness",
-                # Ensure diagnosed_conditions is always a list (could be string in DB)
                 "diagnosed_conditions": (
                     [user_response.diagnosed_conditions] if isinstance(user_response.diagnosed_conditions, str)
                     else (user_response.diagnosed_conditions or [])
@@ -629,19 +623,19 @@ class ActionPlanGenerator:
                 "mental_health_concerns": self._format_concerns(user_response.mental_health_concerns),
                 "family_history": ", ".join(user_response.family_history) if user_response.family_history else "none specified",
                 "birth_control": ", ".join(user_response.birth_control) if user_response.birth_control else "none",
-                # Personalization
                 "lifestyle_focus": lifestyle_focus,
                 "diet_preference": diet_preference,
                 "food_allergies": food_allergies,
                 "stress_level": user_response.stress_level or "moderate",
                 "sleep_duration": user_response.sleep_duration or "7-8 hours",
                 "workout_intensity": user_response.workout_intensity or "moderate",
-                # Feedback and context
-                "feedback_summary": feedback_summary or "No summary yet",  # Historical patterns
-                "feedback_memory": feedback_memory,  # Recent feedback (last 20-50)
+                "feedback_summary": feedback_summary or "No summary yet",
+                "feedback_memory": feedback_memory,
                 "chatbot_memory": chatbot_memory,
                 "chatbot_context": chatbot_context
-            }
+            })
+            
+            return context
             
         except Exception as e:
             logger.error(f"Error loading user context: {e}")
@@ -809,7 +803,9 @@ class ActionPlanGenerator:
             logger.info(f"📊 Feedback count for user {user_id}: {current_count}, threshold: 100")
             
             # Return existing summary if count hasn't grown much
-            if getattr(profile, 'feedback_summary', None) and current_count < (getattr(profile, 'feedback_last_count', 0) + 20):
+            # Use safe default for feedback_last_count to avoid None + 20 error
+            last_count = getattr(profile, 'feedback_last_count', 0) or 0
+            if getattr(profile, 'feedback_summary', None) and current_count < (last_count + 20):
                 logger.info(f"📋 Using existing feedback summary (last updated: {getattr(profile, 'feedback_summary_updated_at', 'unknown')})")
                 return getattr(profile, 'feedback_summary', None)
             
