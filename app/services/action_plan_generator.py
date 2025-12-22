@@ -245,6 +245,10 @@ HORMONE CONTEXT FOR {cycle_phase} PHASE
 ══════════════════════════════════════════════════════════════════════
 FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
 ══════════════════════════════════════════════════════════════════════
+HISTORICAL SUMMARY (learned patterns over time):
+{feedback_summary}
+
+RECENT FEEDBACK (last 20-50 actions):
 {feedback_memory}
 
 ══════════════════════════════════════════════════════════════════════
@@ -587,6 +591,9 @@ class ActionPlanGenerator:
             secondary_hormones = user_response.secondary_hormones or []
             secondary_hormone = secondary_hormones[0] if secondary_hormones else "progesterone"
             
+            # Automatically summarize feedback if needed (>100 records)
+            feedback_summary = await self._summarize_feedback_if_needed(user_id, profile, db)
+            
             # Format feedback memory for GPT (enhanced with patterns)
             feedback_memory = self._format_feedback_memory(recent_feedback)
             
@@ -630,7 +637,8 @@ class ActionPlanGenerator:
                 "sleep_duration": user_response.sleep_duration or "7-8 hours",
                 "workout_intensity": user_response.workout_intensity or "moderate",
                 # Feedback and context
-                "feedback_memory": feedback_memory,
+                "feedback_summary": feedback_summary or "No summary yet",  # Historical patterns
+                "feedback_memory": feedback_memory,  # Recent feedback (last 20-50)
                 "chatbot_memory": chatbot_memory,
                 "chatbot_context": chatbot_context
             }
@@ -775,6 +783,134 @@ class ActionPlanGenerator:
             memory_parts.append(f"COMPLETED actions (user followed through):\n" + "\n".join(completed[:5]))
         
         return "\n\n".join(memory_parts) if memory_parts else "No previous feedback available."
+
+    async def _summarize_feedback_if_needed(
+        self,
+        user_id: str,
+        profile: Any,
+        db: AsyncSession
+    ) -> Optional[str]:
+        """
+        Automatically summarize feedback when count exceeds threshold (100).
+        Returns summary if exists or just created, None otherwise.
+        """
+        from app.core.database import ActionPlanFeedback, UserProfile
+        from sqlalchemy import select, func, delete
+        
+        try:
+            # Count current feedback
+            count_result = await db.execute(
+                select(func.count()).select_from(ActionPlanFeedback).where(
+                    ActionPlanFeedback.uid == user_id
+                )
+            )
+            current_count = count_result.scalar() or 0
+            
+            logger.info(f"📊 Feedback count for user {user_id}: {current_count}, threshold: 100")
+            
+            # Return existing summary if count hasn't grown much
+            if profile.feedback_summary and current_count < (profile.feedback_last_count + 20):
+                logger.info(f"📋 Using existing feedback summary (last updated: {profile.feedback_summary_updated_at})")
+                return profile.feedback_summary
+            
+            # If count > 100, summarize
+            if current_count >= 100:
+                logger.info(f"🤖 Generating feedback summary with GPT for {current_count} feedback records")
+                
+                # Fetch ALL feedback
+                all_feedback_result = await db.execute(
+                    select(ActionPlanFeedback).where(
+                        ActionPlanFeedback.uid == user_id
+                    ).order_by(ActionPlanFeedback.created_at.desc())
+                )
+                all_feedback = all_feedback_result.scalars().all()
+                
+                # Format for summarization
+                feedback_text = self._format_feedback_memory(all_feedback)
+                
+                # Ask GPT to summarize
+                summary_prompt = f"""Analyze this user's action plan feedback history and create a concise summary of their preferences.
+
+FEEDBACK HISTORY:
+{feedback_text}
+
+Create a summary focusing on:
+1. Category preferences (food/movement/mindfulness) - what they tend to LIKE vs DISLIKE
+2. Specific patterns to AVOID (e.g., "User dislikes high-intensity workouts", "Avoids raw vegetables")
+3. Specific patterns to CREATE MORE (e.g., "Loves seed-based foods", "Prefers morning mindfulness")
+4. Hormone-specific preferences if any patterns emerge
+
+Keep it concise (max 200 words) and actionable for generating future action plans.
+Format as bullet points."""
+
+                try:
+                    response = await self.client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.openai_api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "gpt-4o-mini",
+                            "messages": [
+                                {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
+                                {"role": "user", "content": summary_prompt}
+                            ],
+                            "temperature": 0.3,
+                            "max_tokens": 500
+                        }
+                    )
+                    
+                    response.raise_for_status()
+                    data = response.json()
+                    summary = data["choices"][0]["message"]["content"].strip()
+                    
+                    logger.info(f"✅ Feedback summary generated, length: {len(summary)} chars")
+                    
+                    # Save summary to profile
+                    profile.feedback_summary = summary
+                    profile.feedback_summary_updated_at = datetime.utcnow()
+                    profile.feedback_last_count = current_count
+                    await db.commit()
+                    
+                    logger.info(f"💾 Feedback summary saved to profile")
+                    
+                    # Delete old feedback (keep last 20)
+                    if current_count > 20:
+                        # Get IDs of items to keep
+                        keep_result = await db.execute(
+                            select(ActionPlanFeedback.id).where(
+                                ActionPlanFeedback.uid == user_id
+                            ).order_by(ActionPlanFeedback.created_at.desc()).limit(20)
+                        )
+                        keep_ids = [row[0] for row in keep_result.all()]
+                        
+                        # Delete everything except those
+                        delete_result = await db.execute(
+                            delete(ActionPlanFeedback).where(
+                                ActionPlanFeedback.uid == user_id,
+                                ActionPlanFeedback.id.notin_(keep_ids)
+                            )
+                        )
+                        await db.commit()
+                        
+                        deleted_count = delete_result.rowcount
+                        logger.info(f"🗑️  Deleted {deleted_count} old feedback records, kept last 20")
+                    
+                    return summary
+                    
+                except Exception as gpt_error:
+                    logger.error(f"❌ Error generating feedback summary with GPT: {gpt_error}")
+                    # If summarization fails, continue with raw feedback
+                    return None
+            
+            # Less than 100 feedback - no summary needed yet
+            return profile.feedback_summary if profile.feedback_summary else None
+            
+        except Exception as e:
+            logger.error(f"❌ Error in feedback summarization: {e}")
+            return None
+
     
     def _get_category_guidance(self, lifestyle_focus: List[str]) -> str:
         """Generate category distribution guidance based on lifestyle focus."""
@@ -1556,6 +1692,10 @@ PERSONALIZATION FACTORS
 ══════════════════════════════════════════════════════════════════════
 FEEDBACK MEMORY (Critical - avoid disliked patterns)
 ══════════════════════════════════════════════════════════════════════
+HISTORICAL SUMMARY (learned patterns over time):
+{user_context.get('feedback_summary', 'No summary yet')}
+
+RECENT FEEDBACK (last 20-50 actions):
 {user_context.get('feedback_memory', 'No previous feedback')}
 
 ══════════════════════════════════════════════════════════════════════

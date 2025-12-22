@@ -142,6 +142,12 @@ class UserProfile(Base):
     current_timezone = Column(String(50), default="Asia/Seoul")  # Current user timezone
     lifestyle_focus = Column(ARRAY(String), nullable=True)  # User's preferred focus areas: ["eat", "move", "pause"]
     chatbot_memory = Column(JSONB, nullable=True)  # Permanent memory for chatbot (preferences, facts)
+    
+    # Feedback summarization fields
+    feedback_summary = Column(Text, nullable=True)  # GPT-generated summary of historical feedback
+    feedback_summary_updated_at = Column(DateTime, nullable=True)  # When summary was last updated
+    feedback_last_count = Column(Integer, default=0, nullable=False)  # Feedback count at last summarization
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
