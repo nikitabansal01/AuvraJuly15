@@ -275,7 +275,7 @@ OUTPUT FORMAT (for each action)
 6. target_hormone: The hormone this action supports
 7. hormone_persona_intro: Write naturally following the example style in system prompt
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
-9. research_studies: Array of 1-2 REAL research citations (see format below)
+9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES (see format below)
 10. variants: Array of 3 variant objects with REQUIRED fields (see VARIANT FORMAT below)
 11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., ["acne", "fatigue", "bloating"])
 12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
@@ -313,12 +313,14 @@ VARIANT TYPES by category (use exact string values):
 - mindfulness: "guided" (with instruction), "solo" (self-directed), "brief" (5-min version)
 
 RESEARCH STUDIES - CRITICAL REQUIREMENTS:
+- Provide EXACTLY 1 study (not 2)
+- Study MUST focus on WOMEN/FEMALES specifically (not mixed gender or male-only studies)
 - Use REAL published studies from reputable journals
 - Examples of real journals: "Nutrients", "Journal of Clinical Endocrinology & Metabolism", 
   "Psychoneuroendocrinology", "American Journal of Clinical Nutrition", "PLOS ONE",
   "Frontiers in Nutrition", "Journal of Women's Health", "Endocrine Reviews"
 - Include actual year of publication (prefer 2015-2024)
-- Estimate realistic participant counts (typically 20-500 for nutrition studies)
+- Estimate realistic participant counts (typically 20-500 for nutrition studies, all female)
 - The finding should be specific and evidence-based
 - DO NOT make up fake journal names or fake studies
 
@@ -1425,7 +1427,15 @@ Respond with valid JSON object only."""
             
             await db.commit()
             
-            logger.info(f"Replaced action {item_id} with {new_item.id}")
+            # Fetch the created variants to return with the response
+            variants_result = await db.execute(
+                select(ActionPlanItemVariant).where(
+                    ActionPlanItemVariant.item_id == new_item.id
+                )
+            )
+            created_variants = variants_result.scalars().all()
+            
+            logger.info(f"Replaced action {item_id} with {new_item.id} and {len(created_variants)} variants")
             
             return {
                 "success": True,
@@ -1437,8 +1447,20 @@ Respond with valid JSON object only."""
                     "category": new_item.category,
                     "title": new_item.title,
                     "specific_action": new_item.specific_action,
+                    "purpose": new_item.purpose,
                     "hero_image_url": new_item.hero_image_url,
-                    "target_hormone": new_item.target_hormone
+                    "target_hormone": new_item.target_hormone,
+                    "hormone_persona_intro": new_item.hormone_persona_intro,
+                    "research_studies": new_item.research_studies or [],
+                    "variants": [
+                        {
+                            "variant_type": v.variant_type,
+                            "title": v.title,
+                            "description": v.description,
+                            "image_url": v.image_url
+                        }
+                        for v in created_variants
+                    ]
                 }
             }
             
@@ -1524,13 +1546,35 @@ Generate {len(item_ids)} actions, each with:
 - title, category, time_slot, specific_action, purpose
 - target_hormone (MUST match original)
 - hormone_persona_intro, image_prompt
-- research_studies (array with 1-2 real citations)
-- variants (array with EXACTLY 3 variants, using the correct types from the list below)
+- research_studies (array with EXACTLY 1 real citation focused on women/females)
+- variants (array with EXACTLY 3 variant OBJECTS - each variant must be an object, not a string)
+
+CATEGORY-SPECIFIC REQUIRED FIELDS:
+For FOOD category, MUST include:
+- food_amounts: ["1 tbsp", "2 tablespoons"]
+- food_items: ["pumpkin seeds", "flaxseeds"]
+
+For MOVEMENT category, MUST include:
+- exercise_durations: ["15 min", "20 minutes"]
+- exercise_types: ["yoga", "walking"]
+- exercise_intensities: ["low", "moderate"]
+
+For MINDFULNESS category, MUST include:
+- mindfulness_durations: ["5 min", "10 minutes"]
+- mindfulness_techniques: ["deep breathing", "meditation"]
 
 VARIANT TYPES BY CATEGORY:
 - food: "tasty", "easy", "healthy"
 - movement: "gentle", "energizing", "quick"
 - mindfulness: "guided", "solo", "brief"
+
+VARIANT FORMAT (each variant MUST be an object like this):
+{{
+  "variant_type": "tasty",
+  "title": "Roasted Version",
+  "description": "How to make this variant",
+  "image_prompt": "Professional photo of..."
+}}
 
 Respond with valid JSON array only. Do not add any text outside the JSON."""
 
@@ -1578,6 +1622,10 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             new_actions = []
             for i, replacement_action in enumerate(replacement_actions):
                 original = original_items[i] if i < len(original_items) else original_items[0]
+                
+                # Log the raw replacement_action for debugging
+                logger.info(f"📋 Processing replacement {i}: category={replacement_action.get('category')}")
+                logger.info(f"📋 Variants raw: {replacement_action.get('variants')}")
                 
                 # Generate hero image
                 hero_url, _, image_cost = await self.image_service.get_or_generate_image(
@@ -1637,6 +1685,19 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow()
                 )
+                
+                # Add category-specific fields
+                category = replacement_action.get("category", "food")
+                if category == "food":
+                    new_item.food_items = replacement_action.get("food_items", [])
+                    new_item.food_amounts = replacement_action.get("food_amounts", [])
+                elif category == "movement":
+                    new_item.exercise_types = replacement_action.get("exercise_types", [])
+                    new_item.exercise_durations = replacement_action.get("exercise_durations", [])
+                    new_item.exercise_intensities = replacement_action.get("exercise_intensities", [])
+                elif category == "mindfulness":
+                    new_item.mindfulness_techniques = replacement_action.get("mindfulness_techniques", [])
+                    new_item.mindfulness_durations = replacement_action.get("mindfulness_durations", [])
                 
                 db.add(new_item)
                 await db.flush()
