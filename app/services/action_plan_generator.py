@@ -153,74 +153,6 @@ DEFAULT_PERSONA = {
 }
 
 
-# JSON Schema for Replacement Actions (Structured Outputs)
-# This schema guarantees 100% field adherence using OpenAI's constrained decoding
-REPLACEMENT_ACTION_SCHEMA = {
-    "type": "array",
-    "items": {
-        "type": "object",
-        "properties": {
-            "slot": {"type": "integer"},
-            "category": {"type": "string", "enum": ["food", "movement", "mindfulness"]},
-            "title": {"type": "string"},
-            "time_slot": {"type": "string", "enum": ["morning", "afternoon", "evening"]},
-            "specific_action": {"type": "string"},
-            "purpose": {"type": "string"},
-            "target_hormone": {"type": "string"},
-            "hormone_persona_intro": {"type": "string"},
-            "image_prompt": {"type": "string"},
-            "research_studies": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "journal": {"type": "string"},
-                        "year": {"type": "integer"},
-                        "participants": {"type": "integer"},
-                        "finding": {"type": "string"}
-                    },
-                    "required": ["title", "journal", "year", "participants", "finding"],
-                    "additionalProperties": False
-                },
-                "minItems": 1,
-                "maxItems": 1
-            },
-            "variants": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "variant_type": {"type": "string"},
-                        "title": {"type": "string"},
-                        "description": {"type": "string"},
-                        "image_prompt": {"type": "string"}
-                    },
-                    "required": ["variant_type", "title", "description", "image_prompt"],
-                    "additionalProperties": False
-                },
-                "minItems": 3,
-                "maxItems": 3
-            },
-            "food_amounts": {"type": "array", "items": {"type": "string"}},
-            "food_items": {"type": "array", "items": {"type": "string"}},
-            "exercise_durations": {"type": "array", "items": {"type": "string"}},
-            "exercise_types": {"type": "array", "items": {"type": "string"}},
-            "exercise_intensities": {"type": "array", "items": {"type": "string"}},
-            "mindfulness_durations": {"type": "array", "items": {"type": "string"}},
-            "mindfulness_techniques": {"type": "array", "items": {"type": "string"}}
-        },
-        "required": [
-            "slot", "category", "title", "time_slot", "specific_action", "purpose",
-            "target_hormone", "hormone_persona_intro", "image_prompt",
-            "research_studies", "variants",
-            "food_amounts", "food_items",
-            "exercise_durations", "exercise_types", "exercise_intensities",
-            "mindfulness_durations", "mindfulness_techniques"
-        ],
-        "additionalProperties": False
-    }
-}
 
 
 # ============================================================================
@@ -1745,15 +1677,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         {"role": "user", "content": batch_prompt}
                     ],
                     "temperature": 0.8,
-                    "max_tokens": 4000,
-                    "response_format": {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "replacement_actions",
-                            "strict": True,  # Guarantees 100% schema adherence
-                            "schema": REPLACEMENT_ACTION_SCHEMA
-                        }
-                    }
+                    "max_tokens": 4000
                 }
             )
             
