@@ -1692,8 +1692,11 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 if content.startswith("json"):
                     content = content[4:]
             
+            logger.info(f"�� ABOUT TO PARSE GPT JSON - content length: {len(content)}")
+            logger.info(f"🔍 First 300 chars of content: {content[:300]}")
             replacement_actions = json.loads(content.strip())
             
+            logger.info(f"✅ Successfully parsed JSON - got {len(replacement_actions)} actions")
             if not isinstance(replacement_actions, list):
                 replacement_actions = [replacement_actions]
             
