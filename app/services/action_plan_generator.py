@@ -181,7 +181,7 @@ REPLACEMENT_ACTION_SCHEMA = {
                         "finding": {"type": "string"}
                     },
                     "required": ["title", "journal", "year", "participants", "finding"],
-                    "additionalProperties": false
+                    "additionalProperties": False
                 },
                 "minItems": 1,
                 "maxItems": 1
@@ -197,7 +197,7 @@ REPLACEMENT_ACTION_SCHEMA = {
                         "image_prompt": {"type": "string"}
                     },
                     "required": ["variant_type", "title", "description", "image_prompt"],
-                    "additionalProperties": false
+                    "additionalProperties": False
                 },
                 "minItems": 3,
                 "maxItems": 3
@@ -218,7 +218,7 @@ REPLACEMENT_ACTION_SCHEMA = {
             "exercise_durations", "exercise_types", "exercise_intensities",
             "mindfulness_durations", "mindfulness_techniques"
         ],
-        "additionalProperties": false
+        "additionalProperties": False
     }
 }
 
