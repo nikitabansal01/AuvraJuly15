@@ -1576,6 +1576,24 @@ VARIANT FORMAT (each variant MUST be an object like this):
   "image_prompt": "Professional photo of..."
 }}
 
+
+CRITICAL EXAMPLE - Complete FOOD replacement JSON must include food_amounts and food_items:
+[{{
+  "slot": 1,
+  "category": "food",
+  "title": "Savory Quinoa Bowl",
+  "food_amounts": ["1 cup", "1/2 cup"],
+  "food_items": ["quinoa", "lentils"],
+  "time_slot": "morning",
+  "specific_action": "Cook together...",
+  "purpose": "Stabilizes insulin",
+  "target_hormone": "insulin",
+  "hormone_persona_intro": "I'm Insulin...",
+  "image_prompt": "Bowl of quinoa...",
+  "research_studies": [{{...}}],
+  "variants": [{{...}}, {{...}}, {{...}}]
+}}]
+
 Respond with valid JSON array only. Do not add any text outside the JSON."""
 
             # Generate replacements via GPT
