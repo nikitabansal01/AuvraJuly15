@@ -1569,17 +1569,21 @@ REQUIREMENTS FOR EACH REPLACEMENT
 ══════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (for each replacement action)
 ══════════════════════════════════════════════════════════════════════
-1. slot: Keep same as original
-2. title: Short, catchy title (3-5 words)
-3. category: "food", "movement", or "mindfulness"
-4. time_slot: "morning", "afternoon", or "evening"
-5. specific_action: Detailed, actionable description (50-100 words)
-6. purpose: One clear sentence explaining how this helps the target hormone
-7. target_hormone: MUST match original (e.g., "insulin", "estrogen")
-8. hormone_persona_intro: Natural first-person intro (see examples in system prompt)
-9. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
-10. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
-11. variants: Array of 3 variant objects (see VARIANT FORMAT below)
+1. slot: Keep same as original  
+2. category: "food", "movement", or "mindfulness"
+3. **CRITICAL - Category-Specific Fields (MUST include based on category):**
+   - FOOD: food_amounts (array like ["1 cup", "1/2 cup"]) AND food_items (array like ["quinoa", "lentils"])
+   - MOVEMENT: exercise_durations, exercise_types, exercise_intensities (all arrays)
+   - MINDFULNESS: mindfulness_durations, mindfulness_techniques (both arrays)
+4. title: Short, catchy title (3-5 words)
+5. time_slot: "morning", "afternoon", or "evening"
+6. specific_action: Detailed, actionable description (50-100 words)
+7. purpose: One clear sentence explaining how this helps the target hormone
+8. target_hormone: MUST match original (e.g., "insulin", "estrogen")
+9. hormone_persona_intro: Natural first-person intro (see examples in system prompt)
+10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
+11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
+12. variants: Array of 3 variant objects (see VARIANT FORMAT below)
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
 For FOOD actions, MUST include:
