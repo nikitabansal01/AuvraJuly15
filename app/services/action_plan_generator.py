@@ -1714,13 +1714,17 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 if category == "food":
                     new_item.food_items = replacement_action.get("food_items", [])
                     new_item.food_amounts = replacement_action.get("food_amounts", [])
+                    logger.info(f"🍽️  Food fields set: items={new_item.food_items}, amounts={new_item.food_amounts}")
                 elif category == "movement":
                     new_item.exercise_types = replacement_action.get("exercise_types", [])
                     new_item.exercise_durations = replacement_action.get("exercise_durations", [])
                     new_item.exercise_intensities = replacement_action.get("exercise_intensities", [])
+                    logger.info(f"🏃  Movement fields set: durations={new_item.exercise_durations}, types={new_item.exercise_types}")
                 elif category == "mindfulness":
                     new_item.mindfulness_techniques = replacement_action.get("mindfulness_techniques", [])
                     new_item.mindfulness_durations = replacement_action.get("mindfulness_durations", [])
+                    logger.info(f"🧘  Mindfulness fields set: durations={new_item.mindfulness_durations}, techniques={new_item.mindfulness_techniques}")
+                
                 
                 db.add(new_item)
                 await db.flush()
@@ -1806,6 +1810,15 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     "mindfulness_techniques": new_item.mindfulness_techniques if category == "mindfulness" else None,
                     "mindfulness_durations": new_item.mindfulness_durations if category == "mindfulness" else None
                 })
+                
+                # Log what we're returning
+                if category == "food":
+                    logger.info(f"📤 Response includes food_amounts={new_item.food_amounts}, food_items={new_item.food_items}")
+                elif category == "movement":
+                    logger.info(f"📤 Response includes exercise_durations={new_item.exercise_durations}")
+                elif category == "mindfulness":
+                    logger.info(f"📤 Response includes mindfulness_durations={new_item.mindfulness_durations}")
+            
             
             await db.commit()
             
