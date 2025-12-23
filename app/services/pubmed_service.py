@@ -230,13 +230,16 @@ class PubMedService:
     # PUBMED API
     # ═══════════════════════════════════════════════════════════════════════════
     
-    async def _search_pubmed(self, query: str, max_results: int = 3) -> Optional[Dict]:
-        """Search PubMed for papers."""
+    async def _search_pubmed(self, query: str, max_results: int = 5) -> Optional[Dict]:
+        """Search PubMed for papers, with relevance filtering."""
         try:
+            # Exclude clinical guidelines and non-original research
+            enhanced_query = f"({query}) NOT (guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti] OR chemotherapy[ti])"
+            
             # Search for PMIDs
             params = {
                 "db": "pubmed",
-                "term": query,
+                "term": enhanced_query,
                 "retmax": max_results,
                 "retmode": "json",
                 "sort": "relevance",
@@ -252,17 +255,55 @@ class PubMedService:
             pmids = data.get("esearchresult", {}).get("idlist", [])
             
             if not pmids:
+                logger.warning(f"PubMed: No papers found for query")
                 return None
             
-            logger.info(f"PubMed found {len(pmids)} papers")
+            logger.info(f"PubMed found {len(pmids)} papers, checking relevance...")
             
-            # Fetch paper details with abstract
+            # Check multiple papers and pick the best one
+            for pmid in pmids[:3]:  # Check first 3
+                await asyncio.sleep(self._rate_limit_delay)
+                paper = await self._fetch_pubmed_paper(pmid)
+                
+                if paper and self._is_relevant_paper(paper):
+                    logger.info(f"✅ Selected relevant paper: {paper.get('title', '')[:50]}...")
+                    return paper
+                elif paper:
+                    logger.warning(f"⚠️ Skipped irrelevant paper: {paper.get('title', '')[:50]}...")
+            
+            # If no relevant paper found, return first result anyway
             await asyncio.sleep(self._rate_limit_delay)
             return await self._fetch_pubmed_paper(pmids[0])
             
         except Exception as e:
             logger.error(f"PubMed search error: {e}")
             return None
+    
+    def _is_relevant_paper(self, paper: Dict) -> bool:
+        """Check if paper is relevant (not clinical guidelines, cancer, etc.)."""
+        title = paper.get("title", "").lower()
+        journal = paper.get("journal", "").lower()
+        
+        # Exclude irrelevant topics
+        exclude_terms = [
+            "cancer", "oncology", "chemotherapy", "tumor", "carcinoma",
+            "guideline", "guidelines", "clinical practice",
+            "covid", "coronavirus", "pandemic"
+        ]
+        
+        for term in exclude_terms:
+            if term in title:
+                return False
+        
+        # Must have participants (women in the study)
+        if paper.get("participants", 0) > 0:
+            return True
+        
+        # If no participants, check if it mentions women/female in title
+        if "women" in title or "female" in title:
+            return True
+        
+        return True  # Default to relevant if no exclusion criteria matched
     
     async def _fetch_pubmed_paper(self, pmid: str) -> Optional[Dict]:
         """Fetch full paper details from PubMed including abstract."""
