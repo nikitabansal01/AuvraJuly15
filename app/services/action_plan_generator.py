@@ -1914,6 +1914,8 @@ Respond with valid JSON object only."""
                     "target_hormone": new_item.target_hormone,
                     "hormone_persona_intro": new_item.hormone_persona_intro,
                     "research_studies": new_item.research_studies or [],
+                    "symptoms": new_item.symptoms or [],
+                    "conditions": new_item.conditions or [],
                     "variants": [
                         {
                             "variant_type": v.variant_type,
@@ -2407,7 +2409,9 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         "target_hormone": new_item.target_hormone,
                         "hormone_persona_intro": new_item.hormone_persona_intro,
                         "hero_image_url": new_item.hero_image_url,
-                        "time_slot": new_item.time_slot
+                        "time_slot": new_item.time_slot,
+                        "symptoms": new_item.symptoms or [],
+                        "conditions": new_item.conditions or []
                     }
                 })
                 
