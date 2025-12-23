@@ -620,11 +620,7 @@ class ActionPlanGenerator:
                 logger.error("Failed to generate actions via GPT")
                 return {"success": False, "error": "Failed to generate actions"}
             
-            # Step 3: Enrich actions with REAL PubMed research papers
-            logger.info("📚 Enriching actions with real PubMed research papers...")
-            actions = await self._enrich_with_pubmed_papers(actions, db)
-            
-            # Step 4: Generate images for all actions (16 total: 4 actions × 4 images)
+            # Step 3: Generate images for all actions (16 total: 4 actions × 4 images)
             actions_with_images, image_cost = await self._generate_all_images(
                 actions, user_id, db
             )
@@ -1416,70 +1412,6 @@ Write the hormone_persona_intro naturally, following the example style above. Th
         
         return actions
     
-    async def _enrich_with_pubmed_papers(
-        self,
-        actions: List[Dict],
-        db: AsyncSession
-    ) -> List[Dict]:
-        """
-        Replace GPT-generated research with REAL PubMed papers.
-        
-        This is called after GPT generates actions but before images.
-        It fetches real, verified research papers from PubMed API.
-        """
-        from app.services.pubmed_service import get_pubmed_service
-        
-        pubmed = get_pubmed_service()
-        enriched_actions = []
-        
-        for i, action in enumerate(actions):
-            try:
-                category = action.get("category", "food").lower()
-                target_hormone = action.get("target_hormone", "cortisol")
-                
-                # Get category-specific items
-                if category == "food":
-                    specific_items = action.get("food_items", [])
-                elif category == "movement":
-                    specific_items = action.get("exercise_types", [])
-                elif category == "mindfulness":
-                    specific_items = action.get("mindfulness_techniques", [])
-                else:
-                    specific_items = []
-                
-                # Fetch REAL PubMed paper
-                real_paper = await pubmed.get_paper_for_action(
-                    action_title=action.get("title", ""),
-                    category=category,
-                    target_hormone=target_hormone,
-                    specific_items=specific_items,
-                    db=db
-                )
-                
-                # Replace the (possibly hallucinated) research with real paper
-                action["research_studies"] = [real_paper]
-                
-                logger.info(f"✅ Action {i+1} enriched with PMID: {real_paper.get('pmid', 'N/A')}")
-                
-            except Exception as e:
-                logger.error(f"❌ PubMed enrichment failed for action {i+1}: {e}")
-                # Keep existing research_studies if enrichment fails
-                if not action.get("research_studies"):
-                    action["research_studies"] = [{
-                        "title": "Women's health research",
-                        "journal": "Peer-reviewed journal",
-                        "year": 2023,
-                        "participants": "Women participants",
-                        "finding": "Supports hormonal wellness",
-                        "pmid": "pending",
-                        "pubmed_url": "https://pubmed.ncbi.nlm.nih.gov/"
-                    }]
-            
-            enriched_actions.append(action)
-        
-        logger.info(f"📚 PubMed enrichment complete: {len(enriched_actions)} actions processed")
-        return enriched_actions
-    
     async def _generate_all_images(
         self,
         actions: List[Dict],
@@ -2244,13 +2176,15 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 # Parse JSON
                 response_data = json.loads(content.strip())
                 
-                # Extract actions array
+                # Extract actions array (GPT may use 'actions' or 'replacements' key)
                 if isinstance(response_data, dict) and "actions" in response_data:
                     attempt_actions = response_data["actions"]
+                elif isinstance(response_data, dict) and "replacements" in response_data:
+                    attempt_actions = response_data["replacements"]
                 elif isinstance(response_data, list):
                     attempt_actions = response_data
                 else:
-                    logger.error(f"Unexpected response format: {type(response_data)}")
+                    logger.error(f"Unexpected response format: {type(response_data)}, keys={response_data.keys() if isinstance(response_data, dict) else 'N/A'}")
                     continue
                 
                 if not attempt_actions:
@@ -2325,10 +2259,6 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 logger.info(f"    {len(research)} research studies, "
                            f"variants={len(replacement_action.get('variants', []))}, "
                            f"hormone_persona_intro={bool(replacement_action.get('hormone_persona_intro'))}")
-            
-            # Enrich with REAL PubMed research papers
-            logger.info("📚 Enriching replacement actions with real PubMed research...")
-            replacement_actions = await self._enrich_with_pubmed_papers(replacement_actions, db)
             
             # Process each replacement
             new_actions = []
