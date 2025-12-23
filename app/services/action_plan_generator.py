@@ -1904,8 +1904,8 @@ Respond with valid JSON object only."""
             
             # Generate images for replacement
             hero_url, _, _ = await self.image_service.get_or_generate_image(
-                prompt=replacement_action.get("image_prompt", replacement_action["title"]),
-                category=replacement_action["category"],
+                prompt=replacement_action.get("image_prompt", replacement_action.get("title", "Wellness Action")),
+                category=replacement_action.get("category", "food"),
                 variant_type="hero",
                 user_id=user_id,
                 db=db
@@ -1928,8 +1928,8 @@ Respond with valid JSON object only."""
                 uid=user_id,
                 slot=original.slot,  # Same slot
                 time_slot=replacement_action.get("time_slot", original.time_slot),
-                category=replacement_action["category"],
-                title=replacement_action["title"],
+                category=replacement_action.get("category", "food"),
+                title=replacement_action.get("title", "Wellness Action"),
                 specific_action=replacement_action.get("specific_action", ""),
                 purpose=replacement_action.get("purpose", ""),
                 target_hormone=original.target_hormone,  # Must be same
@@ -1965,7 +1965,7 @@ Respond with valid JSON object only."""
                 
                 variant_url, _, _ = await self.image_service.get_or_generate_image(
                     prompt=variant.get("image_prompt", variant.get("title")),
-                    category=replacement_action["category"],
+                    category=replacement_action.get("category", "food"),
                     variant_type=v_type,
                     user_id=user_id,
                     db=db
