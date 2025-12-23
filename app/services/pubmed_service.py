@@ -1,302 +1,624 @@
 """
 PubMed Service - Fetches real research citations from NIH PubMed database.
-Uses caching to handle rate limits at scale.
+Enhanced with GPT Tool Calling support and multi-API fallback.
+
+Features:
+- GPT tool calling for intelligent query building
+- Multi-API fallback: PubMed → OpenAlex → Semantic Scholar
+- PostgreSQL caching to avoid rate limits
+- Full abstract extraction for real findings
+- PMID/DOI links for verification
 """
 import asyncio
 import hashlib
 import logging
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import httpx
-from sqlalchemy.orm import Session
-from sqlalchemy import Column, Integer, String, Text, DateTime, Index
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
-# PubMed API endpoints (free, no auth required)
+# ═══════════════════════════════════════════════════════════════════════════════
+# API ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 PUBMED_SEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_FETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-PUBMED_SUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+OPENALEX_SEARCH_URL = "https://api.openalex.org/works"
+SEMANTIC_SCHOLAR_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GPT TOOL SCHEMA - For function calling
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PUBMED_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_research_paper",
+        "description": """Search for a REAL published research paper to cite.
+Returns a paper with PMID/DOI that can be verified on PubMed or DOI.org.
+
+IMPORTANT: Always call this tool for each action to get a real citation.
+The tool searches PubMed, OpenAlex, and Semantic Scholar for the best match.
+
+Guidelines for good queries:
+- Include the main intervention/topic (e.g., 'cinnamon', 'yoga', 'meditation')
+- Include the health outcome/hormone (e.g., 'insulin', 'cortisol', 'stress')
+- Always include 'women' or 'female' for women's health focus
+- Keep queries focused: 3-5 key terms work best
+
+Examples:
+- "cinnamon insulin sensitivity women"
+- "yoga cortisol reduction women stress"
+- "omega-3 inflammation PCOS women"
+- "meditation anxiety women mental health"
+""",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query with 3-5 key terms. Always include 'women' or 'female'."
+                },
+                "action_title": {
+                    "type": "string",
+                    "description": "The title of the action this citation is for (for logging)"
+                },
+                "category": {
+                    "type": "string",
+                    "enum": ["food", "movement", "mindfulness"],
+                    "description": "Action category for query optimization"
+                },
+                "target_hormone": {
+                    "type": "string",
+                    "description": "Target hormone (e.g., 'insulin', 'cortisol') for query optimization"
+                }
+            },
+            "required": ["query", "action_title"]
+        }
+    }
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN SERVICE CLASS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class PubMedService:
     """
-    Service for fetching real research papers from PubMed.
-    Implements caching to avoid hitting rate limits.
+    Multi-API research citation service with intelligent fallback.
+    
+    Priority order:
+    1. Cache lookup (instant)
+    2. PubMed (primary - biomedical focus)
+    3. OpenAlex (secondary - broad coverage)
+    4. Semantic Scholar (tertiary - AI-powered relevance)
     """
     
-    def __init__(self, db: Optional[Session] = None):
-        self.db = db
-        self.timeout = 10.0  # 10 second timeout
-        
-    async def get_citation_for_action(
+    def __init__(self):
+        self.client = httpx.AsyncClient(timeout=15.0)
+        self._rate_limit_delay = 0.35  # seconds between API calls
+    
+    async def find_citation(
         self,
-        title: str,
-        category: str,
-        hormone: str,
-        db: Optional[Session] = None
-    ) -> Optional[Dict[str, Any]]:
+        query: str,
+        action_title: str,
+        category: str = "food",
+        hormone: str = "cortisol",
+        db: Optional[AsyncSession] = None
+    ) -> Dict[str, Any]:
         """
-        Get a real PubMed citation for an action.
-        Uses cache first, falls back to API.
+        Find a real research paper citation.
         
-        Args:
-            title: Action title (e.g., "Chia Pudding")
-            category: food, movement, mindfulness
-            hormone: Target hormone (e.g., "androgens")
-            db: Database session for caching
-            
         Returns:
-            Citation dict with title, journal, year, participants, finding
+            Dictionary with paper details or empty dict if not found:
+            {
+                "title": "Full paper title",
+                "journal": "Journal name",
+                "year": 2023,
+                "participants": 150,
+                "finding": "Key finding from abstract",
+                "pmid": "12345678",
+                "doi": "10.1234/...",
+                "verification_link": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                "source": "pubmed"
+            }
         """
-        db = db or self.db
+        # Normalize query
+        query = self._normalize_query(query)
+        cache_key = self._generate_cache_key(query, category, hormone)
         
-        # Generate cache key
-        cache_key = self._generate_cache_key(title, category, hormone)
+        logger.info(f"🔍 Finding citation for '{action_title}': {query[:60]}...")
         
-        # Check cache first
+        # Step 1: Check cache
         if db:
-            cached = self._get_cached_citation(cache_key, db)
+            cached = await self._get_cached_citation(cache_key, db)
             if cached:
-                logger.info(f"📚 PubMed cache hit: {cache_key}")
+                logger.info(f"✅ Cache hit for '{action_title}'")
                 return cached
         
-        # Build search query
-        search_query = self._build_search_query(title, category, hormone)
-        logger.info(f"🔍 PubMed search: {search_query}")
+        # Step 2: Try PubMed (primary - best for biomedical)
+        paper = await self._search_pubmed(query)
+        if paper:
+            logger.info(f"✅ PubMed found: {paper['title'][:50]}... (PMID: {paper.get('pmid')})")
+            if db:
+                await self._cache_citation(cache_key, paper, db)
+            return paper
         
-        try:
-            # Search PubMed
-            pmids = await self._search_pubmed(search_query)
-            
-            if not pmids:
-                # Try simpler query
-                simple_query = self._build_simple_query(category, hormone)
-                pmids = await self._search_pubmed(simple_query)
-            
-            if not pmids:
-                logger.warning(f"No PubMed results for: {search_query}")
-                return None
-            
-            # Fetch paper details
-            citation = await self._fetch_paper_details(pmids[0])
-            
-            if citation and db:
-                # Cache the result
-                self._cache_citation(cache_key, citation, db)
-            
-            return citation
-            
-        except Exception as e:
-            logger.error(f"PubMed API error: {e}")
-            return None
+        # Step 3: Try OpenAlex (secondary - broad coverage, 100k/day free)
+        await asyncio.sleep(self._rate_limit_delay)
+        paper = await self._search_openalex(query)
+        if paper:
+            logger.info(f"✅ OpenAlex found: {paper['title'][:50]}...")
+            if db:
+                await self._cache_citation(cache_key, paper, db)
+            return paper
+        
+        # Step 4: Try Semantic Scholar (tertiary - AI relevance)
+        await asyncio.sleep(self._rate_limit_delay)
+        paper = await self._search_semantic_scholar(query)
+        if paper:
+            logger.info(f"✅ Semantic Scholar found: {paper['title'][:50]}...")
+            if db:
+                await self._cache_citation(cache_key, paper, db)
+            return paper
+        
+        # Step 5: No results - try simpler query
+        logger.warning(f"⚠️ No results for '{action_title}', trying simpler query...")
+        simple_query = self._simplify_query(query, category, hormone)
+        
+        paper = await self._search_pubmed(simple_query)
+        if paper:
+            logger.info(f"✅ PubMed (simplified) found: {paper['title'][:50]}...")
+            if db:
+                await self._cache_citation(cache_key, paper, db)
+            return paper
+        
+        # Final fallback - return empty
+        logger.warning(f"❌ No citation found for '{action_title}'")
+        return {}
     
-    def _generate_cache_key(self, title: str, category: str, hormone: str) -> str:
-        """Generate a cache key from action details."""
-        # Extract main keyword from title
-        keywords = self._extract_keywords(title)
-        key_string = f"{keywords}_{category}_{hormone}".lower()
-        return hashlib.md5(key_string.encode()).hexdigest()[:16]
-    
-    def _extract_keywords(self, title: str) -> str:
-        """Extract main keywords from action title."""
-        # Remove common words
-        stop_words = {"a", "an", "the", "and", "or", "with", "for", "in", "on", "to", 
-                     "session", "routine", "exercise", "practice", "daily", "gentle",
-                     "morning", "evening", "quick", "simple", "healthy", "nutritious"}
+    def _normalize_query(self, query: str) -> str:
+        """Normalize and enhance query for better results."""
+        query = query.lower().strip()
         
-        words = re.findall(r'\b[a-zA-Z]+\b', title.lower())
-        keywords = [w for w in words if w not in stop_words and len(w) > 2]
-        
-        # Return first 2 meaningful keywords
-        return "_".join(keywords[:2]) if keywords else "wellness"
-    
-    def _build_search_query(self, title: str, category: str, hormone: str) -> str:
-        """Build PubMed search query."""
-        keywords = self._extract_keywords(title)
-        keywords_spaced = keywords.replace("_", " ")
-        
-        # Build targeted query
-        hormone_map = {
-            "androgens": "androgen OR testosterone",
-            "estrogen": "estrogen OR estradiol",
-            "progesterone": "progesterone",
-            "cortisol": "cortisol OR stress hormone",
-            "insulin": "insulin OR glucose",
-            "thyroid": "thyroid OR T3 OR T4"
-        }
-        
-        hormone_terms = hormone_map.get(hormone.lower(), hormone)
-        
-        # Construct query - focus on women
-        query = f'({keywords_spaced}) AND (women OR female) AND ({hormone_terms})'
+        # Ensure women's health focus
+        if "women" not in query and "female" not in query:
+            query = f"({query}) AND (women OR female)"
         
         return query
     
-    def _build_simple_query(self, category: str, hormone: str) -> str:
-        """Build a simpler fallback query."""
+    def _simplify_query(self, query: str, category: str, hormone: str) -> str:
+        """Create a simpler fallback query."""
         category_terms = {
-            "food": "diet OR nutrition OR food",
-            "movement": "exercise OR physical activity",
-            "mindfulness": "mindfulness OR meditation OR stress reduction"
+            "food": "diet nutrition",
+            "movement": "exercise physical activity",
+            "mindfulness": "meditation mindfulness stress"
         }
-        
-        hormone_map = {
-            "androgens": "androgen",
-            "estrogen": "estrogen", 
+        hormone_terms = {
+            "insulin": "insulin glucose",
+            "cortisol": "cortisol stress",
+            "estrogen": "estrogen",
             "progesterone": "progesterone",
-            "cortisol": "cortisol",
-            "insulin": "insulin",
+            "androgens": "androgen testosterone",
+            "testosterone": "testosterone",
             "thyroid": "thyroid"
         }
         
-        cat_term = category_terms.get(category.lower(), "health")
-        hormone_term = hormone_map.get(hormone.lower(), hormone)
+        cat_term = category_terms.get(category, "health")
+        hormone_term = hormone_terms.get(hormone.lower(), hormone)
         
-        return f'({cat_term}) AND (women) AND ({hormone_term})'
+        return f"({cat_term}) AND ({hormone_term}) AND (women)"
     
-    async def _search_pubmed(self, query: str, max_results: int = 3) -> List[str]:
-        """Search PubMed and return PMIDs."""
-        params = {
-            "db": "pubmed",
-            "term": query,
-            "retmax": max_results,
-            "retmode": "json",
-            "sort": "relevance"
-        }
-        
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(PUBMED_SEARCH_URL, params=params)
+    def _generate_cache_key(self, query: str, category: str, hormone: str) -> str:
+        """Generate unique cache key."""
+        key_str = f"{query}_{category}_{hormone}".lower()
+        return hashlib.md5(key_str.encode()).hexdigest()[:16]
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PUBMED API
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    async def _search_pubmed(self, query: str, max_results: int = 3) -> Optional[Dict]:
+        """Search PubMed for papers."""
+        try:
+            # Search for PMIDs
+            params = {
+                "db": "pubmed",
+                "term": query,
+                "retmax": max_results,
+                "retmode": "json",
+                "sort": "relevance",
+                "datetype": "pdat",
+                "mindate": "2010",
+                "maxdate": "2025"
+            }
+            
+            response = await self.client.get(PUBMED_SEARCH_URL, params=params)
             response.raise_for_status()
             
             data = response.json()
             pmids = data.get("esearchresult", {}).get("idlist", [])
             
-            logger.info(f"PubMed found {len(pmids)} papers")
-            return pmids
-    
-    async def _fetch_paper_details(self, pmid: str) -> Optional[Dict[str, Any]]:
-        """Fetch paper details from PubMed."""
-        params = {
-            "db": "pubmed",
-            "id": pmid,
-            "retmode": "json"
-        }
-        
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(PUBMED_SUMMARY_URL, params=params)
-            response.raise_for_status()
-            
-            data = response.json()
-            result = data.get("result", {})
-            paper = result.get(pmid, {})
-            
-            if not paper or "error" in paper:
+            if not pmids:
                 return None
             
-            # Extract relevant fields
-            title = paper.get("title", "").strip()
+            logger.info(f"PubMed found {len(pmids)} papers")
             
-            # Get journal name
-            source = paper.get("source", "")
+            # Fetch paper details with abstract
+            await asyncio.sleep(self._rate_limit_delay)
+            return await self._fetch_pubmed_paper(pmids[0])
             
-            # Get publication year
-            pubdate = paper.get("pubdate", "")
-            year_match = re.search(r'(\d{4})', pubdate)
-            year = int(year_match.group(1)) if year_match else 2023
+        except Exception as e:
+            logger.error(f"PubMed search error: {e}")
+            return None
+    
+    async def _fetch_pubmed_paper(self, pmid: str) -> Optional[Dict]:
+        """Fetch full paper details from PubMed including abstract."""
+        try:
+            params = {
+                "db": "pubmed",
+                "id": pmid,
+                "retmode": "xml"
+            }
             
-            # Get authors (first 3)
-            authors = paper.get("authors", [])
-            author_names = [a.get("name", "") for a in authors[:3]]
-            authors_str = ", ".join(author_names)
-            if len(authors) > 3:
-                authors_str += " et al."
+            response = await self.client.get(PUBMED_FETCH_URL, params=params)
+            response.raise_for_status()
             
-            # Try to get abstract snippet for finding
-            # PubMed summary doesn't include abstract, so we use a generic finding
-            finding = self._generate_finding_from_title(title)
+            return self._parse_pubmed_xml(response.content, pmid)
+            
+        except Exception as e:
+            logger.error(f"PubMed fetch error: {e}")
+            return None
+    
+    def _parse_pubmed_xml(self, xml_content: bytes, pmid: str) -> Optional[Dict]:
+        """Parse PubMed XML response."""
+        try:
+            root = ET.fromstring(xml_content)
+            article = root.find(".//PubmedArticle")
+            
+            if article is None:
+                return None
+            
+            # Title
+            title_elem = article.find(".//ArticleTitle")
+            title = title_elem.text if title_elem is not None and title_elem.text else "Unknown"
+            
+            # Journal
+            journal_elem = article.find(".//Journal/Title")
+            journal = journal_elem.text if journal_elem is not None and journal_elem.text else "Unknown"
+            
+            # Year
+            year = self._extract_year_from_xml(article)
+            
+            # Abstract - FULL EXTRACTION
+            abstract = self._extract_abstract(article)
+            
+            # Extract participant count from abstract
+            participants = self._extract_participant_count(abstract)
+            
+            # Generate finding from abstract (results/conclusions section)
+            finding = self._extract_finding(abstract, title)
+            
+            # DOI
+            doi = None
+            for aid in article.findall(".//ArticleId"):
+                if aid.get("IdType") == "doi":
+                    doi = aid.text
+                    break
             
             return {
                 "title": title,
-                "journal": source,
+                "journal": journal,
                 "year": year,
-                "participants": "Women",  # Most papers we search are about women
+                "participants": participants if participants > 0 else "Women",
                 "finding": finding,
                 "pmid": pmid,
-                "authors": authors_str
+                "doi": doi,
+                "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                "source": "pubmed"
             }
+            
+        except Exception as e:
+            logger.error(f"PubMed XML parse error: {e}")
+            return None
     
-    def _generate_finding_from_title(self, title: str) -> str:
-        """Generate a brief finding description from paper title."""
-        # Simple extraction of key claim from title
-        title_lower = title.lower()
+    def _extract_year_from_xml(self, article: ET.Element) -> int:
+        """Extract publication year from article."""
+        year_elem = article.find(".//PubDate/Year")
+        if year_elem is not None and year_elem.text:
+            try:
+                return int(year_elem.text)
+            except ValueError:
+                pass
         
-        if "improve" in title_lower or "enhance" in title_lower:
-            return "Shows improvement in health outcomes"
-        elif "reduce" in title_lower or "decrease" in title_lower:
-            return "Demonstrates reduction in symptoms"
-        elif "effect" in title_lower:
-            return "Examines effects on women's health"
-        elif "association" in title_lower or "relationship" in title_lower:
-            return "Identifies health associations in women"
-        else:
-            return "Relevant research on women's health"
+        medline = article.find(".//PubDate/MedlineDate")
+        if medline is not None and medline.text:
+            match = re.search(r'(\d{4})', medline.text)
+            if match:
+                return int(match.group(1))
+        
+        return 2020
     
-    def _get_cached_citation(self, cache_key: str, db: Session) -> Optional[Dict[str, Any]]:
+    def _extract_abstract(self, article: ET.Element) -> str:
+        """Extract full abstract from article."""
+        parts = []
+        for text in article.findall(".//AbstractText"):
+            if text.text:
+                label = text.get("Label", "")
+                if label:
+                    parts.append(f"{label}: {text.text}")
+                else:
+                    parts.append(text.text)
+        return " ".join(parts)
+    
+    def _extract_participant_count(self, abstract: str) -> int:
+        """Extract participant count from abstract."""
+        if not abstract:
+            return 0
+        
+        patterns = [
+            r'n\s*=\s*(\d+)',
+            r'(\d+)\s*(?:women|females|participants|subjects|patients)',
+            r'(?:enrolled|recruited|included|randomized)\s*(\d+)',
+            r'sample\s*(?:of|size)?\s*(?:of)?\s*(\d+)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, abstract.lower())
+            for match in matches:
+                try:
+                    count = int(match)
+                    if 10 <= count <= 100000:
+                        return count
+                except ValueError:
+                    continue
+        return 0
+    
+    def _extract_finding(self, abstract: str, title: str) -> str:
+        """Extract key finding from abstract (prioritize results/conclusions)."""
+        if not abstract:
+            return f"Study on {title[:80]}..."
+        
+        # Look for results/conclusions sections
+        abstract_lower = abstract.lower()
+        for marker in ["RESULTS:", "CONCLUSIONS:", "CONCLUSION:", "FINDINGS:", "OUTCOME:"]:
+            if marker.lower() in abstract_lower:
+                idx = abstract_lower.find(marker.lower())
+                finding = abstract[idx + len(marker):].strip()
+                sentences = re.split(r'(?<=[.!?])\s+', finding)
+                finding = '. '.join(sentences[:2])
+                if len(finding) > 300:
+                    finding = finding[:297] + "..."
+                return finding
+        
+        # Fallback: last 2 sentences (often conclusions)
+        sentences = re.split(r'(?<=[.!?])\s+', abstract)
+        if len(sentences) >= 2:
+            finding = '. '.join(sentences[-2:])
+        else:
+            finding = abstract
+        
+        if len(finding) > 300:
+            finding = finding[:297] + "..."
+        return finding
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # OPENALEX API
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    async def _search_openalex(self, query: str) -> Optional[Dict]:
+        """Search OpenAlex for papers (100k/day free)."""
+        try:
+            # Remove boolean operators for OpenAlex
+            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+            clean_query = re.sub(r'[()]', '', clean_query)
+            
+            params = {
+                "search": clean_query,
+                "filter": "type:article,from_publication_date:2010-01-01",
+                "per-page": 1,
+                "mailto": "auvra@app.com"  # Polite pool for faster responses
+            }
+            
+            response = await self.client.get(OPENALEX_SEARCH_URL, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            results = data.get("results", [])
+            
+            if not results:
+                return None
+            
+            paper = results[0]
+            
+            # Extract abstract (OpenAlex provides inverted index)
+            abstract = self._reconstruct_openalex_abstract(paper.get("abstract_inverted_index", {}))
+            
+            # Get PMID if available
+            pmid = ""
+            ids = paper.get("ids", {})
+            pmid_url = ids.get("pmid", "")
+            if pmid_url:
+                pmid = pmid_url.replace("https://pubmed.ncbi.nlm.nih.gov/", "").rstrip("/")
+            
+            doi = paper.get("doi", "").replace("https://doi.org/", "") if paper.get("doi") else ""
+            
+            return {
+                "title": paper.get("title", "Unknown"),
+                "journal": paper.get("primary_location", {}).get("source", {}).get("display_name", "Unknown"),
+                "year": paper.get("publication_year", 2020),
+                "participants": self._extract_participant_count(abstract),
+                "finding": self._extract_finding(abstract, paper.get("title", "")),
+                "pmid": pmid,
+                "doi": doi,
+                "verification_link": paper.get("doi", paper.get("id", "")),
+                "source": "openalex"
+            }
+            
+        except Exception as e:
+            logger.error(f"OpenAlex search error: {e}")
+            return None
+    
+    def _reconstruct_openalex_abstract(self, inverted_index: Dict) -> str:
+        """Reconstruct abstract from OpenAlex inverted index format."""
+        if not inverted_index:
+            return ""
+        
+        words_with_positions = []
+        for word, positions in inverted_index.items():
+            for pos in positions:
+                words_with_positions.append((pos, word))
+        
+        words_with_positions.sort(key=lambda x: x[0])
+        return " ".join(word for _, word in words_with_positions)
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SEMANTIC SCHOLAR API
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    async def _search_semantic_scholar(self, query: str) -> Optional[Dict]:
+        """Search Semantic Scholar for papers."""
+        try:
+            # Clean query
+            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+            clean_query = re.sub(r'[()]', '', clean_query)
+            
+            params = {
+                "query": clean_query,
+                "limit": 1,
+                "fields": "title,abstract,year,venue,externalIds,citationCount"
+            }
+            
+            response = await self.client.get(SEMANTIC_SCHOLAR_URL, params=params)
+            
+            # Handle rate limiting gracefully
+            if response.status_code == 429:
+                logger.warning("Semantic Scholar rate limited, skipping")
+                return None
+            
+            response.raise_for_status()
+            
+            data = response.json()
+            papers = data.get("data", [])
+            
+            if not papers:
+                return None
+            
+            paper = papers[0]
+            abstract = paper.get("abstract", "") or ""
+            
+            external_ids = paper.get("externalIds", {}) or {}
+            pmid = external_ids.get("PubMed", "") or ""
+            doi = external_ids.get("DOI", "") or ""
+            
+            return {
+                "title": paper.get("title", "Unknown"),
+                "journal": paper.get("venue", "Unknown") or "Unknown",
+                "year": paper.get("year", 2020) or 2020,
+                "participants": self._extract_participant_count(abstract),
+                "finding": self._extract_finding(abstract, paper.get("title", "")),
+                "pmid": pmid,
+                "doi": doi,
+                "verification_link": f"https://doi.org/{doi}" if doi else "",
+                "source": "semantic_scholar"
+            }
+            
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                logger.warning("Semantic Scholar rate limited")
+            else:
+                logger.error(f"Semantic Scholar HTTP error: {e.response.status_code}")
+            return None
+        except Exception as e:
+            logger.error(f"Semantic Scholar search error: {e}")
+            return None
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # CACHE LAYER
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    async def _get_cached_citation(self, cache_key: str, db: AsyncSession) -> Optional[Dict]:
         """Get citation from cache."""
         from app.core.database import PubMedCache
         
         try:
-            cached = db.query(PubMedCache).filter(
-                PubMedCache.cache_key == cache_key
-            ).first()
+            result = await db.execute(
+                select(PubMedCache).where(PubMedCache.cache_key == cache_key)
+            )
+            cached = result.scalar_one_or_none()
             
             if cached:
-                # Update access count
-                cached.access_count += 1
-                db.commit()
+                # Parse participants
+                participants = 0
+                if cached.participants:
+                    match = re.search(r'(\d+)', str(cached.participants))
+                    if match:
+                        participants = int(match.group(1))
                 
                 return {
                     "title": cached.title,
-                    "journal": cached.journal,
-                    "year": cached.year,
-                    "participants": cached.participants or "Women",
-                    "finding": cached.finding
+                    "journal": cached.journal or "Unknown",
+                    "year": cached.year or 2020,
+                    "participants": participants if participants > 0 else "Women",
+                    "finding": cached.finding or "",
+                    "pmid": cached.pubmed_id or "",
+                    "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{cached.pubmed_id}/" if cached.pubmed_id else "",
+                    "source": "cache"
                 }
+                
         except Exception as e:
-            logger.warning(f"Cache lookup failed: {e}")
+            logger.warning(f"Cache lookup error: {e}")
         
         return None
     
-    def _cache_citation(self, cache_key: str, citation: Dict[str, Any], db: Session) -> None:
+    async def _cache_citation(self, cache_key: str, paper: Dict, db: AsyncSession) -> None:
         """Store citation in cache."""
         from app.core.database import PubMedCache
         
         try:
+            # Convert participants to string for storage
+            participants = paper.get("participants", 0)
+            if isinstance(participants, int):
+                participants_str = str(participants) if participants > 0 else None
+            else:
+                participants_str = str(participants) if participants else None
+            
             cache_entry = PubMedCache(
                 cache_key=cache_key,
-                pubmed_id=citation.get("pmid", ""),
-                title=citation.get("title", ""),
-                journal=citation.get("journal", ""),
-                year=citation.get("year", 2023),
-                authors=citation.get("authors", ""),
-                participants=citation.get("participants", "Women"),
-                finding=citation.get("finding", ""),
+                pubmed_id=paper.get("pmid", ""),
+                title=paper.get("title", ""),
+                journal=paper.get("journal", ""),
+                year=paper.get("year", 2020),
+                participants=participants_str,
+                finding=paper.get("finding", ""),
                 created_at=datetime.utcnow(),
                 access_count=1
             )
             db.add(cache_entry)
-            db.commit()
-            logger.info(f"📚 Cached PubMed citation: {cache_key}")
+            await db.commit()
+            logger.info(f"📚 Cached citation: {cache_key}")
+            
         except Exception as e:
-            logger.warning(f"Cache write failed: {e}")
-            db.rollback()
+            logger.warning(f"Cache write error: {e}")
+            await db.rollback()
+    
+    async def close(self):
+        """Close HTTP client."""
+        await self.client.aclose()
 
 
-# Singleton for easy import
+# ═══════════════════════════════════════════════════════════════════════════════
+# SINGLETON & TOOL EXECUTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
 _pubmed_service: Optional[PubMedService] = None
+
 
 def get_pubmed_service() -> PubMedService:
     """Get singleton PubMed service instance."""
@@ -304,3 +626,31 @@ def get_pubmed_service() -> PubMedService:
     if _pubmed_service is None:
         _pubmed_service = PubMedService()
     return _pubmed_service
+
+
+async def execute_pubmed_tool(
+    arguments: Dict[str, Any],
+    db: Optional[AsyncSession] = None
+) -> Dict[str, Any]:
+    """
+    Execute the search_research_paper tool.
+    Called by action_plan_generator when GPT requests the tool.
+    
+    Args:
+        arguments: Tool arguments from GPT (query, action_title, category, target_hormone)
+        db: Database session for caching
+        
+    Returns:
+        Paper details dict or empty dict if not found
+    """
+    service = get_pubmed_service()
+    
+    result = await service.find_citation(
+        query=arguments.get("query", ""),
+        action_title=arguments.get("action_title", ""),
+        category=arguments.get("category", "food"),
+        hormone=arguments.get("target_hormone", "cortisol"),
+        db=db
+    )
+    
+    return result

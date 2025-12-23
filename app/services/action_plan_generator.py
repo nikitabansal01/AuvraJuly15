@@ -13,7 +13,7 @@ Features:
 - Consistent prompt style for semantic image matching
 - Integration with ImageLibraryService for image generation
 """
-
+ 
 import os
 import json
 import logging
@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update
 
 from app.services.image_library_service import get_image_library_service
+from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ SYSTEM_PROMPT = """You are AUVRA's personalized wellness AI that creates daily a
 IMPORTANT GUIDELINES:
 1. Each action must target EXACTLY ONE hormone - the specified target hormone
 2. Actions should be specific, actionable, and achievable in one day
-3. Include REAL research citations with actual journal names, years, and participant counts
+3. Use the 'search_research_paper' tool to get REAL citations - NEVER fabricate citations
 4. Time slots should be appropriate: morning (6-11am), afternoon (12-5pm), evening (6-10pm)
 5. Image prompts should follow a consistent photography style for better semantic matching
 
@@ -187,13 +188,14 @@ For "mindfulness" actions, you MUST provide:
 
 Failure to provide these for their respective categories will result in manual correction.
 
-RESEARCH CITATION FORMAT:
+RESEARCH CITATION FORMAT (from search_research_paper tool):
 {
-    "title": "Actual study title",
-    "journal": "Real journal name (e.g., Journal of Clinical Endocrinology, Nutrients, etc.)",
+    "title": "Study title from PubMed/OpenAlex",
+    "journal": "Journal name from tool result",
     "year": 2020,
     "participants": 156,
-    "finding": "Brief key finding relevant to the action"
+    "finding": "Key finding from paper abstract",
+    "pmid": "12345678"  // Include PMID for verification
 }
 
 IMAGE PROMPT STYLE (for consistent semantic matching):
@@ -333,16 +335,11 @@ VARIANT TYPES by category (use exact string values):
 - mindfulness: "guided" (with instruction), "solo" (self-directed), "brief" (5-min version)
 
 RESEARCH STUDIES - CRITICAL REQUIREMENTS:
-- Provide EXACTLY 1 study (not 2)
-- Study MUST focus on WOMEN/FEMALES specifically (not mixed gender or male-only studies)
-- Use REAL published studies from reputable journals
-- Examples of real journals: "Nutrients", "Journal of Clinical Endocrinology & Metabolism", 
-  "Psychoneuroendocrinology", "American Journal of Clinical Nutrition", "PLOS ONE",
-  "Frontiers in Nutrition", "Journal of Women's Health", "Endocrine Reviews"
-- Include actual year of publication (prefer 2015-2024)
-- Estimate realistic participant counts (typically 20-500 for nutrition studies, all female)
-- The finding should be specific and evidence-based
-- DO NOT make up fake journal names or fake studies
+- Use the 'search_research_paper' tool to get REAL citations from PubMed/OpenAlex
+- DO NOT fabricate or make up any citation details
+- Include the PMID in the research study for verification
+- research_studies format: [{"title": "...", "journal": "...", "year": 2023, "participants": 150, "finding": "...", "pmid": "12345678"}]
+- If the tool returns no results, set research_studies to an empty array []
 
 Respond with valid JSON array only, no markdown formatting."""
 
@@ -575,8 +572,8 @@ class ActionPlanGenerator:
             for attempt in range(1, MAX_RETRIES + 1):
                 logger.info(f"🔄 Generation attempt {attempt}/{MAX_RETRIES}")
                 
-                # Generate actions
-                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context)
+                # Generate actions with real citations from PubMed
+                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db)
                 gpt_cost += attempt_cost
                 
                 if not attempt_actions:
@@ -1103,10 +1100,14 @@ Format as bullet points."""
     
     async def _generate_actions_via_gpt(
         self,
-        user_context: Dict[str, Any]
+        user_context: Dict[str, Any],
+        db: Optional[AsyncSession] = None
     ) -> Tuple[Optional[List[Dict]], float]:
         """
-        Generate actions using GPT-4o-mini.
+        Generate actions using GPT-4o-mini with tool calling for real citations.
+        
+        Uses search_research_paper tool to fetch real papers from PubMed/OpenAlex/Semantic Scholar.
+        Caches results to database for faster future lookups.
         
         Returns (actions, cost)
         """
@@ -1176,7 +1177,7 @@ For {secondary_persona['name']} ({user_context["secondary_hormone"]}):
             hormone_phase_context=hormone_phase_context
         )
         
-        # Enhanced system prompt with persona context (examples already in SYSTEM_PROMPT)
+        # Enhanced system prompt with tool calling instructions
         enhanced_system = SYSTEM_PROMPT + f"""
 
 CURRENT USER'S HORMONE CONTEXT:
@@ -1188,9 +1189,21 @@ Write the hormone_persona_intro naturally, following the example style above. Th
 1. Introduce itself by name ("I'm Progesterone...")
 2. Explain what's happening in this cycle phase
 3. Connect the recommended action to how it helps the hormone and the user
+
+CRITICAL - RESEARCH CITATIONS:
+You MUST use the 'search_research_paper' tool for EACH action to get a REAL citation.
+The tool searches PubMed, OpenAlex, and Semantic Scholar for real papers.
+Include the paper details (title, journal, year, pmid, finding) in research_studies.
+NEVER fabricate citations - always use the tool results.
+If the tool returns empty, set research_studies to an empty array.
 """
         
+        total_cost = 0.0
+        
         try:
+            # Step 1: Call GPT with tools
+            logger.info("🤖 Calling GPT with search_research_paper tool...")
+            
             response = await self.client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={
@@ -1203,51 +1216,118 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                         {"role": "system", "content": enhanced_system},
                         {"role": "user", "content": prompt}
                     ],
-                    "temperature": 0.3,  # Lowered from 0.7 for consistency
-                    "max_tokens": 4000,
-                    # Use simple JSON mode (strict schema fails with conditional fields)
-                    "response_format": {"type": "json_object"}
+                    "tools": [PUBMED_SEARCH_TOOL],
+                    "tool_choice": "auto",
+                    "temperature": 0.3,
+                    "max_tokens": 6000
                 }
             )
             
             response.raise_for_status()
             data = response.json()
             
-            # Calculate cost (GPT-4o-mini pricing)
+            # Calculate cost
             input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
             output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-            cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+            total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+            
+            message = data["choices"][0]["message"]
+            
+            # Step 2: Handle tool calls if GPT wants to search for papers
+            if message.get("tool_calls"):
+                logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for research papers")
+                
+                tool_results = []
+                for tool_call in message["tool_calls"]:
+                    if tool_call["function"]["name"] == "search_research_paper":
+                        args = json.loads(tool_call["function"]["arguments"])
+                        
+                        logger.info(f"  🔍 Searching for: {args.get('action_title', 'unknown')}")
+                        
+                        # Execute the tool - search PubMed/OpenAlex/Semantic Scholar
+                        # Pass db for caching if available
+                        paper = await execute_pubmed_tool(args, db=db)
+                        
+                        if paper and paper.get("title"):
+                            logger.info(f"  ✅ Found: {paper['title'][:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                        else:
+                            logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
+                        
+                        tool_results.append({
+                            "tool_call_id": tool_call["id"],
+                            "role": "tool",
+                            "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
+                        })
+                
+                # Step 3: Send tool results back to GPT
+                logger.info("📤 Sending research results back to GPT...")
+                
+                # Build the assistant message with tool calls
+                assistant_message = {
+                    "role": "assistant",
+                    "content": message.get("content"),  # May be null
+                    "tool_calls": message.get("tool_calls")
+                }
+                
+                response = await self.client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.GPT_MODEL,
+                        "messages": [
+                            {"role": "system", "content": enhanced_system},
+                            {"role": "user", "content": prompt},
+                            assistant_message,
+                            *tool_results
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 5000,
+                        "response_format": {"type": "json_object"}
+                    }
+                )
+                
+                response.raise_for_status()
+                data = response.json()
+                
+                # Add second call cost
+                input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+                output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+                total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                
+                content = data["choices"][0]["message"]["content"]
+            else:
+                # GPT didn't call tools - use response as-is
+                logger.warning("⚠️ GPT did not call tools - citations may be fabricated")
+                content = message.get("content", "{}")
             
             # Parse response
-            content = data["choices"][0]["message"]["content"]
-            
-            # With structured outputs, response is guaranteed valid JSON
             response_data = json.loads(content.strip())
             
             # Extract actions array from response
             if isinstance(response_data, dict) and "actions" in response_data:
                 actions = response_data["actions"]
             elif isinstance(response_data, list):
-                # Fallback for non-structured response
                 actions = response_data
             else:
                 logger.error(f"Unexpected response format: {type(response_data)}")
-                return (None, cost)
+                return (None, total_cost)
             
-            # Normalize and validate actions
+            # Normalize categories
             for action in actions:
-                # Ensure category is lowercase for internal logic
                 if "category" in action:
                     action["category"] = action["category"].lower()
             
-            logger.info(f"Generated {len(actions)} actions via GPT-4o-mini (cost: ${cost:.4f})")
+            logger.info(f"✅ Generated {len(actions)} actions with REAL citations (cost: ${total_cost:.4f})")
             
-            # Debug: Log all fields for each action to verify GPT response
+            # Log citations for verification
             for i, action in enumerate(actions):
                 research = action.get("research_studies", [])
                 category = action.get("category", "unknown")
                 
-                # Log category-specific fields to verify GPT is returning them
+                # Log category-specific fields
                 if category == "food":
                     logger.info(f"  Action {i+1} '{action.get('title')}' [FOOD]: "
                                f"food_amounts={action.get('food_amounts', 'MISSING')}, "
@@ -1259,19 +1339,28 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                     logger.info(f"  Action {i+1} '{action.get('title')}' [MINDFULNESS]: "
                                f"mindfulness_durations={action.get('mindfulness_durations', 'MISSING')}")
                 
-                logger.info(f"    {len(research)} research studies, "
-                           f"symptoms={action.get('symptoms')}, "
+                # Log citation info
+                if research and len(research) > 0 and isinstance(research[0], dict):
+                    pmid = research[0].get("pmid", "")
+                    if pmid:
+                        logger.info(f"    📚 REAL citation: PMID {pmid}")
+                    else:
+                        logger.info(f"    📚 Citation from: {research[0].get('source', 'unknown')}")
+                else:
+                    logger.warning(f"    ⚠️ No citation for this action")
+                
+                logger.info(f"    symptoms={action.get('symptoms')}, "
                            f"conditions={action.get('conditions')}, "
                            f"hormone_persona_intro={bool(action.get('hormone_persona_intro'))}")
             
-            return (actions, cost)
+            return (actions, total_cost)
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse GPT response as JSON: {e}")
-            return (None, 0.0)
+            return (None, total_cost)
         except Exception as e:
             logger.error(f"Error calling GPT: {e}")
-            return (None, 0.0)
+            return (None, total_cost)
     
     def _validate_action_fields(
         self,
