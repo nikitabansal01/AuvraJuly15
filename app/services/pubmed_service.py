@@ -16,6 +16,7 @@ NCBI E-utilities Documentation: https://www.ncbi.nlm.nih.gov/books/NBK25499/
 import os
 import logging
 import asyncio
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
@@ -41,7 +42,8 @@ NCBI_EMAIL = os.getenv("NCBI_EMAIL", "auvra-health@example.com")
 NCBI_API_KEY = os.getenv("NCBI_API_KEY", "")  # Optional but recommended for 10 req/sec
 
 # Rate limiting (3 req/sec without API key, 10 req/sec with)
-RATE_LIMIT_DELAY = 0.15 if NCBI_API_KEY else 0.4  # seconds between requests
+# Using conservative delays to stay well under limits
+RATE_LIMIT_DELAY = 0.12 if NCBI_API_KEY else 0.35  # seconds between requests
 
 # Cache settings
 CACHE_TTL_DAYS = 30  # How long to consider cached papers fresh
@@ -82,7 +84,8 @@ class PubmedService:
     def __init__(self):
         """Initialize the PubMed service."""
         self.client = httpx.AsyncClient(timeout=30.0)
-        self._last_request_time = 0
+        self._last_request_time: float = 0.0  # Use time.time() for reliable tracking
+        self._request_lock = asyncio.Lock()  # Prevent concurrent rate limit violations
         
         if NCBI_API_KEY:
             logger.info("✅ PubMed service initialized with NCBI API key (10 req/sec)")
@@ -445,12 +448,21 @@ class PubmedService:
     # ═══════════════════════════════════════════════════════════════════════════
     
     async def _rate_limit(self):
-        """Ensure we don't exceed NCBI rate limits."""
-        now = asyncio.get_event_loop().time()
-        elapsed = now - self._last_request_time
-        if elapsed < RATE_LIMIT_DELAY:
-            await asyncio.sleep(RATE_LIMIT_DELAY - elapsed)
-        self._last_request_time = asyncio.get_event_loop().time()
+        """
+        Ensure we don't exceed NCBI rate limits.
+        
+        Uses a lock to prevent concurrent requests from violating rate limits.
+        Without API key: 3 requests/second (333ms between requests)
+        With API key: 10 requests/second (100ms between requests)
+        """
+        async with self._request_lock:
+            now = time.time()
+            elapsed = now - self._last_request_time
+            if elapsed < RATE_LIMIT_DELAY:
+                wait_time = RATE_LIMIT_DELAY - elapsed
+                logger.debug(f"⏳ Rate limiting: waiting {wait_time:.3f}s")
+                await asyncio.sleep(wait_time)
+            self._last_request_time = time.time()
     
     async def _search_pubmed(
         self,
