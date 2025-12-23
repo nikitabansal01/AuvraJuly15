@@ -1291,7 +1291,7 @@ Write the hormone_persona_intro naturally, following the example style above. Th
         REQUIRED_BASE = [
             "title", "category", "time_slot", "specific_action", 
             "purpose", "target_hormone", "hormone_persona_intro",
-            "image_prompt", "research_studies", "variants"
+            "image_prompt", "research_studies", "variants", "symptoms"
         ]
         
         REQUIRED_BY_CATEGORY = {
@@ -2052,7 +2052,7 @@ OUTPUT FORMAT (for each replacement action)
 10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
 11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
 12. variants: Array of 3 variant objects (see VARIANT FORMAT below)
-13. symptoms: Array of 1-3 specific symptoms THIS ACTION helps (pick from user's concerns: period pain, bloating, fatigue, acne, stress, mood swings, low energy, cramps)
+13. symptoms: REQUIRED - Array of 1-3 symptoms THIS ACTION specifically helps (e.g., ["fatigue", "bloating", "stress"]) - NEVER EMPTY!
 14. conditions: Array of conditions this helps (e.g., ["PCOS"]) - can be empty []
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
