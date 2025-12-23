@@ -340,7 +340,7 @@ RESEARCH STUDIES - CRITICAL REQUIREMENTS:
 - The paper must support the recommendation (e.g., "cinnamon reduces blood sugar" not just "cinnamon is used in cooking")
 - Search query should include: [specific food/exercise] + [mechanism/benefit] + [hormone] + women
 - Include the PMID for verification - users can click "See details in PubMed"
-- research_studies format: [{{"title": "...", "journal": "...", "year": 2023, "participants": 150, "finding": "...", "pmid": "12345678"}}]
+- research_studies format: [{{"title": "...", "journal": "...", "year": 2023, "participants": 150, "finding": "...", "pmid": "12345678", "verification_link": "https://pubmed.ncbi.nlm.nih.gov/12345678/"}}]
 - participants should be the NUMBER of women in the study (integer, e.g., 150)
 - finding should explain the BENEFIT/RESULT discovered (e.g., "Cinnamon supplementation significantly reduced fasting blood glucose in women with PCOS")
 - If the tool returns no results, set research_studies to an empty array []
@@ -412,9 +412,11 @@ ACTION_PLAN_SCHEMA = {
                                 "journal": {"type": "string"},
                                 "year": {"type": "integer"},
                                 "participants": {"type": "integer"},
-                                "finding": {"type": "string"}
+                                "finding": {"type": "string"},
+                                "pmid": {"type": "string"},
+                                "verification_link": {"type": "string"}
                             },
-                            "required": ["title", "journal", "year", "participants", "finding"],
+                            "required": ["title", "journal", "year", "participants", "finding", "pmid"],
                             "additionalProperties": False
                         }
                     },
@@ -1467,7 +1469,9 @@ If the tool returns empty, set research_studies to an empty array.
                     "journal": "Generic Journal",
                     "year": 2024,
                     "participants": 100,
-                    "finding": "Supports overall wellness"
+                    "finding": "Supports overall wellness",
+                    "pmid": "",
+                    "verification_link": ""
                 }]
                 logger.warning(f"🔧 Applied default research for '{action.get('title', 'Untitled')}'")
             
@@ -2208,7 +2212,9 @@ EXAMPLE OUTPUT for FOOD replacement:
     "journal": "Nutrients",
     "year": 2021,
     "participants": 145,
-    "finding": "Quinoa consumption improved insulin sensitivity in premenopausal women"
+    "finding": "Quinoa consumption improved insulin sensitivity in premenopausal women",
+    "pmid": "12345678",
+    "verification_link": "https://pubmed.ncbi.nlm.nih.gov/12345678/"
   }}],
   "variants": [
     {{
