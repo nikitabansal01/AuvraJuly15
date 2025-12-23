@@ -2194,6 +2194,11 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 if not isinstance(attempt_actions, list):
                     attempt_actions = [attempt_actions]
                 
+                # Normalize categories to lowercase (same as _generate_actions_via_gpt)
+                for action in attempt_actions:
+                    if "category" in action:
+                        action["category"] = action["category"].lower()
+                
                 # Validate all replacement actions
                 all_valid = True
                 validation_errors = []
