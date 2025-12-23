@@ -40,30 +40,36 @@ PUBMED_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "search_research_paper",
-        "description": """Search for a REAL published research paper to cite.
-Returns a paper with PMID/DOI that can be verified on PubMed or DOI.org.
+        "description": """Search for a REAL published research paper that SUPPORTS WHY we recommend this action.
 
-IMPORTANT: Always call this tool for each action to get a real citation.
-The tool searches PubMed, OpenAlex, and Semantic Scholar for the best match.
+CRITICAL: Find papers that explain the mechanism/benefit of the specific intervention for the target hormone or health outcome.
 
-Guidelines for good queries:
-- Include the main intervention/topic (e.g., 'cinnamon', 'yoga', 'meditation')
-- Include the health outcome/hormone (e.g., 'insulin', 'cortisol', 'stress')
-- Always include 'women' or 'female' for women's health focus
-- Keep queries focused: 3-5 key terms work best
+The paper should answer: "Why does [intervention] help [hormone/condition]?"
 
-Examples:
-- "cinnamon insulin sensitivity women"
-- "yoga cortisol reduction women stress"
-- "omega-3 inflammation PCOS women"
-- "meditation anxiety women mental health"
+Guidelines for RELEVANT queries:
+- Include the specific intervention (e.g., 'pumpkin seeds', 'yoga', 'deep breathing')
+- Include the MECHANISM or BENEFIT (e.g., 'reduces cortisol', 'improves insulin sensitivity', 'lowers blood sugar')
+- Always include 'women' or 'female' for women's health relevance
+- Include the health outcome (e.g., 'stress reduction', 'blood sugar', 'hormone balance')
+
+GOOD query examples (explain WHY it works):
+- "pumpkin seeds zinc magnesium women hormone"
+- "yoga cortisol reduction stress women randomized"
+- "cinnamon blood sugar insulin sensitivity women"
+- "omega-3 fatty acids inflammation PCOS women"
+- "deep breathing stress cortisol women intervention"
+- "flaxseed lignans estrogen women menstrual"
+
+BAD query examples (too vague):
+- "healthy eating women" (doesn't explain mechanism)
+- "exercise benefits" (too generic)
 """,
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query with 3-5 key terms. Always include 'women' or 'female'."
+                    "description": "Search query with intervention + mechanism/benefit + 'women'. Should find papers that explain WHY the action helps."
                 },
                 "action_title": {
                     "type": "string",
@@ -76,10 +82,10 @@ Examples:
                 },
                 "target_hormone": {
                     "type": "string",
-                    "description": "Target hormone (e.g., 'insulin', 'cortisol') for query optimization"
+                    "description": "Target hormone (e.g., 'insulin', 'cortisol') that this action supports"
                 }
             },
-            "required": ["query", "action_title"]
+            "required": ["query", "action_title", "target_hormone"]
         }
     }
 }

@@ -336,10 +336,13 @@ VARIANT TYPES by category (use exact string values):
 - mindfulness: "guided" (with instruction), "solo" (self-directed), "brief" (5-min version)
 
 RESEARCH STUDIES - CRITICAL REQUIREMENTS:
-- Use the 'search_research_paper' tool to get REAL citations from PubMed/OpenAlex
-- DO NOT fabricate or make up any citation details
-- Include the PMID in the research study for verification
+- Use 'search_research_paper' tool to find papers that EXPLAIN WHY this action helps the target hormone
+- The paper must support the recommendation (e.g., "cinnamon reduces blood sugar" not just "cinnamon is used in cooking")
+- Search query should include: [specific food/exercise] + [mechanism/benefit] + [hormone] + women
+- Include the PMID for verification - users can click "See details in PubMed"
 - research_studies format: [{{"title": "...", "journal": "...", "year": 2023, "participants": 150, "finding": "...", "pmid": "12345678"}}]
+- participants should be the NUMBER of women in the study (integer, e.g., 150)
+- finding should explain the BENEFIT/RESULT discovered (e.g., "Cinnamon supplementation significantly reduced fasting blood glucose in women with PCOS")
 - If the tool returns no results, set research_studies to an empty array []
 
 Respond with valid JSON array only, no markdown formatting."""
