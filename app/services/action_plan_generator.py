@@ -2127,13 +2127,15 @@ EXAMPLE OUTPUT for FOOD replacement:
 
 Respond with valid JSON array only. Do not add any text outside the JSON."""
 
-            # Generate replacements via GPT with retry logic (same as generate_new_plan)
+            # Generate replacements via GPT with retry logic
             MAX_RETRIES = 2
             replacement_actions = None
+            gpt_cost = 0.0
             
             for attempt in range(1, MAX_RETRIES + 1):
-                logger.info(f"🔄 Replacement attempt {attempt}/{MAX_RETRIES}")
+                logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_RETRIES}")
                 
+                # Generate replacement actions
                 response = await self.client.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers={
@@ -2148,7 +2150,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         ],
                         "temperature": 0.3,  # Lowered from 0.8 for consistency
                         "max_tokens": 4000,
-                        "response_format": {"type": "json_object"}  # Ensure valid JSON
+                        "response_format": {"type": "json_object"}  # Simple JSON mode
                     }
                 )
                 
@@ -2158,35 +2160,39 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 # Calculate GPT cost
                 input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
                 output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                gpt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
-                total_cost += gpt_cost
+                attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                gpt_cost += attempt_cost
                 
                 content = data["choices"][0]["message"]["content"]
                 
-                # Parse response - json_object mode returns valid JSON
-                logger.info(f"📋 ABOUT TO PARSE GPT JSON - content length: {len(content)}")
+                # Parse response
+                if content.startswith("```"):
+                    content = content.split("```")[1]
+                    if content.startswith("json"):
+                        content = content[4:]
+                
                 logger.info(f"🔍 First 300 chars of content: {content[:300]}")
                 
-                try:
-                    parsed_data = json.loads(content.strip())
-                    
-                    # Handle both array and object with "actions" key
-                    if isinstance(parsed_data, list):
-                        attempt_actions = parsed_data
-                    elif isinstance(parsed_data, dict) and "actions" in parsed_data:
-                        attempt_actions = parsed_data["actions"]
-                    elif isinstance(parsed_data, dict):
-                        # Single action wrapped in dict
-                        attempt_actions = [parsed_data]
-                    else:
-                        logger.error(f"Unexpected response format: {type(parsed_data)}")
-                        continue
-                        
-                    logger.info(f"✅ Successfully parsed JSON - got {len(attempt_actions)} actions")
-                    
-                except json.JSONDecodeError as e:
-                    logger.error(f"❌ JSON parse error on attempt {attempt}: {e}")
+                # Parse JSON
+                response_data = json.loads(content.strip())
+                
+                # Extract actions array
+                if isinstance(response_data, dict) and "actions" in response_data:
+                    attempt_actions = response_data["actions"]
+                elif isinstance(response_data, list):
+                    attempt_actions = response_data
+                else:
+                    logger.error(f"Unexpected response format: {type(response_data)}")
                     continue
+                
+                if not attempt_actions:
+                    logger.warning(f"❌ Attempt {attempt}: No actions generated")
+                    continue
+                
+                logger.info(f"✅ Successfully parsed JSON - got {len(attempt_actions)} actions")
+                
+                if not isinstance(attempt_actions, list):
+                    attempt_actions = [attempt_actions]
                 
                 # Validate all replacement actions
                 all_valid = True
@@ -2203,28 +2209,26 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         )
                 
                 if all_valid:
-                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} replacement actions valid")
+                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} replacements valid")
                     replacement_actions = attempt_actions
                     break
                 
-                # Log errors
+                # Log validation errors
                 logger.warning(f"⚠️ Attempt {attempt} validation failed:")
                 for error in validation_errors:
                     logger.warning(f"   • {error}")
                 
                 if attempt < MAX_RETRIES:
-                    logger.info(f"🔄 Retrying replacement generation...")
+                    logger.info(f"🔄 Retrying generation...")
                 else:
                     # Max retries exceeded - apply fallback defaults
                     logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, applying fallback defaults")
                     replacement_actions = self._fill_missing_fields(attempt_actions)
             
+            total_cost += gpt_cost
+            
             if not replacement_actions:
                 return {"success": False, "error": "Failed to generate replacement actions"}
-            
-            if not isinstance(replacement_actions, list):
-                replacement_actions = [replacement_actions]
-
             
             # Debug: Log all fields for each replacement action to verify GPT response
             logger.info(f"📋 GPT returned {len(replacement_actions)} replacement actions")
