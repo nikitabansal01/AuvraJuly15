@@ -2052,8 +2052,8 @@ OUTPUT FORMAT (for each replacement action)
 10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
 11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
 12. variants: Array of 3 variant objects (see VARIANT FORMAT below)
-13. symptoms: Array of strings - specific symptoms this action helps (e.g., ["fatigue", "stress", "bloating"])
-14. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
+
+Note: symptoms and conditions are automatically added from user's profile.
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
 For FOOD actions, MUST include:
@@ -2305,14 +2305,17 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     action_conditions = [c for c in raw_conditions if c and str(c).lower() != "none of the above"]
                 else:
                     action_conditions = []
-                
-                raw_symptoms = replacement_action.get("symptoms", [])
-                if isinstance(raw_symptoms, str):
-                    action_symptoms = [raw_symptoms] if raw_symptoms else []
-                elif isinstance(raw_symptoms, list):
-                    action_symptoms = raw_symptoms
-                else:
-                    action_symptoms = []
+                # Get SYMPTOMS from user profile (not GPT)
+                # Combine all user concerns as symptoms
+                user_symptoms = []
+                for concern_field in ["period_concerns", "body_concerns", "skin_hair_concerns", "mental_health_concerns"]:
+                    concern_value = user_context.get(concern_field, "")
+                    if concern_value and concern_value.lower() not in ["none specified", "none", ""]:
+                        if isinstance(concern_value, list):
+                            user_symptoms.extend([c for c in concern_value if c])
+                        else:
+                            user_symptoms.append(concern_value)
+                action_symptoms = list(set(user_symptoms))[:5]  # Limit to 5 unique symptoms
                 
                 new_item = ActionPlanItem(
                     plan_id=plan_id,
