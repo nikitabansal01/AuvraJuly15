@@ -97,13 +97,17 @@ BAD query examples (too vague):
 
 class PubMedService:
     """
-    Multi-API research citation service with intelligent fallback.
+    Research Paper Library Service - Organic curation of scientific papers.
     
-    Priority order:
-    1. Cache lookup (instant)
-    2. PubMed (primary - biomedical focus)
-    3. OpenAlex (secondary - broad coverage)
-    4. Semantic Scholar (tertiary - AI-powered relevance)
+    Similar to Image Library, papers are discovered and stored as users interact
+    with the app. Each new action that needs a citation triggers a search,
+    and papers are added to the growing Research Library.
+    
+    Lookup order:
+    1. Research Library lookup (instant - from our curated collection)
+    2. PubMed (primary - biomedical focus, adds to library)
+    3. OpenAlex (secondary - broad coverage, adds to library)
+    4. Semantic Scholar (tertiary - AI-powered relevance, adds to library)
     """
     
     def __init__(self):
@@ -141,11 +145,11 @@ class PubMedService:
         
         logger.info(f"🔍 Finding citation for '{action_title}': {query[:60]}...")
         
-        # Step 1: Check cache
+        # Step 1: Check Research Library (our curated collection)
         if db:
             cached = await self._get_cached_citation(cache_key, db)
             if cached:
-                logger.info(f"✅ Cache hit for '{action_title}'")
+                logger.info(f"📚 Found in Research Library: '{action_title}'")
                 return cached
         
         # Step 2: Try PubMed (primary - best for biomedical)
@@ -593,46 +597,51 @@ class PubMedService:
             return None
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # CACHE LAYER
+    # RESEARCH LIBRARY LAYER
     # ═══════════════════════════════════════════════════════════════════════════
     
     async def _get_cached_citation(self, cache_key: str, db: AsyncSession) -> Optional[Dict]:
-        """Get citation from cache."""
-        from app.core.database import PubMedCache
+        """Look up paper in Research Library."""
+        from app.core.database import ResearchPaperLibrary
         
         try:
             result = await db.execute(
-                select(PubMedCache).where(PubMedCache.cache_key == cache_key)
+                select(ResearchPaperLibrary).where(ResearchPaperLibrary.lookup_key == cache_key)
             )
-            cached = result.scalar_one_or_none()
+            paper = result.scalar_one_or_none()
             
-            if cached:
+            if paper:
                 # Parse participants
                 participants = 0
-                if cached.participants:
-                    match = re.search(r'(\d+)', str(cached.participants))
+                if paper.participants:
+                    match = re.search(r'(\d+)', str(paper.participants))
                     if match:
                         participants = int(match.group(1))
                 
+                # Increment citation count
+                paper.times_cited = (paper.times_cited or 0) + 1
+                paper.last_cited_at = datetime.utcnow()
+                await db.commit()
+                
                 return {
-                    "title": cached.title,
-                    "journal": cached.journal or "Unknown",
-                    "year": cached.year or 2020,
+                    "title": paper.title,
+                    "journal": paper.journal or "Unknown",
+                    "year": paper.year or 2020,
                     "participants": participants if participants > 0 else "Women",
-                    "finding": cached.finding or "",
-                    "pmid": cached.pubmed_id or "",
-                    "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{cached.pubmed_id}/" if cached.pubmed_id else "",
-                    "source": "cache"
+                    "finding": paper.finding or "",
+                    "pmid": paper.pmid or "",
+                    "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{paper.pmid}/" if paper.pmid else "",
+                    "source": "library"
                 }
                 
         except Exception as e:
-            logger.warning(f"Cache lookup error: {e}")
+            logger.warning(f"Library lookup error: {e}")
         
         return None
     
     async def _cache_citation(self, cache_key: str, paper: Dict, db: AsyncSession) -> None:
-        """Store citation in cache."""
-        from app.core.database import PubMedCache
+        """Add paper to Research Library (organic curation)."""
+        from app.core.database import ResearchPaperLibrary
         
         try:
             # Convert participants to string for storage
@@ -642,23 +651,25 @@ class PubMedService:
             else:
                 participants_str = str(participants) if participants else None
             
-            cache_entry = PubMedCache(
-                cache_key=cache_key,
-                pubmed_id=paper.get("pmid", ""),
+            # Add to Research Library
+            library_entry = ResearchPaperLibrary(
+                lookup_key=cache_key,
+                pmid=paper.get("pmid", ""),
                 title=paper.get("title", ""),
                 journal=paper.get("journal", ""),
                 year=paper.get("year", 2020),
                 participants=participants_str,
                 finding=paper.get("finding", ""),
-                created_at=datetime.utcnow(),
-                access_count=1
+                source=paper.get("source", "pubmed"),
+                added_at=datetime.utcnow(),
+                times_cited=1
             )
-            db.add(cache_entry)
+            db.add(library_entry)
             await db.commit()
-            logger.info(f"📚 Cached citation: {cache_key}")
+            logger.info(f"📚 Added to Research Library: {paper.get('title', '')[:40]}...")
             
         except Exception as e:
-            logger.warning(f"Cache write error: {e}")
+            logger.warning(f"Library write error: {e}")
             await db.rollback()
     
     async def close(self):

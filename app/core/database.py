@@ -813,38 +813,58 @@ class ImageLibrary(Base):
         Index('idx_image_library_usage', 'usage_count'),
     )
 
-
-class PubMedCache(Base):
+class ResearchPaperLibrary(Base):
     """
-    Cache for PubMed research citations.
-    Stores real papers to avoid hitting API rate limits.
+    Research Paper Library - Organically curated collection of scientific papers.
+    
+    Similar to Image Library, papers are discovered and stored as users interact
+    with the app. Each new action that needs a citation triggers a PubMed search,
+    and the paper is added to this growing library.
+    
+    Over time, this builds a curated collection of women's health research that
+    supports all wellness recommendations in the app.
     """
-    __tablename__ = "pubmed_cache"
+    __tablename__ = "research_paper_library"
     
     id = Column(Integer, primary_key=True, index=True)
-    cache_key = Column(String(32), unique=True, nullable=False, index=True)  # MD5 hash of search params
+    lookup_key = Column(String(32), unique=True, nullable=False, index=True)  # MD5 hash for quick lookup
     
-    # Paper details
-    pubmed_id = Column(String(20), nullable=True)  # PubMed ID for linking
+    # Paper Identification
+    pmid = Column(String(20), nullable=True, index=True)  # PubMed ID for verification link
+    doi = Column(String(100), nullable=True)  # DOI if available
+    
+    # Paper Details
     title = Column(Text, nullable=False)
     journal = Column(String(255), nullable=True)
     year = Column(Integer, nullable=True)
     authors = Column(Text, nullable=True)  # First 3 authors
-    participants = Column(String(100), nullable=True)  # e.g., "120 women"
-    finding = Column(Text, nullable=True)  # Key finding/result
     
-    # Usage tracking
-    access_count = Column(Integer, default=1)
+    # Study Details
+    participants = Column(String(100), nullable=True)  # Number of women in study
+    finding = Column(Text, nullable=True)  # Key finding that supports recommendation
+    
+    # Library Metadata
+    source = Column(String(50), default="pubmed")  # pubmed, openalex, semantic_scholar
+    category = Column(String(50), nullable=True)  # food, movement, mindfulness
+    hormones = Column(ARRAY(String), nullable=True)  # Related hormones
+    
+    # Usage Tracking
+    times_cited = Column(Integer, default=1)  # How many actions cite this paper
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_accessed_at = Column(DateTime, default=datetime.utcnow)
+    added_at = Column(DateTime, default=datetime.utcnow)  # When paper was discovered
+    last_cited_at = Column(DateTime, default=datetime.utcnow)  # Last time it was used
     
-    # Indexes
+    # Indexes for fast lookup
     __table_args__ = (
-        Index('idx_pubmed_cache_key', 'cache_key'),
-        Index('idx_pubmed_cache_access', 'access_count'),
+        Index('idx_research_library_lookup', 'lookup_key'),
+        Index('idx_research_library_pmid', 'pmid'),
+        Index('idx_research_library_citations', 'times_cited'),
     )
+
+
+# Keep old name as alias for backward compatibility during migration
+PubMedCache = ResearchPaperLibrary
 
 
 # Database table creation
