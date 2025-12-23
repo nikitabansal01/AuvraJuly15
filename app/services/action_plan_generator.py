@@ -1249,7 +1249,7 @@ If the tool returns empty, set research_studies to an empty array.
                         paper = await execute_pubmed_tool(args, db=db)
                         
                         if paper and paper.get("title"):
-                            logger.info(f"  ✅ Found: {paper['title'][:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                            logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
                         else:
                             logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
                         
@@ -2282,7 +2282,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                             paper = await execute_pubmed_tool(args, db=db)
                             
                             if paper and paper.get("title"):
-                                logger.info(f"  ✅ Found: {paper['title'][:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                                logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
                             else:
                                 logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
                             
