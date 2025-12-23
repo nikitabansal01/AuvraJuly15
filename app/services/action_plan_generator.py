@@ -2074,6 +2074,26 @@ Respond with valid JSON object only."""
             if len(original_items) != len(item_ids):
                 return {"success": False, "error": "Some items not found or unauthorized"}
             
+            # Get ALL items in this plan to avoid generating duplicates
+            all_items_result = await db.execute(
+                select(ActionPlanItem).where(
+                    ActionPlanItem.plan_id == plan_id,
+                    ActionPlanItem.uid == user_id
+                )
+            )
+            all_plan_items = all_items_result.scalars().all()
+            
+            # Build list of OTHER actions user already has (not being replaced)
+            item_ids_set = set(item_ids)
+            other_current_actions = []
+            for item in all_plan_items:
+                if item.id not in item_ids_set:
+                    other_current_actions.append({
+                        "title": item.title,
+                        "category": item.category,
+                        "target_hormone": item.target_hormone
+                    })
+            
             # Load user context
             user_context = await self._load_user_context(user_id, db)
             if not user_context:
@@ -2096,6 +2116,11 @@ Respond with valid JSON object only."""
 ITEMS TO REPLACE (user disliked these)
 ══════════════════════════════════════════════════════════════════════
 {json.dumps(items_to_replace, indent=2)}
+
+══════════════════════════════════════════════════════════════════════
+OTHER CURRENT ACTIONS (DO NOT generate similar to these - user already has them)
+══════════════════════════════════════════════════════════════════════
+{json.dumps(other_current_actions, indent=2) if other_current_actions else "None - user only has the items being replaced"}
 
 ══════════════════════════════════════════════════════════════════════
 HEALTH PROFILE
