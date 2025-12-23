@@ -2052,8 +2052,8 @@ OUTPUT FORMAT (for each replacement action)
 10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
 11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
 12. variants: Array of 3 variant objects (see VARIANT FORMAT below)
-
-Note: symptoms and conditions are automatically added from user's profile.
+13. symptoms: Array of 1-3 specific symptoms THIS ACTION helps (pick from user's concerns: period pain, bloating, fatigue, acne, stress, mood swings, low energy, cramps)
+14. conditions: Array of conditions this helps (e.g., ["PCOS"]) - can be empty []
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
 For FOOD actions, MUST include:
@@ -2305,17 +2305,13 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     action_conditions = [c for c in raw_conditions if c and str(c).lower() != "none of the above"]
                 else:
                     action_conditions = []
-                # Get SYMPTOMS from user profile (not GPT)
-                # Combine all user concerns as symptoms
-                user_symptoms = []
-                for concern_field in ["period_concerns", "body_concerns", "skin_hair_concerns", "mental_health_concerns"]:
-                    concern_value = user_context.get(concern_field, "")
-                    if concern_value and concern_value.lower() not in ["none specified", "none", ""]:
-                        if isinstance(concern_value, list):
-                            user_symptoms.extend([c for c in concern_value if c])
-                        else:
-                            user_symptoms.append(concern_value)
-                action_symptoms = list(set(user_symptoms))[:5]  # Limit to 5 unique symptoms
+                # Get symptoms from GPT (action-specific) with fallback to user's top concern
+                action_symptoms = replacement_action.get("symptoms", [])
+                if not action_symptoms:
+                    # Fallback to top concern if no specific symptoms generated
+                    top_concern = user_context.get("top_concern")
+                    if top_concern and top_concern.lower() != "general wellness":
+                        action_symptoms = [top_concern]
                 
                 new_item = ActionPlanItem(
                     plan_id=plan_id,
