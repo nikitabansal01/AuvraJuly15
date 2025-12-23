@@ -2189,10 +2189,13 @@ Each variant MUST be an object with these exact fields:
 - image_prompt: FLUX.1 Schnell optimized prompt for this specific variant
 
 RESEARCH STUDIES - CRITICAL REQUIREMENTS:
-- Provide EXACTLY 1 study (not 2)
+- Use the 'search_research_paper' tool to find REAL citations from PubMed/OpenAlex
+- The study MUST SUPPORT the specific recommendation for the user's condition (e.g., if recommending cinnamon for insulin, find a study showing cinnamon helps insulin)
 - Study MUST focus on WOMEN/FEMALES specifically
-- Use REAL published studies from reputable journals
-- Include actual year (prefer 2015-2024), realistic participant count (20-500, all female)
+- Provide EXACTLY 1 study per action
+- Include ALL fields: title, journal, year, participants (number of women), finding, pmid, verification_link
+- Example format: {{"title": "...", "journal": "...", "year": 2021, "participants": 145, "finding": "...", "pmid": "12345678", "verification_link": "https://pubmed.ncbi.nlm.nih.gov/12345678/"}}
+- If tool returns no results, set research_studies to an empty array []
 
 EXAMPLE OUTPUT for FOOD replacement:
 [{{
