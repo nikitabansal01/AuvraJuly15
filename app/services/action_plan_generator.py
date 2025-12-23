@@ -2127,13 +2127,12 @@ EXAMPLE OUTPUT for FOOD replacement:
 
 Respond with valid JSON array only. Do not add any text outside the JSON."""
 
-            # Generate replacements via GPT with retry logic
+            # Generate replacements via GPT with retry logic (same as generate_new_plan)
             MAX_RETRIES = 2
             replacement_actions = None
-            gpt_cost = 0.0
             
             for attempt in range(1, MAX_RETRIES + 1):
-                logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_RETRIES}")
+                logger.info(f"🔄 Replacement attempt {attempt}/{MAX_RETRIES}")
                 
                 response = await self.client.post(
                     "https://api.openai.com/v1/chat/completions",
@@ -2156,40 +2155,38 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 response.raise_for_status()
                 data = response.json()
                 
-                # Calculate GPT cost for this attempt
+                # Calculate GPT cost
                 input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
                 output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
-                gpt_cost += attempt_cost
-
+                gpt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                total_cost += gpt_cost
                 
                 content = data["choices"][0]["message"]["content"]
                 
-                # Parse response - json_object mode guarantees valid JSON
-                response_data = json.loads(content.strip())
+                # Parse response - json_object mode returns valid JSON
+                logger.info(f"📋 ABOUT TO PARSE GPT JSON - content length: {len(content)}")
+                logger.info(f"🔍 First 300 chars of content: {content[:300]}")
                 
-                # Extract actions array (json_object returns {"actions": [...]}) 
-                if isinstance(response_data, dict):
-                    if "actions" in response_data:
-                        attempt_actions = response_data["actions"]
-                    elif "replacements" in response_data:
-                        attempt_actions = response_data["replacements"]
+                try:
+                    parsed_data = json.loads(content.strip())
+                    
+                    # Handle both array and object with "actions" key
+                    if isinstance(parsed_data, list):
+                        attempt_actions = parsed_data
+                    elif isinstance(parsed_data, dict) and "actions" in parsed_data:
+                        attempt_actions = parsed_data["actions"]
+                    elif isinstance(parsed_data, dict):
+                        # Single action wrapped in dict
+                        attempt_actions = [parsed_data]
                     else:
-                        # Single object wrapped in dict
-                        attempt_actions = [response_data]
-                elif isinstance(response_data, list):
-                    attempt_actions = response_data
-                else:
-                    logger.warning(f"❌ Attempt {attempt}: Unexpected response format")
+                        logger.error(f"Unexpected response format: {type(parsed_data)}")
+                        continue
+                        
+                    logger.info(f"✅ Successfully parsed JSON - got {len(attempt_actions)} actions")
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ JSON parse error on attempt {attempt}: {e}")
                     continue
-                
-                if not attempt_actions:
-                    logger.warning(f"❌ Attempt {attempt}: No replacement actions generated")
-                    continue
-                
-                logger.info(f"✅ Successfully parsed JSON - got {len(attempt_actions)} actions")
-                if not isinstance(attempt_actions, list):
-                    attempt_actions = [attempt_actions]
                 
                 # Validate all replacement actions
                 all_valid = True
@@ -2210,7 +2207,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     replacement_actions = attempt_actions
                     break
                 
-                # Log validation errors
+                # Log errors
                 logger.warning(f"⚠️ Attempt {attempt} validation failed:")
                 for error in validation_errors:
                     logger.warning(f"   • {error}")
@@ -2222,12 +2219,14 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, applying fallback defaults")
                     replacement_actions = self._fill_missing_fields(attempt_actions)
             
-            total_cost += gpt_cost
-            
             if not replacement_actions:
-                return {"success": False, "error": "Failed to generate valid replacement actions"}
+                return {"success": False, "error": "Failed to generate replacement actions"}
             
-            # Debug: Log all fields for each replacement action
+            if not isinstance(replacement_actions, list):
+                replacement_actions = [replacement_actions]
+
+            
+            # Debug: Log all fields for each replacement action to verify GPT response
             logger.info(f"📋 GPT returned {len(replacement_actions)} replacement actions")
             for i, replacement_action in enumerate(replacement_actions):
                 research = replacement_action.get("research_studies", [])
@@ -2249,7 +2248,6 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 logger.info(f"    {len(research)} research studies, "
                            f"variants={len(replacement_action.get('variants', []))}, "
                            f"hormone_persona_intro={bool(replacement_action.get('hormone_persona_intro'))}")
-
             
             # Process each replacement
             new_actions = []
