@@ -151,7 +151,7 @@ class PubMedService:
         # Step 2: Try PubMed (primary - best for biomedical)
         paper = await self._search_pubmed(query)
         if paper:
-            logger.info(f"✅ PubMed found: {paper['title'][:50]}... (PMID: {paper.get('pmid')})")
+            logger.info(f"✅ PubMed found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid')})")
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper
@@ -160,7 +160,7 @@ class PubMedService:
         await asyncio.sleep(self._rate_limit_delay)
         paper = await self._search_openalex(query)
         if paper:
-            logger.info(f"✅ OpenAlex found: {paper['title'][:50]}...")
+            logger.info(f"✅ OpenAlex found: {paper.get('title', '')[:50]}...")
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper
@@ -169,7 +169,7 @@ class PubMedService:
         await asyncio.sleep(self._rate_limit_delay)
         paper = await self._search_semantic_scholar(query)
         if paper:
-            logger.info(f"✅ Semantic Scholar found: {paper['title'][:50]}...")
+            logger.info(f"✅ Semantic Scholar found: {paper.get('title', '')[:50]}...")
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper
@@ -180,7 +180,7 @@ class PubMedService:
         
         paper = await self._search_pubmed(simple_query)
         if paper:
-            logger.info(f"✅ PubMed (simplified) found: {paper['title'][:50]}...")
+            logger.info(f"✅ PubMed (simplified) found: {paper.get('title', '')[:50]}...")
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper
