@@ -2050,6 +2050,8 @@ OUTPUT FORMAT (for each replacement action)
 10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
 11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
 12. variants: Array of 3 variant objects (see VARIANT FORMAT below)
+13. symptoms: Array of strings - specific symptoms this action helps (e.g., ["fatigue", "stress", "bloating"])
+14. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
 For FOOD actions, MUST include:
@@ -2428,7 +2430,10 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     "exercise_durations": new_item.exercise_durations if category == "movement" else None,
                     "exercise_intensities": new_item.exercise_intensities if category == "movement" else None,
                     "mindfulness_techniques": new_item.mindfulness_techniques if category == "mindfulness" else None,
-                    "mindfulness_durations": new_item.mindfulness_durations if category == "mindfulness" else None
+                    "mindfulness_durations": new_item.mindfulness_durations if category == "mindfulness" else None,
+                    # Add symptoms and conditions
+                    "symptoms": new_item.symptoms or [],
+                    "conditions": new_item.conditions or []
                 })
                 
                 # Log what we're returning
