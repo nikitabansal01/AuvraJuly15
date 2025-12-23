@@ -339,7 +339,7 @@ RESEARCH STUDIES - CRITICAL REQUIREMENTS:
 - Use the 'search_research_paper' tool to get REAL citations from PubMed/OpenAlex
 - DO NOT fabricate or make up any citation details
 - Include the PMID in the research study for verification
-- research_studies format: [{"title": "...", "journal": "...", "year": 2023, "participants": 150, "finding": "...", "pmid": "12345678"}]
+- research_studies format: [{{"title": "...", "journal": "...", "year": 2023, "participants": 150, "finding": "...", "pmid": "12345678"}}]
 - If the tool returns no results, set research_studies to an empty array []
 
 Respond with valid JSON array only, no markdown formatting."""
