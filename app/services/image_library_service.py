@@ -314,7 +314,7 @@ class ImageLibraryService:
         
         try:
             # Generate image via RunPod - returns (image_data_or_url, generation_time_ms)
-            result, generation_time_ms = await self._call_runpod_flux(prompt)
+            result, generation_time_ms = await self._call_runpod_flux(prompt, category)
             
             if not result:
                 logger.error("Failed to generate image via RunPod")
@@ -360,9 +360,13 @@ class ImageLibraryService:
             logger.error(f"Error generating and storing image: {e}")
             return ("", False, 0.0)
     
-    async def _call_runpod_flux(self, prompt: str) -> Tuple[Optional[Any], int]:
+    async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
         Call RunPod Flux Schnell serverless endpoint.
+        
+        Args:
+            prompt: Base image prompt
+            category: "food", "movement", or "mindfulness" for category-specific styling
         
         Returns (image_url_or_bytes, generation_time_ms)
         - Returns URL string if RunPod provides image_url
@@ -378,18 +382,18 @@ class ImageLibraryService:
             # RunPod Serverless API - use async run endpoint
             endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
             
-            # Enhance prompt for better food/wellness images
-            enhanced_prompt = self._enhance_prompt(prompt)
+            # Enhance prompt with category-specific styling and negative prompts
+            enhanced_prompt, negative_prompt = self._enhance_prompt(prompt, category)
             
             payload = {
                 "input": {
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 4,
-                    "guidance": 7,
+                    "num_inference_steps": 8,      # Increased from 4 for better quality
+                    "guidance": 5,                  # Lowered from 7 for more natural results
                     "seed": -1,
-                    "negative_prompt": "",
+                    "negative_prompt": negative_prompt,  # Now category-specific
                     "image_format": "png"
                 }
             }
@@ -479,29 +483,80 @@ class ImageLibraryService:
             logger.error(f"Error calling RunPod: {e}")
             return await self._generate_placeholder_image(prompt)
     
-    def _enhance_prompt(self, prompt: str) -> str:
+    def _enhance_prompt(self, prompt: str, category: str = "food") -> Tuple[str, str]:
         """
-        Enhance the prompt for FLUX.1 Schnell image generation.
+        Enhance the prompt for FLUX.1 Schnell with category-specific styling.
         
         FLUX.1 Schnell best practices:
-        - Specify composition, lighting, lens/style cues
-        - Clear scene descriptions
-        - Focus on appetizing food photography for health app
-        """
-        # Enhanced style for food/wellness images
-        style_suffix = (
-            "top-down overhead shot, professional food photography, "
-            "soft diffused natural daylight from window, "
-            "clean white marble surface, fresh ingredients visible, "
-            "shallow depth of field f/2.8, warm inviting tones, "
-            "vibrant colors, Instagram-worthy presentation, "
-            "photorealistic, ultra detailed, 4K quality"
-        )
+        - Lead with subject (FLUX pays attention to first tokens)
+        - Specify camera/lens style for realism
+        - Clear composition and lighting cues
+        - Use negative prompts to avoid unwanted elements
         
-        # Add negative prompt elements inline for better results
+        Args:
+            prompt: Base prompt from GPT
+            category: "food", "movement", or "mindfulness"
+            
+        Returns:
+            Tuple of (enhanced_prompt, negative_prompt)
+        """
+        if category == "food":
+            # Food-specific enhancement: appetizing, overhead photography
+            style_suffix = (
+                "professional food photography, overhead 45-degree angle, "
+                "Canon EOS R5 35mm lens f/2.8, soft natural window light, "
+                "rustic wooden table, fresh ingredients visible, "
+                "warm inviting tones, vibrant saturated colors, "
+                "shallow depth of field, photorealistic, high quality"
+            )
+            negative = (
+                "blurry, out of focus, dark, underexposed, overexposed, "
+                "artificial lighting, plastic food, processed, "
+                "low quality, pixelated, distorted"
+            )
+            
+        elif category == "movement":
+            # Movement-specific: natural pose, wellness aesthetic
+            style_suffix = (
+                "lifestyle wellness photography, natural relaxed pose, "
+                "Canon EOS R5 50mm lens f/1.8, soft window backlighting, "
+                "serene peaceful indoor setting, warm earth tones, "
+                "calming aesthetic, atmospheric depth, "
+                "photorealistic, professional quality"
+            )
+            negative = (
+                "stiff pose, gym equipment, aggressive,intense, commercial, "
+                "stock photo, artificial, low quality, blurry, "
+                "crowded background, distorted body"
+            )
+            
+        elif category == "mindfulness":
+            # Mindfulness-specific: zen, minimalist, cozy
+            style_suffix = (
+                "lifestyle zen photography, minimalist composition, "
+                "Sony A7III 35mm lens f/2.0, soft diffused natural lighting, "
+                "cozy intimate atmosphere, warm muted tones, "
+                "peaceful calming mood, shallow focus, "
+                "photorealistic, professional quality"
+            )
+            negative = (
+                "cluttered, busy, bright neon colors, harsh lighting, "
+                "commercial, artificial, low quality, blurry, "
+                "messy, chaotic"
+            )
+            
+        else:
+            # Fallback: generic wellness style
+            style_suffix = (
+                "professional wellness photography, natural lighting, "
+                "calm peaceful aesthetic, warm tones, "
+                "photorealistic, high quality"
+            )
+            negative = "blurry, low quality, artificial, commercial"
+        
         enhanced = f"{prompt}, {style_suffix}"
         
-        return enhanced
+        return (enhanced, negative)
     
     async def _generate_placeholder_image(self, prompt: str) -> Tuple[bytes, int]:
         """

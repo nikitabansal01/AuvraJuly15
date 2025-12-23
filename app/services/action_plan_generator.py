@@ -173,6 +173,20 @@ CATEGORY DEFINITIONS:
 - "movement" (move): Exercise, stretching, physical activities
 - "mindfulness" (pause): Meditation, breathing, relaxation, mental wellness
 
+CRITICAL: CATEGORY-SPECIFIC REQUIRED FIELDS
+For "food" actions, you MUST provide:
+- food_items: Array of ingredients/food items (e.g., ["steel-cut oats", "blueberries"])
+- food_amounts: Array of amounts (e.g., ["1/2 cup", "handful"])
+For "movement" actions, you MUST provide:
+- exercise_types: Array (e.g., ["Gentle Hatha Yoga"])
+- exercise_durations: Array (e.g., ["15-20 min"])
+- exercise_intensities: Array (e.g., ["Low"])
+For "mindfulness" actions, you MUST provide:
+- mindfulness_techniques: Array (e.g., ["Box Breathing"])
+- mindfulness_durations: Array (e.g., ["5 min"])
+
+Failure to provide these for their respective categories will result in manual correction.
+
 RESEARCH CITATION FORMAT:
 {
     "title": "Actual study title",
@@ -332,6 +346,121 @@ RESEARCH STUDIES - CRITICAL REQUIREMENTS:
 
 Respond with valid JSON array only, no markdown formatting."""
 
+# ============================================================================
+# JSON SCHEMA FOR STRUCTURED OUTPUTS
+# ============================================================================
+
+# OpenAI Structured Outputs schema - guarantees all required fields are present
+ACTION_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "actions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    # Base fields (required for all categories)
+                    "title": {"type": "string"},
+                    "category": {"type": "string", "enum": ["food", "movement", "mindfulness"]},
+                    "time_slot": {"type": "string", "enum": ["morning", "afternoon", "evening"]},
+                    "specific_action": {"type": "string"},
+                    "purpose": {"type": "string"},
+                    "target_hormone": {"type": "string"},
+                    "hormone_persona_intro": {"type": "string"},
+                    "image_prompt": {"type": "string"},
+                    
+                    # Category-specific fields (optional in schema, validated in code)
+                    "food_items": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "food_amounts": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "exercise_types": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "exercise_durations": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "exercise_intensities": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "mindfulness_techniques": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "mindfulness_durations": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    
+                    # Research studies (exactly 1)
+                    "research_studies": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "journal": {"type": "string"},
+                                "year": {"type": "integer"},
+                                "participants": {"type": "integer"},
+                                "finding": {"type": "string"}
+                            },
+                            "required": ["title", "journal", "year", "participants", "finding"],
+                            "additionalProperties": False
+                        }
+                    },
+                    
+                    # Variants (exactly 3)
+                    "variants": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "variant_type": {"type": "string"},
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "image_prompt": {"type": "string"}
+                            },
+                            "required": ["variant_type", "title", "description", "image_prompt"],
+                            "additionalProperties": False
+                        }
+                    },
+                    
+                    # Optional metadata
+                    "symptoms": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "conditions": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": [
+                    "title", "category", "time_slot", "specific_action", 
+                    "purpose", "target_hormone", "hormone_persona_intro", 
+                    "image_prompt", "research_studies", "variants"
+                ],
+                "additionalProperties": False
+            },
+            "minItems": 4,
+            "maxItems": 4
+        }
+    },
+    "required": ["actions"],
+    "additionalProperties": False
+}
+
 VARIANT_PROMPT_TEMPLATE = """For the {category} action "{title}", create 3 variants:
 
 Original action: {specific_action}
@@ -438,8 +567,53 @@ class ActionPlanGenerator:
                 logger.error(f"Could not load user context for {user_id}")
                 return {"success": False, "error": "User profile not found"}
             
-            # Step 2: Generate actions via GPT-4o-mini
-            actions, gpt_cost = await self._generate_actions_via_gpt(user_context)
+            # Step 2: Generate actions via GPT-4o-mini with retry logic
+            MAX_RETRIES = 2
+            actions = None
+            gpt_cost = 0.0
+            
+            for attempt in range(1, MAX_RETRIES + 1):
+                logger.info(f"🔄 Generation attempt {attempt}/{MAX_RETRIES}")
+                
+                # Generate actions
+                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context)
+                gpt_cost += attempt_cost
+                
+                if not attempt_actions:
+                    logger.warning(f"❌ Attempt {attempt}: No actions generated")
+                    continue
+                
+                # Validate all actions
+                all_valid = True
+                validation_errors = []
+                
+                for i, action in enumerate(attempt_actions):
+                    category = action.get("category", "unknown")
+                    valid, missing = self._validate_action_fields(action, category)
+                    
+                    if not valid:
+                        all_valid = False
+                        validation_errors.append(
+                            f"Action {i+1} '{action.get('title', 'Untitled')}' [{category}]: missing {missing}"
+                        )
+                
+                if all_valid:
+                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} actions valid")
+                    actions = attempt_actions
+                    break
+                
+                # Log errors
+                logger.warning(f"⚠️ Attempt {attempt} validation failed:")
+                for error in validation_errors:
+                    logger.warning(f"   • {error}")
+                
+                if attempt < MAX_RETRIES:
+                    logger.info(f"🔄 Retrying generation...")
+                else:
+                    # Max retries exceeded - apply fallback defaults
+                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, applying fallback defaults")
+                    actions = self._fill_missing_fields(attempt_actions)
+            
             total_cost += gpt_cost
             
             if not actions:
@@ -1029,8 +1203,17 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                         {"role": "system", "content": enhanced_system},
                         {"role": "user", "content": prompt}
                     ],
-                    "temperature": self.GPT_TEMPERATURE,
-                    "max_tokens": 4000
+                    "temperature": 0.3,  # Lowered from 0.7 for consistency
+                    "max_tokens": 4000,
+                    # Enable structured outputs with JSON schema
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "action_plan_response",
+                            "strict": True,
+                            "schema": ACTION_PLAN_SCHEMA
+                        }
+                    }
                 }
             )
             
@@ -1045,13 +1228,24 @@ Write the hormone_persona_intro naturally, following the example style above. Th
             # Parse response
             content = data["choices"][0]["message"]["content"]
             
-            # Clean up JSON if wrapped in markdown
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
+            # With structured outputs, response is guaranteed valid JSON
+            response_data = json.loads(content.strip())
             
-            actions = json.loads(content.strip())
+            # Extract actions array from response
+            if isinstance(response_data, dict) and "actions" in response_data:
+                actions = response_data["actions"]
+            elif isinstance(response_data, list):
+                # Fallback for non-structured response
+                actions = response_data
+            else:
+                logger.error(f"Unexpected response format: {type(response_data)}")
+                return (None, cost)
+            
+            # Normalize and validate actions
+            for action in actions:
+                # Ensure category is lowercase for internal logic
+                if "category" in action:
+                    action["category"] = action["category"].lower()
             
             logger.info(f"Generated {len(actions)} actions via GPT-4o-mini (cost: ${cost:.4f})")
             
@@ -1085,6 +1279,145 @@ Write the hormone_persona_intro naturally, following the example style above. Th
         except Exception as e:
             logger.error(f"Error calling GPT: {e}")
             return (None, 0.0)
+    
+    def _validate_action_fields(
+        self,
+        action: Dict[str, Any],
+        category: str
+    ) -> Tuple[bool, List[str]]:
+        """
+        Validate that all required fields are present for the given category.
+        
+        Args:
+            action: Action dictionary from GPT
+            category: Category type (food/movement/mindfulness)
+            
+        Returns:
+            Tuple of (is_valid, missing_fields)
+        """
+        REQUIRED_BASE = [
+            "title", "category", "time_slot", "specific_action", 
+            "purpose", "target_hormone", "hormone_persona_intro",
+            "image_prompt", "research_studies", "variants"
+        ]
+        
+        REQUIRED_BY_CATEGORY = {
+            "food": ["food_items", "food_amounts"],
+            "movement": ["exercise_types", "exercise_durations", "exercise_intensities"],
+            "mindfulness": ["mindfulness_techniques", "mindfulness_durations"]
+        }
+        
+        missing = []
+        
+        # Check base fields
+        for field in REQUIRED_BASE:
+            if not action.get(field):
+                missing.append(field)
+        
+        # Check category-specific fields
+        for field in REQUIRED_BY_CATEGORY.get(category, []):
+            value = action.get(field)
+            if not value or (isinstance(value, list) and len(value) == 0):
+                missing.append(field)
+        
+        # Validate nested structures
+        if action.get("research_studies"):
+            if len(action["research_studies"]) != 1:
+                missing.append("research_studies (must have exactly 1)")
+        else:
+            missing.append("research_studies")
+        
+        if action.get("variants"):
+            if len(action["variants"]) < 3:
+                missing.append("variants (must have at least 3)")
+        else:
+            missing.append("variants")
+        
+        return (len(missing) == 0, missing)
+    
+    def _fill_missing_fields(
+        self,
+        actions: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Apply safe defaults to actions with missing fields.
+        
+        Args:
+            actions: List of action dictionaries
+            
+        Returns:
+            Updated actions with defaults applied
+        """
+        DEFAULTS = {
+            "food": {
+                "food_items": ["whole grains", "vegetables"],
+                "food_amounts": ["1 serving", "1 cup"]
+            },
+            "movement": {
+                "exercise_types": ["walking"],
+                "exercise_durations": ["15 min"],
+                "exercise_intensities": ["moderate"]
+            },
+            "mindfulness": {
+                "mindfulness_techniques": ["deep breathing"],
+                "mindfulness_durations": ["5 min"]
+            }
+        }
+        
+        for action in actions:
+            category = action.get("category", "food")
+            
+            # Apply category-specific defaults
+            for field, default_value in DEFAULTS.get(category, {}).items():
+                if not action.get(field) or (isinstance(action.get(field), list) and len(action.get(field)) == 0):
+                    action[field] = default_value.copy() if isinstance(default_value, list) else default_value
+                    logger.warning(f"🔧 Applied default for {field} in '{action.get('title', 'Untitled')}'")
+            
+            # Apply base field defaults
+            if not action.get("research_studies") or len(action.get("research_studies", [])) == 0:
+                action["research_studies"] = [{
+                    "title": "General women's health research",
+                    "journal": "Generic Journal",
+                    "year": 2024,
+                    "participants": 100,
+                    "finding": "Supports overall wellness"
+                }]
+                logger.warning(f"🔧 Applied default research for '{action.get('title', 'Untitled')}'")
+            
+            if not action.get("variants") or len(action.get("variants", [])) < 3:
+                # Fill up to 3 variants
+                existing_variants = action.get("variants", [])
+                variant_types = {
+                    "food": ["healthy", "easy", "tasty"],
+                    "movement": ["gentle", "quick", "energizing"],
+                    "mindfulness": ["brief", "guided", "solo"]
+                }.get(category, ["alternative", "alternative", "alternative"])
+                
+                while len(existing_variants) < 3:
+                    idx = len(existing_variants)
+                    existing_variants.append({
+                        "variant_type": variant_types[idx] if idx < len(variant_types) else "alternative",
+                        "title": f"Variation {idx + 1}",
+                        "description": "Alternative approach",
+                        "image_prompt": action.get("image_prompt", "")
+                    })
+                
+                action["variants"] = existing_variants
+                logger.warning(f"🔧 Filled variants for '{action.get('title', 'Untitled')}' (now {len(existing_variants)})")
+            
+            # Ensure other base fields have safe defaults
+            if not action.get("title"):
+                action["title"] = f"{category.title()} Action"
+            if not action.get("specific_action"):
+                action["specific_action"] = "Follow recommended wellness practices for hormonal balance"
+            if not action.get("purpose"):
+                action["purpose"] = "Supports hormonal balance and overall wellness"
+            if not action.get("hormone_persona_intro"):
+                action["hormone_persona_intro"] = "This action supports your hormonal health"
+            if not action.get("time_slot"):
+                action["time_slot"] = "morning"
+        
+        return actions
     
     async def _generate_all_images(
         self,
@@ -1215,15 +1548,16 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                     updated_at=datetime.utcnow()
                 )
                 
-                # Add category-specific fields
-                if action["category"] == "food":
+                # Add category-specific fields (case-insensitive)
+                cat = action.get("category", "").lower()
+                if cat == "food":
                     item.food_items = action.get("food_items", [])
                     item.food_amounts = action.get("food_amounts", [])
-                elif action["category"] == "movement":
+                elif cat == "movement":
                     item.exercise_types = action.get("exercise_types", [])
                     item.exercise_durations = action.get("exercise_durations", [])
                     item.exercise_intensities = action.get("exercise_intensities", [])
-                elif action["category"] == "mindfulness":
+                elif cat == "mindfulness":
                     item.mindfulness_techniques = action.get("mindfulness_techniques", [])
                     item.mindfulness_durations = action.get("mindfulness_durations", [])
                 
