@@ -2349,13 +2349,17 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 # Parse JSON
                 response_data = json.loads(content.strip())
                 
-                # Extract actions array (GPT may use 'actions' or 'replacements' key)
+                # Extract actions array (GPT may use 'actions' or 'replacements' key, or return a single action)
                 if isinstance(response_data, dict) and "actions" in response_data:
                     attempt_actions = response_data["actions"]
                 elif isinstance(response_data, dict) and "replacements" in response_data:
                     attempt_actions = response_data["replacements"]
                 elif isinstance(response_data, list):
                     attempt_actions = response_data
+                elif isinstance(response_data, dict) and "category" in response_data:
+                    # GPT returned a single action dict instead of list
+                    logger.info("GPT returned single action dict, wrapping in list")
+                    attempt_actions = [response_data]
                 else:
                     logger.error(f"Unexpected response format: {type(response_data)}, keys={response_data.keys() if isinstance(response_data, dict) else 'N/A'}")
                     continue

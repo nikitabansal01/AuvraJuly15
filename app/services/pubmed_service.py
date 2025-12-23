@@ -295,9 +295,15 @@ class PubMedService:
             if term in title:
                 return False
         
-        # Must have participants (women in the study)
-        if paper.get("participants", 0) > 0:
-            return True
+        # Must have participants (women in the study) - handle string/int types
+        try:
+            participants = paper.get("participants", 0)
+            if isinstance(participants, str):
+                participants = int(participants) if participants.isdigit() else 0
+            if participants > 0:
+                return True
+        except (ValueError, TypeError):
+            pass
         
         # If no participants, check if it mentions women/female in title
         if "women" in title or "female" in title:
