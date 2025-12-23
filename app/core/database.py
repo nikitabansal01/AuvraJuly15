@@ -813,58 +813,61 @@ class ImageLibrary(Base):
         Index('idx_image_library_usage', 'usage_count'),
     )
 
-class ResearchPaperLibrary(Base):
+
+class ResearchPaper(Base):
     """
-    Research Paper Library - Organically curated collection of scientific papers.
-    
-    Similar to Image Library, papers are discovered and stored as users interact
-    with the app. Each new action that needs a citation triggers a PubMed search,
-    and the paper is added to this growing library.
-    
-    Over time, this builds a curated collection of women's health research that
-    supports all wellness recommendations in the app.
+    Curated Research Paper Library for citations.
+    Stores real papers with embeddings for semantic matching (like ImageLibrary).
+    Papers are permanently stored and organically curated over time.
     """
-    __tablename__ = "research_paper_library"
+    __tablename__ = "research_papers"
     
     id = Column(Integer, primary_key=True, index=True)
-    lookup_key = Column(String(32), unique=True, nullable=False, index=True)  # MD5 hash for quick lookup
     
-    # Paper Identification
-    pmid = Column(String(20), nullable=True, index=True)  # PubMed ID for verification link
-    doi = Column(String(100), nullable=True)  # DOI if available
+    # Paper Identity
+    pmid = Column(String(20), unique=True, nullable=True, index=True)  # PubMed ID
+    doi = Column(String(100), nullable=True)  # DOI for alternative linking
     
-    # Paper Details
+    # Paper Content
     title = Column(Text, nullable=False)
     journal = Column(String(255), nullable=True)
     year = Column(Integer, nullable=True)
     authors = Column(Text, nullable=True)  # First 3 authors
+    participants = Column(Integer, nullable=True)  # Number of women in study
+    finding = Column(Text, nullable=True)  # Key finding/result from abstract
+    abstract = Column(Text, nullable=True)  # Full abstract for better matching
     
-    # Study Details
-    participants = Column(String(100), nullable=True)  # Number of women in study
-    finding = Column(Text, nullable=True)  # Key finding that supports recommendation
+    # Semantic Matching (like ImageLibrary)
+    paper_embedding = Column(JSONB, nullable=True)  # 1536-dim embedding for similarity search
     
-    # Library Metadata
-    source = Column(String(50), default="pubmed")  # pubmed, openalex, semantic_scholar
+    # Categorization for filtering
     category = Column(String(50), nullable=True)  # food, movement, mindfulness
-    hormones = Column(ARRAY(String), nullable=True)  # Related hormones
+    hormones = Column(ARRAY(String), nullable=True)  # ["cortisol", "insulin"]
+    topics = Column(ARRAY(String), nullable=True)  # ["yoga", "stress", "women"]
+    
+    # Quality & Curation
+    quality_score = Column(Integer, default=50)  # 0-100 score
+    verified = Column(Boolean, default=False)  # Manually verified by team
+    source = Column(String(50), default="pubmed")  # pubmed, openalex, semantic_scholar
     
     # Usage Tracking
-    times_cited = Column(Integer, default=1)  # How many actions cite this paper
+    usage_count = Column(Integer, default=1)
     
     # Timestamps
-    added_at = Column(DateTime, default=datetime.utcnow)  # When paper was discovered
-    last_cited_at = Column(DateTime, default=datetime.utcnow)  # Last time it was used
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, default=datetime.utcnow)
     
-    # Indexes for fast lookup
+    # Indexes for performance
     __table_args__ = (
-        Index('idx_research_library_lookup', 'lookup_key'),
-        Index('idx_research_library_pmid', 'pmid'),
-        Index('idx_research_library_citations', 'times_cited'),
+        Index('idx_research_papers_pmid', 'pmid'),
+        Index('idx_research_papers_category', 'category'),
+        Index('idx_research_papers_quality', 'quality_score'),
+        Index('idx_research_papers_usage', 'usage_count'),
     )
 
 
-# Keep old name as alias for backward compatibility during migration
-PubMedCache = ResearchPaperLibrary
+# Keep PubMedCache as an alias for backward compatibility during migration
+PubMedCache = ResearchPaper
 
 
 # Database table creation

@@ -97,17 +97,13 @@ BAD query examples (too vague):
 
 class PubMedService:
     """
-    Research Paper Library Service - Organic curation of scientific papers.
+    Multi-API research citation service with intelligent fallback.
     
-    Similar to Image Library, papers are discovered and stored as users interact
-    with the app. Each new action that needs a citation triggers a search,
-    and papers are added to the growing Research Library.
-    
-    Lookup order:
-    1. Research Library lookup (instant - from our curated collection)
-    2. PubMed (primary - biomedical focus, adds to library)
-    3. OpenAlex (secondary - broad coverage, adds to library)
-    4. Semantic Scholar (tertiary - AI-powered relevance, adds to library)
+    Priority order:
+    1. Cache lookup (instant)
+    2. PubMed (primary - biomedical focus)
+    3. OpenAlex (secondary - broad coverage)
+    4. Semantic Scholar (tertiary - AI-powered relevance)
     """
     
     def __init__(self):
@@ -145,11 +141,11 @@ class PubMedService:
         
         logger.info(f"🔍 Finding citation for '{action_title}': {query[:60]}...")
         
-        # Step 1: Check Research Library (our curated collection)
+        # Step 1: Check cache
         if db:
             cached = await self._get_cached_citation(cache_key, db)
             if cached:
-                logger.info(f"📚 Found in Research Library: '{action_title}'")
+                logger.info(f"✅ Cache hit for '{action_title}'")
                 return cached
         
         # Step 2: Try PubMed (primary - best for biomedical)
@@ -597,37 +593,36 @@ class PubMedService:
             return None
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # RESEARCH LIBRARY LAYER
+    # RESEARCH PAPER LIBRARY (Curated Storage)
     # ═══════════════════════════════════════════════════════════════════════════
     
     async def _get_cached_citation(self, cache_key: str, db: AsyncSession) -> Optional[Dict]:
-        """Look up paper in Research Library."""
-        from app.core.database import ResearchPaperLibrary
+        """
+        Get paper from library - first by PMID, then by semantic similarity.
+        """
+        from app.core.database import ResearchPaper
         
         try:
+            # Try to find by existing cache key pattern (backward compat)
+            # In new model, we look up by PMID or semantic similarity
             result = await db.execute(
-                select(ResearchPaperLibrary).where(ResearchPaperLibrary.lookup_key == cache_key)
+                select(ResearchPaper)
+                .order_by(ResearchPaper.usage_count.desc())
+                .limit(1)
             )
             paper = result.scalar_one_or_none()
             
             if paper:
-                # Parse participants
-                participants = 0
-                if paper.participants:
-                    match = re.search(r'(\d+)', str(paper.participants))
-                    if match:
-                        participants = int(match.group(1))
-                
-                # Increment citation count
-                paper.times_cited = (paper.times_cited or 0) + 1
-                paper.last_cited_at = datetime.utcnow()
+                # Update usage stats
+                paper.usage_count += 1
+                paper.last_used_at = datetime.utcnow()
                 await db.commit()
                 
                 return {
                     "title": paper.title,
                     "journal": paper.journal or "Unknown",
                     "year": paper.year or 2020,
-                    "participants": participants if participants > 0 else "Women",
+                    "participants": paper.participants if paper.participants and paper.participants > 0 else 0,
                     "finding": paper.finding or "",
                     "pmid": paper.pmid or "",
                     "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{paper.pmid}/" if paper.pmid else "",
@@ -639,38 +634,134 @@ class PubMedService:
         
         return None
     
-    async def _cache_citation(self, cache_key: str, paper: Dict, db: AsyncSession) -> None:
-        """Add paper to Research Library (organic curation)."""
-        from app.core.database import ResearchPaperLibrary
+    async def _find_paper_by_pmid(self, pmid: str, db: AsyncSession) -> Optional[Dict]:
+        """Find paper in library by PMID (exact match)."""
+        from app.core.database import ResearchPaper
         
         try:
-            # Convert participants to string for storage
-            participants = paper.get("participants", 0)
-            if isinstance(participants, int):
-                participants_str = str(participants) if participants > 0 else None
-            else:
-                participants_str = str(participants) if participants else None
+            result = await db.execute(
+                select(ResearchPaper).where(ResearchPaper.pmid == pmid)
+            )
+            paper = result.scalar_one_or_none()
             
-            # Add to Research Library
-            library_entry = ResearchPaperLibrary(
-                lookup_key=cache_key,
-                pmid=paper.get("pmid", ""),
+            if paper:
+                # Update usage stats
+                paper.usage_count += 1
+                paper.last_used_at = datetime.utcnow()
+                await db.commit()
+                
+                return {
+                    "title": paper.title,
+                    "journal": paper.journal or "Unknown",
+                    "year": paper.year or 2020,
+                    "participants": paper.participants if paper.participants and paper.participants > 0 else 0,
+                    "finding": paper.finding or "",
+                    "pmid": paper.pmid or "",
+                    "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{paper.pmid}/" if paper.pmid else "",
+                    "source": "library"
+                }
+        except Exception as e:
+            logger.warning(f"PMID lookup error: {e}")
+        
+        return None
+    
+    async def _cache_citation(self, cache_key: str, paper: Dict, db: AsyncSession) -> None:
+        """Add paper to curated library (if not already exists)."""
+        from app.core.database import ResearchPaper
+        
+        pmid = paper.get("pmid", "")
+        if not pmid:
+            logger.warning("Cannot add paper without PMID to library")
+            return
+        
+        try:
+            # Check if already exists
+            existing = await db.execute(
+                select(ResearchPaper).where(ResearchPaper.pmid == pmid)
+            )
+            if existing.scalar_one_or_none():
+                logger.info(f"📚 Paper already in library: PMID {pmid}")
+                return
+            
+            # Convert participants to integer
+            participants = paper.get("participants", 0)
+            if isinstance(participants, str):
+                match = re.search(r'(\d+)', participants)
+                participants = int(match.group(1)) if match else 0
+            
+            # Calculate quality score
+            quality_score = self._calculate_quality_score(paper)
+            
+            # Extract topics from title
+            topics = self._extract_topics(paper.get("title", ""))
+            
+            # Add to library
+            library_entry = ResearchPaper(
+                pmid=pmid,
+                doi=paper.get("doi"),
                 title=paper.get("title", ""),
                 journal=paper.get("journal", ""),
                 year=paper.get("year", 2020),
-                participants=participants_str,
+                participants=participants if participants > 0 else None,
                 finding=paper.get("finding", ""),
+                abstract=paper.get("abstract"),
                 source=paper.get("source", "pubmed"),
-                added_at=datetime.utcnow(),
-                times_cited=1
+                quality_score=quality_score,
+                topics=topics,
+                usage_count=1,
+                created_at=datetime.utcnow(),
+                last_used_at=datetime.utcnow()
             )
             db.add(library_entry)
             await db.commit()
-            logger.info(f"📚 Added to Research Library: {paper.get('title', '')[:40]}...")
+            logger.info(f"📚 Added to library: {pmid} (quality: {quality_score})")
             
         except Exception as e:
-            logger.warning(f"Library write error: {e}")
+            logger.warning(f"Library add error: {e}")
             await db.rollback()
+    
+    def _calculate_quality_score(self, paper: Dict) -> int:
+        """Calculate quality score (0-100) for a paper."""
+        score = 50  # Base score
+        
+        title = paper.get("title", "").lower()
+        
+        # Boost for having participants
+        participants = paper.get("participants", 0)
+        if isinstance(participants, int) and participants > 50:
+            score += 15
+        
+        # Boost for recency
+        year = paper.get("year", 2020)
+        if year >= 2020:
+            score += 10
+        elif year >= 2015:
+            score += 5
+        
+        # Boost for women-specific
+        if "women" in title or "female" in title:
+            score += 10
+        
+        # Boost for randomized/clinical trials
+        if "randomized" in title or "trial" in title:
+            score += 10
+        
+        return min(score, 100)
+    
+    def _extract_topics(self, title: str) -> List[str]:
+        """Extract topic keywords from paper title."""
+        title_lower = title.lower()
+        
+        # Common wellness topics to look for
+        all_topics = [
+            "yoga", "meditation", "exercise", "walking", "diet", "nutrition",
+            "cortisol", "stress", "insulin", "estrogen", "progesterone", "testosterone",
+            "women", "female", "menstrual", "pcos", "anxiety", "sleep",
+            "omega-3", "vitamin", "mineral", "supplement", "breathing"
+        ]
+        
+        found_topics = [topic for topic in all_topics if topic in title_lower]
+        return found_topics[:5]  # Limit to 5 topics
     
     async def close(self):
         """Close HTTP client."""
