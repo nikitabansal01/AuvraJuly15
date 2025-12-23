@@ -2272,6 +2272,8 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 # Log the raw replacement_action for debugging
                 logger.info(f"📋 Processing replacement {i}: category={replacement_action.get('category')}")
                 logger.info(f"📋 Variants raw: {replacement_action.get('variants')}")
+                logger.info(f"📋 Symptoms from GPT: {replacement_action.get('symptoms', [])}")
+                logger.info(f"📋 Conditions from GPT: {replacement_action.get('conditions', [])}")
                 
                 # Generate hero image
                 hero_url, _, image_cost = await self.image_service.get_or_generate_image(
