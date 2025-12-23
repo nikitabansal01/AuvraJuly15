@@ -1,7 +1,7 @@
 """add pubmed cache table
 
 Revision ID: add_pubmed_cache
-Revises: 
+Revises: fix_image_url_sizes
 Create Date: 2025-12-23
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_pubmed_cache'
-down_revision = None
-branch_labels = ('pubmed_cache',)
+down_revision = 'fix_image_url_sizes'  # Chain after the latest migration
+branch_labels = None
 depends_on = None
 
 
