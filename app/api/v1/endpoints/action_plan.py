@@ -655,17 +655,18 @@ def _build_plan_response(plan, db) -> dict:
             ]
         }
         
-        # Category-specific fields
-        if item.category == "food":
-            action_data["food_items"] = item.food_items
-            action_data["food_amounts"] = item.food_amounts
-        elif item.category == "movement":
-            action_data["exercise_types"] = item.exercise_types
-            action_data["exercise_durations"] = item.exercise_durations
-            action_data["exercise_intensities"] = item.exercise_intensities
-        elif item.category == "mindfulness":
-            action_data["mindfulness_techniques"] = item.mindfulness_techniques
-            action_data["mindfulness_durations"] = item.mindfulness_durations
+        # Category-specific fields (case-insensitive + null safety)
+        cat = (item.category or "").lower()
+        if cat == "food":
+            action_data["food_items"] = item.food_items or []
+            action_data["food_amounts"] = item.food_amounts or []
+        elif cat == "movement":
+            action_data["exercise_types"] = item.exercise_types or []
+            action_data["exercise_durations"] = item.exercise_durations or []
+            action_data["exercise_intensities"] = item.exercise_intensities or []
+        elif cat == "mindfulness":
+            action_data["mindfulness_techniques"] = item.mindfulness_techniques or []
+            action_data["mindfulness_durations"] = item.mindfulness_durations or []
         
         actions.append(action_data)
         
@@ -754,14 +755,14 @@ def _convert_to_legacy_format(result: dict) -> dict:
             "hormone_persona_intro": action.get("hormone_persona_intro"),
             "variants": action.get("variants", []),
             
-            # Category-specific
-            "food_amounts": action.get("food_amounts"),
-            "food_items": action.get("food_items"),
-            "exercise_durations": action.get("exercise_durations"),
-            "exercise_types": action.get("exercise_types"),
-            "exercise_intensities": action.get("exercise_intensities"),
-            "mindfulness_durations": action.get("mindfulness_durations"),
-            "mindfulness_techniques": action.get("mindfulness_techniques")
+            # Category-specific (Null safety for frontend)
+            "food_amounts": action.get("food_amounts") or [],
+            "food_items": action.get("food_items") or [],
+            "exercise_durations": action.get("exercise_durations") or [],
+            "exercise_types": action.get("exercise_types") or [],
+            "exercise_intensities": action.get("exercise_intensities") or [],
+            "mindfulness_durations": action.get("mindfulness_durations") or [],
+            "mindfulness_techniques": action.get("mindfulness_techniques") or []
         }
         
         # Add to appropriate time slot

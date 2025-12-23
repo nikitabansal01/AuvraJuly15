@@ -814,68 +814,6 @@ class ImageLibrary(Base):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PUBMED RESEARCH PAPER CACHE - Real verified citations from PubMed
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class PubmedPaperCache(Base):
-    """
-    Cache for real PubMed research papers to replace GPT-hallucinated citations.
-    Stores verified papers fetched from PubMed E-utilities API.
-    """
-    __tablename__ = "pubmed_paper_cache"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    
-    # PubMed unique identifier (Primary lookup key)
-    pmid = Column(String(20), unique=True, nullable=False, index=True)  # e.g., "30551234"
-    
-    # Paper metadata
-    title = Column(Text, nullable=False)
-    authors = Column(JSONB, nullable=True)  # ["Smith J", "Doe A", ...] 
-    journal = Column(String(500), nullable=False)  # e.g., "Journal of Clinical Endocrinology"
-    publication_year = Column(Integer, nullable=False)  # e.g., 2022
-    abstract = Column(Text, nullable=True)  # Full abstract if available
-    
-    # Study characteristics
-    participant_count = Column(Integer, nullable=True)  # Estimated from abstract
-    female_only = Column(Boolean, default=True)  # Was study female-only?
-    finding_summary = Column(Text, nullable=True)  # GPT-summarized key finding for women
-    
-    # Categorization for AUVRA matching
-    category = Column(String(50), nullable=True)  # food, movement, mindfulness
-    target_hormones = Column(JSONB, nullable=True)  # ["cortisol", "estrogen"]
-    search_keywords = Column(JSONB, nullable=True)  # Keywords used to find this paper
-    mesh_terms = Column(JSONB, nullable=True)  # Official MeSH terms from PubMed
-    
-    # Relevance scoring
-    relevance_score = Column(Integer, default=50)  # 0-100 how relevant for AUVRA
-    
-    # External links
-    doi = Column(String(200), nullable=True)  # e.g., "10.1016/j.psyneuen.2019.01.023"
-    pubmed_url = Column(String(500), nullable=True)  # Direct link to PubMed
-    
-    # Usage tracking
-    use_count = Column(Integer, default=0)  # How many times used in action plans
-    last_used_at = Column(DateTime, nullable=True)  # Last time attached to an action
-    
-    # Fetch metadata
-    fetch_date = Column(DateTime, default=datetime.utcnow)  # When we fetched from PubMed
-    
-    # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Indexes for efficient lookups
-    __table_args__ = (
-        Index('idx_paper_cache_category', 'category'),
-        Index('idx_paper_cache_hormones', 'target_hormones', postgresql_using='gin'),
-        Index('idx_paper_cache_keywords', 'search_keywords', postgresql_using='gin'),
-        Index('idx_paper_cache_year', 'publication_year'),
-        Index('idx_paper_cache_relevance', 'relevance_score'),
-    )
-
-
 # Database table creation
 def create_tables():
     """Create tables"""
