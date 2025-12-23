@@ -593,175 +593,73 @@ class PubMedService:
             return None
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # RESEARCH PAPER LIBRARY (Curated Storage)
+    # CACHE LAYER
     # ═══════════════════════════════════════════════════════════════════════════
     
     async def _get_cached_citation(self, cache_key: str, db: AsyncSession) -> Optional[Dict]:
-        """
-        Get paper from library - first by PMID, then by semantic similarity.
-        """
-        from app.core.database import ResearchPaper
-        
-        try:
-            # Try to find by existing cache key pattern (backward compat)
-            # In new model, we look up by PMID or semantic similarity
-            result = await db.execute(
-                select(ResearchPaper)
-                .order_by(ResearchPaper.usage_count.desc())
-                .limit(1)
-            )
-            paper = result.scalar_one_or_none()
-            
-            if paper:
-                # Update usage stats
-                paper.usage_count += 1
-                paper.last_used_at = datetime.utcnow()
-                await db.commit()
-                
-                return {
-                    "title": paper.title,
-                    "journal": paper.journal or "Unknown",
-                    "year": paper.year or 2020,
-                    "participants": paper.participants if paper.participants and paper.participants > 0 else 0,
-                    "finding": paper.finding or "",
-                    "pmid": paper.pmid or "",
-                    "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{paper.pmid}/" if paper.pmid else "",
-                    "source": "library"
-                }
-                
-        except Exception as e:
-            logger.warning(f"Library lookup error: {e}")
-        
-        return None
-    
-    async def _find_paper_by_pmid(self, pmid: str, db: AsyncSession) -> Optional[Dict]:
-        """Find paper in library by PMID (exact match)."""
-        from app.core.database import ResearchPaper
+        """Get citation from cache."""
+        from app.core.database import PubMedCache
         
         try:
             result = await db.execute(
-                select(ResearchPaper).where(ResearchPaper.pmid == pmid)
+                select(PubMedCache).where(PubMedCache.cache_key == cache_key)
             )
-            paper = result.scalar_one_or_none()
+            cached = result.scalar_one_or_none()
             
-            if paper:
-                # Update usage stats
-                paper.usage_count += 1
-                paper.last_used_at = datetime.utcnow()
-                await db.commit()
+            if cached:
+                # Parse participants
+                participants = 0
+                if cached.participants:
+                    match = re.search(r'(\d+)', str(cached.participants))
+                    if match:
+                        participants = int(match.group(1))
                 
                 return {
-                    "title": paper.title,
-                    "journal": paper.journal or "Unknown",
-                    "year": paper.year or 2020,
-                    "participants": paper.participants if paper.participants and paper.participants > 0 else 0,
-                    "finding": paper.finding or "",
-                    "pmid": paper.pmid or "",
-                    "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{paper.pmid}/" if paper.pmid else "",
-                    "source": "library"
+                    "title": cached.title,
+                    "journal": cached.journal or "Unknown",
+                    "year": cached.year or 2020,
+                    "participants": participants if participants > 0 else "Women",
+                    "finding": cached.finding or "",
+                    "pmid": cached.pubmed_id or "",
+                    "verification_link": f"https://pubmed.ncbi.nlm.nih.gov/{cached.pubmed_id}/" if cached.pubmed_id else "",
+                    "source": "cache"
                 }
+                
         except Exception as e:
-            logger.warning(f"PMID lookup error: {e}")
+            logger.warning(f"Cache lookup error: {e}")
         
         return None
     
     async def _cache_citation(self, cache_key: str, paper: Dict, db: AsyncSession) -> None:
-        """Add paper to curated library (if not already exists)."""
-        from app.core.database import ResearchPaper
-        
-        pmid = paper.get("pmid", "")
-        if not pmid:
-            logger.warning("Cannot add paper without PMID to library")
-            return
+        """Store citation in cache."""
+        from app.core.database import PubMedCache
         
         try:
-            # Check if already exists
-            existing = await db.execute(
-                select(ResearchPaper).where(ResearchPaper.pmid == pmid)
-            )
-            if existing.scalar_one_or_none():
-                logger.info(f"📚 Paper already in library: PMID {pmid}")
-                return
-            
-            # Convert participants to integer
+            # Convert participants to string for storage
             participants = paper.get("participants", 0)
-            if isinstance(participants, str):
-                match = re.search(r'(\d+)', participants)
-                participants = int(match.group(1)) if match else 0
+            if isinstance(participants, int):
+                participants_str = str(participants) if participants > 0 else None
+            else:
+                participants_str = str(participants) if participants else None
             
-            # Calculate quality score
-            quality_score = self._calculate_quality_score(paper)
-            
-            # Extract topics from title
-            topics = self._extract_topics(paper.get("title", ""))
-            
-            # Add to library
-            library_entry = ResearchPaper(
-                pmid=pmid,
-                doi=paper.get("doi"),
+            cache_entry = PubMedCache(
+                cache_key=cache_key,
+                pubmed_id=paper.get("pmid", ""),
                 title=paper.get("title", ""),
                 journal=paper.get("journal", ""),
                 year=paper.get("year", 2020),
-                participants=participants if participants > 0 else None,
+                participants=participants_str,
                 finding=paper.get("finding", ""),
-                abstract=paper.get("abstract"),
-                source=paper.get("source", "pubmed"),
-                quality_score=quality_score,
-                topics=topics,
-                usage_count=1,
                 created_at=datetime.utcnow(),
-                last_used_at=datetime.utcnow()
+                access_count=1
             )
-            db.add(library_entry)
+            db.add(cache_entry)
             await db.commit()
-            logger.info(f"📚 Added to library: {pmid} (quality: {quality_score})")
+            logger.info(f"📚 Cached citation: {cache_key}")
             
         except Exception as e:
-            logger.warning(f"Library add error: {e}")
+            logger.warning(f"Cache write error: {e}")
             await db.rollback()
-    
-    def _calculate_quality_score(self, paper: Dict) -> int:
-        """Calculate quality score (0-100) for a paper."""
-        score = 50  # Base score
-        
-        title = paper.get("title", "").lower()
-        
-        # Boost for having participants
-        participants = paper.get("participants", 0)
-        if isinstance(participants, int) and participants > 50:
-            score += 15
-        
-        # Boost for recency
-        year = paper.get("year", 2020)
-        if year >= 2020:
-            score += 10
-        elif year >= 2015:
-            score += 5
-        
-        # Boost for women-specific
-        if "women" in title or "female" in title:
-            score += 10
-        
-        # Boost for randomized/clinical trials
-        if "randomized" in title or "trial" in title:
-            score += 10
-        
-        return min(score, 100)
-    
-    def _extract_topics(self, title: str) -> List[str]:
-        """Extract topic keywords from paper title."""
-        title_lower = title.lower()
-        
-        # Common wellness topics to look for
-        all_topics = [
-            "yoga", "meditation", "exercise", "walking", "diet", "nutrition",
-            "cortisol", "stress", "insulin", "estrogen", "progesterone", "testosterone",
-            "women", "female", "menstrual", "pcos", "anxiety", "sleep",
-            "omega-3", "vitamin", "mineral", "supplement", "breathing"
-        ]
-        
-        found_topics = [topic for topic in all_topics if topic in title_lower]
-        return found_topics[:5]  # Limit to 5 topics
     
     async def close(self):
         """Close HTTP client."""

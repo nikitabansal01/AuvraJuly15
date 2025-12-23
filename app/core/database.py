@@ -814,60 +814,37 @@ class ImageLibrary(Base):
     )
 
 
-class ResearchPaper(Base):
+class PubMedCache(Base):
     """
-    Curated Research Paper Library for citations.
-    Stores real papers with embeddings for semantic matching (like ImageLibrary).
-    Papers are permanently stored and organically curated over time.
+    Cache for PubMed research citations.
+    Stores real papers to avoid hitting API rate limits.
     """
-    __tablename__ = "research_papers"
+    __tablename__ = "pubmed_cache"
     
     id = Column(Integer, primary_key=True, index=True)
+    cache_key = Column(String(32), unique=True, nullable=False, index=True)  # MD5 hash of search params
     
-    # Paper Identity
-    pmid = Column(String(20), unique=True, nullable=True, index=True)  # PubMed ID
-    doi = Column(String(100), nullable=True)  # DOI for alternative linking
-    
-    # Paper Content
+    # Paper details
+    pubmed_id = Column(String(20), nullable=True)  # PubMed ID for linking
     title = Column(Text, nullable=False)
     journal = Column(String(255), nullable=True)
     year = Column(Integer, nullable=True)
     authors = Column(Text, nullable=True)  # First 3 authors
-    participants = Column(Integer, nullable=True)  # Number of women in study
-    finding = Column(Text, nullable=True)  # Key finding/result from abstract
-    abstract = Column(Text, nullable=True)  # Full abstract for better matching
+    participants = Column(String(100), nullable=True)  # e.g., "120 women"
+    finding = Column(Text, nullable=True)  # Key finding/result
     
-    # Semantic Matching (like ImageLibrary)
-    paper_embedding = Column(JSONB, nullable=True)  # 1536-dim embedding for similarity search
-    
-    # Categorization for filtering
-    category = Column(String(50), nullable=True)  # food, movement, mindfulness
-    hormones = Column(ARRAY(String), nullable=True)  # ["cortisol", "insulin"]
-    topics = Column(ARRAY(String), nullable=True)  # ["yoga", "stress", "women"]
-    
-    # Quality & Curation
-    quality_score = Column(Integer, default=50)  # 0-100 score
-    verified = Column(Boolean, default=False)  # Manually verified by team
-    source = Column(String(50), default="pubmed")  # pubmed, openalex, semantic_scholar
-    
-    # Usage Tracking
-    usage_count = Column(Integer, default=1)
+    # Usage tracking
+    access_count = Column(Integer, default=1)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
-    last_used_at = Column(DateTime, default=datetime.utcnow)
+    last_accessed_at = Column(DateTime, default=datetime.utcnow)
     
-    # Indexes for performance
+    # Indexes
     __table_args__ = (
-        Index('idx_research_papers_pmid', 'pmid'),
-        Index('idx_research_papers_category', 'category'),
-        Index('idx_research_papers_quality', 'quality_score'),
-        Index('idx_research_papers_usage', 'usage_count'),
+        Index('idx_pubmed_cache_key', 'cache_key'),
+        Index('idx_pubmed_cache_access', 'access_count'),
     )
-
-
-# Keep PubMedCache as an alias for backward compatibility during migration
-PubMedCache = ResearchPaper
 
 
 # Database table creation

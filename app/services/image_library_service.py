@@ -40,7 +40,7 @@ class ImageLibraryService:
     """
     
     # Similarity threshold for reusing cached images
-    SIMILARITY_THRESHOLD = 0.85
+    SIMILARITY_THRESHOLD = 0.95
     
     # RunPod pricing
     COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
