@@ -2002,10 +2002,13 @@ HEALTH PROFILE
 - Primary Hormone to Support: {user_context.get('primary_hormone')}
 - Secondary Hormone: {user_context.get('secondary_hormone', 'Not specified')}
 
-HEALTH CONCERNS:
+HEALTH CONCERNS (Pick 'symptoms' field from these):
 - Top Concern: {user_context.get('top_concern', 'Not specified')}
 - Diagnosed Conditions: {user_context.get('diagnosed_conditions', 'none')}
 - Period Concerns: {user_context.get('period_concerns', 'none')}
+- Body Concerns: {user_context.get('body_concerns', 'none')}
+- Skin/Hair Concerns: {user_context.get('skin_hair_concerns', 'none')}
+- Mental Health Concerns: {user_context.get('mental_health_concerns', 'none')}
 
 ══════════════════════════════════════════════════════════════════════
 PERSONALIZATION FACTORS
@@ -2052,7 +2055,7 @@ OUTPUT FORMAT (for each replacement action)
 10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
 11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
 12. variants: Array of 3 variant objects (see VARIANT FORMAT below)
-13. symptoms: REQUIRED - Array of 1-3 symptoms THIS ACTION specifically helps (e.g., ["fatigue", "bloating", "stress"]) - NEVER EMPTY!
+13. symptoms: REQUIRED - Pick 1-3 from USER'S HEALTH CONCERNS above that THIS ACTION specifically helps - NEVER EMPTY!
 14. conditions: Array of conditions this helps (e.g., ["PCOS"]) - can be empty []
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
