@@ -2127,50 +2127,107 @@ EXAMPLE OUTPUT for FOOD replacement:
 
 Respond with valid JSON array only. Do not add any text outside the JSON."""
 
-            # Generate replacements via GPT
-            response = await self.client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.GPT_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": batch_prompt}
-                    ],
-                    "temperature": 0.8,
-                    "max_tokens": 4000
-                }
-            )
+            # Generate replacements via GPT with retry logic
+            MAX_RETRIES = 2
+            replacement_actions = None
+            gpt_cost = 0.0
             
-            response.raise_for_status()
-            data = response.json()
+            for attempt in range(1, MAX_RETRIES + 1):
+                logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_RETRIES}")
+                
+                response = await self.client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.GPT_MODEL,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": batch_prompt}
+                        ],
+                        "temperature": 0.3,  # Lowered from 0.8 for consistency
+                        "max_tokens": 4000,
+                        "response_format": {"type": "json_object"}  # Ensure valid JSON
+                    }
+                )
+                
+                response.raise_for_status()
+                data = response.json()
+                
+                # Calculate GPT cost for this attempt
+                input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+                output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+                attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                gpt_cost += attempt_cost
+
+                
+                content = data["choices"][0]["message"]["content"]
+                
+                # Parse response - json_object mode guarantees valid JSON
+                response_data = json.loads(content.strip())
+                
+                # Extract actions array (json_object returns {"actions": [...]}) 
+                if isinstance(response_data, dict):
+                    if "actions" in response_data:
+                        attempt_actions = response_data["actions"]
+                    elif "replacements" in response_data:
+                        attempt_actions = response_data["replacements"]
+                    else:
+                        # Single object wrapped in dict
+                        attempt_actions = [response_data]
+                elif isinstance(response_data, list):
+                    attempt_actions = response_data
+                else:
+                    logger.warning(f"❌ Attempt {attempt}: Unexpected response format")
+                    continue
+                
+                if not attempt_actions:
+                    logger.warning(f"❌ Attempt {attempt}: No replacement actions generated")
+                    continue
+                
+                logger.info(f"✅ Successfully parsed JSON - got {len(attempt_actions)} actions")
+                if not isinstance(attempt_actions, list):
+                    attempt_actions = [attempt_actions]
+                
+                # Validate all replacement actions
+                all_valid = True
+                validation_errors = []
+                
+                for i, action in enumerate(attempt_actions):
+                    category = action.get("category", "unknown").lower()
+                    valid, missing = self._validate_action_fields(action, category)
+                    
+                    if not valid:
+                        all_valid = False
+                        validation_errors.append(
+                            f"Replacement {i+1} '{action.get('title', 'Untitled')}' [{category}]: missing {missing}"
+                        )
+                
+                if all_valid:
+                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} replacement actions valid")
+                    replacement_actions = attempt_actions
+                    break
+                
+                # Log validation errors
+                logger.warning(f"⚠️ Attempt {attempt} validation failed:")
+                for error in validation_errors:
+                    logger.warning(f"   • {error}")
+                
+                if attempt < MAX_RETRIES:
+                    logger.info(f"🔄 Retrying replacement generation...")
+                else:
+                    # Max retries exceeded - apply fallback defaults
+                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, applying fallback defaults")
+                    replacement_actions = self._fill_missing_fields(attempt_actions)
             
-            # Calculate GPT cost
-            input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
-            output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-            gpt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
             total_cost += gpt_cost
             
-            content = data["choices"][0]["message"]["content"]
+            if not replacement_actions:
+                return {"success": False, "error": "Failed to generate valid replacement actions"}
             
-            # Parse response
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            
-            logger.info(f"�� ABOUT TO PARSE GPT JSON - content length: {len(content)}")
-            logger.info(f"🔍 First 300 chars of content: {content[:300]}")
-            replacement_actions = json.loads(content.strip())
-            
-            logger.info(f"✅ Successfully parsed JSON - got {len(replacement_actions)} actions")
-            if not isinstance(replacement_actions, list):
-                replacement_actions = [replacement_actions]
-            
-            # Debug: Log all fields for each replacement action to verify GPT response
+            # Debug: Log all fields for each replacement action
             logger.info(f"📋 GPT returned {len(replacement_actions)} replacement actions")
             for i, replacement_action in enumerate(replacement_actions):
                 research = replacement_action.get("research_studies", [])
@@ -2192,6 +2249,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 logger.info(f"    {len(research)} research studies, "
                            f"variants={len(replacement_action.get('variants', []))}, "
                            f"hormone_persona_intro={bool(replacement_action.get('hormone_persona_intro'))}")
+
             
             # Process each replacement
             new_actions = []
