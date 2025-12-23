@@ -814,6 +814,39 @@ class ImageLibrary(Base):
     )
 
 
+class PubMedCache(Base):
+    """
+    Cache for PubMed research citations.
+    Stores real papers to avoid hitting API rate limits.
+    """
+    __tablename__ = "pubmed_cache"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    cache_key = Column(String(32), unique=True, nullable=False, index=True)  # MD5 hash of search params
+    
+    # Paper details
+    pubmed_id = Column(String(20), nullable=True)  # PubMed ID for linking
+    title = Column(Text, nullable=False)
+    journal = Column(String(255), nullable=True)
+    year = Column(Integer, nullable=True)
+    authors = Column(Text, nullable=True)  # First 3 authors
+    participants = Column(String(100), nullable=True)  # e.g., "120 women"
+    finding = Column(Text, nullable=True)  # Key finding/result
+    
+    # Usage tracking
+    access_count = Column(Integer, default=1)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_accessed_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_pubmed_cache_key', 'cache_key'),
+        Index('idx_pubmed_cache_access', 'access_count'),
+    )
+
+
 # Database table creation
 def create_tables():
     """Create tables"""
