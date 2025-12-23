@@ -1518,10 +1518,15 @@ If the tool returns empty, set research_studies to an empty array.
         actions_with_images = []
         
         for action in actions:
+            # Safely get action properties (handles malformed GPT responses)
+            action_title = action.get("title", "Wellness Action")
+            action_category = action.get("category", "food")
+            action_image_prompt = action.get("image_prompt", action_title)
+            
             # Generate hero image
             hero_url, was_cached, cost = await self.image_service.get_or_generate_image(
-                prompt=action.get("image_prompt", action["title"]),
-                category=action["category"],
+                prompt=action_image_prompt,
+                category=action_category,
                 variant_type="hero",
                 user_id=user_id,
                 db=db
@@ -1540,9 +1545,10 @@ If the tool returns empty, set research_studies to an empty array.
                     logger.warning(f"Skipping invalid variant (not a dict): {type(variant)}")
                     continue
                     
+                variant_prompt = variant.get("image_prompt", variant.get("title", action_title))
                 variant_url, was_cached, cost = await self.image_service.get_or_generate_image(
-                    prompt=variant.get("image_prompt", variant.get("title", action["title"])),
-                    category=action["category"],
+                    prompt=variant_prompt,
+                    category=action_category,
                     variant_type=variant.get("variant_type", f"variant_{i}"),
                     user_id=user_id,
                     db=db
@@ -1615,11 +1621,11 @@ If the tool returns empty, set research_studies to an empty array.
                     uid=user_id,
                     slot=slot,
                     time_slot=action.get("time_slot", "morning"),
-                    category=action["category"],
-                    title=action["title"],
+                    category=action.get("category", "food"),
+                    title=action.get("title", "Wellness Action"),
                     specific_action=action.get("specific_action", ""),
                     purpose=action.get("purpose", ""),
-                    target_hormone=action.get("target_hormone", user_context["primary_hormone"]),
+                    target_hormone=action.get("target_hormone", user_context.get("primary_hormone", "Hormonal Balance")),
                     hormone_persona_intro=action.get("hormone_persona_intro", ""),
                     hero_image_url=action.get("hero_image_url"),
                     hero_image_prompt=action.get("image_prompt"),
