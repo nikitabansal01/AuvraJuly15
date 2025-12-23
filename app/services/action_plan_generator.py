@@ -19,6 +19,7 @@ import json
 import logging
 import time
 import asyncio
+import traceback
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone, date, timedelta
 
@@ -641,6 +642,7 @@ class ActionPlanGenerator:
             
         except Exception as e:
             logger.error(f"Error generating plan: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
     
     def _get_user_today(self, timezone_str: str) -> date:
@@ -1117,8 +1119,8 @@ Format as bullet points."""
         
         # Get cycle phase for hormone context
         cycle_phase = user_context.get("cycle_phase", "follicular").lower()
-        primary_hormone = user_context["primary_hormone"].lower()
-        secondary_hormone = user_context["secondary_hormone"].lower()
+        primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
+        secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
         
         # Get hormone personas
         primary_persona = HORMONE_PERSONAS.get(primary_hormone, DEFAULT_PERSONA)
@@ -1129,15 +1131,15 @@ Format as bullet points."""
         secondary_behavior = secondary_persona.get("phase_behavior", {}).get(cycle_phase, "I fluctuate during this phase")
         
         hormone_phase_context = f"""
-For {primary_persona['name']} ({user_context["primary_hormone"]}):
+For {primary_persona.get('name', 'Hormone')} ({primary_hormone}):
 - Phase behavior: "{primary_behavior}"
 - User benefit: "{primary_persona.get('benefit', 'balanced')}"
-- Focus: {primary_persona['focus']}
+- Focus: {primary_persona.get('focus', 'overall wellness')}
 
-For {secondary_persona['name']} ({user_context["secondary_hormone"]}):
+For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
 - Phase behavior: "{secondary_behavior}"
 - User benefit: "{secondary_persona.get('benefit', 'balanced')}"
-- Focus: {secondary_persona['focus']}
+- Focus: {secondary_persona.get('focus', 'overall wellness')}
 """
         
         # Build the prompt with ALL user context
@@ -1147,8 +1149,8 @@ For {secondary_persona['name']} ({user_context["secondary_hormone"]}):
             cycle_day=user_context.get("cycle_day", "unknown"),
             cycle_phase=user_context.get("cycle_phase", "unknown"),
             # Hormones
-            primary_hormone=user_context["primary_hormone"],
-            secondary_hormone=user_context["secondary_hormone"],
+            primary_hormone=primary_hormone,
+            secondary_hormone=secondary_hormone,
             # Health profile
             age=user_context.get("age", "not specified"),
             top_concern=user_context.get("top_concern", "general wellness"),
