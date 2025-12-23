@@ -2237,7 +2237,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             for attempt in range(1, MAX_RETRIES + 1):
                 logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_RETRIES}")
                 
-                # Generate replacement actions
+                # Generate replacement actions WITH tool calling for real citations
                 response = await self.client.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers={
@@ -2250,9 +2250,10 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": batch_prompt}
                         ],
-                        "temperature": 0.3,  # Lowered from 0.8 for consistency
-                        "max_tokens": 4000,
-                        "response_format": {"type": "json_object"}  # Simple JSON mode
+                        "tools": [PUBMED_SEARCH_TOOL],
+                        "tool_choice": "auto",
+                        "temperature": 0.3,
+                        "max_tokens": 4000
                     }
                 )
                 
@@ -2265,7 +2266,72 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
                 gpt_cost += attempt_cost
                 
-                content = data["choices"][0]["message"]["content"]
+                message = data["choices"][0]["message"]
+                
+                # Handle tool calls if GPT wants to search for papers
+                if message.get("tool_calls"):
+                    logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for replacement citations")
+                    
+                    tool_results = []
+                    for tool_call in message["tool_calls"]:
+                        if tool_call["function"]["name"] == "search_research_paper":
+                            args = json.loads(tool_call["function"]["arguments"])
+                            logger.info(f"  🔍 Searching for: {args.get('action_title', 'unknown')}")
+                            
+                            # Execute the tool with db for caching
+                            paper = await execute_pubmed_tool(args, db=db)
+                            
+                            if paper and paper.get("title"):
+                                logger.info(f"  ✅ Found: {paper['title'][:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                            else:
+                                logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
+                            
+                            tool_results.append({
+                                "tool_call_id": tool_call["id"],
+                                "role": "tool",
+                                "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
+                            })
+                    
+                    # Send tool results back to GPT
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": message.get("content"),
+                        "tool_calls": message.get("tool_calls")
+                    }
+                    
+                    response2 = await self.client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.openai_api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": self.GPT_MODEL,
+                            "messages": [
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": batch_prompt},
+                                assistant_message,
+                                *tool_results
+                            ],
+                            "temperature": 0.3,
+                            "max_tokens": 4000,
+                            "response_format": {"type": "json_object"}
+                        }
+                    )
+                    
+                    response2.raise_for_status()
+                    data = response2.json()
+                    
+                    # Add second call cost
+                    input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+                    output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+                    gpt_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                    
+                    content = data["choices"][0]["message"]["content"]
+                else:
+                    # GPT didn't call tools - use response as-is
+                    logger.warning("⚠️ GPT did not call tools - replacement citations may be fabricated")
+                    content = message.get("content", "{}")
                 
                 # Parse response
                 if content.startswith("```"):
