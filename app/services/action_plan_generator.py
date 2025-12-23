@@ -1205,15 +1205,8 @@ Write the hormone_persona_intro naturally, following the example style above. Th
                     ],
                     "temperature": 0.3,  # Lowered from 0.7 for consistency
                     "max_tokens": 4000,
-                    # Enable structured outputs with JSON schema
-                    "response_format": {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "action_plan_response",
-                            "strict": True,
-                            "schema": ACTION_PLAN_SCHEMA
-                        }
-                    }
+                    # Use simple JSON mode (strict schema fails with conditional fields)
+                    "response_format": {"type": "json_object"}
                 }
             )
             
