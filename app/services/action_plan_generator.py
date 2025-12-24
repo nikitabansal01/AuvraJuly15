@@ -402,6 +402,79 @@ For MINDFULNESS actions, MUST include:
 - mindfulness_durations: Array like ["5 min", "10 minutes"]
 - mindfulness_techniques: Array like ["deep breathing", "meditation"]
 
+══════════════════════════════════════════════════════════════════════
+COMPLETE OUTPUT EXAMPLES (FOLLOW THIS EXACT STRUCTURE)
+══════════════════════════════════════════════════════════════════════
+
+EXAMPLE FOOD ACTION (notice food_items and food_amounts are REQUIRED):
+{{
+  "title": "Pumpkin Seed Power",
+  "category": "food",
+  "time_slot": "morning",
+  "specific_action": "Add 2 tablespoons of raw pumpkin seeds to your morning yogurt or smoothie. These zinc-rich seeds support hormone production and reduce inflammation.",
+  "purpose": "Pumpkin seeds are packed with zinc and magnesium that help boost progesterone and keep you calmer.",
+  "target_hormone": "Progesterone",
+  "hormone_persona_intro": "Hey there, it's Progesterone. I'm here to help you feel calm and balanced today. Let me start by sharing something delicious that will help boost my levels.",
+  "image_prompt": "Professional food photography of pumpkin seeds in wooden bowl, overhead view, rustic table, natural lighting, 4K quality",
+  "food_items": ["pumpkin seeds", "raw seeds"],
+  "food_amounts": ["2 tablespoons", "a handful"],
+  "research_studies": [{{"title": "Zinc supplementation and hormone levels", "journal": "J Nutr", "year": 2022, "participants": 120, "finding": "Zinc improved progesterone levels in women", "pmid": "12345678"}}],
+  "variants": [
+    {{"variant_type": "tasty", "title": "Roasted Honey Pumpkin Seeds", "description": "Roast with honey and cinnamon for a sweet treat", "image_prompt": "..."}},
+    {{"variant_type": "easy", "title": "Seed Sprinkle", "description": "Just sprinkle on any meal", "image_prompt": "..."}},
+    {{"variant_type": "healthy", "title": "Raw Soaked Seeds", "description": "Soak overnight for maximum absorption", "image_prompt": "..."}}
+  ],
+  "symptoms": ["fatigue", "anxiety"],
+  "conditions": ["PCOS"]
+}}
+
+EXAMPLE MOVEMENT ACTION (notice exercise_types, exercise_durations, exercise_intensities are REQUIRED):
+{{
+  "title": "Gentle Morning Yoga",
+  "category": "movement",
+  "time_slot": "morning",
+  "specific_action": "Start your day with 15 minutes of gentle yoga focusing on hip openers and forward folds. These poses help reduce cortisol and support hormone balance.",
+  "purpose": "Gentle yoga activates the parasympathetic nervous system, helping me (Cortisol) stay balanced and reducing stress hormones.",
+  "target_hormone": "Cortisol",
+  "hormone_persona_intro": "Good morning! It's Cortisol here. Instead of spiking your stress, let's channel my energy into something calming that will help you feel centered all day.",
+  "image_prompt": "Serene photograph of woman practicing yoga, soft morning light, peaceful setting, warm earth tones, 4K quality",
+  "exercise_types": ["yoga", "stretching", "hip openers"],
+  "exercise_durations": ["15 minutes", "10-20 min"],
+  "exercise_intensities": ["low", "gentle"],
+  "research_studies": [{{"title": "Yoga and cortisol reduction in women", "journal": "Psychoneuroendocrinology", "year": 2021, "participants": 80, "finding": "Yoga reduced cortisol levels significantly", "pmid": "98765432"}}],
+  "variants": [
+    {{"variant_type": "gentle", "title": "Restorative Poses", "description": "Focus on supported poses with props", "image_prompt": "..."}},
+    {{"variant_type": "energizing", "title": "Sun Salutations", "description": "Add 3 rounds of sun salutations", "image_prompt": "..."}},
+    {{"variant_type": "quick", "title": "5-Minute Stretch", "description": "Quick sequence for busy mornings", "image_prompt": "..."}}
+  ],
+  "symptoms": ["stress", "tension"],
+  "conditions": []
+}}
+
+EXAMPLE MINDFULNESS ACTION (notice mindfulness_techniques and mindfulness_durations are REQUIRED):
+{{
+  "title": "Evening Calm Breathing",
+  "category": "mindfulness",
+  "time_slot": "evening",
+  "specific_action": "Practice 10 minutes of deep diaphragmatic breathing before bed. Breathe in for 4 counts, hold for 4, exhale for 6. This activates your rest-and-digest response.",
+  "purpose": "Deep breathing signals safety to your nervous system, helping me (Cortisol) decrease so you can rest and restore.",
+  "target_hormone": "Cortisol",
+  "hormone_persona_intro": "Hey, it's Cortisol checking in for the evening. Let's work together to wind down so you can get the restorative sleep you deserve.",
+  "image_prompt": "Peaceful zen scene with candles, soft pillows, diffused lighting, calming atmosphere, 4K quality",
+  "mindfulness_techniques": ["deep breathing", "diaphragmatic breathing", "4-4-6 breathing"],
+  "mindfulness_durations": ["10 minutes", "5-15 min"],
+  "research_studies": [{{"title": "Breathing exercises and stress reduction", "journal": "Frontiers Psychol", "year": 2023, "participants": 95, "finding": "Deep breathing reduced perceived stress in women", "pmid": "11223344"}}],
+  "variants": [
+    {{"variant_type": "guided", "title": "App-Guided Session", "description": "Use Calm or Headspace app", "image_prompt": "..."}},
+    {{"variant_type": "solo", "title": "Silent Practice", "description": "Practice in complete silence", "image_prompt": "..."}},
+    {{"variant_type": "brief", "title": "5-Breath Reset", "description": "Just 5 deep breaths when stressed", "image_prompt": "..."}}
+  ],
+  "symptoms": ["anxiety", "insomnia"],
+  "conditions": []
+}}
+
+CRITICAL: Every action MUST include ALL of its category-specific fields (food_items/food_amounts for food, exercise_types/exercise_durations/exercise_intensities for movement, mindfulness_techniques/mindfulness_durations for mindfulness).
+
 IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
 Generate professional, appetizing, calming visuals that work in a mobile wellness app:
 - For FOOD: "Professional food photography of [specific dish], overhead view, natural lighting, rustic wooden table background, fresh ingredients visible, warm color tones, appetizing presentation, 4K quality"
@@ -1484,42 +1557,12 @@ If the tool returns empty, set research_studies to an empty array.
                     if isinstance(study.get("participants"), str):
                         # Convert "Women", "50 women", etc. to integer
                         try:
-                            # Try to extract numbers from string
                             import re
                             nums = re.findall(r'\d+', str(study.get("participants", "")))
                             study["participants"] = int(nums[0]) if nums else 0
                         except:
                             study["participants"] = 0
                         logger.debug(f"Sanitized participants: {study.get('participants')}")
-                
-                # Ensure category-specific fields exist with defaults if missing
-                category = action.get("category", "food")
-                title = action.get("title", "Unknown")
-                
-                if category == "food":
-                    if not action.get("food_items") or len(action.get("food_items", [])) == 0:
-                        # Extract from specific_action or title
-                        action["food_items"] = [title.split()[0] if title else "healthy food"]
-                        logger.warning(f"🔧 Auto-filled food_items for '{title}' from title")
-                    if not action.get("food_amounts") or len(action.get("food_amounts", [])) == 0:
-                        action["food_amounts"] = ["1 serving"]
-                        logger.warning(f"🔧 Auto-filled food_amounts for '{title}'")
-                elif category == "movement":
-                    if not action.get("exercise_types") or len(action.get("exercise_types", [])) == 0:
-                        action["exercise_types"] = [title.replace("for Wellness", "").replace("for Balance", "").strip() or "walking"]
-                        logger.warning(f"🔧 Auto-filled exercise_types for '{title}' from title")
-                    if not action.get("exercise_durations") or len(action.get("exercise_durations", [])) == 0:
-                        action["exercise_durations"] = ["15-20 minutes"]
-                        logger.warning(f"🔧 Auto-filled exercise_durations for '{title}'")
-                    if not action.get("exercise_intensities") or len(action.get("exercise_intensities", [])) == 0:
-                        action["exercise_intensities"] = ["moderate"]
-                elif category == "mindfulness":
-                    if not action.get("mindfulness_techniques") or len(action.get("mindfulness_techniques", [])) == 0:
-                        action["mindfulness_techniques"] = [title or "deep breathing"]
-                        logger.warning(f"🔧 Auto-filled mindfulness_techniques for '{title}'")
-                    if not action.get("mindfulness_durations") or len(action.get("mindfulness_durations", [])) == 0:
-                        action["mindfulness_durations"] = ["5-10 minutes"]
-                        logger.warning(f"🔧 Auto-filled mindfulness_durations for '{title}'")
             
             # Validate with Pydantic - ensures all required fields are present
             logger.info(f"📋 Validating {len(raw_actions)} raw actions with Pydantic...")
@@ -1528,19 +1571,41 @@ If the tool returns empty, set research_studies to an empty array.
                 actions = [action.model_dump() for action in validated_response.actions]
                 logger.info(f"📋 Base Pydantic validation passed")
                 
-                # Log category-specific fields for confirmation (auto-filled if missing)
+                # Category-specific validation - MUST have these fields, no auto-fill
+                validation_errors = []
                 for i, action in enumerate(actions):
                     category = action.get("category", "food")
                     title = action.get("title", "Untitled")
                     
                     if category == "food":
-                        logger.info(f"  ✅ Action {i+1} '{title}' [food]: food_items={action.get('food_items')}")
+                        if not action.get("food_items") or len(action.get("food_items", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [food]: missing food_items")
+                        if not action.get("food_amounts") or len(action.get("food_amounts", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [food]: missing food_amounts")
+                        else:
+                            logger.info(f"  ✅ Action {i+1} '{title}' [food]: food_items={action.get('food_items')}, food_amounts={action.get('food_amounts')}")
                     elif category == "movement":
-                        logger.info(f"  ✅ Action {i+1} '{title}' [movement]: exercise_types={action.get('exercise_types')}")
+                        if not action.get("exercise_types") or len(action.get("exercise_types", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [movement]: missing exercise_types")
+                        if not action.get("exercise_durations") or len(action.get("exercise_durations", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [movement]: missing exercise_durations")
+                        else:
+                            logger.info(f"  ✅ Action {i+1} '{title}' [movement]: exercise_types={action.get('exercise_types')}, exercise_durations={action.get('exercise_durations')}")
                     elif category == "mindfulness":
-                        logger.info(f"  ✅ Action {i+1} '{title}' [mindfulness]: techniques={action.get('mindfulness_techniques')}")
+                        if not action.get("mindfulness_techniques") or len(action.get("mindfulness_techniques", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [mindfulness]: missing mindfulness_techniques")
+                        if not action.get("mindfulness_durations") or len(action.get("mindfulness_durations", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [mindfulness]: missing mindfulness_durations")
+                        else:
+                            logger.info(f"  ✅ Action {i+1} '{title}' [mindfulness]: techniques={action.get('mindfulness_techniques')}, durations={action.get('mindfulness_durations')}")
+                
+                if validation_errors:
+                    logger.warning(f"⚠️ Category-specific validation failed (will retry):")
+                    for error in validation_errors:
+                        logger.warning(f"   • {error}")
+                    return (None, total_cost)  # Trigger retry
                     
-                logger.info(f"✅ Pydantic validation passed for {len(actions)} actions")
+                logger.info(f"✅ All validations passed for {len(actions)} actions")
                 
             except ValidationError as e:
                 logger.error(f"❌ Pydantic validation failed: {e}")
