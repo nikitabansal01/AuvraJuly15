@@ -53,7 +53,8 @@ FEEDBACK_MINIMUM_TIME = 30
 async def get_today_assignments(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-    format: str = Query("legacy", description="Response format: 'legacy' or 'new'")
+    format: str = Query("legacy", description="Response format: 'legacy' or 'new'"),
+    timezone: Optional[str] = Query(None, description="User's current local timezone (IANA format)")
 ):
     """
     Get today's action plan (or generate if doesn't exist).
@@ -73,10 +74,18 @@ async def get_today_assignments(
         if not uid:
             raise HTTPException(status_code=400, detail="User ID not found")
         
-        # Get user timezone
+        # Get user profile
         from app.core.database import UserProfile
         user_profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
-        user_timezone = user_profile.current_timezone if user_profile else "Asia/Seoul"
+        
+        # If timezone provided, update profile and use it
+        if timezone and user_profile:
+            if user_profile.current_timezone != timezone:
+                logger.info(f"Updating timezone for user {uid}: {user_profile.current_timezone} -> {timezone}")
+                user_profile.current_timezone = timezone
+                db.commit()
+        
+        user_timezone = timezone or (user_profile.current_timezone if user_profile else "Asia/Seoul")
         
         # Get async session for generator
         async_db = await get_async_db_session()

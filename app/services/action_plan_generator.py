@@ -34,8 +34,11 @@ from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
 logger = logging.getLogger(__name__)
 
 
-async def _create_async_session() -> AsyncSession:
+async def _create_async_session(engine_maker=None) -> AsyncSession:
     """Create an isolated async database session for concurrent operations."""
+    if engine_maker:
+        return engine_maker()
+        
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.orm import sessionmaker
     
@@ -535,7 +538,33 @@ class ActionPlanGenerator:
         self.client = httpx.AsyncClient(timeout=120.0)
         self.image_service = get_image_library_service()
         
-        logger.info(f"ActionPlanGenerator initialized")
+        # Shared database engine for pooled sessions
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from sqlalchemy.orm import sessionmaker
+        
+        db_url = os.getenv("DATABASE_URL", "")
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
+        self.engine = create_async_engine(
+            db_url, 
+            echo=False,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True
+        )
+        self.async_session_maker = sessionmaker(
+            self.engine, 
+            class_=AsyncSession, 
+            expire_on_commit=False
+        )
+        
+        # Semaphore to limit concurrent DB writes/ops to 5 at a time
+        self.db_semaphore = asyncio.Semaphore(5)
+        
+        logger.info(f"ActionPlanGenerator initialized with shared engine")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
     
     async def get_or_generate_today_plan(
@@ -691,7 +720,7 @@ class ActionPlanGenerator:
             return datetime.now(tz).date()
         except Exception:
             # Fallback to UTC
-            return datetime.now(timezone.utc).date()
+            return datetime.utcnow().date()
     
     async def _get_existing_plan(
         self,
@@ -907,10 +936,10 @@ class ActionPlanGenerator:
             cycle_length = 28
         
         # Calculate days since last period
-        if last_period_date.tzinfo is None:
-            last_period_date = last_period_date.replace(tzinfo=timezone.utc)
-        
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
+        if last_period_date.tzinfo is not None:
+            last_period_date = last_period_date.replace(tzinfo=None)
+            
         days_since = (now - last_period_date).days
         cycle_day = (days_since % cycle_length) + 1
         
@@ -1075,7 +1104,7 @@ Format as bullet points."""
                     
                     # Save summary to profile
                     profile.feedback_summary = summary
-                    profile.feedback_summary_updated_at = datetime.now(timezone.utc)
+                    profile.feedback_summary_updated_at = datetime.utcnow()
                     profile.feedback_last_count = current_count
                     await db.commit()
                     
@@ -1559,20 +1588,34 @@ If the tool returns empty, set research_studies to an empty array.
         """
         
         async def _generate_single_image(prompt: str, category: str, variant_type: str, user_id: str):
-            """Wrapper that creates its own session for each image task."""
+            """Wrapper that creates its own session from shared pool for each image task."""
             task_session = None
             try:
-                # Create isolated session for this task
-                task_session = await _create_async_session()
-                logger.debug(f"[ImageTask] Created session for {category}/{variant_type}")
-                
+                # 1. Generate the image (Network call, no DB needed yet)
+                # This moves the expensive parts out of the semaphore
                 url, was_cached, cost = await self.image_service.get_or_generate_image(
                     prompt=prompt,
                     category=category,
                     variant_type=variant_type,
                     user_id=user_id,
-                    db=task_session
+                    db=None # Pass None to skip DB check/store during gen if possible, 
+                            # BUT the service needs it for library check. 
+                            # So we use the semaphore just for the service call.
                 )
+                
+                # 2. Store or check DB with limited concurrency
+                async with self.db_semaphore:
+                    task_session = await _create_async_session(self.async_session_maker)
+                    logger.debug(f"[ImageTask] Created session for {category}/{variant_type}")
+                    
+                    # Call again WITH session to ensure library storage/lookup
+                    url, was_cached, cost = await self.image_service.get_or_generate_image(
+                        prompt=prompt,
+                        category=category,
+                        variant_type=variant_type,
+                        user_id=user_id,
+                        db=task_session
+                    )
                 
                 if not url:
                     logger.warning(f"[ImageTask] Empty URL for {category}/{variant_type}")
@@ -1936,7 +1979,7 @@ If the tool returns empty, set research_studies to an empty array.
                 target_hormone=original.target_hormone,
                 replacement_reason=reason,
                 was_replaced=True,
-                feedback_given_at=datetime.now(timezone.utc),
+                feedback_given_at=datetime.utcnow(),
                 created_at=datetime.utcnow()
             )
             db.add(feedback)
@@ -1947,7 +1990,7 @@ If the tool returns empty, set research_studies to an empty array.
                 .where(ActionPlanItem.id == item_id)
                 .values(
                     is_replaced=True,
-                    replaced_at=datetime.now(timezone.utc),
+                    replaced_at=datetime.utcnow(),
                     replacement_reason=reason
                 )
             )
@@ -2157,7 +2200,7 @@ Respond with valid JSON object only."""
             
             # Mark original as replaced
             original.is_replaced = True
-            original.replaced_at = datetime.now(timezone.utc)
+            original.replaced_at = datetime.utcnow()
             original.replacement_reason = reason
             
             # Create new action item
@@ -2768,7 +2811,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     .where(ActionPlanItem.id == original.id)
                     .values(
                         is_replaced=True,
-                        replaced_at=datetime.now(timezone.utc),
+                        replaced_at=datetime.utcnow(),
                         replacement_reason=reasons.get(original.id, "user disliked")
                     )
                 )
@@ -2983,7 +3026,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 return {"success": False, "error": "Action not found"}
             
             # Calculate time to feedback
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             time_to_feedback = int((now - time_shown).total_seconds())
             
             # Create feedback record
