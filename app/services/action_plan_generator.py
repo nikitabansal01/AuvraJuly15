@@ -588,8 +588,8 @@ class ActionPlanGenerator:
             actions = None
             gpt_cost = 0.0
             
-            for attempt in range(1, MAX_RETRIES + 1):
-                logger.info(f"🔄 Generation attempt {attempt}/{MAX_RETRIES}")
+            for attempt in range(1, self.MAX_RETRIES + 1):
+                logger.info(f"🔄 Generation attempt {attempt}/{self.MAX_RETRIES}")
                 
                 # Generate actions with real citations from PubMed
                 attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db)
@@ -623,11 +623,11 @@ class ActionPlanGenerator:
                 for error in validation_errors:
                     logger.warning(f"   • {error}")
                 
-                if attempt < MAX_RETRIES:
+                if attempt < self.MAX_RETRIES:
                     logger.info(f"🔄 Retrying generation...")
                 else:
                     # Max retries exceeded - NO fallbacks, fail clearly
-                    logger.warning(f"⚠️ Max retries ({MAX_RETRIES}) exceeded, applying minimal fallbacks")
+                    logger.warning(f"⚠️ Max retries ({self.MAX_RETRIES}) exceeded, applying minimal fallbacks")
                     actions = self._fill_missing_fields(attempt_actions)
             
             total_cost += gpt_cost
@@ -2488,12 +2488,11 @@ EXAMPLE OUTPUT for FOOD replacement:
 Respond with valid JSON array only. Do not add any text outside the JSON."""
 
             # Generate replacements via GPT with retry logic
-            MAX_RETRIES = 3
             replacement_actions = None
             gpt_cost = 0.0
             
-            for attempt in range(1, MAX_RETRIES + 1):
-                logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_RETRIES}")
+            for attempt in range(1, self.MAX_RETRIES + 1):
+                logger.info(f"🔄 Replacement generation attempt {attempt}/{self.MAX_RETRIES}")
                 
                 # Generate replacement actions WITH tool calling for real citations
                 response = await self.client.post(
@@ -2655,11 +2654,11 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 for error in validation_errors:
                     logger.warning(f"   • {error}")
                 
-                if attempt < MAX_RETRIES:
+                if attempt < self.MAX_RETRIES:
                     logger.info(f"🔄 Retrying generation...")
                 else:
                     # Max retries exceeded - NO fallbacks, fail clearly
-                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
+                    logger.error(f"❌ Max retries ({self.MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
                     replacement_actions = None  # Fail clearly instead of masking with garbage defaults
             
             total_cost += gpt_cost
