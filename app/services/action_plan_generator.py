@@ -1477,9 +1477,11 @@ If the tool returns empty, set research_studies to an empty array.
                     action["category"] = action["category"].lower()
             
             # Validate with Pydantic - ensures all required fields are present
+            logger.info(f"📋 Validating {len(raw_actions)} raw actions with Pydantic...")
             try:
                 validated_response = ActionPlanResponseModel(actions=raw_actions)
                 actions = [action.model_dump() for action in validated_response.actions]
+                logger.info(f"📋 Base Pydantic validation passed")
                 
                 # Additional category-specific validation
                 validation_errors = []
@@ -1515,6 +1517,10 @@ If the tool returns empty, set research_studies to an empty array.
             except ValidationError as e:
                 logger.error(f"❌ Pydantic validation failed: {e}")
                 logger.error(f"   This usually means GPT returned incomplete data. Will retry.")
+                # Log what GPT actually returned for debugging
+                for i, action in enumerate(raw_actions):
+                    logger.error(f"   Raw Action {i+1}: title={action.get('title')}, category={action.get('category')}, "
+                                f"variants_count={len(action.get('variants', []))}")
                 return (None, total_cost)
             
             logger.info(f"✅ Generated {len(actions)} actions with REAL citations (cost: ${total_cost:.4f})")
