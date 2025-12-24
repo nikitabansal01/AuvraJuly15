@@ -610,7 +610,12 @@ ACTION_PLAN_SCHEMA = {
                 "required": [
                     "title", "category", "time_slot", "specific_action", 
                     "purpose", "target_hormone", "hormone_persona_intro", 
-                    "image_prompt", "research_studies", "variants"
+                    "image_prompt", "research_studies", "variants",
+                    "symptoms", "conditions",
+                    # Category-specific fields - GPT MUST include all of these
+                    "food_items", "food_amounts", 
+                    "exercise_types", "exercise_durations", "exercise_intensities",
+                    "mindfulness_techniques", "mindfulness_durations"
                 ],
                 "additionalProperties": False
             },
@@ -1513,8 +1518,16 @@ If the tool returns empty, set research_studies to an empty array.
                             *tool_results
                         ],
                         "temperature": 0.3,
-                        "max_tokens": 5000,
-                        "response_format": {"type": "json_object"}
+                        "max_tokens": 6000,
+                        # USE STRUCTURED OUTPUTS - GPT MUST return this exact schema
+                        "response_format": {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": "action_plan",
+                                "strict": True,
+                                "schema": ACTION_PLAN_SCHEMA
+                            }
+                        }
                     }
                 )
                 
