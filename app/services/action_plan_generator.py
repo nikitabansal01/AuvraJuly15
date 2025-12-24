@@ -627,8 +627,8 @@ class ActionPlanGenerator:
                     logger.info(f"🔄 Retrying generation...")
                 else:
                     # Max retries exceeded - NO fallbacks, fail clearly
-                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
-                    actions = None  # Fail clearly instead of masking with garbage defaults
+                    logger.warning(f"⚠️ Max retries ({MAX_RETRIES}) exceeded, applying minimal fallbacks")
+                    actions = self._fill_missing_fields(attempt_actions)
             
             total_cost += gpt_cost
             
@@ -2111,8 +2111,8 @@ Respond with valid JSON object only."""
                     else:
                         logger.warning(f"⚠️ Attempt {attempt} missing fields: {missing}")
                         if attempt >= MAX_REPLACEMENT_RETRIES:
-                            logger.error("❌ NOT applying fallbacks - prompt needs fixing")
-                            # replacement_action stays None - will trigger proper error
+                            logger.warning("⚠️ Applying minimal fallbacks for replacement")
+                            replacement_action = self._fill_missing_fields([parsed_action])[0]
                             
                 except json.JSONDecodeError as je:
                     logger.error(f"JSON parse error: {je}")
