@@ -1560,23 +1560,36 @@ If the tool returns empty, set research_studies to an empty array.
         
         async def _generate_single_image(prompt: str, category: str, variant_type: str, user_id: str):
             """Wrapper that creates its own session for each image task."""
+            task_session = None
             try:
                 # Create isolated session for this task
                 task_session = await _create_async_session()
-                try:
-                    url, was_cached, cost = await self.image_service.get_or_generate_image(
-                        prompt=prompt,
-                        category=category,
-                        variant_type=variant_type,
-                        user_id=user_id,
-                        db=task_session
-                    )
-                    return (url, was_cached, cost)
-                finally:
-                    await task_session.close()
+                logger.debug(f"[ImageTask] Created session for {category}/{variant_type}")
+                
+                url, was_cached, cost = await self.image_service.get_or_generate_image(
+                    prompt=prompt,
+                    category=category,
+                    variant_type=variant_type,
+                    user_id=user_id,
+                    db=task_session
+                )
+                
+                if not url:
+                    logger.warning(f"[ImageTask] Empty URL for {category}/{variant_type}")
+                else:
+                    logger.debug(f"[ImageTask] Got URL for {category}/{variant_type}: {url[:50]}...")
+                
+                return (url, was_cached, cost)
             except Exception as e:
-                logger.error(f"Image generation wrapper error: {e}")
+                logger.error(f"[ImageTask] Error for {category}/{variant_type}: {e}")
+                logger.error(f"[ImageTask] Full traceback: {traceback.format_exc()}")
                 return ("", False, 0.0)
+            finally:
+                if task_session:
+                    try:
+                        await task_session.close()
+                    except Exception as close_err:
+                        logger.error(f"[ImageTask] Session close error: {close_err}")
         
         # Build list of all image generation tasks
         image_tasks = []
