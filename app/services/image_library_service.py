@@ -49,6 +49,10 @@ class ImageLibraryService:
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
+    # Retry settings (Fix #14)
+    MAX_IMAGE_RETRIES = 3
+    RETRY_DELAYS = [1.0, 2.0, 4.0]  # Exponential backoff
+    
     def __init__(self):
         """Initialize the image library service."""
         # RunPod configuration - uses serverless Flux Schnell endpoint
@@ -183,6 +187,70 @@ class ImageLibraryService:
             logger.error(f"Error getting embedding: {e}")
             return None
     
+    async def _get_batch_embeddings(self, texts: List[str]) -> List[Optional[List[float]]]:
+        """
+        Generate embeddings for multiple texts in a single API call (Fix #17).
+        More efficient than calling _get_embedding multiple times.
+        
+        Cost: $0.0001 per 1K tokens (batches are more efficient)
+        """
+        if not self.openai_api_key:
+            logger.warning("OpenAI API key not configured for embeddings")
+            return [None] * len(texts)
+        
+        if not texts:
+            return []
+        
+        # Check cache first, identify what needs to be fetched
+        results = []
+        uncached_indices = []
+        uncached_texts = []
+        
+        for i, text in enumerate(texts):
+            cache_key = hashlib.md5(text.encode()).hexdigest()
+            if cache_key in self._embedding_cache:
+                results.append(self._embedding_cache[cache_key])
+            else:
+                results.append(None)  # Placeholder
+                uncached_indices.append(i)
+                uncached_texts.append(text)
+        
+        if not uncached_texts:
+            return results
+        
+        try:
+            response = await self.client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "input": uncached_texts,
+                    "model": self.EMBEDDING_MODEL
+                }
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Fill in the results and cache
+            for item in data["data"]:
+                idx = item["index"]
+                embedding = item["embedding"]
+                original_idx = uncached_indices[idx]
+                results[original_idx] = embedding
+                
+                # Cache the embedding
+                cache_key = hashlib.md5(uncached_texts[idx].encode()).hexdigest()
+                self._embedding_cache[cache_key] = embedding
+            
+            logger.info(f"Batch embeddings: fetched {len(uncached_texts)} new, {len(texts) - len(uncached_texts)} from cache")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error getting batch embeddings: {e}")
+            return results  # Return partial results (cached ones)
+    
     async def _find_similar_image(
         self,
         prompt_embedding: List[float],
@@ -313,8 +381,8 @@ class ImageLibraryService:
         start_time = time.time()
         
         try:
-            # Generate image via RunPod - returns (image_data_or_url, generation_time_ms)
-            result, generation_time_ms = await self._call_runpod_flux(prompt, category)
+            # Generate image via RunPod with retry logic (Fix #14)
+            result, generation_time_ms = await self._call_runpod_flux_with_retry(prompt, category)
             
             if not result:
                 logger.error("Failed to generate image via RunPod")
@@ -482,6 +550,34 @@ class ImageLibraryService:
         except Exception as e:
             logger.error(f"Error calling RunPod: {e}")
             return await self._generate_placeholder_image(prompt)
+    
+    async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
+        """
+        Call RunPod Flux Schnell with retry logic (Fix #14).
+        
+        Retries on timeout, 5xx errors, or connection failures.
+        """
+        for attempt in range(self.MAX_IMAGE_RETRIES):
+            try:
+                result, gen_time = await self._call_runpod_flux(prompt, category)
+                if result:
+                    return (result, gen_time)
+                
+                # Returned None - might be transient, retry
+                if attempt < self.MAX_IMAGE_RETRIES - 1:
+                    delay = self.RETRY_DELAYS[attempt]
+                    logger.warning(f"Image generation failed, retrying in {delay}s (attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES})")
+                    await asyncio.sleep(delay)
+            except Exception as e:
+                if attempt < self.MAX_IMAGE_RETRIES - 1:
+                    delay = self.RETRY_DELAYS[attempt]
+                    logger.warning(f"Image generation error: {e}, retrying in {delay}s")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Image generation failed after {self.MAX_IMAGE_RETRIES} retries: {e}")
+                    return await self._generate_placeholder_image(prompt)
+        
+        return await self._generate_placeholder_image(prompt)
     
     def _enhance_prompt(self, prompt: str, category: str = "food") -> Tuple[str, str]:
         """

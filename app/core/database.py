@@ -822,7 +822,12 @@ class PubMedCache(Base):
     __tablename__ = "pubmed_cache"
     
     id = Column(Integer, primary_key=True, index=True)
-    cache_key = Column(String(32), unique=True, nullable=False, index=True)  # MD5 hash of search params
+    cache_key = Column(String(32), unique=True, nullable=False, index=True)  # Keep for backward compatibility
+    
+    # Direct matching columns (easier to debug than MD5)
+    query_normalized = Column(Text, nullable=True)  # The search query used
+    category = Column(String(50), nullable=True)  # food/movement/mindfulness
+    hormone = Column(String(50), nullable=True)  # Target hormone
     
     # Paper details
     pubmed_id = Column(String(20), nullable=True)  # PubMed ID for linking

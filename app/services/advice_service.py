@@ -33,17 +33,12 @@ class AdviceService:
                 logger.error(f"Unsupported category: {category}")
                 return False
             
-            # Save advice to DB (parallel processing)
-            import asyncio
-            save_tasks = []
+            # Save advice to DB (Fix #2 - Sequential to prevent SQLAlchemy session conflicts)
+            # REMOVED: asyncio.to_thread causes SAWarning when multiple threads share same Session
+            saved_count = 0
             for advice in advices:
-                # _save_advice is a synchronous function, so wrap with asyncio.to_thread
-                task = asyncio.to_thread(self._save_advice, recommendation_id, uid, advice, category, recommendation_context)
-                save_tasks.append(task)
-            
-            # Process all advice saving in parallel
-            save_results = await asyncio.gather(*save_tasks, return_exceptions=True)
-            saved_count = sum(1 for result in save_results if result is True)
+                if self._save_advice(recommendation_id, uid, advice, category, recommendation_context):
+                    saved_count += 1
             
             # Commit to DB
             if saved_count > 0:
@@ -79,17 +74,12 @@ class AdviceService:
                 logger.error(f"Unsupported category: {category}")
                 return False
             
-            # Save advice to DB (parallel processing)
-            import asyncio
-            save_tasks = []
+            # Save advice to DB (Fix #2 - Sequential to prevent SQLAlchemy session conflicts)
+            # REMOVED: asyncio.to_thread causes SAWarning when multiple threads share same Session
+            saved_count = 0
             for advice in advices:
-                # _save_session_advice is a synchronous function, so wrap with asyncio.to_thread
-                task = asyncio.to_thread(self._save_session_advice, recommendation_id, session_id, advice, category, recommendation_context)
-                save_tasks.append(task)
-            
-            # Process all advice saving in parallel
-            save_results = await asyncio.gather(*save_tasks, return_exceptions=True)
-            saved_count = sum(1 for result in save_results if result is True)
+                if self._save_session_advice(recommendation_id, session_id, advice, category, recommendation_context):
+                    saved_count += 1
             
             # Commit to DB
             if saved_count > 0:

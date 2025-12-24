@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     UPLOAD_DIR: str = "uploads"
     
+    # Action Plan Generation Settings (Fix #11 - Magic Numbers to Config)
+    ACTION_PLAN_MAX_RETRIES: int = 2
+    ACTION_PLAN_TIMEOUT: int = 120
+    PUBMED_RATE_LIMIT_DELAY: float = 0.5
+    IMAGE_SIMILARITY_THRESHOLD: float = 0.95
+    FEEDBACK_SUMMARIZE_THRESHOLD: int = 100
+    
     model_config = {
         "env_file": ".env",
         "case_sensitive": True,

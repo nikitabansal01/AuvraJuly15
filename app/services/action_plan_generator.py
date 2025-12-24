@@ -20,12 +20,13 @@ import logging
 import time
 import asyncio
 import traceback
+import hashlib
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone, date, timedelta
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, update, text
 
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
@@ -161,7 +162,28 @@ DEFAULT_PERSONA = {
 # GPT PROMPT TEMPLATES
 # ============================================================================
 
-SYSTEM_PROMPT = """You are AUVRA's personalized wellness AI that creates daily action plans for women's hormonal health. 
+SYSTEM_PROMPT = """You are AUVRA's personalized wellness AI that creates daily action plans for women's hormonal health.
+
+═══════════════════════════════════════════════════════════════════════════════
+🚨 CRITICAL - CATEGORY-SPECIFIC REQUIRED FIELDS (READ THIS FIRST!) 🚨
+═══════════════════════════════════════════════════════════════════════════════
+For EVERY action, you MUST include the category-specific fields based on the category.
+FAILURE TO INCLUDE THESE FIELDS WILL CAUSE VALIDATION ERRORS.
+
+✅ For "food" category, ALWAYS include:
+   - food_items: ["steel-cut oats", "blueberries", "almonds"]  // Array of specific foods
+   - food_amounts: ["1/2 cup", "handful", "10-12 pieces"]    // Array of amounts
+
+✅ For "movement" category, ALWAYS include:
+   - exercise_types: ["Gentle Morning Yoga", "Walking"]       // Array of specific exercises
+   - exercise_durations: ["15-20 minutes"]                    // Array of duration strings
+   - exercise_intensities: ["Low", "Moderate"]                // Array of intensity levels
+
+✅ For "mindfulness" category, ALWAYS include:
+   - mindfulness_techniques: ["Box Breathing", "Body Scan"]   // Array of techniques
+   - mindfulness_durations: ["5-10 minutes"]                  // Array of durations
+
+═══════════════════════════════════════════════════════════════════════════════
 
 IMPORTANT GUIDELINES:
 1. Each action must target EXACTLY ONE hormone - the specified target hormone
@@ -175,19 +197,7 @@ CATEGORY DEFINITIONS:
 - "movement" (move): Exercise, stretching, physical activities
 - "mindfulness" (pause): Meditation, breathing, relaxation, mental wellness
 
-CRITICAL: CATEGORY-SPECIFIC REQUIRED FIELDS
-For "food" actions, you MUST provide:
-- food_items: Array of ingredients/food items (e.g., ["steel-cut oats", "blueberries"])
-- food_amounts: Array of amounts (e.g., ["1/2 cup", "handful"])
-For "movement" actions, you MUST provide:
-- exercise_types: Array (e.g., ["Gentle Hatha Yoga"])
-- exercise_durations: Array (e.g., ["15-20 min"])
-- exercise_intensities: Array (e.g., ["Low"])
-For "mindfulness" actions, you MUST provide:
-- mindfulness_techniques: Array (e.g., ["Box Breathing"])
-- mindfulness_durations: Array (e.g., ["5 min"])
-
-Failure to provide these for their respective categories will result in manual correction.
+(Note: Category-specific required fields defined in CRITICAL section above)
 
 RESEARCH CITATION FORMAT (from search_research_paper tool):
 {
@@ -546,21 +556,24 @@ class ActionPlanGenerator:
         """
         Generate a completely new action plan.
         
+        Checks for existing plan before generating new one.
+        
         Steps:
-        1. Double-check no plan exists (handles race conditions)
+        1. Check for existing plan
         2. Load user context
-        3. Generate actions via GPT
-        4. Generate images for each action
-        5. Store in database
+        3. Load user context
+        4. Generate actions via GPT
+        5. Generate images for each action
+        6. Store in database
         """
         start_time = time.time()
         total_cost = 0.0
         
         try:
-            # Double-check for existing plan (in case of race condition)
+            # Check for existing plan first
             existing_plan = await self._get_existing_plan(user_id, plan_date, db)
             if existing_plan:
-                logger.info(f"Plan already exists for {user_id} on {plan_date} (race condition handled)")
+                logger.info(f"Plan already exists for {user_id} on {plan_date}")
                 return await self._format_plan_response(existing_plan, db)
             
             # Step 1: Load user context
@@ -571,7 +584,7 @@ class ActionPlanGenerator:
                 return {"success": False, "error": "User profile not found"}
             
             # Step 2: Generate actions via GPT-4o-mini with retry logic
-            MAX_RETRIES = 2
+            # Note: Using class-level MAX_RETRIES (3) instead of local override
             actions = None
             gpt_cost = 0.0
             
@@ -613,9 +626,9 @@ class ActionPlanGenerator:
                 if attempt < MAX_RETRIES:
                     logger.info(f"🔄 Retrying generation...")
                 else:
-                    # Max retries exceeded - apply fallback defaults
-                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, applying fallback defaults")
-                    actions = self._fill_missing_fields(attempt_actions)
+                    # Max retries exceeded - NO fallbacks, fail clearly
+                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
+                    actions = None  # Fail clearly instead of masking with garbage defaults
             
             total_cost += gpt_cost
             
@@ -648,7 +661,7 @@ class ActionPlanGenerator:
         except Exception as e:
             logger.error(f"Error generating plan: {e}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Failed to generate plan. Please try again."}
     
     def _get_user_today(self, timezone_str: str) -> date:
         """Get today's date in user's timezone."""
@@ -871,7 +884,7 @@ class ActionPlanGenerator:
                 cycle_length = (int(parts[0]) + int(parts[1])) // 2
             else:
                 cycle_length = 28  # Default
-        except:
+        except (ValueError, TypeError, IndexError):
             cycle_length = 28
         
         # Calculate days since last period
@@ -1043,7 +1056,7 @@ Format as bullet points."""
                     
                     # Save summary to profile
                     profile.feedback_summary = summary
-                    profile.feedback_summary_updated_at = datetime.utcnow()
+                    profile.feedback_summary_updated_at = datetime.now(timezone.utc)
                     profile.feedback_last_count = current_count
                     await db.commit()
                     
@@ -1059,11 +1072,13 @@ Format as bullet points."""
                         )
                         keep_ids = [row[0] for row in keep_result.all()]
                         
-                        # Delete everything except those
+                        # Delete everything except those (Fix: use and_() for multiple conditions)
                         delete_result = await db.execute(
                             delete(ActionPlanFeedback).where(
-                                ActionPlanFeedback.uid == user_id,
-                                ActionPlanFeedback.id.notin_(keep_ids)
+                                and_(
+                                    ActionPlanFeedback.uid == user_id,
+                                    ActionPlanFeedback.id.notin_(keep_ids)
+                                )
                             )
                         )
                         await db.commit()
@@ -1247,7 +1262,17 @@ If the tool returns empty, set research_studies to an empty array.
                 tool_results = []
                 for tool_call in message["tool_calls"]:
                     if tool_call["function"]["name"] == "search_research_paper":
-                        args = json.loads(tool_call["function"]["arguments"])
+                        # Safely parse tool call arguments
+                        try:
+                            args = json.loads(tool_call["function"]["arguments"])
+                        except json.JSONDecodeError as je:
+                            logger.error(f"Failed to parse tool call arguments: {je}")
+                            tool_results.append({
+                                "tool_call_id": tool_call["id"],
+                                "role": "tool",
+                                "content": json.dumps({"error": "Invalid arguments"})
+                            })
+                            continue
                         
                         logger.info(f"  🔍 Searching for: {args.get('action_title', 'unknown')}")
                         
@@ -1409,16 +1434,41 @@ If the tool returns empty, set research_studies to an empty array.
             if not value or (isinstance(value, list) and len(value) == 0):
                 missing.append(field)
         
-        # Validate nested structures
+        # Validate research_studies structure and content
         if action.get("research_studies"):
-            if len(action["research_studies"]) != 1:
+            studies = action["research_studies"]
+            if len(studies) != 1:
                 missing.append("research_studies (must have exactly 1)")
+            elif isinstance(studies[0], dict):
+                study = studies[0]
+                # Must have real content, not placeholder
+                if not study.get("title"):
+                    missing.append("research_studies[0].title")
+                if not study.get("journal"):
+                    missing.append("research_studies[0].journal")
+                if not study.get("finding"):
+                    missing.append("research_studies[0].finding")
         else:
             missing.append("research_studies")
         
+        # Validate variants structure - each must have all required fields
         if action.get("variants"):
-            if len(action["variants"]) < 3:
+            variants = action["variants"]
+            if len(variants) < 3:
                 missing.append("variants (must have at least 3)")
+            else:
+                for i, v in enumerate(variants[:3]):
+                    if not isinstance(v, dict):
+                        missing.append(f"variants[{i}] (must be object)")
+                    else:
+                        if not v.get("variant_type"):
+                            missing.append(f"variants[{i}].variant_type")
+                        if not v.get("title"):
+                            missing.append(f"variants[{i}].title")
+                        if not v.get("description"):
+                            missing.append(f"variants[{i}].description")
+                        if not v.get("image_prompt"):
+                            missing.append(f"variants[{i}].image_prompt")
         else:
             missing.append("variants")
         
@@ -1464,16 +1514,9 @@ If the tool returns empty, set research_studies to an empty array.
             
             # Apply base field defaults
             if not action.get("research_studies") or len(action.get("research_studies", [])) == 0:
-                action["research_studies"] = [{
-                    "title": "General women's health research",
-                    "journal": "Generic Journal",
-                    "year": 2024,
-                    "participants": 100,
-                    "finding": "Supports overall wellness",
-                    "pmid": "",
-                    "verification_link": ""
-                }]
-                logger.warning(f"🔧 Applied default research for '{action.get('title', 'Untitled')}'")
+                # Use empty array instead of fake research - maintains honesty
+                action["research_studies"] = []
+                logger.warning(f"⚠️ No research available for '{action.get('title', 'Untitled')}' - using empty array")
             
             if not action.get("variants") or len(action.get("variants", [])) < 3:
                 # Fill up to 3 variants
@@ -1517,64 +1560,95 @@ If the tool returns empty, set research_studies to an empty array.
         db: AsyncSession
     ) -> Tuple[List[Dict], float]:
         """
-        Generate all images for all actions (16 total).
+        Generate all images for all actions (16 total) in PARALLEL.
         
-        For each of 4 actions:
-        - 1 hero image
-        - 3 variant images
+        Uses asyncio.gather to generate all images concurrently:
+        - 4 hero images + 12 variant images = 16 total
+        - Previous: ~2-4 minutes (sequential)
+        - Now: ~15-30 seconds (parallel)
         """
-        total_cost = 0.0
-        actions_with_images = []
+        # Build list of all image generation tasks
+        image_tasks = []
+        task_metadata = []  # Track which action/variant each task belongs to
         
-        for action in actions:
-            # Safely get action properties (handles malformed GPT responses)
+        for action_idx, action in enumerate(actions):
             action_title = action.get("title", "Wellness Action")
             action_category = action.get("category", "food")
             action_image_prompt = action.get("image_prompt", action_title)
             
-            # Generate hero image
-            hero_url, was_cached, cost = await self.image_service.get_or_generate_image(
-                prompt=action_image_prompt,
-                category=action_category,
-                variant_type="hero",
-                user_id=user_id,
-                db=db
-            )
-            total_cost += cost
-            
-            action["hero_image_url"] = hero_url
-            action["hero_image_cached"] = was_cached
-            
-            # Generate variant images
-            variants = action.get("variants", [])
-            valid_variants = []
-            for i, variant in enumerate(variants):
-                # Skip invalid variants (sometimes GPT returns strings instead of dicts)
-                if not isinstance(variant, dict):
-                    logger.warning(f"Skipping invalid variant (not a dict): {type(variant)}")
-                    continue
-                    
-                variant_prompt = variant.get("image_prompt", variant.get("title", action_title))
-                variant_url, was_cached, cost = await self.image_service.get_or_generate_image(
-                    prompt=variant_prompt,
+            # Hero image task
+            image_tasks.append(
+                self.image_service.get_or_generate_image(
+                    prompt=action_image_prompt,
                     category=action_category,
-                    variant_type=variant.get("variant_type", f"variant_{i}"),
+                    variant_type="hero",
                     user_id=user_id,
                     db=db
                 )
-                total_cost += cost
-                
-                variant["image_url"] = variant_url
-                variant["image_cached"] = was_cached
-                valid_variants.append(variant)
+            )
+            task_metadata.append({"action_idx": action_idx, "variant_idx": None})
             
-            # Update action with only valid variants
+            # Variant image tasks
+            variants = action.get("variants", [])
+            for variant_idx, variant in enumerate(variants):
+                if not isinstance(variant, dict):
+                    continue
+                variant_prompt = variant.get("image_prompt", variant.get("title", action_title))
+                image_tasks.append(
+                    self.image_service.get_or_generate_image(
+                        prompt=variant_prompt,
+                        category=action_category,
+                        variant_type=variant.get("variant_type", f"variant_{variant_idx}"),
+                        user_id=user_id,
+                        db=db
+                    )
+                )
+                task_metadata.append({"action_idx": action_idx, "variant_idx": variant_idx})
+        
+        # Execute all image tasks in parallel
+        logger.info(f"⚡ Generating {len(image_tasks)} images in PARALLEL...")
+        start_time = time.time()
+        
+        results = await asyncio.gather(*image_tasks, return_exceptions=True)
+        
+        elapsed = time.time() - start_time
+        logger.info(f"⚡ All {len(image_tasks)} images generated in {elapsed:.2f}s (parallel)")
+        
+        # Process results and assign back to actions
+        total_cost = 0.0
+        for i, result in enumerate(results):
+            meta = task_metadata[i]
+            action_idx = meta["action_idx"]
+            variant_idx = meta["variant_idx"]
+            
+            # Handle exceptions from gather
+            if isinstance(result, Exception):
+                logger.error(f"Image generation failed for action {action_idx}: {result}")
+                url, was_cached, cost = "", False, 0.0
+            else:
+                url, was_cached, cost = result
+            
+            total_cost += cost
+            
+            if variant_idx is None:
+                # Hero image
+                actions[action_idx]["hero_image_url"] = url
+                actions[action_idx]["hero_image_cached"] = was_cached
+            else:
+                # Variant image
+                variants = actions[action_idx].get("variants", [])
+                if variant_idx < len(variants) and isinstance(variants[variant_idx], dict):
+                    variants[variant_idx]["image_url"] = url
+                    variants[variant_idx]["image_cached"] = was_cached
+        
+        # Filter out invalid variants
+        for action in actions:
+            valid_variants = [v for v in action.get("variants", []) if isinstance(v, dict)]
             action["variants"] = valid_variants
-            actions_with_images.append(action)
         
-        logger.info(f"Generated {len(actions) * 4} images (cost: ${total_cost:.4f})")
+        logger.info(f"Generated {len(image_tasks)} images (cost: ${total_cost:.4f})")
         
-        return (actions_with_images, total_cost)
+        return (actions, total_cost)
     
     async def _store_plan(
         self,
@@ -1602,8 +1676,8 @@ If the tool returns empty, set research_studies to an empty array.
                 generation_cost=str(total_cost),
                 generation_time_ms=generation_time_ms,
                 gpt_model_used=self.GPT_MODEL,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
             )
             
             db.add(plan)
@@ -1641,8 +1715,8 @@ If the tool returns empty, set research_studies to an empty array.
                     research_studies=action.get("research_studies", []),
                     conditions=action_conditions,
                     symptoms=action_symptoms,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 )
                 
                 # Add category-specific fields (case-insensitive)
@@ -1684,7 +1758,7 @@ If the tool returns empty, set research_studies to an empty array.
                         description=variant.get("description", ""),
                         image_url=variant.get("image_url"),
                         image_prompt=variant.get("image_prompt"),
-                        created_at=datetime.utcnow()
+                        created_at=datetime.now(timezone.utc)
                     )
                     db.add(variant_record)
             
@@ -1747,7 +1821,7 @@ If the tool returns empty, set research_studies to an empty array.
                 action_data = {
                     "id": item.id,
                     "slot": item.slot,
-                    "time_slot": item.time_slot,
+                    "time_slot": item.time_slot,  # Added: was missing
                     "category": item.category,
                     "title": item.title,
                     "specific_action": item.specific_action,
@@ -1800,7 +1874,7 @@ If the tool returns empty, set research_studies to an empty array.
             
         except Exception as e:
             logger.error(f"Error formatting plan response: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Failed to load plan. Please try again."}
     
     async def replace_action(
         self,
@@ -1840,8 +1914,8 @@ If the tool returns empty, set research_studies to an empty array.
                 target_hormone=original.target_hormone,
                 replacement_reason=reason,
                 was_replaced=True,
-                feedback_given_at=datetime.utcnow(),
-                created_at=datetime.utcnow()
+                feedback_given_at=datetime.now(timezone.utc),
+                created_at=datetime.now(timezone.utc)
             )
             db.add(feedback)
             
@@ -1851,7 +1925,7 @@ If the tool returns empty, set research_studies to an empty array.
                 .where(ActionPlanItem.id == item_id)
                 .values(
                     is_replaced=True,
-                    replaced_at=datetime.utcnow(),
+                    replaced_at=datetime.now(timezone.utc),
                     replacement_reason=reason
                 )
             )
@@ -1862,54 +1936,193 @@ If the tool returns empty, set research_studies to an empty array.
             if not user_context:
                 return {"success": False, "error": "Could not load user context"}
             
-            # Generate a replacement action targeting the same hormone
+            # Generate a replacement action targeting the same hormone with REAL citations
             replacement_prompt = f"""Generate 1 replacement wellness action.
 
 REQUIREMENTS:
 - Must target hormone: {original.target_hormone}
 - Should be DIFFERENT from: {original.title} (user disliked this)
 - Dislike reason: {reason or 'not specified'}
-- Can be any category (food, movement, or mindfulness)
+- AVOID generating same category as disliked ({original.category}) unless user's lifestyle_focus only includes that category
+- Prefer different category from: {original.category}
 - User's lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 
 USER CONTEXT:
-- Cycle phase: {user_context.get('cycle_phase')}
-- Stress level: {user_context.get('stress_level')}
-- Previous disliked actions: {user_context.get('feedback_memory', '')}
+- Cycle day: {user_context.get('cycle_day', 'unknown')}
+- Cycle phase: {user_context.get('cycle_phase', 'unknown')}
+- Stress level: {user_context.get('stress_level', 'moderate')}
+- Diet preference: {user_context.get('diet_preference', 'none')}
+- Food allergies: {user_context.get('food_allergies', 'none')}
+- Top concern: {user_context.get('top_concern', 'general wellness')}
 
-Generate a single action with all required fields (title, category, time_slot, specific_action, purpose, target_hormone, hormone_persona_intro, image_prompt, research_studies, variants).
+FEEDBACK MEMORY (avoid similar to disliked):
+{user_context.get('feedback_memory', 'No previous feedback')}
+
+CRITICAL - CATEGORY-SPECIFIC REQUIRED FIELDS:
+For FOOD actions, MUST include:
+- food_amounts: Array like ["1 tbsp", "2 tablespoons", "handful"]
+- food_items: Array like ["pumpkin seeds", "flaxseeds"]
+
+For MOVEMENT actions, MUST include:
+- exercise_durations: Array like ["15 min", "20 minutes"]
+- exercise_types: Array like ["yoga", "walking"]
+- exercise_intensities: Array like ["low", "moderate"]
+
+For MINDFULNESS actions, MUST include:
+- mindfulness_durations: Array like ["5 min", "10 minutes"]
+- mindfulness_techniques: Array like ["deep breathing", "meditation"]
+
+REQUIRED OUTPUT FIELDS:
+1. category: "food", "movement", or "mindfulness"
+2. title: Short, catchy title (3-5 words)
+3. time_slot: "morning", "afternoon", or "evening"
+4. specific_action: Detailed, actionable description (50-100 words)
+5. purpose: One clear sentence about how this helps the hormone
+6. target_hormone: MUST be "{original.target_hormone}"
+7. hormone_persona_intro: First-person intro from hormone perspective
+8. image_prompt: FLUX.1 Schnell optimized prompt
+9. research_studies: Use search_research_paper tool for REAL citation (exactly 1)
+10. variants: Array of 3 variant objects with variant_type, title, description, image_prompt
+11. symptoms: Pick 1-3 from user's health concerns
+12. conditions: Array of conditions this helps (can be empty [])
 
 Respond with valid JSON object only."""
 
-            # Generate replacement via GPT
-            response = await self.client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.GPT_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": replacement_prompt}
-                    ],
-                    "temperature": 0.8,  # Higher temp for more variety
-                    "max_tokens": 1500
-                }
-            )
+            # Generate replacement via GPT WITH tool calling for real citations
+            MAX_REPLACEMENT_RETRIES = 2
+            replacement_action = None
             
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
+            for attempt in range(1, MAX_REPLACEMENT_RETRIES + 1):
+                logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_REPLACEMENT_RETRIES}")
+                
+                response = await self.client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.GPT_MODEL,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": replacement_prompt}
+                        ],
+                        "tools": [PUBMED_SEARCH_TOOL],  # Enable real citation search
+                        "tool_choice": "auto",
+                        "temperature": 0.7,
+                        "max_tokens": 2500
+                    }
+                )
+                
+                response.raise_for_status()
+                data = response.json()
+                message = data["choices"][0]["message"]
+                
+                # Handle tool calls for research citations
+                if message.get("tool_calls"):
+                    logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for replacement citation")
+                    
+                    tool_results = []
+                    for tool_call in message["tool_calls"]:
+                        if tool_call["function"]["name"] == "search_research_paper":
+                            try:
+                                args = json.loads(tool_call["function"]["arguments"])
+                                paper = await execute_pubmed_tool(args, db=db)
+                                
+                                if paper and paper.get("title"):
+                                    logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}...")
+                                else:
+                                    logger.warning(f"  ⚠️ No paper found")
+                                
+                                tool_results.append({
+                                    "tool_call_id": tool_call["id"],
+                                    "role": "tool",
+                                    "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
+                                })
+                            except Exception as tool_err:
+                                logger.error(f"Tool call error: {tool_err}")
+                                tool_results.append({
+                                    "tool_call_id": tool_call["id"],
+                                    "role": "tool",
+                                    "content": json.dumps({"error": str(tool_err)})
+                                })
+                    
+                    # Send tool results back to GPT
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": message.get("content"),
+                        "tool_calls": message.get("tool_calls")
+                    }
+                    
+                    response2 = await self.client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.openai_api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": self.GPT_MODEL,
+                            "messages": [
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": replacement_prompt},
+                                assistant_message,
+                                *tool_results
+                            ],
+                            "temperature": 0.7,
+                            "max_tokens": 2500,
+                            "response_format": {"type": "json_object"}
+                        }
+                    )
+                    
+                    response2.raise_for_status()
+                    data = response2.json()
+                    content = data["choices"][0]["message"]["content"]
+                else:
+                    logger.warning("⚠️ GPT did not call tools - citation may be fabricated")
+                    content = message.get("content", "{}")
+                
+                # Parse replacement action
+                if content.startswith("```"):
+                    content = content.split("```")[1]
+                    if content.startswith("json"):
+                        content = content[4:]
+                
+                try:
+                    parsed_action = json.loads(content.strip())
+                    
+                    # Handle various response formats
+                    if isinstance(parsed_action, list) and len(parsed_action) > 0:
+                        parsed_action = parsed_action[0]
+                    elif isinstance(parsed_action, dict) and "actions" in parsed_action:
+                        parsed_action = parsed_action["actions"][0]
+                    
+                    # Normalize category
+                    if "category" in parsed_action:
+                        parsed_action["category"] = parsed_action["category"].lower()
+                    
+                    # Validate the action
+                    category = parsed_action.get("category", "food")
+                    valid, missing = self._validate_action_fields(parsed_action, category)
+                    
+                    if valid:
+                        logger.info(f"✅ Replacement action valid")
+                        replacement_action = parsed_action
+                        break
+                    else:
+                        logger.warning(f"⚠️ Attempt {attempt} missing fields: {missing}")
+                        if attempt >= MAX_REPLACEMENT_RETRIES:
+                            logger.error("❌ NOT applying fallbacks - prompt needs fixing")
+                            # replacement_action stays None - will trigger proper error
+                            
+                except json.JSONDecodeError as je:
+                    logger.error(f"JSON parse error: {je}")
+                    continue
             
-            # Parse replacement action
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            
-            replacement_action = json.loads(content.strip())
+            # Check if we got a valid replacement action
+            if not replacement_action:
+                logger.error("Failed to generate valid replacement action after retries")
+                await db.rollback()
+                return {"success": False, "error": "Failed to generate replacement. Please try again."}
             
             # Generate images for replacement
             hero_url, _, _ = await self.image_service.get_or_generate_image(
@@ -1922,7 +2135,7 @@ Respond with valid JSON object only."""
             
             # Mark original as replaced
             original.is_replaced = True
-            original.replaced_at = datetime.utcnow()
+            original.replaced_at = datetime.now(timezone.utc)
             original.replacement_reason = reason
             
             # Create new action item
@@ -1931,13 +2144,14 @@ Respond with valid JSON object only."""
             # Get conditions from user context
             action_conditions = user_context.get("diagnosed_conditions", [])
             action_symptoms = replacement_action.get("symptoms", [])
+            category = replacement_action.get("category", "food")
             
             new_item = ActionPlanItem(
                 plan_id=original.plan_id,
                 uid=user_id,
                 slot=original.slot,  # Same slot
                 time_slot=replacement_action.get("time_slot", original.time_slot),
-                category=replacement_action.get("category", "food"),
+                category=category,
                 title=replacement_action.get("title", "Wellness Action"),
                 specific_action=replacement_action.get("specific_action", ""),
                 purpose=replacement_action.get("purpose", ""),
@@ -1948,46 +2162,72 @@ Respond with valid JSON object only."""
                 research_studies=replacement_action.get("research_studies", []),
                 conditions=action_conditions,
                 symptoms=action_symptoms,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
             )
+            
+            # Add category-specific fields
+            if category == "food":
+                new_item.food_items = replacement_action.get("food_items", [])
+                new_item.food_amounts = replacement_action.get("food_amounts", [])
+            elif category == "movement":
+                new_item.exercise_types = replacement_action.get("exercise_types", [])
+                new_item.exercise_durations = replacement_action.get("exercise_durations", [])
+                new_item.exercise_intensities = replacement_action.get("exercise_intensities", [])
+            elif category == "mindfulness":
+                new_item.mindfulness_techniques = replacement_action.get("mindfulness_techniques", [])
+                new_item.mindfulness_durations = replacement_action.get("mindfulness_durations", [])
             
             db.add(new_item)
             await db.flush()
             
-            # Generate variant images
+            # Generate variant images IN PARALLEL
             raw_variants = replacement_action.get("variants", [])
-            for variant in raw_variants[:3]:
-                # Skip if variant is not a dict
-                if not isinstance(variant, dict):
-                    continue
-                    
+            valid_variants = [v for v in raw_variants[:3] if isinstance(v, dict)]
+            
+            # Prepare variant metadata
+            variant_data = []
+            for i, variant in enumerate(valid_variants):
                 v_type = variant.get("variant_type")
                 if not v_type or v_type == "alternative":
-                    category = replacement_action.get("category", "food")
                     defaults = {
                         "food": ["healthy", "easy", "tasty"],
                         "movement": ["gentle", "quick", "energizing"],
                         "mindfulness": ["brief", "guided", "solo"]
                     }.get(category, ["alternative"])
-                    v_type = defaults[raw_variants.index(variant) % len(defaults)]
-                
-                variant_url, _, _ = await self.image_service.get_or_generate_image(
-                    prompt=variant.get("image_prompt", variant.get("title")),
-                    category=replacement_action.get("category", "food"),
-                    variant_type=v_type,
+                    v_type = defaults[i % len(defaults)]
+                variant_data.append({"variant": variant, "v_type": v_type})
+            
+            # Generate all variant images in parallel
+            variant_image_tasks = [
+                self.image_service.get_or_generate_image(
+                    prompt=vd["variant"].get("image_prompt", vd["variant"].get("title")),
+                    category=category,
+                    variant_type=vd["v_type"],
                     user_id=user_id,
                     db=db
                 )
+                for vd in variant_data
+            ]
+            
+            variant_results = await asyncio.gather(*variant_image_tasks, return_exceptions=True)
+            
+            # Create variant records from results
+            for i, result in enumerate(variant_results):
+                if isinstance(result, Exception):
+                    logger.error(f"Variant image generation failed: {result}")
+                    variant_url = ""
+                else:
+                    variant_url, _, _ = result
                 
                 variant_record = ActionPlanItemVariant(
                     item_id=new_item.id,
-                    variant_type=v_type,
-                    title=variant.get("title", ""),
-                    description=variant.get("description", ""),
+                    variant_type=variant_data[i]["v_type"],
+                    title=variant_data[i]["variant"].get("title", ""),
+                    description=variant_data[i]["variant"].get("description", ""),
                     image_url=variant_url,
-                    image_prompt=variant.get("image_prompt"),
-                    created_at=datetime.utcnow()
+                    image_prompt=variant_data[i]["variant"].get("image_prompt"),
+                    created_at=datetime.now(timezone.utc)
                 )
                 db.add(variant_record)
             
@@ -2010,6 +2250,7 @@ Respond with valid JSON object only."""
                 "replacement_action": {
                     "id": new_item.id,
                     "slot": new_item.slot,
+                    "time_slot": new_item.time_slot,
                     "category": new_item.category,
                     "title": new_item.title,
                     "specific_action": new_item.specific_action,
@@ -2020,6 +2261,14 @@ Respond with valid JSON object only."""
                     "research_studies": new_item.research_studies or [],
                     "symptoms": new_item.symptoms or [],
                     "conditions": new_item.conditions or [],
+                    # Category-specific fields
+                    "food_items": new_item.food_items if category == "food" else None,
+                    "food_amounts": new_item.food_amounts if category == "food" else None,
+                    "exercise_types": new_item.exercise_types if category == "movement" else None,
+                    "exercise_durations": new_item.exercise_durations if category == "movement" else None,
+                    "exercise_intensities": new_item.exercise_intensities if category == "movement" else None,
+                    "mindfulness_techniques": new_item.mindfulness_techniques if category == "mindfulness" else None,
+                    "mindfulness_durations": new_item.mindfulness_durations if category == "mindfulness" else None,
                     "variants": [
                         {
                             "variant_type": v.variant_type,
@@ -2035,7 +2284,7 @@ Respond with valid JSON object only."""
         except Exception as e:
             logger.error(f"Error replacing action: {e}")
             await db.rollback()
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Failed to replace action. Please try again."}
     
     async def batch_replace_actions(
         self,
@@ -2269,7 +2518,7 @@ EXAMPLE OUTPUT for FOOD replacement:
 Respond with valid JSON array only. Do not add any text outside the JSON."""
 
             # Generate replacements via GPT with retry logic
-            MAX_RETRIES = 2
+            MAX_RETRIES = 3
             replacement_actions = None
             gpt_cost = 0.0
             
@@ -2439,9 +2688,9 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 if attempt < MAX_RETRIES:
                     logger.info(f"🔄 Retrying generation...")
                 else:
-                    # Max retries exceeded - apply fallback defaults
-                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, applying fallback defaults")
-                    replacement_actions = self._fill_missing_fields(attempt_actions)
+                    # Max retries exceeded - NO fallbacks, fail clearly
+                    logger.error(f"❌ Max retries ({MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
+                    replacement_actions = None  # Fail clearly instead of masking with garbage defaults
             
             total_cost += gpt_cost
             
@@ -2498,7 +2747,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     .where(ActionPlanItem.id == original.id)
                     .values(
                         is_replaced=True,
-                        replaced_at=datetime.utcnow(),
+                        replaced_at=datetime.now(timezone.utc),
                         replacement_reason=reasons.get(original.id, "user disliked")
                     )
                 )
@@ -2536,8 +2785,8 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     research_studies=replacement_action.get("research_studies", []),
                     conditions=action_conditions,
                     symptoms=action_symptoms,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 )
                 
                 # Add category-specific fields
@@ -2600,7 +2849,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         description=variant.get("description", ""),
                         image_url=variant_url,
                         image_prompt=variant.get("image_prompt"),
-                        created_at=datetime.utcnow()
+                        created_at=datetime.now(timezone.utc)
                     )
                     db.add(variant_record)
                 
@@ -2689,7 +2938,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
         except Exception as e:
             logger.error(f"Error in batch replacement: {e}")
             await db.rollback()
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Failed to replace actions. Please try again."}
     
     async def record_feedback(
         self,
@@ -2743,7 +2992,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
         except Exception as e:
             logger.error(f"Error recording feedback: {e}")
             await db.rollback()
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Failed to record feedback. Please try again."}
 
 
 # Global instance

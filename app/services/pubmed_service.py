@@ -106,9 +106,14 @@ class PubMedService:
     4. Semantic Scholar (tertiary - AI-powered relevance)
     """
     
+    # Class-level semaphore for rate limiting (Fix #1)
+    _api_semaphore = asyncio.Semaphore(1)  # Serialize API calls to prevent 429
+    _MAX_RETRIES = 3
+    _RETRY_DELAYS = [1.0, 2.0, 4.0]  # Exponential backoff delays
+    
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=15.0)
-        self._rate_limit_delay = 0.35  # seconds between API calls
+        self._rate_limit_delay = 0.5  # Increased from 0.35 to 0.5 seconds
     
     async def find_citation(
         self,
@@ -231,53 +236,72 @@ class PubMedService:
     # ═══════════════════════════════════════════════════════════════════════════
     
     async def _search_pubmed(self, query: str, max_results: int = 5) -> Optional[Dict]:
-        """Search PubMed for papers, with relevance filtering."""
-        try:
-            # Exclude clinical guidelines and non-original research
-            enhanced_query = f"({query}) NOT (guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti] OR chemotherapy[ti])"
-            
-            # Search for PMIDs
-            params = {
-                "db": "pubmed",
-                "term": enhanced_query,
-                "retmax": max_results,
-                "retmode": "json",
-                "sort": "relevance",
-                "datetype": "pdat",
-                "mindate": "2010",
-                "maxdate": "2025"
-            }
-            
-            response = await self.client.get(PUBMED_SEARCH_URL, params=params)
-            response.raise_for_status()
-            
-            data = response.json()
-            pmids = data.get("esearchresult", {}).get("idlist", [])
-            
-            if not pmids:
-                logger.warning(f"PubMed: No papers found for query")
-                return None
-            
-            logger.info(f"PubMed found {len(pmids)} papers, checking relevance...")
-            
-            # Check multiple papers and pick the best one
-            for pmid in pmids[:3]:  # Check first 3
-                await asyncio.sleep(self._rate_limit_delay)
-                paper = await self._fetch_pubmed_paper(pmid)
-                
-                if paper and self._is_relevant_paper(paper):
-                    logger.info(f"✅ Selected relevant paper: {paper.get('title', '')[:50]}...")
-                    return paper
-                elif paper:
-                    logger.warning(f"⚠️ Skipped irrelevant paper: {paper.get('title', '')[:50]}...")
-            
-            # If no relevant paper found, return first result anyway
-            await asyncio.sleep(self._rate_limit_delay)
-            return await self._fetch_pubmed_paper(pmids[0])
-            
-        except Exception as e:
-            logger.error(f"PubMed search error: {e}")
-            return None
+        """Search PubMed for papers, with relevance filtering and rate limiting."""
+        # Use semaphore to serialize API calls (Fix #1 - prevents 429)
+        async with self._api_semaphore:
+            for attempt in range(self._MAX_RETRIES):
+                try:
+                    # Exclude clinical guidelines and non-original research
+                    enhanced_query = f"({query}) NOT (guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti] OR chemotherapy[ti])"
+                    
+                    # Search for PMIDs
+                    params = {
+                        "db": "pubmed",
+                        "term": enhanced_query,
+                        "retmax": max_results,
+                        "retmode": "json",
+                        "sort": "relevance",
+                        "datetype": "pdat",
+                        "mindate": "2010",
+                        "maxdate": "2025"
+                    }
+                    
+                    await asyncio.sleep(self._rate_limit_delay)  # Pre-request delay
+                    response = await self.client.get(PUBMED_SEARCH_URL, params=params)
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    pmids = data.get("esearchresult", {}).get("idlist", [])
+                    
+                    if not pmids:
+                        logger.warning(f"PubMed: No papers found for query")
+                        return None
+                    
+                    logger.info(f"PubMed found {len(pmids)} papers, checking relevance...")
+                    
+                    # Check multiple papers and pick the best one
+                    for pmid in pmids[:3]:  # Check first 3
+                        await asyncio.sleep(self._rate_limit_delay)
+                        paper = await self._fetch_pubmed_paper(pmid)
+                        
+                        if paper and self._is_relevant_paper(paper):
+                            logger.info(f"✅ Selected relevant paper: {paper.get('title', '')[:50]}...")
+                            return paper
+                        elif paper:
+                            logger.warning(f"⚠️ Skipped irrelevant paper: {paper.get('title', '')[:50]}...")
+                    
+                    # If no relevant paper found, return first result anyway
+                    await asyncio.sleep(self._rate_limit_delay)
+                    return await self._fetch_pubmed_paper(pmids[0])
+                    
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429:
+                        # Rate limited - retry with exponential backoff
+                        if attempt < self._MAX_RETRIES - 1:
+                            delay = self._RETRY_DELAYS[attempt]
+                            logger.warning(f"⏳ PubMed rate limited (429), retrying in {delay}s (attempt {attempt + 1}/{self._MAX_RETRIES})")
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            logger.error(f"❌ PubMed rate limit exceeded after {self._MAX_RETRIES} retries")
+                            return None
+                    else:
+                        logger.error(f"PubMed search error: {e}")
+                        return None
+                except Exception as e:
+                    logger.error(f"PubMed search error: {e}")
+                    return None
+        return None
     
     def _is_relevant_paper(self, paper: Dict) -> bool:
         """Check if paper is relevant (not clinical guidelines, cancer, etc.)."""
@@ -631,8 +655,9 @@ class PubMedService:
         return None
     
     async def _cache_citation(self, cache_key: str, paper: Dict, db: AsyncSession) -> None:
-        """Store citation in cache."""
+        """Store citation in cache using upsert pattern (Fix #3 - prevents duplicate key errors)."""
         from app.core.database import PubMedCache
+        from sqlalchemy.dialects.postgresql import insert
         
         try:
             # Convert participants to string for storage
@@ -642,7 +667,8 @@ class PubMedService:
             else:
                 participants_str = str(participants) if participants else None
             
-            cache_entry = PubMedCache(
+            # Use upsert (INSERT ... ON CONFLICT DO NOTHING) to handle race conditions
+            stmt = insert(PubMedCache).values(
                 cache_key=cache_key,
                 pubmed_id=paper.get("pmid", ""),
                 title=paper.get("title", ""),
@@ -652,14 +678,18 @@ class PubMedService:
                 finding=paper.get("finding", ""),
                 created_at=datetime.utcnow(),
                 access_count=1
-            )
-            db.add(cache_entry)
+            ).on_conflict_do_nothing(index_elements=['cache_key'])
+            
+            await db.execute(stmt)
             await db.commit()
             logger.info(f"📚 Cached citation: {cache_key}")
             
         except Exception as e:
-            logger.warning(f"Cache write error: {e}")
-            await db.rollback()
+            logger.warning(f"Cache write error (non-critical): {e}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass  # Session may already be invalid
     
     async def close(self):
         """Close HTTP client."""
