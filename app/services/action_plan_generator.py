@@ -34,6 +34,25 @@ from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
 logger = logging.getLogger(__name__)
 
 
+async def _create_async_session() -> AsyncSession:
+    """Create an isolated async database session for concurrent operations."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    
+    db_url = os.getenv("DATABASE_URL", "")
+    
+    # Convert to async URL
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    
+    engine = create_async_engine(db_url, echo=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    
+    return async_session()
+
+
 # ============================================================================
 # HORMONE PERSONAS - Used for personalized introductions
 # ============================================================================
@@ -1534,9 +1553,31 @@ If the tool returns empty, set research_studies to an empty array.
         
         Uses asyncio.gather to generate all images concurrently:
         - 4 hero images + 12 variant images = 16 total
+        - Each task uses its OWN database session to avoid concurrency issues
         - Previous: ~2-4 minutes (sequential)
         - Now: ~15-30 seconds (parallel)
         """
+        
+        async def _generate_single_image(prompt: str, category: str, variant_type: str, user_id: str):
+            """Wrapper that creates its own session for each image task."""
+            try:
+                # Create isolated session for this task
+                task_session = await _create_async_session()
+                try:
+                    url, was_cached, cost = await self.image_service.get_or_generate_image(
+                        prompt=prompt,
+                        category=category,
+                        variant_type=variant_type,
+                        user_id=user_id,
+                        db=task_session
+                    )
+                    return (url, was_cached, cost)
+                finally:
+                    await task_session.close()
+            except Exception as e:
+                logger.error(f"Image generation wrapper error: {e}")
+                return ("", False, 0.0)
+        
         # Build list of all image generation tasks
         image_tasks = []
         task_metadata = []  # Track which action/variant each task belongs to
@@ -1546,37 +1587,35 @@ If the tool returns empty, set research_studies to an empty array.
             action_category = action.get("category", "food")
             action_image_prompt = action.get("image_prompt", action_title)
             
-            # Hero image task
+            # Hero image task (with its own session)
             image_tasks.append(
-                self.image_service.get_or_generate_image(
+                _generate_single_image(
                     prompt=action_image_prompt,
                     category=action_category,
                     variant_type="hero",
-                    user_id=user_id,
-                    db=db
+                    user_id=user_id
                 )
             )
             task_metadata.append({"action_idx": action_idx, "variant_idx": None})
             
-            # Variant image tasks
+            # Variant image tasks (each with its own session)
             variants = action.get("variants", [])
             for variant_idx, variant in enumerate(variants):
                 if not isinstance(variant, dict):
                     continue
                 variant_prompt = variant.get("image_prompt", variant.get("title", action_title))
                 image_tasks.append(
-                    self.image_service.get_or_generate_image(
+                    _generate_single_image(
                         prompt=variant_prompt,
                         category=action_category,
                         variant_type=variant.get("variant_type", f"variant_{variant_idx}"),
-                        user_id=user_id,
-                        db=db
+                        user_id=user_id
                     )
                 )
                 task_metadata.append({"action_idx": action_idx, "variant_idx": variant_idx})
         
-        # Execute all image tasks in parallel
-        logger.info(f"⚡ Generating {len(image_tasks)} images in PARALLEL...")
+        # Execute all image tasks in parallel (each with its own isolated session)
+        logger.info(f"⚡ Generating {len(image_tasks)} images in PARALLEL with isolated sessions...")
         start_time = time.time()
         
         results = await asyncio.gather(*image_tasks, return_exceptions=True)
