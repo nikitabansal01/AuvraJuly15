@@ -37,29 +37,39 @@ logger = logging.getLogger(__name__)
 
 # ============================================================================
 # PYDANTIC MODELS FOR STRUCTURED OUTPUTS
+# OpenAI Structured Outputs requires ALL fields to be required (no Optional)
+# For strict: true mode, we must have additionalProperties: false
 # ============================================================================
 
 class ResearchStudyModel(BaseModel):
-    """Research citation from PubMed."""
+    """Research citation from PubMed - all fields required."""
     title: str
     journal: str
     year: int
-    participants: int = 0
-    finding: str = ""
-    pmid: str = ""
-    verification_link: str = ""
+    participants: int
+    finding: str
+    pmid: str
+    verification_link: str
+    
+    model_config = {"extra": "forbid"}  # additionalProperties: false
 
 
 class ActionVariantModel(BaseModel):
-    """Variant of an action (e.g., easy, tasty, healthy versions)."""
+    """Variant of an action - all fields required."""
     variant_type: str
     title: str
     description: str
     image_prompt: str
+    
+    model_config = {"extra": "forbid"}
 
 
 class ActionItemModel(BaseModel):
-    """Single action item with all required fields."""
+    """
+    Single action item - ALL fields are required (OpenAI strict mode).
+    For category-specific fields, GPT fills with [] for non-matching categories.
+    Example: food action has food_items=["oats"], exercise_types=[]
+    """
     title: str
     category: Literal["food", "movement", "mindfulness"]
     time_slot: Literal["morning", "afternoon", "evening"]
@@ -68,23 +78,37 @@ class ActionItemModel(BaseModel):
     target_hormone: str
     hormone_persona_intro: str
     image_prompt: str
-    research_studies: List[ResearchStudyModel] = Field(default_factory=list)
-    variants: List[ActionVariantModel] = Field(min_length=3, max_length=3)
-    symptoms: List[str] = Field(default_factory=list)
-    conditions: List[str] = Field(default_factory=list)
-    # Category-specific fields (validated separately based on category)
-    food_items: Optional[List[str]] = None
-    food_amounts: Optional[List[str]] = None
-    exercise_types: Optional[List[str]] = None
-    exercise_durations: Optional[List[str]] = None
-    exercise_intensities: Optional[List[str]] = None
-    mindfulness_techniques: Optional[List[str]] = None
-    mindfulness_durations: Optional[List[str]] = None
+    
+    # Research studies - required, can be empty []
+    research_studies: List[ResearchStudyModel]
+    
+    # Variants - exactly 3 required
+    variants: List[ActionVariantModel]
+    
+    # Category-specific fields - ALL required, use [] for non-matching categories
+    # Food fields
+    food_items: List[str]
+    food_amounts: List[str]
+    # Movement fields  
+    exercise_types: List[str]
+    exercise_durations: List[str]
+    exercise_intensities: List[str]
+    # Mindfulness fields
+    mindfulness_techniques: List[str]
+    mindfulness_durations: List[str]
+    
+    # Metadata - required, can be empty []
+    symptoms: List[str]
+    conditions: List[str]
+    
+    model_config = {"extra": "forbid"}
 
 
 class ActionPlanResponseModel(BaseModel):
-    """Complete action plan response from GPT with exactly 4 actions."""
-    actions: List[ActionItemModel] = Field(min_length=4, max_length=4)
+    """Complete action plan response - exactly 4 actions required."""
+    actions: List[ActionItemModel]
+    
+    model_config = {"extra": "forbid"}
 
 
 async def _create_async_session(engine_maker=None) -> AsyncSession:
@@ -389,18 +413,34 @@ OUTPUT FORMAT (for each action)
 12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
 
 CATEGORY-SPECIFIC REQUIRED FIELDS:
-For FOOD actions, MUST include:
-- food_amounts: Array like ["1 tbsp", "2 tablespoons", "handful"]
-- food_items: Array like ["pumpkin seeds", "flaxseeds"]
+**ALL category fields are REQUIRED in every action.** Fill with actual values for matching category, use empty array [] for non-matching categories.
 
-For MOVEMENT actions, MUST include:
-- exercise_durations: Array like ["15 min", "20 minutes walk"]
-- exercise_types: Array like ["yoga", "walking", "stretching"]
-- exercise_intensities: Array like ["low", "moderate"]
+For FOOD actions:
+- food_items: Array like ["pumpkin seeds", "flaxseeds"] (REQUIRED)
+- food_amounts: Array like ["1 tbsp", "2 tablespoons"] (REQUIRED)
+- exercise_types: [] (empty array - not a food action)
+- exercise_durations: [] (empty array)
+- exercise_intensities: [] (empty array)
+- mindfulness_techniques: [] (empty array)
+- mindfulness_durations: [] (empty array)
 
-For MINDFULNESS actions, MUST include:
-- mindfulness_durations: Array like ["5 min", "10 minutes"]
-- mindfulness_techniques: Array like ["deep breathing", "meditation"]
+For MOVEMENT actions:
+- exercise_types: Array like ["yoga", "walking"] (REQUIRED)
+- exercise_durations: Array like ["15 min", "20 minutes"] (REQUIRED)
+- exercise_intensities: Array like ["low", "moderate"] (REQUIRED)
+- food_items: [] (empty array - not a movement action)
+- food_amounts: [] (empty array)
+- mindfulness_techniques: [] (empty array)
+- mindfulness_durations: [] (empty array)
+
+For MINDFULNESS actions:
+- mindfulness_techniques: Array like ["deep breathing", "meditation"] (REQUIRED)
+- mindfulness_durations: Array like ["5 min", "10 minutes"] (REQUIRED)
+- food_items: [] (empty array - not a mindfulness action)
+- food_amounts: [] (empty array)
+- exercise_types: [] (empty array)
+- exercise_durations: [] (empty array)
+- exercise_intensities: [] (empty array)
 
 ══════════════════════════════════════════════════════════════════════
 COMPLETE OUTPUT EXAMPLES (FOLLOW THIS EXACT STRUCTURE)
@@ -509,123 +549,9 @@ Respond with valid JSON array only, no markdown formatting."""
 # JSON SCHEMA FOR STRUCTURED OUTPUTS
 # ============================================================================
 
-# OpenAI Structured Outputs schema - guarantees all required fields are present
-ACTION_PLAN_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "actions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    # Base fields (required for all categories)
-                    "title": {"type": "string"},
-                    "category": {"type": "string", "enum": ["food", "movement", "mindfulness"]},
-                    "time_slot": {"type": "string", "enum": ["morning", "afternoon", "evening"]},
-                    "specific_action": {"type": "string"},
-                    "purpose": {"type": "string"},
-                    "target_hormone": {"type": "string"},
-                    "hormone_persona_intro": {"type": "string"},
-                    "image_prompt": {"type": "string"},
-                    
-                    # Category-specific fields (optional in schema, validated in code)
-                    "food_items": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "food_amounts": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "exercise_types": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "exercise_durations": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "exercise_intensities": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "mindfulness_techniques": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "mindfulness_durations": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    
-                    # Research studies (exactly 1)
-                    "research_studies": {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 1,
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "title": {"type": "string"},
-                                "journal": {"type": "string"},
-                                "year": {"type": "integer"},
-                                "participants": {"type": "integer"},
-                                "finding": {"type": "string"},
-                                "pmid": {"type": "string"},
-                                "verification_link": {"type": "string"}
-                            },
-                            "required": ["title", "journal", "year", "participants", "finding", "pmid"],
-                            "additionalProperties": False
-                        }
-                    },
-                    
-                    # Variants (exactly 3)
-                    "variants": {
-                        "type": "array",
-                        "minItems": 3,
-                        "maxItems": 3,
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "variant_type": {"type": "string"},
-                                "title": {"type": "string"},
-                                "description": {"type": "string"},
-                                "image_prompt": {"type": "string"}
-                            },
-                            "required": ["variant_type", "title", "description", "image_prompt"],
-                            "additionalProperties": False
-                        }
-                    },
-                    
-                    # Optional metadata
-                    "symptoms": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "conditions": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    }
-                },
-                "required": [
-                    "title", "category", "time_slot", "specific_action", 
-                    "purpose", "target_hormone", "hormone_persona_intro", 
-                    "image_prompt", "research_studies", "variants",
-                    "symptoms", "conditions",
-                    # Category-specific fields - GPT MUST include all of these
-                    "food_items", "food_amounts", 
-                    "exercise_types", "exercise_durations", "exercise_intensities",
-                    "mindfulness_techniques", "mindfulness_durations"
-                ],
-                "additionalProperties": False
-            },
-            "minItems": 4,
-            "maxItems": 4
-        }
-    },
-    "required": ["actions"],
-    "additionalProperties": False
-}
+# Generate JSON Schema automatically from Pydantic model
+# This ensures schema and model are always in sync
+ACTION_PLAN_SCHEMA = ActionPlanResponseModel.model_json_schema()
 
 VARIANT_PROMPT_TEMPLATE = """For the {category} action "{title}", create 3 variants:
 
