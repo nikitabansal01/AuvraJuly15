@@ -1592,24 +1592,12 @@ If the tool returns empty, set research_studies to an empty array.
             """Wrapper that creates its own session from shared pool for each image task."""
             task_session = None
             try:
-                # 1. Generate the image (Network call, no DB needed yet)
-                # This moves the expensive parts out of the semaphore
-                url, was_cached, cost = await self.image_service.get_or_generate_image(
-                    prompt=prompt,
-                    category=category,
-                    variant_type=variant_type,
-                    user_id=user_id,
-                    db=None # Pass None to skip DB check/store during gen if possible, 
-                            # BUT the service needs it for library check. 
-                            # So we use the semaphore just for the service call.
-                )
-                
-                # 2. Store or check DB with limited concurrency
+                # Use semaphore to limit concurrent DB operations
+                # The entire image generation (including cache check and store) happens with a valid session
                 async with self.db_semaphore:
                     task_session = await _create_async_session(self.async_session_maker)
                     logger.debug(f"[ImageTask] Created session for {category}/{variant_type}")
                     
-                    # Call again WITH session to ensure library storage/lookup
                     url, was_cached, cost = await self.image_service.get_or_generate_image(
                         prompt=prompt,
                         category=category,
