@@ -1646,8 +1646,8 @@ If the tool returns empty, set research_studies to an empty array.
                 generation_cost=str(total_cost),
                 generation_time_ms=generation_time_ms,
                 gpt_model_used=self.GPT_MODEL,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
             
             db.add(plan)
@@ -1685,8 +1685,8 @@ If the tool returns empty, set research_studies to an empty array.
                     research_studies=action.get("research_studies", []),
                     conditions=action_conditions,
                     symptoms=action_symptoms,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
                 )
                 
                 # Add category-specific fields (case-insensitive)
@@ -1728,7 +1728,7 @@ If the tool returns empty, set research_studies to an empty array.
                         description=variant.get("description", ""),
                         image_url=variant.get("image_url"),
                         image_prompt=variant.get("image_prompt"),
-                        created_at=datetime.now(timezone.utc)
+                        created_at=datetime.utcnow()
                     )
                     db.add(variant_record)
             
@@ -1885,7 +1885,7 @@ If the tool returns empty, set research_studies to an empty array.
                 replacement_reason=reason,
                 was_replaced=True,
                 feedback_given_at=datetime.now(timezone.utc),
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow()
             )
             db.add(feedback)
             
@@ -2132,8 +2132,8 @@ Respond with valid JSON object only."""
                 research_studies=replacement_action.get("research_studies", []),
                 conditions=action_conditions,
                 symptoms=action_symptoms,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
             
             # Add category-specific fields
@@ -2197,7 +2197,7 @@ Respond with valid JSON object only."""
                     description=variant_data[i]["variant"].get("description", ""),
                     image_url=variant_url,
                     image_prompt=variant_data[i]["variant"].get("image_prompt"),
-                    created_at=datetime.now(timezone.utc)
+                    created_at=datetime.utcnow()
                 )
                 db.add(variant_record)
             
@@ -2754,8 +2754,8 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     research_studies=replacement_action.get("research_studies", []),
                     conditions=action_conditions,
                     symptoms=action_symptoms,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
                 )
                 
                 # Add category-specific fields
@@ -2818,7 +2818,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         description=variant.get("description", ""),
                         image_url=variant_url,
                         image_prompt=variant.get("image_prompt"),
-                        created_at=datetime.now(timezone.utc)
+                        created_at=datetime.utcnow()
                     )
                     db.add(variant_record)
                 
