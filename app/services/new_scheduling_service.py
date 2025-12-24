@@ -1000,16 +1000,20 @@ class NewSchedulingService:
                 # Minimal fallback - single hormone
                 return ['progesterone']
             
+            logger.info(f"🔍 Processing {len(assignments)} assignments for hormone stats, user_hormones={user_hormones}")
+            
             for idx, assignment in enumerate(assignments):
                 recommendation = self.db.query(RecommendationRecord).filter(
                     RecommendationRecord.id == assignment.recommendation_id
                 ).first()
                 
                 if not recommendation:
+                    logger.warning(f"❌ No recommendation found for assignment {assignment.id}")
                     continue
                 
                 # Get hormones from recommendation, or use smart defaults
                 hormones = recommendation.hormones
+                logger.debug(f"📦 Recommendation {recommendation.id}: hormones={hormones}, category={recommendation.category}")
                 if not hormones:
                     cat = recommendation.category or 'food'
                     hormones = get_default_hormone(cat, idx)  # FIXED: Use index for alternation
