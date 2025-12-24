@@ -539,8 +539,11 @@ class ActionPlanGenerator:
         self.image_service = get_image_library_service()
         
         # Shared database engine for pooled sessions
+        # Use NullPool for Supabase Session Pooler compatibility - 
+        # Supabase handles all pooling externally, so local pooling causes MaxClientsInSessionMode errors
         from sqlalchemy.ext.asyncio import create_async_engine
         from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import NullPool
         
         db_url = os.getenv("DATABASE_URL", "")
         if db_url.startswith("postgres://"):
@@ -551,9 +554,7 @@ class ActionPlanGenerator:
         self.engine = create_async_engine(
             db_url, 
             echo=False,
-            pool_size=10,
-            max_overflow=20,
-            pool_pre_ping=True
+            poolclass=NullPool  # No local pooling - Supabase Session Pooler handles it
         )
         self.async_session_maker = sessionmaker(
             self.engine, 
