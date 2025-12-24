@@ -21,10 +21,11 @@ import time
 import asyncio
 import traceback
 import hashlib
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Literal
 from datetime import datetime, timezone, date, timedelta
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update, text
 
@@ -32,6 +33,58 @@ from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# PYDANTIC MODELS FOR STRUCTURED OUTPUTS
+# ============================================================================
+
+class ResearchStudyModel(BaseModel):
+    """Research citation from PubMed."""
+    title: str
+    journal: str
+    year: int
+    participants: int = 0
+    finding: str = ""
+    pmid: str = ""
+    verification_link: str = ""
+
+
+class ActionVariantModel(BaseModel):
+    """Variant of an action (e.g., easy, tasty, healthy versions)."""
+    variant_type: str
+    title: str
+    description: str
+    image_prompt: str
+
+
+class ActionItemModel(BaseModel):
+    """Single action item with all required fields."""
+    title: str
+    category: Literal["food", "movement", "mindfulness"]
+    time_slot: Literal["morning", "afternoon", "evening"]
+    specific_action: str
+    purpose: str
+    target_hormone: str
+    hormone_persona_intro: str
+    image_prompt: str
+    research_studies: List[ResearchStudyModel] = Field(default_factory=list)
+    variants: List[ActionVariantModel] = Field(min_length=3, max_length=3)
+    symptoms: List[str] = Field(default_factory=list)
+    conditions: List[str] = Field(default_factory=list)
+    # Category-specific fields (validated separately based on category)
+    food_items: Optional[List[str]] = None
+    food_amounts: Optional[List[str]] = None
+    exercise_types: Optional[List[str]] = None
+    exercise_durations: Optional[List[str]] = None
+    exercise_intensities: Optional[List[str]] = None
+    mindfulness_techniques: Optional[List[str]] = None
+    mindfulness_durations: Optional[List[str]] = None
+
+
+class ActionPlanResponseModel(BaseModel):
+    """Complete action plan response from GPT with exactly 4 actions."""
+    actions: List[ActionItemModel] = Field(min_length=4, max_length=4)
 
 
 async def _create_async_session(engine_maker=None) -> AsyncSession:
@@ -605,25 +658,57 @@ class ActionPlanGenerator:
         """
         Generate a completely new action plan.
         
-        Checks for existing plan before generating new one.
+        Uses PostgreSQL advisory lock to prevent race conditions.
         
         Steps:
-        1. Check for existing plan
-        2. Load user context
+        1. Acquire advisory lock for user+date
+        2. Check for existing plan (double-check after lock)
         3. Load user context
         4. Generate actions via GPT
         5. Generate images for each action
         6. Store in database
+        7. Release lock
         """
         start_time = time.time()
         total_cost = 0.0
+        lock_key = hash(f"{user_id}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
+        got_lock = False
         
         try:
-            # Check for existing plan first
+            # Step 0: Acquire advisory lock to prevent race conditions
+            # Two requests for the same user+date will serialize here
+            lock_result = await db.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": lock_key}
+            )
+            got_lock = lock_result.scalar()
+            
+            if not got_lock:
+                # Another request is already generating - wait and check for result
+                logger.info(f"🔒 Another request is generating plan for {user_id}, waiting...")
+                await asyncio.sleep(3)  # Wait for the other request to complete
+                
+                # Check if plan was created by the other request
+                existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                if existing_plan:
+                    logger.info(f"✅ Found plan created by concurrent request")
+                    return await self._format_plan_response(existing_plan, db)
+                
+                # Still no plan - try to acquire lock (blocking)
+                logger.info(f"🔒 Acquiring blocking lock for {user_id}...")
+                await db.execute(
+                    text("SELECT pg_advisory_lock(:key)"),
+                    {"key": lock_key}
+                )
+                got_lock = True
+            
+            # Double-check for existing plan after acquiring lock
             existing_plan = await self._get_existing_plan(user_id, plan_date, db)
             if existing_plan:
                 logger.info(f"Plan already exists for {user_id} on {plan_date}")
                 return await self._format_plan_response(existing_plan, db)
+            
+            logger.info(f"🔓 Lock acquired, generating plan for {user_id} on {plan_date}")
             
             # Step 1: Load user context
             user_context = await self._load_user_context(user_id, db)
@@ -633,7 +718,7 @@ class ActionPlanGenerator:
                 return {"success": False, "error": "User profile not found"}
             
             # Step 2: Generate actions via GPT-4o-mini with retry logic
-            # Note: Using class-level MAX_RETRIES (3) instead of local override
+            # Pydantic validation ensures complete data - no fallbacks
             actions = None
             gpt_cost = 0.0
             
@@ -641,49 +726,28 @@ class ActionPlanGenerator:
                 logger.info(f"🔄 Generation attempt {attempt}/{self.MAX_RETRIES}")
                 
                 # Generate actions with real citations from PubMed
+                # Pydantic validation happens inside _generate_actions_via_gpt
                 attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db)
                 gpt_cost += attempt_cost
                 
-                if not attempt_actions:
-                    logger.warning(f"❌ Attempt {attempt}: No actions generated")
-                    continue
-                
-                # Validate all actions
-                all_valid = True
-                validation_errors = []
-                
-                for i, action in enumerate(attempt_actions):
-                    category = action.get("category", "unknown")
-                    valid, missing = self._validate_action_fields(action, category)
-                    
-                    if not valid:
-                        all_valid = False
-                        validation_errors.append(
-                            f"Action {i+1} '{action.get('title', 'Untitled')}' [{category}]: missing {missing}"
-                        )
-                
-                if all_valid:
-                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} actions valid")
+                if attempt_actions:
+                    # Pydantic validated successfully
+                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} actions validated by Pydantic")
                     actions = attempt_actions
                     break
-                
-                # Log errors
-                logger.warning(f"⚠️ Attempt {attempt} validation failed:")
-                for error in validation_errors:
-                    logger.warning(f"   • {error}")
-                
-                if attempt < self.MAX_RETRIES:
-                    logger.info(f"🔄 Retrying generation...")
                 else:
-                    # Max retries exceeded - NO fallbacks, fail clearly
-                    logger.warning(f"⚠️ Max retries ({self.MAX_RETRIES}) exceeded, applying minimal fallbacks")
-                    actions = self._fill_missing_fields(attempt_actions)
+                    logger.warning(f"❌ Attempt {attempt}: Generation or validation failed")
+                    if attempt < self.MAX_RETRIES:
+                        logger.info(f"🔄 Retrying generation...")
+                    else:
+                        # Max retries exceeded - FAIL CLEANLY, no fallbacks
+                        logger.error(f"❌ Max retries ({self.MAX_RETRIES}) exceeded. Failing without fallbacks.")
             
             total_cost += gpt_cost
             
             if not actions:
-                logger.error("Failed to generate actions via GPT")
-                return {"success": False, "error": "Failed to generate actions"}
+                logger.error("Failed to generate valid actions via GPT after all retries")
+                return {"success": False, "error": "Failed to generate actions. Please try again."}
             
             # Step 3: Generate images for all actions (16 total: 4 actions × 4 images)
             actions_with_images, image_cost = await self._generate_all_images(
@@ -711,6 +775,17 @@ class ActionPlanGenerator:
             logger.error(f"Error generating plan: {e}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": "Failed to generate plan. Please try again."}
+        finally:
+            # Release advisory lock if we acquired it
+            if got_lock:
+                try:
+                    await db.execute(
+                        text("SELECT pg_advisory_unlock(:key)"),
+                        {"key": lock_key}
+                    )
+                    logger.info(f"🔓 Released advisory lock for {user_id}")
+                except Exception as unlock_err:
+                    logger.warning(f"Failed to release advisory lock: {unlock_err}")
     
     def _get_user_today(self, timezone_str: str) -> date:
         """Get today's date in user's timezone."""
@@ -1389,17 +1464,58 @@ If the tool returns empty, set research_studies to an empty array.
             
             # Extract actions array from response
             if isinstance(response_data, dict) and "actions" in response_data:
-                actions = response_data["actions"]
+                raw_actions = response_data["actions"]
             elif isinstance(response_data, list):
-                actions = response_data
+                raw_actions = response_data
             else:
                 logger.error(f"Unexpected response format: {type(response_data)}")
                 return (None, total_cost)
             
-            # Normalize categories
-            for action in actions:
+            # Normalize categories before validation
+            for action in raw_actions:
                 if "category" in action:
                     action["category"] = action["category"].lower()
+            
+            # Validate with Pydantic - ensures all required fields are present
+            try:
+                validated_response = ActionPlanResponseModel(actions=raw_actions)
+                actions = [action.model_dump() for action in validated_response.actions]
+                
+                # Additional category-specific validation
+                validation_errors = []
+                for i, action in enumerate(actions):
+                    category = action.get("category", "food")
+                    title = action.get("title", "Untitled")
+                    
+                    if category == "food":
+                        if not action.get("food_items") or len(action.get("food_items", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [food]: missing food_items")
+                        if not action.get("food_amounts") or len(action.get("food_amounts", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [food]: missing food_amounts")
+                    elif category == "movement":
+                        if not action.get("exercise_types") or len(action.get("exercise_types", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [movement]: missing exercise_types")
+                        if not action.get("exercise_durations") or len(action.get("exercise_durations", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [movement]: missing exercise_durations")
+                    elif category == "mindfulness":
+                        if not action.get("mindfulness_techniques") or len(action.get("mindfulness_techniques", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [mindfulness]: missing mindfulness_techniques")
+                        if not action.get("mindfulness_durations") or len(action.get("mindfulness_durations", [])) == 0:
+                            validation_errors.append(f"Action {i+1} '{title}' [mindfulness]: missing mindfulness_durations")
+                
+                if validation_errors:
+                    logger.warning(f"⚠️ Category-specific validation issues (will retry):")
+                    for error in validation_errors:
+                        logger.warning(f"   • {error}")
+                    # Return None to trigger retry
+                    return (None, total_cost)
+                    
+                logger.info(f"✅ Pydantic validation passed for {len(actions)} actions")
+                
+            except ValidationError as e:
+                logger.error(f"❌ Pydantic validation failed: {e}")
+                logger.error(f"   This usually means GPT returned incomplete data. Will retry.")
+                return (None, total_cost)
             
             logger.info(f"✅ Generated {len(actions)} actions with REAL citations (cost: ${total_cost:.4f})")
             
@@ -1411,14 +1527,14 @@ If the tool returns empty, set research_studies to an empty array.
                 # Log category-specific fields
                 if category == "food":
                     logger.info(f"  Action {i+1} '{action.get('title')}' [FOOD]: "
-                               f"food_amounts={action.get('food_amounts', 'MISSING')}, "
-                               f"food_items={action.get('food_items', 'MISSING')}")
+                               f"food_amounts={action.get('food_amounts')}, "
+                               f"food_items={action.get('food_items')}")
                 elif category == "movement":
                     logger.info(f"  Action {i+1} '{action.get('title')}' [MOVEMENT]: "
-                               f"exercise_durations={action.get('exercise_durations', 'MISSING')}")
+                               f"exercise_durations={action.get('exercise_durations')}")
                 elif category == "mindfulness":
                     logger.info(f"  Action {i+1} '{action.get('title')}' [MINDFULNESS]: "
-                               f"mindfulness_durations={action.get('mindfulness_durations', 'MISSING')}")
+                               f"mindfulness_durations={action.get('mindfulness_durations')}")
                 
                 # Log citation info
                 if research and len(research) > 0 and isinstance(research[0], dict):
@@ -1441,6 +1557,7 @@ If the tool returns empty, set research_studies to an empty array.
             return (None, total_cost)
         except Exception as e:
             logger.error(f"Error calling GPT: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return (None, total_cost)
     
     def _validate_action_fields(
