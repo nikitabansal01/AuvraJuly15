@@ -1416,9 +1416,98 @@ If the tool returns empty, set research_studies to an empty array.
         
         total_cost = 0.0
         
+        # Get user's conditions for research queries
+        diagnosed_conditions = ", ".join(user_context.get("diagnosed_conditions", [])) or "women's health"
+        
         try:
-            # Step 1: Call GPT with tools
-            logger.info("🤖 Calling GPT with search_research_paper tool...")
+            # ═══════════════════════════════════════════════════════════════════════
+            # STEP 1: RESEARCH DISCOVERY PHASE
+            # Search for evidence-based interventions BEFORE deciding what to recommend
+            # ═══════════════════════════════════════════════════════════════════════
+            logger.info("🔬 STEP 1: Research Discovery Phase - Finding what works for this user...")
+            
+            # Define research queries based on user's specific context
+            research_queries = [
+                # Food interventions for primary hormone + condition
+                f"{primary_hormone} food nutrition {diagnosed_conditions} women intervention",
+                # Food interventions for secondary hormone
+                f"{secondary_hormone} diet nutrition {diagnosed_conditions} women",
+                # Movement interventions
+                f"exercise physical activity {primary_hormone} {diagnosed_conditions} women",
+                # Mindfulness interventions
+                f"mindfulness stress reduction {primary_hormone} {diagnosed_conditions} women"
+            ]
+            
+            # Execute research searches
+            research_findings = []
+            for i, query in enumerate(research_queries):
+                categories = ["food", "food", "movement", "mindfulness"]
+                hormones = [primary_hormone, secondary_hormone, primary_hormone, primary_hormone]
+                
+                logger.info(f"  🔍 Searching: {query[:60]}...")
+                paper = await execute_pubmed_tool({
+                    "query": query,
+                    "action_title": f"Research {i+1}",
+                    "category": categories[i],
+                    "target_hormone": hormones[i]
+                }, db=db)
+                
+                if paper and paper.get("title"):
+                    research_findings.append({
+                        "query": query,
+                        "category": categories[i],
+                        "hormone": hormones[i],
+                        "paper": paper
+                    })
+                    logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+            
+            logger.info(f"🔬 Research complete: Found {len(research_findings)} relevant papers")
+            
+            # Build research summary for GPT
+            research_summary = "\\n\\n══════════════════════════════════════════════════════════════════════\\n"
+            research_summary += "RESEARCH FINDINGS - USE THESE TO INFORM YOUR RECOMMENDATIONS\\n"
+            research_summary += "══════════════════════════════════════════════════════════════════════\\n"
+            
+            for finding in research_findings:
+                paper = finding["paper"]
+                research_summary += f"""
+📚 Research for {finding['hormone'].upper()} ({finding['category']}):
+   Title: {paper.get('title', 'Unknown')}
+   Journal: {paper.get('journal', 'Unknown')} ({paper.get('year', 'N/A')})
+   Finding: {paper.get('finding', 'No finding extracted')}
+   PMID: {paper.get('pmid', 'N/A')}
+   
+   ➡️ Use this to inform your {finding['category']} recommendation for {finding['hormone']}
+"""
+            
+            research_summary += "\nIMPORTANT: Your recommendations MUST be based on the research findings above.\n"
+            research_summary += "Include the paper details in the research_studies field for each action.\n"
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # STEP 2: RECOMMENDATION GENERATION - Based on research findings
+            # ═══════════════════════════════════════════════════════════════════════
+            logger.info("🤖 STEP 2: Generating recommendations based on research findings...")
+            
+            # Enhanced system prompt with research findings
+            enhanced_system_with_research = SYSTEM_PROMPT + f"""
+
+CURRENT USER'S HORMONE CONTEXT:
+- Cycle Phase: {cycle_phase}
+- Primary Hormone: {user_context["primary_hormone"]} - {primary_behavior}
+- Secondary Hormone: {user_context["secondary_hormone"]} - {secondary_behavior}
+
+Write the hormone_persona_intro naturally, following the example style above. The hormone should:
+1. Introduce itself by name ("I'm Progesterone...")
+2. Explain what's happening in this cycle phase
+3. Connect the recommended action to how it helps the hormone and the user
+
+CRITICAL - RESEARCH-BASED RECOMMENDATIONS:
+The research has ALREADY been done for you (see findings below).
+You MUST base your recommendations on WHAT THE RESEARCH FOUND.
+Include the paper details (title, journal, year, pmid, finding) in research_studies.
+
+{research_summary}
+"""
             
             response = await self.client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -1429,13 +1518,20 @@ If the tool returns empty, set research_studies to an empty array.
                 json={
                     "model": self.GPT_MODEL,
                     "messages": [
-                        {"role": "system", "content": enhanced_system},
+                        {"role": "system", "content": enhanced_system_with_research},
                         {"role": "user", "content": prompt}
                     ],
-                    "tools": [PUBMED_SEARCH_TOOL],
-                    "tool_choice": "auto",
                     "temperature": 0.3,
-                    "max_tokens": 6000
+                    "max_tokens": 6000,
+                    # USE STRUCTURED OUTPUTS - GPT MUST return this exact schema
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "action_plan",
+                            "strict": True,
+                            "schema": ACTION_PLAN_SCHEMA
+                        }
+                    }
                 }
             )
             
@@ -1447,95 +1543,8 @@ If the tool returns empty, set research_studies to an empty array.
             output_tokens = data.get("usage", {}).get("completion_tokens", 0)
             total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
             
-            message = data["choices"][0]["message"]
-            
-            # Step 2: Handle tool calls if GPT wants to search for papers
-            if message.get("tool_calls"):
-                logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for research papers")
-                
-                tool_results = []
-                for tool_call in message["tool_calls"]:
-                    if tool_call["function"]["name"] == "search_research_paper":
-                        # Safely parse tool call arguments
-                        try:
-                            args = json.loads(tool_call["function"]["arguments"])
-                        except json.JSONDecodeError as je:
-                            logger.error(f"Failed to parse tool call arguments: {je}")
-                            tool_results.append({
-                                "tool_call_id": tool_call["id"],
-                                "role": "tool",
-                                "content": json.dumps({"error": "Invalid arguments"})
-                            })
-                            continue
-                        
-                        logger.info(f"  🔍 Searching for: {args.get('action_title', 'unknown')}")
-                        
-                        # Execute the tool - search PubMed/OpenAlex/Semantic Scholar
-                        # Pass db for caching if available
-                        paper = await execute_pubmed_tool(args, db=db)
-                        
-                        if paper and paper.get("title"):
-                            logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
-                        else:
-                            logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
-                        
-                        tool_results.append({
-                            "tool_call_id": tool_call["id"],
-                            "role": "tool",
-                            "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
-                        })
-                
-                # Step 3: Send tool results back to GPT
-                logger.info("📤 Sending research results back to GPT...")
-                
-                # Build the assistant message with tool calls
-                assistant_message = {
-                    "role": "assistant",
-                    "content": message.get("content"),  # May be null
-                    "tool_calls": message.get("tool_calls")
-                }
-                
-                response = await self.client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.openai_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.GPT_MODEL,
-                        "messages": [
-                            {"role": "system", "content": enhanced_system},
-                            {"role": "user", "content": prompt},
-                            assistant_message,
-                            *tool_results
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 6000,
-                        # USE STRUCTURED OUTPUTS - GPT MUST return this exact schema
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": "action_plan",
-                                "strict": True,
-                                "schema": ACTION_PLAN_SCHEMA
-                            }
-                        }
-                    }
-                )
-                
-                response.raise_for_status()
-                data = response.json()
-                
-                # Add second call cost
-                input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
-                output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
-                
-                content = data["choices"][0]["message"]["content"]
-            else:
-                # GPT didn't call tools - use response as-is
-                logger.warning("⚠️ GPT did not call tools - citations may be fabricated")
-                content = message.get("content", "{}")
+            content = data["choices"][0]["message"]["content"]
+            logger.info(f"✅ GPT generated recommendations based on {len(research_findings)} research papers")
             
             # Parse response
             response_data = json.loads(content.strip())
