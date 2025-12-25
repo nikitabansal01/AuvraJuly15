@@ -306,17 +306,27 @@ FAILURE TO INCLUDE THESE FIELDS WILL CAUSE VALIDATION ERRORS.
 - Match movement intensity to user's stated workout_intensity preference
 - Consider their stress_level when suggesting mindfulness duration
 
-HOW TO ACHIEVE TRUE PERSONALIZATION:
-- FIRST analyze the user's diagnosed conditions - what does medical research say helps?
-- THEN consider the target hormone - what foods/exercises specifically support it?
-- COMBINE these to find actions that address BOTH the condition AND the hormone
-- The 'purpose' field should explain the MECHANISM - "why does this specific food/exercise help THIS user's condition?"
-- Think like a specialist nutritionist/trainer who knows this user's exact situation
+HOW TO ACHIEVE TRUE PERSONALIZATION (RESEARCH-FIRST APPROACH):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+IMPORTANT: We show users REAL research papers as proof. Your recommendations MUST be grounded in this research.
+
+Follow this order:
+1. SEARCH FIRST: Use the search_research_paper tool to find what studies say about [user's condition] + [target hormone]
+2. READ THE EVIDENCE: What interventions (foods, exercises, mindfulness) does the research show works?
+3. RECOMMEND BASED ON EVIDENCE: Only recommend what has scientific backing
+4. EXPLAIN THE MECHANISM: The 'purpose' field should cite WHY this works based on the research
+
+Example thinking process:
+- User has Cushing's Syndrome + high cortisol
+- Search: "cortisol reduction interventions women"
+- Research shows: dark chocolate polyphenols reduce cortisol, yoga lowers HPA axis activation
+- Recommend: dark chocolate, yoga (with research backing)
+- Purpose: "Dark chocolate's flavonoids have been shown in studies to reduce cortisol levels by inhibiting HPA axis activation"
 
 QUALITY CHECK - Before finalizing each action, ask:
-1. Would a doctor specializing in this condition recommend this?
-2. Is there scientific evidence linking this action to the target hormone?
-3. Does the purpose explain the mechanism, not just say "it's healthy"?
+1. Did I base this on actual research findings, not just common knowledge?
+2. Can I explain the specific mechanism with scientific terminology?
+3. Would this recommendation hold up if a user googles it?
 
 ═══════════════════════════════════════════════════════════════════════════════
 
