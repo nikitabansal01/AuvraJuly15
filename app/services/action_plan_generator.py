@@ -444,7 +444,10 @@ OUTPUT FORMAT (for each action)
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: Detailed, actionable description (50-100 words)
 5. purpose: One clear sentence explaining exactly how this specific action/food helps balance or support the target hormone (e.g., "Pumpkin seeds are packed with zinc and magnesium that help boost me and keep you calmer.")
-6. target_hormone: The hormone this action supports
+6. target_hormone: CRITICAL - You MUST set this exactly as follows:
+   - Action 1 and 2: MUST be "{primary_hormone}" (the PRIMARY hormone)
+   - Action 3 and 4: MUST be "{secondary_hormone}" (the SECONDARY hormone)
+   DO NOT deviate from this. The mascot image shown depends on this field matching correctly.
 7. hormone_persona_intro: Write naturally following the example style in system prompt
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES (see format below)
