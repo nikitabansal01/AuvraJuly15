@@ -306,24 +306,17 @@ FAILURE TO INCLUDE THESE FIELDS WILL CAUSE VALIDATION ERRORS.
 - Match movement intensity to user's stated workout_intensity preference
 - Consider their stress_level when suggesting mindfulness duration
 
-FOOD VARIETY (choose condition-appropriate):
-- Seeds: pumpkin, sunflower, flax, chia, hemp
-- Proteins: salmon, sardines, eggs, legumes, tofu, tempeh
-- Grains: quinoa, millet, buckwheat, amaranth, brown rice
-- Vegetables: leafy greens, cruciferous, colorful varieties
-- Fruits: berries, citrus, tropical, stone fruits
-- Nuts: walnuts, almonds, brazil nuts, cashews
-- Herbs/spices: turmeric, ginger, cinnamon, maca
+HOW TO ACHIEVE TRUE PERSONALIZATION:
+- FIRST analyze the user's diagnosed conditions - what does medical research say helps?
+- THEN consider the target hormone - what foods/exercises specifically support it?
+- COMBINE these to find actions that address BOTH the condition AND the hormone
+- The 'purpose' field should explain the MECHANISM - "why does this specific food/exercise help THIS user's condition?"
+- Think like a specialist nutritionist/trainer who knows this user's exact situation
 
-MOVEMENT VARIETY:
-- Low: restorative yoga, gentle stretching, walking, swimming, tai chi
-- Moderate: pilates, cycling, dancing, hiking, strength training
-- High: HIIT, running, power yoga, circuit training
-
-MINDFULNESS VARIETY:
-- Breathing: 4-7-8, box breathing, diaphragmatic, alternate nostril
-- Meditation: body scan, loving-kindness, visualization, gratitude
-- Relaxation: progressive muscle, journaling, nature sounds, aromatherapy
+QUALITY CHECK - Before finalizing each action, ask:
+1. Would a doctor specializing in this condition recommend this?
+2. Is there scientific evidence linking this action to the target hormone?
+3. Does the purpose explain the mechanism, not just say "it's healthy"?
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -444,7 +437,7 @@ OUTPUT FORMAT (for each action)
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: Detailed, actionable description (50-100 words)
-5. purpose: One clear sentence explaining exactly how this specific action/food helps balance or support the target hormone (e.g., "Pumpkin seeds are packed with zinc and magnesium that help boost me and keep you calmer.")
+5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the user's specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
 6. target_hormone: CRITICAL - You MUST set this exactly as follows:
    - Action 1 and 2: MUST be "{primary_hormone}" (the PRIMARY hormone)
    - Action 3 and 4: MUST be "{secondary_hormone}" (the SECONDARY hormone)
@@ -496,7 +489,7 @@ EXAMPLE FOOD ACTION (notice food_items and food_amounts are REQUIRED):
   "category": "food",
   "time_slot": "morning",
   "specific_action": "Add 2 tablespoons of raw pumpkin seeds to your morning yogurt or smoothie. These zinc-rich seeds support hormone production and reduce inflammation.",
-  "purpose": "Pumpkin seeds are packed with zinc and magnesium that help boost progesterone and keep you calmer.",
+  "purpose": "Zinc in pumpkin seeds is a cofactor for enzymes that synthesize progesterone, while magnesium helps reduce cortisol, creating an optimal hormonal environment for your luteal phase.",
   "target_hormone": "Progesterone",
   "hormone_persona_intro": "Hey there, it's Progesterone. I'm here to help you feel calm and balanced today. Let me start by sharing something delicious that will help boost my levels.",
   "image_prompt": "Professional food photography of pumpkin seeds in wooden bowl, overhead view, rustic table, natural lighting, 4K quality",
@@ -518,7 +511,7 @@ EXAMPLE MOVEMENT ACTION (notice exercise_types, exercise_durations, exercise_int
   "category": "movement",
   "time_slot": "morning",
   "specific_action": "Start your day with 15 minutes of gentle yoga focusing on hip openers and forward folds. These poses help reduce cortisol and support hormone balance.",
-  "purpose": "Gentle yoga activates the parasympathetic nervous system, helping me (Cortisol) stay balanced and reducing stress hormones.",
+  "purpose": "Forward folds and hip openers activate the parasympathetic nervous system, directly lowering cortisol release and helping prevent the stress-induced disruption of your reproductive hormones.",
   "target_hormone": "Cortisol",
   "hormone_persona_intro": "Good morning! It's Cortisol here. Instead of spiking your stress, let's channel my energy into something calming that will help you feel centered all day.",
   "image_prompt": "Serene photograph of woman practicing yoga, soft morning light, peaceful setting, warm earth tones, 4K quality",
