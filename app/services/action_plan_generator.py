@@ -300,9 +300,9 @@ FAILURE TO INCLUDE THESE FIELDS WILL CAUSE VALIDATION ERRORS.
 ═══════════════════════════════════════════════════════════════════════════════
 - NEVER suggest the same foods/exercises across multiple days
 - Draw from a WIDE variety of options for each category
-- If user has PCOS: focus on low-glycemic, anti-inflammatory foods
-- If user has thyroid issues: focus on selenium, iodine-rich foods
-- If user has endometriosis: focus on anti-inflammatory, omega-3 rich foods
+- EVERY recommendation MUST directly address the user's diagnosed conditions
+- Research evidence-based interventions specific to THEIR conditions and hormones
+- Generic "healthy eating" is NOT acceptable - be condition-specific
 - Match movement intensity to user's stated workout_intensity preference
 - Consider their stress_level when suggesting mindfulness duration
 
@@ -425,11 +425,12 @@ REQUIREMENTS (READ CAREFULLY)
 6. Time slots should be varied (mix of morning, afternoon, evening)
 7. RESPECT food allergies - NEVER recommend foods the user is allergic to
 8. RESPECT diet preferences - if vegetarian, no meat; if vegan, no animal products
-9. CONDITION-SPECIFIC recommendations:
-   - PCOS: Low-glycemic foods, anti-inflammatory, spearmint tea, inositol-rich foods
-   - Endometriosis: Anti-inflammatory, omega-3 rich, avoid red meat and dairy
-   - Thyroid issues: Selenium-rich (brazil nuts), iodine, avoid goitrogens if hypothyroid
-   - High stress: Adaptogenic foods (ashwagandha, maca), magnesium-rich
+9. CONDITION-SPECIFIC PERSONALIZATION (CRITICAL):
+   - Analyze the user's EXACT diagnosed conditions listed above
+   - Research evidence-based interventions for THEIR specific conditions
+   - Each food/exercise MUST have a clear mechanism for helping THEIR hormone + condition combo
+   - The 'purpose' field must explain HOW this specific action helps THIS user's condition
+   - NO generic recommendations - every action should feel designed for THIS user
 10. Learn from FEEDBACK MEMORY above:
     - If user LIKED something: create similar types
     - If user DISLIKED something: NEVER suggest similar patterns
