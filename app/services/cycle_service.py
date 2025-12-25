@@ -312,12 +312,9 @@ class CycleService:
             cycle_day = (days_since_last % cycle_days) + 1
             logger.info(f"Calculated cycle day: {cycle_day}")
             
-            # Step 6: Check if phase can be determined reliably
-            if self._is_phase_unclear(period_description, diagnosed_conditions):
-                logger.info(f"Phase marked unclear due to conditions/description")
-                return cycle_day, "Cycle Phase unclear"
-            
-            # Step 7: Determine phase using scientific calculation
+            # Step 6: Determine phase using scientific calculation
+            # Note: We always calculate phase regardless of conditions
+            # The backward calculation method works for all cycle types
             phase = self._determine_phase_scientific(
                 cycle_day=cycle_day,
                 total_cycle_days=cycle_days,
