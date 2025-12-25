@@ -40,37 +40,45 @@ PUBMED_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "search_research_paper",
-        "description": """Search for a REAL published research paper that SUPPORTS WHY we recommend this action FOR THIS USER'S SPECIFIC CONDITION.
+        "description": """Search for a REAL published research paper that SUPPORTS WHY we recommend this action.
 
-CRITICAL: Find papers that explain the mechanism/benefit of the specific intervention for the TARGET HORMONE and USER'S DIAGNOSED CONDITIONS.
+CRITICAL: The paper should explain the MECHANISM/BENEFIT of the intervention for the user's specific condition and target hormone.
 
-The paper should answer: "Why does [intervention] help [hormone/condition] for someone with [user's condition]?"
+The paper should answer: "Why does [intervention] help [user's condition/hormone]?"
 
-BUILD YOUR QUERY LIKE THIS:
-1. Start with the specific intervention (e.g., 'yoga', 'salmon', 'deep breathing')
-2. Add the mechanism/benefit (e.g., 'cortisol reduction', 'insulin sensitivity')
-3. Add THE USER'S CONDITION (e.g., 'diabetes', 'PCOS', 'Cushing syndrome')
-4. Add 'women' or 'female' for relevance
+BUILD YOUR QUERY WITH THESE 4 COMPONENTS:
+1. INTERVENTION: The specific food, exercise, or mindfulness technique (e.g., 'yoga', 'pumpkin seeds', 'deep breathing')
+2. MECHANISM/BENEFIT: How it works (e.g., 'reduces cortisol', 'improves insulin sensitivity', 'lowers inflammation')
+3. WOMEN: Always include 'women' or 'female' 
+4. CONDITION (if applicable): The user's diagnosed condition (e.g., 'PCOS', 'diabetes', 'Cushing')
 
-GOOD query examples (condition-specific):
-- "yoga cortisol reduction Cushing women"
-- "omega-3 insulin sensitivity diabetes women"
-- "cinnamon blood glucose type 2 diabetes women"
-- "walking exercise PCOS women metabolic"
-- "meditation stress reduction anxiety women"
-- "dark chocolate flavonoids cortisol stress women"
+FORMULA: "[intervention] [mechanism] [condition if any] women"
 
-BAD query examples:
-- "yoga benefits women" (no condition, no mechanism)
-- "healthy eating" (too generic)
-- "exercise benefits" (no specific intervention or condition)
+EXAMPLE QUERIES (from bad to great):
+❌ BAD: "yoga benefits" (too generic, no mechanism)
+❌ BAD: "healthy eating women" (no specific intervention)
+⚠️  OK:  "yoga cortisol reduction women" (good but missing condition)
+✅ GOOD: "yoga cortisol HPA axis women randomized" (mechanism-specific)
+✅ GREAT: "yoga cortisol PCOS women intervention" (includes user's condition)
+✅ GREAT: "walking insulin sensitivity diabetes women exercise" (intervention + mechanism + condition)
+✅ GREAT: "dark chocolate polyphenols cortisol stress women" (specific compound + mechanism)
+
+For MOVEMENT actions, include exercise physiology terms:
+- "yoga cortisol HPA axis stress reduction women"
+- "walking insulin sensitivity glucose metabolism women"
+- "strength training androgens testosterone women PCOS"
+
+For MINDFULNESS actions, include neuroscience terms:
+- "meditation cortisol parasympathetic nervous system women"
+- "deep breathing vagal tone stress women"
+- "mindfulness anxiety amygdala activation women"
 """,
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query with: [intervention] + [mechanism/benefit] + [USER'S CONDITION] + 'women'. MUST include the user's diagnosed condition for relevant results!"
+                    "description": "Search query with intervention + mechanism/benefit + 'women'. Should find papers that explain WHY the action helps."
                 },
                 "action_title": {
                     "type": "string",
@@ -84,10 +92,6 @@ BAD query examples:
                 "target_hormone": {
                     "type": "string",
                     "description": "Target hormone (e.g., 'insulin', 'cortisol') that this action supports"
-                },
-                "user_conditions": {
-                    "type": "string",
-                    "description": "User's diagnosed conditions (e.g., 'diabetes', 'PCOS', 'Cushing syndrome') - MUST be included in query for relevant results"
                 }
             },
             "required": ["query", "action_title", "target_hormone"]
