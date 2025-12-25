@@ -13,7 +13,6 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.api.v1.api import api_router
-from app.api.v3_recommendations import router as v3_router
 from app.core.logging import setup_logging
 from app.core.firebase import initialize_firebase
 
@@ -120,7 +119,6 @@ def create_application() -> FastAPI:
 
     # Register routers
     app.include_router(api_router, prefix="/api/v1")
-    app.include_router(v3_router, prefix="/api")
 
     @app.get("/health")
     async def health_check():

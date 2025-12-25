@@ -78,17 +78,6 @@ def clear_session_caches(clear_engine: bool = False) -> Dict[str, Any]:
     # Left for backward compatibility but just confirms rag_retriever is cleared
     results['rag_component'] = {'cleared': True, 'note': 'Shares cache with rag_retriever'}
     
-    # 4. Optionally reset V3 Engine
-    if clear_engine:
-        try:
-            from app.services.recommendation_engine_v3.core.v3_orchestrator import reset_v3_engine
-            reset_v3_engine()
-            results['v3_engine'] = {'cleared': True}
-            logger.info("✅ V3 engine singleton reset")
-        except Exception as e:
-            results['v3_engine'] = {'cleared': False, 'error': str(e)}
-            logger.warning(f"⚠️ Could not reset V3 engine: {e}")
-    
     logger.info(f"🧹 Cache clear results: {results}")
     return results
 
