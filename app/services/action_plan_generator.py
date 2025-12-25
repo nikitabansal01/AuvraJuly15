@@ -1102,7 +1102,7 @@ class ActionPlanGenerator:
         return (cycle_day, phase)
     
     def _format_feedback_memory(self, feedback_list: List[Any]) -> str:
-        """Format recent feedback for GPT context with pattern analysis."""
+        """Format recent feedback for GPT context with pattern analysis and text insights."""
         if not feedback_list:
             return "No previous feedback available - this is likely a new user."
         
@@ -1110,6 +1110,9 @@ class ActionPlanGenerator:
         disliked = []
         skipped = []
         completed = []
+        loved = []  # NEW: From ActionDetailScreen
+        not_for_me = []  # NEW: From ActionDetailScreen
+        text_insights = []  # NEW: User's written feedback
         
         # Analyze patterns
         liked_categories = {}
@@ -1121,16 +1124,30 @@ class ActionPlanGenerator:
             category = fb.action_category or "unknown"
             hormone = fb.target_hormone or "unknown"
             
+            # Collect text feedback separately
+            if hasattr(fb, 'feedback_text') and fb.feedback_text:
+                source = getattr(fb, 'feedback_source', 'unknown')
+                text_insights.append(f"- {fb.action_title}: \"{fb.feedback_text}\" (from {source})")
+            
             if fb.feedback_type == "like":
                 liked.append(f"- {category}: {fb.action_title}")
                 liked_categories[category] = liked_categories.get(category, 0) + 1
                 liked_hormones[hormone] = liked_hormones.get(hormone, 0) + 1
+            elif fb.feedback_type == "loved":  # NEW
+                loved.append(f"- {category}: {fb.action_title}")
+                liked_categories[category] = liked_categories.get(category, 0) + 2  # Weight loved more
+                liked_hormones[hormone] = liked_hormones.get(hormone, 0) + 2
             elif fb.feedback_type == "dislike":
                 reason = fb.replacement_reason or "unspecified"
                 disliked.append(f"- {category}: {fb.action_title} (reason: {reason})")
                 disliked_categories[category] = disliked_categories.get(category, 0) + 1
                 disliked_hormones[hormone] = disliked_hormones.get(hormone, 0) + 1
-            elif fb.feedback_type == "skip":
+            elif fb.feedback_type == "not_for_me":  # NEW
+                reason = getattr(fb, 'replacement_category', None) or getattr(fb, 'replacement_reason', None) or "unspecified"
+                not_for_me.append(f"- {category}: {fb.action_title} (reason: {reason})")
+                disliked_categories[category] = disliked_categories.get(category, 0) + 2  # Weight stronger
+                disliked_hormones[hormone] = disliked_hormones.get(hormone, 0) + 2
+            elif fb.feedback_type in ["skip", "skipped"]:
                 skipped.append(f"- {category}: {fb.action_title}")
             
             if fb.feedback_type == "completed":
@@ -1143,14 +1160,24 @@ class ActionPlanGenerator:
             patterns = []
             if liked_categories:
                 top_liked = max(liked_categories.items(), key=lambda x: x[1])
-                patterns.append(f"User tends to LIKE {top_liked[0]} actions ({top_liked[1]} likes)")
+                patterns.append(f"User tends to LIKE {top_liked[0]} actions ({top_liked[1]} positive reactions)")
             if disliked_categories:
                 top_disliked = max(disliked_categories.items(), key=lambda x: x[1])
-                patterns.append(f"User tends to DISLIKE {top_disliked[0]} actions ({top_disliked[1]} dislikes)")
+                patterns.append(f"User tends to DISLIKE {top_disliked[0]} actions ({top_disliked[1]} negative reactions)")
             memory_parts.append("PATTERNS DETECTED:\n" + "\n".join(patterns))
+        
+        # NEW: Text insights from user's written feedback
+        if text_insights:
+            memory_parts.append(f"USER'S WRITTEN FEEDBACK (VERY IMPORTANT):\n" + "\n".join(text_insights[:5]))
+        
+        if loved:
+            memory_parts.append(f"LOVED actions (PRIORITIZE similar ones):\n" + "\n".join(loved[:5]))
         
         if liked:
             memory_parts.append(f"LIKED actions (create SIMILAR ones):\n" + "\n".join(liked[:7]))
+        
+        if not_for_me:
+            memory_parts.append(f"STRONGLY DISLIKED actions (NEVER suggest similar):\n" + "\n".join(not_for_me[:5]))
         
         if disliked:
             memory_parts.append(f"DISLIKED actions (AVOID similar types):\n" + "\n".join(disliked[:7]))
@@ -3247,11 +3274,18 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
         self,
         user_id: str,
         item_id: int,
-        feedback_type: str,  # "like" or "dislike"
-        time_shown: datetime,
-        db: AsyncSession
+        feedback_type: str,  # "like", "dislike", "loved", "completed", "skipped", "not_for_me"
+        time_shown: Optional[datetime],
+        db: AsyncSession,
+        feedback_text: Optional[str] = None,  # NEW: User's written feedback
+        feedback_source: str = "home"  # NEW: "home" or "detail"
     ) -> Dict[str, Any]:
-        """Record user feedback for an action."""
+        """
+        Record user feedback for an action.
+        
+        Supports both home screen feedback (30-sec modal) and ActionDetailScreen feedback.
+        Text feedback is stored and used for future plan personalization.
+        """
         from app.core.database import ActionPlanItem, ActionPlanFeedback
         
         try:
@@ -3264,11 +3298,20 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             if not item or item.uid != user_id:
                 return {"success": False, "error": "Action not found"}
             
-            # Calculate time to feedback
+            # Calculate time to feedback (if time_shown provided)
             now = datetime.utcnow()
-            time_to_feedback = int((now - time_shown).total_seconds())
+            time_to_feedback = None
+            if time_shown:
+                time_to_feedback = int((now - time_shown).total_seconds())
             
-            # Create feedback record
+            # Get cycle context from the plan
+            from app.core.database import ActionPlan
+            plan_result = await db.execute(
+                select(ActionPlan).where(ActionPlan.id == item.plan_id)
+            )
+            plan = plan_result.scalar_one_or_none()
+            
+            # Create feedback record with all fields
             feedback = ActionPlanFeedback(
                 uid=user_id,
                 plan_id=item.plan_id,
@@ -3277,6 +3320,13 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 action_title=item.title,
                 action_category=item.category,
                 target_hormone=item.target_hormone,
+                # NEW: Text feedback
+                feedback_text=feedback_text,
+                feedback_source=feedback_source,
+                # Cycle context
+                cycle_day=plan.cycle_day if plan else None,
+                cycle_phase=plan.cycle_phase if plan else None,
+                # Time tracking
                 action_shown_at=time_shown,
                 feedback_given_at=now,
                 time_to_feedback_seconds=time_to_feedback,
@@ -3286,10 +3336,14 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             db.add(feedback)
             await db.commit()
             
+            # Log text feedback for monitoring
+            if feedback_text:
+                logger.info(f"📝 User feedback text for '{item.title}': \"{feedback_text[:100]}...\"" if len(feedback_text) > 100 else f"📝 User feedback text for '{item.title}': \"{feedback_text}\"")
+            
             return {
                 "success": True,
                 "feedback_id": feedback.id,
-                "time_to_feedback_seconds": time_to_feedback
+                "time_to_feedback_seconds": time_to_feedback or 0
             }
             
         except Exception as e:

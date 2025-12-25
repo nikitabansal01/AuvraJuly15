@@ -16,13 +16,19 @@ from pydantic import BaseModel, Field
 class ActionPlanFeedbackRequest(BaseModel):
     """Request model for submitting feedback on an action."""
     item_id: int = Field(..., description="ID of the action item")
-    feedback_type: str = Field(..., description="'like' or 'dislike'")
-    time_shown: datetime = Field(..., description="When the action was first shown to user")
+    feedback_type: str = Field(..., description="'like', 'dislike', 'loved', 'completed', 'skipped', 'not_for_me'")
+    time_shown: Optional[datetime] = Field(None, description="When the action was first shown to user")
+    
+    # NEW: Text feedback from ActionDetailScreen
+    feedback_text: Optional[str] = Field(None, description="User's written feedback (optional)")
+    feedback_source: str = Field("home", description="'home' (30-sec modal) or 'detail' (ActionDetailScreen)")
     
 class ActionReplacementRequest(BaseModel):
     """Request model for replacing a disliked action."""
     item_id: int = Field(..., description="ID of the action item to replace")
-    reason: Optional[str] = Field(None, description="Why the user disliked this action")
+    reason: Optional[str] = Field(None, description="Why the user disliked this action (free text)")
+    replacement_category: Optional[str] = Field(None, description="Categorized reason: 'allergic', 'no_time', 'dont_like', 'no_ingredients', 'already_done', 'not_feeling_it', 'other'")
+
 
 class BatchReplacementRequest(BaseModel):
     """Request model for replacing multiple actions at once (30-second feedback flow)."""

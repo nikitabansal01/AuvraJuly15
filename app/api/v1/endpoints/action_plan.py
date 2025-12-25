@@ -201,20 +201,24 @@ async def submit_feedback(
     db: Session = Depends(get_db)
 ):
     """
-    Submit feedback (like/dislike) for an action.
+    Submit feedback for an action.
     
-    Requirements:
-    - feedback_type must be 'like' or 'dislike'
-    - time_shown is when the action was first displayed to user
-    - After 30 seconds, user can request replacement for disliked actions
+    Supports both home screen (30-sec modal) and ActionDetailScreen feedback.
+    
+    Feedback types:
+    - 'like' / 'dislike': Home screen modal
+    - 'loved' / 'completed' / 'skipped' / 'not_for_me': ActionDetailScreen
+    
+    For 'dislike' or 'not_for_me', user can request replacement after 30 seconds.
     """
     try:
         uid = current_user.get("uid")
         if not uid:
             raise HTTPException(status_code=400, detail="User ID not found")
         
-        if request.feedback_type not in ["like", "dislike"]:
-            raise HTTPException(status_code=400, detail="Invalid feedback type")
+        valid_types = ["like", "dislike", "loved", "completed", "skipped", "not_for_me"]
+        if request.feedback_type not in valid_types:
+            raise HTTPException(status_code=400, detail=f"Invalid feedback type. Must be one of: {valid_types}")
         
         # Get async session
         async_db = await get_async_db_session()
@@ -225,6 +229,8 @@ async def submit_feedback(
             item_id=request.item_id,
             feedback_type=request.feedback_type,
             time_shown=request.time_shown,
+            feedback_text=request.feedback_text,  # NEW: Text feedback
+            feedback_source=request.feedback_source,  # NEW: Source (home or detail)
             db=async_db
         )
         
@@ -238,7 +244,8 @@ async def submit_feedback(
         
         # Check if enough time has passed for replacement
         time_elapsed = result.get("time_to_feedback_seconds", 0)
-        can_replace = time_elapsed >= FEEDBACK_MINIMUM_TIME and request.feedback_type == "dislike"
+        can_replace_types = ["dislike", "not_for_me"]
+        can_replace = time_elapsed >= FEEDBACK_MINIMUM_TIME and request.feedback_type in can_replace_types
         
         return FeedbackResponse(
             success=True,

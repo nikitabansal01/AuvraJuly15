@@ -740,16 +740,23 @@ class ActionPlanFeedback(Base):
     item_id = Column(Integer, ForeignKey("action_plan_items.id", ondelete="CASCADE"), nullable=True)
     
     # Feedback type
-    feedback_type = Column(String(20), nullable=False)  # "liked", "disliked", "completed", "skipped"
+    feedback_type = Column(String(20), nullable=False)  # "liked", "disliked", "completed", "skipped", "loved", "not_for_me"
     
     # Details
     action_title = Column(String(255), nullable=True)  # Denormalized for easy memory lookup
     action_category = Column(String(20), nullable=True)  # food, movement, mindfulness
     target_hormone = Column(String(50), nullable=True)  # For context
     
+    # NEW: Text feedback from user (ActionDetailScreen)
+    feedback_text = Column(Text, nullable=True)  # User's written feedback
+    
     # Replacement info (if disliked and replaced)
     replacement_reason = Column(Text, nullable=True)
+    replacement_category = Column(String(50), nullable=True)  # NEW: "allergic", "no_time", "dont_like", etc.
     was_replaced = Column(Boolean, default=False)
+    
+    # NEW: Feedback source to distinguish home vs detail screen
+    feedback_source = Column(String(20), default="home")  # "home" (30-sec modal) or "detail" (ActionDetailScreen)
     
     # Context at time of feedback
     cycle_day = Column(Integer, nullable=True)
@@ -767,6 +774,7 @@ class ActionPlanFeedback(Base):
     __table_args__ = (
         Index('idx_feedback_user', 'uid', 'created_at'),
         Index('idx_feedback_type', 'feedback_type'),
+        Index('idx_feedback_source', 'feedback_source'),  # NEW: Index for source filtering
     )
 
 
