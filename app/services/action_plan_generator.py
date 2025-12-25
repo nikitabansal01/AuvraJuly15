@@ -283,17 +283,17 @@ For EVERY action, you MUST include the category-specific fields based on the cat
 FAILURE TO INCLUDE THESE FIELDS WILL CAUSE VALIDATION ERRORS.
 
 ✅ For "food" category, ALWAYS include:
-   - food_items: ["your specific food 1", "your specific food 2"]  // Array of specific foods
-   - food_amounts: ["amount 1", "amount 2"]    // Array of amounts
+   - food_items: [...] // Array with 1+ specific foods (you decide count based on meal)
+   - food_amounts: [...] // Array with matching amounts for each food item
 
 ✅ For "movement" category, ALWAYS include:
-   - exercise_types: ["specific exercise"]       // Array of specific exercises
-   - exercise_durations: ["X minutes"]           // Array of duration strings
-   - exercise_intensities: ["Low/Moderate/High"] // Array of intensity levels
+   - exercise_types: [...] // Array with 1+ exercises (you decide based on action)
+   - exercise_durations: [...] // Array with duration for each exercise
+   - exercise_intensities: [...] // Array with intensity for each exercise
 
 ✅ For "mindfulness" category, ALWAYS include:
-   - mindfulness_techniques: ["specific technique"]  // Array of techniques
-   - mindfulness_durations: ["X minutes"]            // Array of durations
+   - mindfulness_techniques: [...] // Array with 1+ techniques
+   - mindfulness_durations: [...] // Array with duration for each technique
 
 ═══════════════════════════════════════════════════════════════════════════════
 ⚠️ VARIETY IS MANDATORY - ANTI-REPETITION RULES
