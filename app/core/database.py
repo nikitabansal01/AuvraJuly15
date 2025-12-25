@@ -852,6 +852,59 @@ class PubMedCache(Base):
     )
 
 
+class ActionPlanEvaluation(Base):
+    """
+    Stores quality evaluation metrics for each generated action plan.
+    Used to track accuracy trends over time and identify quality issues.
+    
+    Metrics:
+    - structure_valid: Pydantic validation passed (Boolean)
+    - personalization_score: Actions tailored to user conditions (0-100, LLM)
+    - condition_appropriateness: Safe for diagnosed conditions (0-100, LLM)
+    - feedback_alignment_score: Respects prior likes/dislikes (0-100, LLM)
+    - citation_validity_score: Research PMIDs are valid (0-100, Auto)
+    - citation_relevance_score: Findings match recommendations (0-100, LLM)
+    - overall_quality_score: Weighted average of all metrics (0-100)
+    """
+    __tablename__ = "action_plan_evaluations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=False, unique=True)
+    uid = Column(String(255), nullable=False, index=True)
+    
+    # Structural Metrics
+    structure_valid = Column(Boolean, nullable=False, default=True)
+    
+    # Relevance Metrics (0-100, LLM-evaluated)
+    personalization_score = Column(Integer, nullable=True)
+    condition_appropriateness = Column(Integer, nullable=True)
+    feedback_alignment_score = Column(Integer, nullable=True)
+    
+    # Citation Quality (0-100)
+    citation_validity_score = Column(Integer, nullable=True)
+    citation_relevance_score = Column(Integer, nullable=True)
+    
+    # Aggregate
+    overall_quality_score = Column(Integer, nullable=True)
+    
+    # Metadata
+    evaluation_cost = Column(String(50), nullable=True)  # $ spent on LLM evaluation
+    evaluation_time_ms = Column(Integer, nullable=True)
+    evaluator_model = Column(String(50), default="gpt-4o-mini")
+    
+    # Raw LLM evaluation response (for debugging)
+    llm_evaluation_response = Column(JSONB, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_evaluation_plan', 'plan_id'),
+        Index('idx_evaluation_user', 'uid', 'created_at'),
+        Index('idx_evaluation_score', 'overall_quality_score'),
+    )
+
+
 # Database table creation
 def create_tables():
     """Create tables"""

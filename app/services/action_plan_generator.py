@@ -810,6 +810,25 @@ class ActionPlanGenerator:
                 db=db
             )
             
+            # Step 5: Fire-and-forget quality evaluation (async, non-blocking)
+            # This stores metrics for trend monitoring without impacting UX
+            try:
+                from app.services.evaluation_service import get_action_plan_evaluator
+                evaluator = get_action_plan_evaluator()
+                asyncio.create_task(
+                    evaluator.evaluate_plan(
+                        plan_id=plan.id,
+                        user_id=user_id,
+                        actions=actions_with_images,
+                        user_context=user_context,
+                        structure_valid=True,  # Pydantic validated already
+                        db=self.async_session_maker()  # New session for async task
+                    )
+                )
+                logger.info(f"📊 Evaluation task queued for plan {plan.id}")
+            except Exception as eval_err:
+                logger.warning(f"Failed to queue evaluation: {eval_err}")
+            
             elapsed = time.time() - start_time
             logger.info(f"✅ Plan generated in {elapsed:.2f}s, cost: ${total_cost:.4f}")
             
@@ -1550,6 +1569,25 @@ If the tool returns empty, set research_studies to an empty array.
                 actions = [action.model_dump() for action in validated_response.actions]
                 logger.info(f"📋 Base Pydantic validation passed")
                 
+                # CRITICAL: Validate and fix target_hormone assignments
+                # GPT is told: first 2 actions = primary, last 2 = secondary
+                # But GPT sometimes returns wrong values - we MUST fix this
+                primary_hormone = user_context.get("primary_hormone", "").lower()
+                secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
+                
+                logger.info(f"🎯 Validating target_hormone: primary={primary_hormone}, secondary={secondary_hormone}")
+                
+                for i, action in enumerate(actions):
+                    actual_hormone = (action.get("target_hormone") or "").lower()
+                    expected_hormone = primary_hormone if i < 2 else secondary_hormone
+                    
+                    if actual_hormone != expected_hormone:
+                        logger.warning(f"⚠️ Action {i+1} '{action.get('title')}': "
+                                      f"target_hormone MISMATCH! Got '{actual_hormone}', expected '{expected_hormone}'. FIXING!")
+                        action["target_hormone"] = expected_hormone
+                    else:
+                        logger.info(f"✅ Action {i+1} '{action.get('title')}': target_hormone={actual_hormone} ✓")
+                
                 # Category-specific validation - MUST have these fields, no auto-fill
                 validation_errors = []
                 for i, action in enumerate(actions):
@@ -1624,7 +1662,8 @@ If the tool returns empty, set research_studies to an empty array.
                 else:
                     logger.warning(f"    ⚠️ No citation for this action")
                 
-                logger.info(f"    symptoms={action.get('symptoms')}, "
+                logger.info(f"    🎯 target_hormone={action.get('target_hormone')}, "
+                           f"symptoms={action.get('symptoms')}, "
                            f"conditions={action.get('conditions')}, "
                            f"hormone_persona_intro={bool(action.get('hormone_persona_intro'))}")
             
