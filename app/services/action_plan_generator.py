@@ -36,6 +36,56 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# CONFIGURATION CONSTANTS
+# Centralized configuration for easy tuning and maintenance
+# ============================================================================
+
+class ActionPlanConfig:
+    """
+    Configuration constants for action plan generation.
+    
+    All magic numbers are centralized here for:
+    - Easy tuning without code changes
+    - Clear documentation of all configurable values
+    - Future migration to environment variables if needed
+    """
+    
+    # GPT Model Settings
+    GPT_MODEL = "gpt-4o-mini"
+    GPT_TEMPERATURE = 0.7              # For action generation (more creative)
+    GPT_TEMPERATURE_LOW = 0.3          # For replacements/retries (more focused)
+    GPT_MAX_TOKENS = 6000              # Main generation
+    GPT_MAX_TOKENS_REPLACEMENT = 4000  # Single action replacement
+    GPT_MAX_TOKENS_BATCH = 4000        # Batch replacement
+    GPT_MAX_TOKENS_SUMMARY = 500       # Feedback summary
+    
+    # Retry Settings
+    MAX_RETRIES = 3                    # Main generation retries
+    MAX_REPLACEMENT_RETRIES = 2        # Single replacement retries
+    
+    # Database & Concurrency Settings
+    DB_SEMAPHORE_LIMIT = 5             # Max concurrent DB operations
+    LOCK_WAIT_SECONDS = 3              # Advisory lock wait time
+    
+    # Feedback Settings
+    FEEDBACK_QUERY_LIMIT = 50          # Recent feedback to load
+    FEEDBACK_SUMMARY_THRESHOLD = 100   # When to auto-summarize
+    FEEDBACK_KEEP_COUNT = 20           # Records to keep after summary
+    FEEDBACK_REGROWTH_THRESHOLD = 20   # Regenerate summary if grown by this much
+    
+    # HTTP Settings
+    HTTP_TIMEOUT = 120.0               # Seconds for OpenAI API calls
+    
+    # Cost Calculation (GPT-4o-mini pricing as of Dec 2024)
+    # Input: $0.15 per 1M tokens, Output: $0.60 per 1M tokens
+    INPUT_TOKEN_COST_PER_TOKEN = 0.00015 / 1000   # $0.00000015 per token
+    OUTPUT_TOKEN_COST_PER_TOKEN = 0.0006 / 1000   # $0.0000006 per token
+    
+    # OpenAI API
+    OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+
+
+# ============================================================================
 # PYDANTIC MODELS FOR STRUCTURED OUTPUTS
 # OpenAI Structured Outputs requires ALL fields to be required (no Optional)
 # For strict: true mode, we must have additionalProperties: false
@@ -585,14 +635,15 @@ class ActionPlanGenerator:
     5. Store plan in database
     """
     
-    GPT_MODEL = "gpt-4o-mini"
-    GPT_TEMPERATURE = 0.7
-    MAX_RETRIES = 3
+    # Use centralized config (backward compatible - same values as before)
+    GPT_MODEL = ActionPlanConfig.GPT_MODEL
+    GPT_TEMPERATURE = ActionPlanConfig.GPT_TEMPERATURE
+    MAX_RETRIES = ActionPlanConfig.MAX_RETRIES
     
     def __init__(self):
         """Initialize the generator."""
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.client = httpx.AsyncClient(timeout=120.0)
+        self.client = httpx.AsyncClient(timeout=ActionPlanConfig.HTTP_TIMEOUT)
         self.image_service = get_image_library_service()
         
         # Shared database engine for pooled sessions
@@ -619,11 +670,29 @@ class ActionPlanGenerator:
             expire_on_commit=False
         )
         
-        # Semaphore to limit concurrent DB writes/ops to 5 at a time
-        self.db_semaphore = asyncio.Semaphore(5)
+        # Semaphore to limit concurrent DB writes/ops
+        self.db_semaphore = asyncio.Semaphore(ActionPlanConfig.DB_SEMAPHORE_LIMIT)
         
         logger.info(f"ActionPlanGenerator initialized with shared engine")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
+    
+    def _calculate_gpt_cost(self, input_tokens: int, output_tokens: int) -> float:
+        """
+        Calculate GPT API cost from token counts.
+        
+        Uses centralized pricing from ActionPlanConfig.
+        
+        Args:
+            input_tokens: Number of input/prompt tokens
+            output_tokens: Number of output/completion tokens
+            
+        Returns:
+            Cost in USD
+        """
+        return (
+            input_tokens * ActionPlanConfig.INPUT_TOKEN_COST_PER_TOKEN +
+            output_tokens * ActionPlanConfig.OUTPUT_TOKEN_COST_PER_TOKEN
+        )
     
     async def get_or_generate_today_plan(
         self,
@@ -690,7 +759,7 @@ class ActionPlanGenerator:
             if not got_lock:
                 # Another request is already generating - wait and check for result
                 logger.info(f"🔒 Another request is generating plan for {user_id}, waiting...")
-                await asyncio.sleep(3)  # Wait for the other request to complete
+                await asyncio.sleep(ActionPlanConfig.LOCK_WAIT_SECONDS)  # Wait for the other request to complete
                 
                 # Check if plan was created by the other request
                 existing_plan = await self._get_existing_plan(user_id, plan_date, db)
@@ -890,7 +959,7 @@ class ActionPlanGenerator:
             feedback_result = await db.execute(
                 select(ActionPlanFeedback).where(
                     ActionPlanFeedback.uid == user_id
-                ).order_by(ActionPlanFeedback.created_at.desc()).limit(50)
+                ).order_by(ActionPlanFeedback.created_at.desc()).limit(ActionPlanConfig.FEEDBACK_QUERY_LIMIT)
             )
             recent_feedback = feedback_result.scalars().all()
             
@@ -1119,17 +1188,17 @@ class ActionPlanGenerator:
             )
             current_count = count_result.scalar() or 0
             
-            logger.info(f"📊 Feedback count for user {user_id}: {current_count}, threshold: 100")
+            logger.info(f"📊 Feedback count for user {user_id}: {current_count}, threshold: {ActionPlanConfig.FEEDBACK_SUMMARY_THRESHOLD}")
             
             # Return existing summary if count hasn't grown much
             # Use safe default for feedback_last_count to avoid None + 20 error
             last_count = getattr(profile, 'feedback_last_count', 0) or 0
-            if getattr(profile, 'feedback_summary', None) and current_count < (last_count + 20):
+            if getattr(profile, 'feedback_summary', None) and current_count < (last_count + ActionPlanConfig.FEEDBACK_REGROWTH_THRESHOLD):
                 logger.info(f"📋 Using existing feedback summary (last updated: {getattr(profile, 'feedback_summary_updated_at', 'unknown')})")
                 return getattr(profile, 'feedback_summary', None)
             
             # If count > 100, summarize
-            if current_count >= 100:
+            if current_count >= ActionPlanConfig.FEEDBACK_SUMMARY_THRESHOLD:
                 logger.info(f"🤖 Generating feedback summary with GPT for {current_count} feedback records")
                 
                 # Fetch ALL feedback
@@ -1160,7 +1229,7 @@ Format as bullet points."""
 
                 try:
                     response = await self.client.post(
-                        "https://api.openai.com/v1/chat/completions",
+                        ActionPlanConfig.OPENAI_API_URL,
                         headers={
                             "Authorization": f"Bearer {self.openai_api_key}",
                             "Content-Type": "application/json"
@@ -1191,12 +1260,12 @@ Format as bullet points."""
                     logger.info(f"💾 Feedback summary saved to profile")
                     
                     # Delete old feedback (keep last 20)
-                    if current_count > 20:
+                    if current_count > ActionPlanConfig.FEEDBACK_KEEP_COUNT:
                         # Get IDs of items to keep
                         keep_result = await db.execute(
                             select(ActionPlanFeedback.id).where(
                                 ActionPlanFeedback.uid == user_id
-                            ).order_by(ActionPlanFeedback.created_at.desc()).limit(20)
+                            ).order_by(ActionPlanFeedback.created_at.desc()).limit(ActionPlanConfig.FEEDBACK_KEEP_COUNT)
                         )
                         keep_ids = [row[0] for row in keep_result.all()]
                         
@@ -1355,7 +1424,7 @@ If the tool returns empty, set research_studies to an empty array.
             logger.info("🤖 Calling GPT with search_research_paper tool...")
             
             response = await self.client.post(
-                "https://api.openai.com/v1/chat/completions",
+                ActionPlanConfig.OPENAI_API_URL,
                 headers={
                     "Authorization": f"Bearer {self.openai_api_key}",
                     "Content-Type": "application/json"
@@ -1379,7 +1448,7 @@ If the tool returns empty, set research_studies to an empty array.
             # Calculate cost
             input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
             output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-            total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+            total_cost += self._calculate_gpt_cost(input_tokens, output_tokens)
             
             message = data["choices"][0]["message"]
             
@@ -1430,7 +1499,7 @@ If the tool returns empty, set research_studies to an empty array.
                 }
                 
                 response = await self.client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    ActionPlanConfig.OPENAI_API_URL,
                     headers={
                         "Authorization": f"Bearer {self.openai_api_key}",
                         "Content-Type": "application/json"
@@ -1463,7 +1532,7 @@ If the tool returns empty, set research_studies to an empty array.
                 # Add second call cost
                 input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
                 output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                total_cost += self._calculate_gpt_cost(input_tokens, output_tokens)
                 
                 content = data["choices"][0]["message"]["content"]
             else:
@@ -2198,14 +2267,13 @@ REQUIRED OUTPUT FIELDS:
 Respond with valid JSON object only."""
 
             # Generate replacement via GPT WITH tool calling for real citations
-            MAX_REPLACEMENT_RETRIES = 2
             replacement_action = None
             
-            for attempt in range(1, MAX_REPLACEMENT_RETRIES + 1):
-                logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_REPLACEMENT_RETRIES}")
+            for attempt in range(1, ActionPlanConfig.MAX_REPLACEMENT_RETRIES + 1):
+                logger.info(f"🔄 Replacement generation attempt {attempt}/{ActionPlanConfig.MAX_REPLACEMENT_RETRIES}")
                 
                 response = await self.client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    ActionPlanConfig.OPENAI_API_URL,
                     headers={
                         "Authorization": f"Bearer {self.openai_api_key}",
                         "Content-Type": "application/json"
@@ -2264,7 +2332,7 @@ Respond with valid JSON object only."""
                     }
                     
                     response2 = await self.client.post(
-                        "https://api.openai.com/v1/chat/completions",
+                        ActionPlanConfig.OPENAI_API_URL,
                         headers={
                             "Authorization": f"Bearer {self.openai_api_key}",
                             "Content-Type": "application/json"
@@ -2319,7 +2387,7 @@ Respond with valid JSON object only."""
                         break
                     else:
                         logger.warning(f"⚠️ Attempt {attempt} missing fields: {missing}")
-                        if attempt >= MAX_REPLACEMENT_RETRIES:
+                        if attempt >= ActionPlanConfig.MAX_REPLACEMENT_RETRIES:
                             logger.warning("⚠️ Applying minimal fallbacks for replacement")
                             replacement_action = self._fill_missing_fields([parsed_action])[0]
                             
@@ -2735,7 +2803,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 
                 # Generate replacement actions WITH tool calling for real citations
                 response = await self.client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    ActionPlanConfig.OPENAI_API_URL,
                     headers={
                         "Authorization": f"Bearer {self.openai_api_key}",
                         "Content-Type": "application/json"
@@ -2759,7 +2827,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 # Calculate GPT cost
                 input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
                 output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                attempt_cost = self._calculate_gpt_cost(input_tokens, output_tokens)
                 gpt_cost += attempt_cost
                 
                 message = data["choices"][0]["message"]
@@ -2796,7 +2864,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     }
                     
                     response2 = await self.client.post(
-                        "https://api.openai.com/v1/chat/completions",
+                        ActionPlanConfig.OPENAI_API_URL,
                         headers={
                             "Authorization": f"Bearer {self.openai_api_key}",
                             "Content-Type": "application/json"
@@ -2821,7 +2889,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     # Add second call cost
                     input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
                     output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                    gpt_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                    gpt_cost += self._calculate_gpt_cost(input_tokens, output_tokens)
                     
                     content = data["choices"][0]["message"]["content"]
                 else:
