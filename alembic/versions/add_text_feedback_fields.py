@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_text_feedback_fields'
-down_revision = None  # Will be set by alembic
+down_revision = '223a06753539'  # Points to merge_migration_heads
 branch_labels = None
 depends_on = None
 
