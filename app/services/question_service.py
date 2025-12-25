@@ -356,33 +356,9 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 5. Create automatic schedules (only successful recommendations)
-                logger.info(f"Automatic schedule creation started: {len(successful_recommendations)} recommendations")
-                try:
-                    from app.services.new_scheduling_service import NewSchedulingService
-                    scheduling_service = NewSchedulingService(self.db)
-                    
-                    created_schedules = []
-                    failed_schedules = []
-                    
-                    for rec in successful_recommendations:
-                        # Process each schedule as independent sub-transaction
-                        savepoint = self.db.begin_nested()  # Start sub-transaction
-                        try:
-                            # Create schedule in current user timezone
-                            schedule = scheduling_service.create_schedule_from_recommendation(rec, current_timezone)
-                            savepoint.commit()  # Commit sub-transaction
-                            created_schedules.append(schedule.id)
-                            logger.info(f"Schedule creation completed: recommendation_id={rec.id}, schedule_id={schedule.id}, timezone={current_timezone}")
-                        except Exception as e:
-                            logger.error(f"Individual schedule creation failed: recommendation_id={rec.id}, error={str(e)}")
-                            failed_schedules.append(rec.id)
-                            savepoint.rollback()  # Rollback only individual sub-transaction
-                    
-                    logger.info(f"Automatic schedule creation completed: {len(created_schedules)} schedules created, {len(failed_schedules)} failed")
-                    
-                except Exception as e:
-                    logger.error(f"Automatic schedule creation failed: {str(e)}", exc_info=True)
+                # NOTE: Legacy scheduling system removed - Action Plan system now handles daily recommendations
+                # The action_plan_generator.py creates personalized daily plans when users open the app
+                logger.info(f"Session linking completed with {len(successful_recommendations)} recommendations (Action Plan system handles scheduling)")
                 
                 # 6. Delete session
                 self.db.delete(session)
@@ -400,7 +376,6 @@ class QuestionService:
                 logger.info(f"Session linking completed: session_id={session_id}, uid={uid}")
                 logger.info(f"Recommendation linking success rate: {success_rate_rec:.1f}% ({len(updated_recommendations)}/{total_recommendations})")
                 logger.info(f"Advice linking success rate: {success_rate_adv:.1f}% ({len(updated_advices)}/{total_advices})")
-                logger.info(f"Schedule creation success rate: {len(created_schedules)}/{len(successful_recommendations)} items")
                 
                 # Return True if at least some succeeded
                 return len(updated_recommendations) > 0 or len(updated_advices) > 0
