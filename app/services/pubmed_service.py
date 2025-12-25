@@ -40,36 +40,37 @@ PUBMED_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "search_research_paper",
-        "description": """Search for a REAL published research paper that SUPPORTS WHY we recommend this action.
+        "description": """Search for a REAL published research paper that SUPPORTS WHY we recommend this action FOR THIS USER'S SPECIFIC CONDITION.
 
-CRITICAL: Find papers that explain the mechanism/benefit of the specific intervention for the target hormone or health outcome.
+CRITICAL: Find papers that explain the mechanism/benefit of the specific intervention for the TARGET HORMONE and USER'S DIAGNOSED CONDITIONS.
 
-The paper should answer: "Why does [intervention] help [hormone/condition]?"
+The paper should answer: "Why does [intervention] help [hormone/condition] for someone with [user's condition]?"
 
-Guidelines for RELEVANT queries:
-- Include the specific intervention (e.g., 'pumpkin seeds', 'yoga', 'deep breathing')
-- Include the MECHANISM or BENEFIT (e.g., 'reduces cortisol', 'improves insulin sensitivity', 'lowers blood sugar')
-- Always include 'women' or 'female' for women's health relevance
-- Include the health outcome (e.g., 'stress reduction', 'blood sugar', 'hormone balance')
+BUILD YOUR QUERY LIKE THIS:
+1. Start with the specific intervention (e.g., 'yoga', 'salmon', 'deep breathing')
+2. Add the mechanism/benefit (e.g., 'cortisol reduction', 'insulin sensitivity')
+3. Add THE USER'S CONDITION (e.g., 'diabetes', 'PCOS', 'Cushing syndrome')
+4. Add 'women' or 'female' for relevance
 
-GOOD query examples (explain WHY it works):
-- "pumpkin seeds zinc magnesium women hormone"
-- "yoga cortisol reduction stress women randomized"
-- "cinnamon blood sugar insulin sensitivity women"
-- "omega-3 fatty acids inflammation PCOS women"
-- "deep breathing stress cortisol women intervention"
-- "flaxseed lignans estrogen women menstrual"
+GOOD query examples (condition-specific):
+- "yoga cortisol reduction Cushing women"
+- "omega-3 insulin sensitivity diabetes women"
+- "cinnamon blood glucose type 2 diabetes women"
+- "walking exercise PCOS women metabolic"
+- "meditation stress reduction anxiety women"
+- "dark chocolate flavonoids cortisol stress women"
 
-BAD query examples (too vague):
-- "healthy eating women" (doesn't explain mechanism)
-- "exercise benefits" (too generic)
+BAD query examples:
+- "yoga benefits women" (no condition, no mechanism)
+- "healthy eating" (too generic)
+- "exercise benefits" (no specific intervention or condition)
 """,
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query with intervention + mechanism/benefit + 'women'. Should find papers that explain WHY the action helps."
+                    "description": "Search query with: [intervention] + [mechanism/benefit] + [USER'S CONDITION] + 'women'. MUST include the user's diagnosed condition for relevant results!"
                 },
                 "action_title": {
                     "type": "string",
@@ -83,6 +84,10 @@ BAD query examples (too vague):
                 "target_hormone": {
                     "type": "string",
                     "description": "Target hormone (e.g., 'insulin', 'cortisol') that this action supports"
+                },
+                "user_conditions": {
+                    "type": "string",
+                    "description": "User's diagnosed conditions (e.g., 'diabetes', 'PCOS', 'Cushing syndrome') - MUST be included in query for relevant results"
                 }
             },
             "required": ["query", "action_title", "target_hormone"]
