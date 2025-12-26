@@ -2270,6 +2270,10 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             # Generate a replacement action targeting the same hormone with REAL citations
             replacement_prompt = f"""Generate 1 replacement wellness action.
 
+⚠️⚠️⚠️ CRITICAL WARNING ⚠️⚠️⚠️
+You MUST include ALL category-specific fields or your response will be REJECTED and regenerated.
+Previous failures happened because you forgot exercise_types, exercise_durations, exercise_intensities for movement.
+
 REQUIREMENTS:
 - Must target hormone: {original.target_hormone}
 - Should be DIFFERENT from: {original.title} (user disliked this)
@@ -2289,21 +2293,22 @@ USER CONTEXT:
 FEEDBACK MEMORY (avoid similar to disliked):
 {user_context.get('feedback_memory', 'No previous feedback')}
 
-CRITICAL - CATEGORY-SPECIFIC REQUIRED FIELDS:
-For FOOD actions, MUST include:
-- food_amounts: Array like ["1 tbsp", "2 tablespoons", "handful"]
-- food_items: Array like ["pumpkin seeds", "flaxseeds"]
+🔴 MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
 
-For MOVEMENT actions, MUST include:
-- exercise_durations: Array like ["15 min", "20 minutes"]
-- exercise_types: Array like ["yoga", "walking"]
-- exercise_intensities: Array like ["low", "moderate"]
+IF category="food":
+  ✅ MUST have: "food_items": ["chia seeds", "flaxseeds", "pumpkin seeds"]
+  ✅ MUST have: "food_amounts": ["1 tbsp", "2 tablespoons", "handful"]
 
-For MINDFULNESS actions, MUST include:
-- mindfulness_durations: Array like ["5 min", "10 minutes"]
-- mindfulness_techniques: Array like ["deep breathing", "meditation"]
+IF category="movement":
+  ✅ MUST have: "exercise_types": ["yoga", "walking", "stretching"]  
+  ✅ MUST have: "exercise_durations": ["15 min", "20 minutes", "30 min"]
+  ✅ MUST have: "exercise_intensities": ["low", "moderate", "gentle"]
 
-REQUIRED OUTPUT FIELDS:
+IF category="mindfulness":
+  ✅ MUST have: "mindfulness_techniques": ["deep breathing", "meditation", "body scan"]
+  ✅ MUST have: "mindfulness_durations": ["5 min", "10 minutes", "15 min"]
+
+REQUIRED OUTPUT FIELDS (ALL actions):
 1. category: "food", "movement", or "mindfulness"
 2. title: Short, catchy title (3-5 words)
 3. time_slot: "morning", "afternoon", or "evening"
@@ -2317,7 +2322,10 @@ REQUIRED OUTPUT FIELDS:
 11. symptoms: Pick 1-3 from user's health concerns
 12. conditions: Array of conditions this helps (can be empty [])
 
+⚠️ BEFORE RESPONDING: Double-check that you included ALL category-specific arrays (food_items/amounts OR exercise_types/durations/intensities OR mindfulness_techniques/durations).
+
 Respond with valid JSON object only."""
+
 
             # Generate replacement via GPT WITH tool calling for real citations
             MAX_REPLACEMENT_RETRIES = 2
