@@ -2623,7 +2623,9 @@ Respond with valid JSON object only."""
             }
             
         except Exception as e:
+            import traceback
             logger.error(f"Error replacing action: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             await db.rollback()
             return {"success": False, "error": "Failed to replace action. Please try again."}
     
