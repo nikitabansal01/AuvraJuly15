@@ -121,6 +121,7 @@ def create_application() -> FastAPI:
     app.include_router(api_router, prefix="/api/v1")
 
     @app.get("/health")
+    @app.head("/health")
     async def health_check():
         """Health check endpoint for monitoring."""
         return {
@@ -128,6 +129,12 @@ def create_application() -> FastAPI:
             "environment": settings.ENVIRONMENT,
             "version": settings.VERSION
         }
+    
+    @app.get("/")
+    @app.head("/")
+    async def root():
+        """Root path - handles Render health checks."""
+        return {"status": "ok", "service": "AUVRA API"}
 
     return app
 
