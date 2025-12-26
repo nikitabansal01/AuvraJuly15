@@ -2540,27 +2540,26 @@ Respond with valid JSON object only."""
                     v_type = defaults[i % len(defaults)]
                 variant_data.append({"variant": variant, "v_type": v_type})
             
-            # Generate all variant images in parallel
-            variant_image_tasks = [
-                self.image_service.get_or_generate_image(
-                    prompt=vd["variant"].get("image_prompt", vd["variant"].get("title")),
-                    category=category,
-                    variant_type=vd["v_type"],
-                    user_id=user_id,
-                    db=db
-                )
-                for vd in variant_data
-            ]
-            
-            variant_results = await asyncio.gather(*variant_image_tasks, return_exceptions=True)
+            # Generate variant images SEQUENTIALLY (not parallel) to avoid db session conflicts
+            # SQLAlchemy async sessions can't be shared across concurrent tasks
+            variant_results = []
+            for vd in variant_data:
+                try:
+                    result = await self.image_service.get_or_generate_image(
+                        prompt=vd["variant"].get("image_prompt", vd["variant"].get("title")),
+                        category=category,
+                        variant_type=vd["v_type"],
+                        user_id=user_id,
+                        db=db
+                    )
+                    variant_results.append(result)
+                except Exception as e:
+                    logger.error(f"Variant image generation failed: {e}")
+                    variant_results.append(("", False, 0.0))
             
             # Create variant records from results
             for i, result in enumerate(variant_results):
-                if isinstance(result, Exception):
-                    logger.error(f"Variant image generation failed: {result}")
-                    variant_url = ""
-                else:
-                    variant_url, _, _ = result
+                variant_url, _, _ = result
                 
                 variant_record = ActionPlanItemVariant(
                     item_id=new_item.id,
