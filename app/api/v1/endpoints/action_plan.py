@@ -481,6 +481,17 @@ async def submit_plan_satisfaction(
             if not items_to_replace:
                 raise HTTPException(status_code=400, detail="Please specify items_to_replace when satisfaction='want_to_change'")
             
+            # Check refresh limit (2x Plan Refresh reward gives 2/day, default is 1/day)
+            from app.services.reward_service import RewardService
+            reward_service = RewardService(db)
+            refresh_status = reward_service.get_refresh_status(uid)
+            
+            if not refresh_status["can_refresh"]:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Daily refresh limit reached ({refresh_status['limit']}/day). Try again tomorrow!"
+                )
+            
             # Mark selected items as DISLIKED
             for item in items:
                 if item.id in items_to_replace and not item.is_completed:
@@ -543,6 +554,9 @@ async def submit_plan_satisfaction(
             
             # Mark feedback as collected
             plan.feedback_collected = True
+            
+            # Use 1 refresh (counts as single refresh regardless of replaced count)
+            reward_service.use_refresh(uid)
             
             db.commit()
             
