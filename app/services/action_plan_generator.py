@@ -2970,7 +2970,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         "tools": [PUBMED_SEARCH_TOOL],
                         "tool_choice": "auto",
                         "temperature": 0.3,
-                        "max_tokens": 4000
+                        "max_tokens": 8000
                     }
                 )
                 
@@ -3031,7 +3031,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                                 *tool_results
                             ],
                             "temperature": 0.3,
-                            "max_tokens": 4000,
+                            "max_tokens": 8000,
                             "response_format": {"type": "json_object"}
                         }
                     )
