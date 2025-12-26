@@ -695,7 +695,7 @@ async def refresh_all_incomplete_actions(
             user_id=uid,
             plan_id=plan.id,
             item_ids=item_ids,
-            reasons=["User requested refresh all" for _ in item_ids],
+            reasons={item_id: "User requested refresh all" for item_id in item_ids},
             db=async_db
         )
         
