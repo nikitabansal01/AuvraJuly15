@@ -666,7 +666,7 @@ async def refresh_all_incomplete_actions(
         today = date.today()
         plan = db.query(ActionPlan).filter(
             ActionPlan.uid == uid,
-            ActionPlan.is_active == True
+            ActionPlan.plan_date == today
         ).order_by(ActionPlan.created_at.desc()).first()
         
         if not plan:
