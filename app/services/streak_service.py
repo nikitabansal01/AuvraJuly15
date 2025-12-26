@@ -482,7 +482,7 @@ class StreakService:
         
         # Calculate current streak (recalculated to be accurate)
         # TEST MODE: Only for specific test user - use stored value if >= 30
-        TEST_USER_UID = "AMu7Bum6Kfbc3xIYdmpDVAyHQUF2"
+        TEST_USER_UID = "HirhzncRGRfT1g73g8QMCJJ4NAz1"
         if uid == TEST_USER_UID:
             current = 30
         else:
