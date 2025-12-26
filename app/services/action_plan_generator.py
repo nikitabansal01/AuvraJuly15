@@ -2267,12 +2267,55 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             if not user_context:
                 return {"success": False, "error": "Could not load user context"}
             
-            # Generate a replacement action targeting the same hormone with REAL citations
-            replacement_prompt = f"""Generate 1 replacement wellness action.
+            # ========================================================
+            # RESEARCH-FIRST APPROACH: Get research BEFORE generating action
+            # ========================================================
+            
+            # Step 1: Search for relevant research based on user's condition + target hormone
+            from app.services.pubmed_service import execute_pubmed_tool
+            
+            user_conditions = user_context.get('diagnosed_conditions', [])
+            condition_str = user_conditions[0] if user_conditions else "women's health"
+            
+            # Build search query for the target hormone and user's condition
+            search_query = f"{original.target_hormone} {condition_str} intervention"
+            logger.info(f"🔬 RESEARCH-FIRST: Searching for '{search_query}'")
+            
+            research_paper = await execute_pubmed_tool({
+                "action_title": f"Wellness action for {original.target_hormone}",
+                "search_query": search_query
+            }, db=db)
+            
+            if research_paper and research_paper.get("title"):
+                logger.info(f"📚 Found research: {research_paper.get('title', '')[:60]}...")
+                research_context = f"""
+RESEARCH EVIDENCE (USE THIS AS BASIS FOR YOUR RECOMMENDATION):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Title: {research_paper.get('title')}
+Journal: {research_paper.get('journal', 'Unknown')}
+Year: {research_paper.get('year', 'Unknown')}
+Participants: {research_paper.get('participants', 'Unknown')} women
+Key Finding: {research_paper.get('finding', 'Evidence-based intervention')}
+PMID: {research_paper.get('pmid', '')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ IMPORTANT: Your recommendation MUST be grounded in this research. 
+Extract a specific intervention (food, exercise, or mindfulness practice) 
+that this study shows is effective, and create your action based on that.
+"""
+            else:
+                logger.warning("⚠️ No research found, using general recommendation")
+                research_context = ""
+                research_paper = {}
+            
+            # Step 2: Generate replacement action based on research findings
+            replacement_prompt = f"""Generate 1 replacement wellness action BASED ON THE RESEARCH BELOW.
 
 ⚠️⚠️⚠️ CRITICAL WARNING ⚠️⚠️⚠️
 You MUST include ALL category-specific fields or your response will be REJECTED and regenerated.
 Previous failures happened because you forgot exercise_types, exercise_durations, exercise_intensities for movement.
+
+{research_context}
 
 REQUIREMENTS:
 - Must target hormone: {original.target_hormone}
@@ -2285,13 +2328,9 @@ REQUIREMENTS:
 USER CONTEXT:
 - Cycle day: {user_context.get('cycle_day', 'unknown')}
 - Cycle phase: {user_context.get('cycle_phase', 'unknown')}
-- Stress level: {user_context.get('stress_level', 'moderate')}
+- Conditions: {', '.join(user_conditions) if user_conditions else 'general wellness'}
 - Diet preference: {user_context.get('diet_preference', 'none')}
 - Food allergies: {user_context.get('food_allergies', 'none')}
-- Top concern: {user_context.get('top_concern', 'general wellness')}
-
-FEEDBACK MEMORY (avoid similar to disliked):
-{user_context.get('feedback_memory', 'No previous feedback')}
 
 🔴 MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
 
@@ -2312,22 +2351,22 @@ REQUIRED OUTPUT FIELDS (ALL actions):
 1. category: "food", "movement", or "mindfulness"
 2. title: Short, catchy title (3-5 words)
 3. time_slot: "morning", "afternoon", or "evening"
-4. specific_action: Detailed, actionable description (50-100 words)
-5. purpose: One clear sentence about how this helps the hormone
+4. specific_action: Detailed description GROUNDED IN THE RESEARCH above
+5. purpose: Explain WHY this works, citing the research mechanism
 6. target_hormone: MUST be "{original.target_hormone}"
 7. hormone_persona_intro: First-person intro from hormone perspective
 8. image_prompt: FLUX.1 Schnell optimized prompt
-9. research_studies: Use search_research_paper tool for REAL citation (exactly 1)
+9. research_studies: Use the research provided above - format as single-item array with the paper details
 10. variants: Array of 3 variant objects with variant_type, title, description, image_prompt
 11. symptoms: Pick 1-3 from user's health concerns
-12. conditions: Array of conditions this helps (can be empty [])
+12. conditions: Array of conditions this helps
 
-⚠️ BEFORE RESPONDING: Double-check that you included ALL category-specific arrays (food_items/amounts OR exercise_types/durations/intensities OR mindfulness_techniques/durations).
+⚠️ BEFORE RESPONDING: Double-check that you included ALL category-specific arrays.
 
 Respond with valid JSON object only."""
 
 
-            # Generate replacement via GPT WITH tool calling for real citations
+            # Generate replacement via GPT (no tool calling - research already fetched)
             MAX_REPLACEMENT_RETRIES = 2
             replacement_action = None
             
@@ -2346,79 +2385,16 @@ Respond with valid JSON object only."""
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": replacement_prompt}
                         ],
-                        "tools": [PUBMED_SEARCH_TOOL],  # Enable real citation search
-                        "tool_choice": "auto",
+                        # No tools needed - research already pre-fetched
                         "temperature": 0.7,
-                        "max_tokens": 2500
+                        "max_tokens": 2500,
+                        "response_format": {"type": "json_object"}
                     }
                 )
                 
                 response.raise_for_status()
                 data = response.json()
-                message = data["choices"][0]["message"]
-                
-                # Handle tool calls for research citations
-                if message.get("tool_calls"):
-                    logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for replacement citation")
-                    
-                    tool_results = []
-                    for tool_call in message["tool_calls"]:
-                        if tool_call["function"]["name"] == "search_research_paper":
-                            try:
-                                args = json.loads(tool_call["function"]["arguments"])
-                                paper = await execute_pubmed_tool(args, db=db)
-                                
-                                if paper and paper.get("title"):
-                                    logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}...")
-                                else:
-                                    logger.warning(f"  ⚠️ No paper found")
-                                
-                                tool_results.append({
-                                    "tool_call_id": tool_call["id"],
-                                    "role": "tool",
-                                    "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
-                                })
-                            except Exception as tool_err:
-                                logger.error(f"Tool call error: {tool_err}")
-                                tool_results.append({
-                                    "tool_call_id": tool_call["id"],
-                                    "role": "tool",
-                                    "content": json.dumps({"error": str(tool_err)})
-                                })
-                    
-                    # Send tool results back to GPT
-                    assistant_message = {
-                        "role": "assistant",
-                        "content": message.get("content"),
-                        "tool_calls": message.get("tool_calls")
-                    }
-                    
-                    response2 = await self.client.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {self.openai_api_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "model": self.GPT_MODEL,
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT},
-                                {"role": "user", "content": replacement_prompt},
-                                assistant_message,
-                                *tool_results
-                            ],
-                            "temperature": 0.7,
-                            "max_tokens": 2500,
-                            "response_format": {"type": "json_object"}
-                        }
-                    )
-                    
-                    response2.raise_for_status()
-                    data = response2.json()
-                    content = data["choices"][0]["message"]["content"]
-                else:
-                    logger.warning("⚠️ GPT did not call tools - citation may be fabricated")
-                    content = message.get("content", "{}")
+                content = data["choices"][0]["message"].get("content", "{}")
                 
                 # Parse replacement action
                 if content.startswith("```"):
@@ -2439,6 +2415,15 @@ Respond with valid JSON object only."""
                     if "category" in parsed_action:
                         parsed_action["category"] = parsed_action["category"].lower()
                     
+                    # Inject the pre-fetched research if GPT didn't include it
+                    if research_paper and research_paper.get("title"):
+                        if not parsed_action.get("research_studies") or not isinstance(parsed_action.get("research_studies"), list):
+                            parsed_action["research_studies"] = [research_paper]
+                            logger.info("📎 Injected pre-fetched research paper into action")
+                        elif isinstance(parsed_action.get("research_studies"), dict):
+                            # GPT returned a dict instead of list
+                            parsed_action["research_studies"] = [research_paper]
+                    
                     # Validate the action
                     category = parsed_action.get("category", "food")
                     valid, missing = self._validate_action_fields(parsed_action, category)
@@ -2448,6 +2433,7 @@ Respond with valid JSON object only."""
                         replacement_action = parsed_action
                         break
                     else:
+
                         logger.warning(f"⚠️ Attempt {attempt} missing fields: {missing}")
                         if attempt >= MAX_REPLACEMENT_RETRIES:
                             logger.warning("⚠️ Applying minimal fallbacks for replacement")
