@@ -2329,8 +2329,13 @@ USER CONTEXT:
 - Cycle day: {user_context.get('cycle_day', 'unknown')}
 - Cycle phase: {user_context.get('cycle_phase', 'unknown')}
 - Conditions: {', '.join(user_conditions) if user_conditions else 'general wellness'}
+- Stress level: {user_context.get('stress_level', 'moderate')}
+- Top concern: {user_context.get('top_concern', 'general wellness')}
 - Diet preference: {user_context.get('diet_preference', 'none')}
 - Food allergies: {user_context.get('food_allergies', 'none')}
+
+FEEDBACK MEMORY (avoid similar to disliked actions):
+{user_context.get('feedback_memory', 'No previous feedback')}
 
 🔴 MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
 
