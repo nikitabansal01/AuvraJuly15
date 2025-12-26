@@ -25,7 +25,7 @@ class UserInfo(BaseModel):
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     """Get current user information from Firebase ID token."""
     try:
-        decoded_token = auth.verify_id_token(credentials.credentials, clock_skew_seconds=10)
+        decoded_token = auth.verify_id_token(credentials.credentials)
         return decoded_token
     except Exception as e:
         raise HTTPException(
@@ -49,7 +49,7 @@ async def get_current_active_user(current_user: dict = Depends(get_current_user)
 async def verify_token(request: FirebaseTokenRequest):
     """Verify Firebase ID token."""
     try:
-        decoded_token = auth.verify_id_token(request.id_token, clock_skew_seconds=10)
+        decoded_token = auth.verify_id_token(request.id_token)
         
         return UserInfo(
             uid=decoded_token.get("uid"),
