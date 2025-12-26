@@ -2325,22 +2325,47 @@ REQUIREMENTS:
 - Prefer different category from: {original.category}
 - User's lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 
-USER CONTEXT:
-- Cycle day: {user_context.get('cycle_day', 'unknown')}
-- Cycle phase: {user_context.get('cycle_phase', 'unknown')}
-- Conditions: {', '.join(user_conditions) if user_conditions else 'general wellness'}
-- Stress level: {user_context.get('stress_level', 'moderate')}
-- Top concern: {user_context.get('top_concern', 'general wellness')}
-- Diet preference: {user_context.get('diet_preference', 'none')}
-- Food allergies: {user_context.get('food_allergies', 'none')}
+══════════════════════════════════════════════════════════════════════
+HEALTH PROFILE
+══════════════════════════════════════════════════════════════════════
+- Age: {user_context.get('age', 'unknown')}
+- Cycle Day: {user_context.get('cycle_day', 'unknown')}
+- Cycle Phase: {user_context.get('cycle_phase', 'unknown')}
+- Target Hormone: {original.target_hormone}
 
-FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HEALTH CONCERNS:
+- Top Concern: {user_context.get('top_concern', 'general wellness')}
+- Diagnosed Conditions: {', '.join(user_conditions) if user_conditions else 'none specified'}
+- Period Concerns: {user_context.get('period_concerns', 'none specified')}
+- Body Concerns: {user_context.get('body_concerns', 'none specified')}
+- Skin/Hair Concerns: {user_context.get('skin_hair_concerns', 'none specified')}
+- Mental Health Concerns: {user_context.get('mental_health_concerns', 'none specified')}
+- Family History: {user_context.get('family_history', 'none specified')}
+
+══════════════════════════════════════════════════════════════════════
+PERSONALIZATION FACTORS
+══════════════════════════════════════════════════════════════════════
+- Lifestyle Focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
+- Diet Preference: {user_context.get('diet_preference', 'none')}
+- Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
+- Stress Level: {user_context.get('stress_level', 'moderate')}
+- Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
+- Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
+- Birth Control: {user_context.get('birth_control', 'none')}
+
+══════════════════════════════════════════════════════════════════════
+FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
+══════════════════════════════════════════════════════════════════════
 HISTORICAL SUMMARY (learned patterns over time):
 {user_context.get('feedback_summary', 'No summary yet')}
 
 RECENT FEEDBACK (last 20-50 actions):
 {user_context.get('feedback_memory', 'No previous feedback')}
+
+══════════════════════════════════════════════════════════════════════
+CHATBOT CONVERSATION CONTEXT
+══════════════════════════════════════════════════════════════════════
+{user_context.get('chatbot_context', 'No recent chatbot conversations')}
 
 🔴 MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
 
@@ -2734,6 +2759,7 @@ HEALTH CONCERNS (Pick 'symptoms' field from these):
 - Body Concerns: {user_context.get('body_concerns', 'none')}
 - Skin/Hair Concerns: {user_context.get('skin_hair_concerns', 'none')}
 - Mental Health Concerns: {user_context.get('mental_health_concerns', 'none')}
+- Family History: {user_context.get('family_history', 'none specified')}
 
 ══════════════════════════════════════════════════════════════════════
 PERSONALIZATION FACTORS
@@ -2742,6 +2768,9 @@ PERSONALIZATION FACTORS
 - Diet Preference: {user_context.get('diet_preference', 'none')}
 - Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
 - Stress Level: {user_context.get('stress_level')}
+- Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
+- Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
+- Birth Control: {user_context.get('birth_control', 'none')}
 
 ══════════════════════════════════════════════════════════════════════
 FEEDBACK MEMORY (Critical - avoid disliked patterns)
@@ -2751,6 +2780,11 @@ HISTORICAL SUMMARY (learned patterns over time):
 
 RECENT FEEDBACK (last 20-50 actions):
 {user_context.get('feedback_memory', 'No previous feedback')}
+
+══════════════════════════════════════════════════════════════════════
+CHATBOT CONVERSATION CONTEXT
+══════════════════════════════════════════════════════════════════════
+{user_context.get('chatbot_context', 'No recent chatbot conversations')}
 
 ══════════════════════════════════════════════════════════════════════
 REQUIREMENTS FOR EACH REPLACEMENT
