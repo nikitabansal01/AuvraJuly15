@@ -45,21 +45,42 @@ Evaluate the following action plan generated for a user.
 USER PROFILE
 ═══════════════════════════════════════════════════════════════════════════════
 - Age: {age}
-- Diagnosed Conditions: {diagnosed_conditions}
+- Cycle Day: {cycle_day}
+- Cycle Phase: {cycle_phase}
+- Primary Hormone: {primary_hormone}
+
+HEALTH CONCERNS:
 - Top Concern: {top_concern}
+- Diagnosed Conditions: {diagnosed_conditions}
 - Period Concerns: {period_concerns}
 - Body Concerns: {body_concerns}
 - Skin/Hair Concerns: {skin_hair_concerns}
 - Mental Health Concerns: {mental_health_concerns}
+- Family History: {family_history}
+
+PERSONALIZATION FACTORS:
+- Lifestyle Focus: {lifestyle_focus}
 - Diet Preference: {diet_preference}
 - Food Allergies: {food_allergies}
-- Primary Hormone: {primary_hormone}
-- Cycle Phase: {cycle_phase}
+- Stress Level: {stress_level}
+- Sleep Duration: {sleep_duration}
+- Workout Intensity: {workout_intensity}
+- Birth Control: {birth_control}
 
 ═══════════════════════════════════════════════════════════════════════════════
-RECENT FEEDBACK HISTORY (what user liked/disliked)
+FEEDBACK MEMORY
 ═══════════════════════════════════════════════════════════════════════════════
+HISTORICAL SUMMARY (learned patterns):
+{feedback_summary}
+
+RECENT FEEDBACK:
 {feedback_history}
+
+═══════════════════════════════════════════════════════════════════════════════
+CHATBOT CONVERSATION CONTEXT
+═══════════════════════════════════════════════════════════════════════════════
+{chatbot_context}
+
 
 ═══════════════════════════════════════════════════════════════════════════════
 GENERATED ACTION PLAN (4 actions)
@@ -331,17 +352,26 @@ class ActionPlanEvaluator:
         
         prompt = EVALUATION_PROMPT.format(
             age=user_context.get("age", "Unknown"),
-            diagnosed_conditions=user_context.get("diagnosed_conditions", []),
-            top_concern=user_context.get("top_concern", "None specified"),
-            period_concerns=user_context.get("period_concerns", {}),
-            body_concerns=user_context.get("body_concerns", {}),
-            skin_hair_concerns=user_context.get("skin_hair_concerns", {}),
-            mental_health_concerns=user_context.get("mental_health_concerns", {}),
-            diet_preference=user_context.get("diet_preference", "Not specified"),
-            food_allergies=user_context.get("food_allergies", []),
-            primary_hormone=user_context.get("primary_hormone", "Unknown"),
+            cycle_day=user_context.get("cycle_day", "Unknown"),
             cycle_phase=user_context.get("cycle_phase", "Unknown"),
+            primary_hormone=user_context.get("primary_hormone", "Unknown"),
+            top_concern=user_context.get("top_concern", "None specified"),
+            diagnosed_conditions=user_context.get("diagnosed_conditions", []),
+            period_concerns=user_context.get("period_concerns", "none"),
+            body_concerns=user_context.get("body_concerns", "none"),
+            skin_hair_concerns=user_context.get("skin_hair_concerns", "none"),
+            mental_health_concerns=user_context.get("mental_health_concerns", "none"),
+            family_history=user_context.get("family_history", "none specified"),
+            lifestyle_focus=user_context.get("lifestyle_focus", ["eat", "move", "pause"]),
+            diet_preference=user_context.get("diet_preference", "Not specified"),
+            food_allergies=user_context.get("food_allergies", "none"),
+            stress_level=user_context.get("stress_level", "moderate"),
+            sleep_duration=user_context.get("sleep_duration", "7-8 hours"),
+            workout_intensity=user_context.get("workout_intensity", "moderate"),
+            birth_control=user_context.get("birth_control", "none"),
+            feedback_summary=user_context.get("feedback_summary", "No summary yet"),
             feedback_history=feedback_history,
+            chatbot_context=user_context.get("chatbot_context", "No recent chatbot conversations"),
             actions_json=json.dumps(actions_summary, indent=2)
         )
         
