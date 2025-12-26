@@ -640,29 +640,25 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             primary_hormone = primary_hormone_key
             primary_level = "unknown"
         
-        # Secondary: scores >= 50% of primary AND >= 3
-        # LIMIT: Only keep top 1 secondary hormone to prevent hormone explosion
-        threshold = primary_score * 0.5
+        # Secondary: ALWAYS return the 2nd highest scoring hormone
+        # (No threshold - ensures users always see 2 hormones in UI)
         secondary_imbalances = []
         secondary_levels = []
         
-        for hormone_key, score in sorted_scores[1:]:
-            if score >= threshold and score >= 3:
-                if "_" in hormone_key:
-                    parts = hormone_key.rsplit("_", 1)
-                    h_name = parts[0]
-                    h_level = parts[1]
-                else:
-                    h_name = hormone_key
-                    h_level = "unknown"
-                
-                secondary_imbalances.append(h_name)
-                secondary_levels.append(h_level)
-                
-                # LIMIT: Only keep 1 secondary hormone (the highest scoring one)
-                # This prevents hormone explosion where 4+ hormones appear in UI
-                if len(secondary_imbalances) >= 1:
-                    break
+        # Get the 2nd highest hormone (skip the primary)
+        if len(sorted_scores) > 1:
+            second_hormone_key, second_score = sorted_scores[1]
+            
+            if "_" in second_hormone_key:
+                parts = second_hormone_key.rsplit("_", 1)
+                h_name = parts[0]
+                h_level = parts[1]
+            else:
+                h_name = second_hormone_key
+                h_level = "unknown"
+            
+            secondary_imbalances.append(h_name)
+            secondary_levels.append(h_level)
         
         print(f"🧬 Hormone Analysis Complete:")
         print(f"   Primary: {primary_hormone} ({primary_level}) - Score: {primary_score}")
