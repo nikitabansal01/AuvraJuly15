@@ -139,7 +139,7 @@ async def get_rewards_config():
 @router.get("/claimed")
 async def get_claimed_rewards(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(verify_firebase_token)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get list of rewards claimed by user (for badge display).
