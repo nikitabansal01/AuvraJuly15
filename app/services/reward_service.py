@@ -146,3 +146,38 @@ class RewardService:
                 })
         
         return result
+    
+    def is_reward_unlocked(self, uid: str, reward_id: str) -> bool:
+        """
+        Check if user has claimed a specific reward.
+        
+        Used for gating features - e.g., checking if diet preference
+        reward is claimed before allowing diet settings.
+        
+        Args:
+            uid: User ID
+            reward_id: Reward ID to check (e.g., "diet_prefs", "food_allergies")
+            
+        Returns:
+            True if reward is claimed, False otherwise
+        """
+        claimed = self.db.query(UserReward).filter(
+            UserReward.uid == uid,
+            UserReward.reward_id == reward_id
+        ).first()
+        return claimed is not None
+    
+    def get_unlocked_reward_ids(self, uid: str) -> List[str]:
+        """
+        Get list of all claimed reward IDs for a user.
+        
+        Used for frontend to know which features to show.
+        
+        Args:
+            uid: User ID
+            
+        Returns:
+            List of claimed reward IDs
+        """
+        claimed = self.db.query(UserReward).filter(UserReward.uid == uid).all()
+        return [c.reward_id for c in claimed]

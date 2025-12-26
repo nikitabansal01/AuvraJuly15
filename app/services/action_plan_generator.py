@@ -393,6 +393,11 @@ PERSONALIZATION FACTORS
 - Lifestyle Focus: {lifestyle_focus}
 - Diet Preference: {diet_preference}
 - Food Allergies/Restrictions: {food_allergies}
+- Cuisine Preference: {cuisine_preference}
+- Cultural Background: {cultural_background}
+- Dine Out Frequency: {dine_out_frequency}
+- Body Metrics: {body_metrics}
+- Common Cravings: {cravings}
 - Stress Level: {stress_level}
 - Sleep Duration: {sleep_duration}
 - Workout Intensity: {workout_intensity}
@@ -428,17 +433,22 @@ REQUIREMENTS (READ CAREFULLY)
 6. Time slots should be varied (mix of morning, afternoon, evening)
 7. RESPECT food allergies - NEVER recommend foods the user is allergic to
 8. RESPECT diet preferences - if vegetarian, no meat; if vegan, no animal products
-9. CONDITION-SPECIFIC PERSONALIZATION (CRITICAL):
+9. RESPECT cuisine preferences - prioritize foods from preferred cuisines when possible
+10. RESPECT cultural background - include culturally appropriate and familiar foods/practices
+11. ADAPT to body metrics - if BMI indicates overweight, focus on portion control and lighter meals
+12. ADDRESS cravings - include healthy alternatives that satisfy user's common cravings
+13. CONSIDER dining habits - if user dines out often, suggest restaurant-friendly options
+14. CONDITION-SPECIFIC PERSONALIZATION (CRITICAL):
    - Analyze the user's EXACT diagnosed conditions listed above
    - Research evidence-based interventions for THEIR specific conditions
    - Each food/exercise MUST have a clear mechanism for helping THEIR hormone + condition combo
    - The 'purpose' field must explain HOW this specific action helps THIS user's condition
    - NO generic recommendations - every action should feel designed for THIS user
-10. Learn from FEEDBACK MEMORY above:
+15. Learn from FEEDBACK MEMORY above:
     - If user LIKED something: create similar types
     - If user DISLIKED something: NEVER suggest similar patterns
-11. Match intensity to user's stated workout_intensity level
-12. Recommend longer mindfulness for high stress users, shorter for low stress
+16. Match intensity to user's stated workout_intensity level
+17. Recommend longer mindfulness for high stress users, shorter for low stress
 
 ══════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (for each action)
@@ -984,11 +994,42 @@ class ActionPlanGenerator:
             chatbot_memory = profile.chatbot_memory or {}
             chatbot_context = self._format_chatbot_context(chatbot_memory)
             
-            # Extract diet preferences and allergies from chatbot memory
+            # ═══════════════════════════════════════════════════════════════════
+            # EXTRACT ALL PREFERENCES FROM CHATBOT MEMORY (Reward-gated features)
+            # ═══════════════════════════════════════════════════════════════════
+            
+            # Diet preference (7-day reward)
             diet_preference = chatbot_memory.get("diet_preference", "no preference specified")
+            
+            # Food allergies (8-day reward)
             food_allergies = chatbot_memory.get("food_allergies", [])
             if isinstance(food_allergies, list):
                 food_allergies = ", ".join(food_allergies) if food_allergies else "none specified"
+            
+            # Cuisine preference (12-day reward)
+            cuisine_preference = chatbot_memory.get("cuisine_preference", [])
+            if isinstance(cuisine_preference, list):
+                cuisine_preference = ", ".join(cuisine_preference) if cuisine_preference else "no preference"
+            
+            # Dine out frequency (14-day reward)
+            dine_out_frequency = chatbot_memory.get("dine_out_frequency", "not specified")
+            
+            # Cultural background (18-day reward)
+            cultural_background = chatbot_memory.get("cultural_background", "not specified")
+            
+            # Body metrics (18-day reward)
+            body_metrics = chatbot_memory.get("body_metrics", {})
+            bmi_info = "not specified"
+            if body_metrics:
+                if body_metrics.get("bmi"):
+                    bmi_info = f"BMI: {body_metrics.get('bmi')} ({body_metrics.get('bmi_category', 'N/A')})"
+                if body_metrics.get("waist_height_ratio"):
+                    bmi_info += f", Waist-to-Height: {body_metrics.get('waist_height_ratio')}"
+            
+            # Cravings (18-day reward)
+            cravings = chatbot_memory.get("cravings", [])
+            if isinstance(cravings, list):
+                cravings = ", ".join(cravings) if cravings else "none specified"
             
             # Update context with real data
             context.update({
@@ -1009,8 +1050,16 @@ class ActionPlanGenerator:
                 "family_history": ", ".join(user_response.family_history) if user_response.family_history else "none specified",
                 "birth_control": ", ".join(user_response.birth_control) if user_response.birth_control else "none",
                 "lifestyle_focus": lifestyle_focus,
+                # Core preferences
                 "diet_preference": diet_preference,
                 "food_allergies": food_allergies,
+                # Enhanced personalization (reward-gated)
+                "cuisine_preference": cuisine_preference,
+                "dine_out_frequency": dine_out_frequency,
+                "cultural_background": cultural_background,
+                "body_metrics": bmi_info,
+                "cravings": cravings,
+                # Existing fields
                 "stress_level": user_response.stress_level or "moderate",
                 "sleep_duration": user_response.sleep_duration or "7-8 hours",
                 "workout_intensity": user_response.workout_intensity or "moderate",
