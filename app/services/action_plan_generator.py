@@ -2455,6 +2455,17 @@ Respond with valid JSON object only."""
                 await db.rollback()
                 return {"success": False, "error": "Failed to generate replacement. Please try again."}
             
+            # Normalize research_studies to always be a list
+            rs = replacement_action.get("research_studies")
+            if rs is None:
+                replacement_action["research_studies"] = []
+            elif isinstance(rs, dict):
+                # GPT sometimes returns a single dict instead of a list of dicts
+                replacement_action["research_studies"] = [rs]
+            elif not isinstance(rs, list):
+                replacement_action["research_studies"] = []
+
+            
             # Generate images for replacement
             hero_url, _, _ = await self.image_service.get_or_generate_image(
                 prompt=replacement_action.get("image_prompt", replacement_action.get("title", "Wellness Action")),
