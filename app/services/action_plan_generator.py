@@ -692,18 +692,33 @@ class ActionPlanGenerator:
         Get today's action plan or generate a new one.
         
         This is the main entry point called on app open.
+        
+        NEW: If yesterday was frozen and had incomplete items, those items
+        carry forward to today's plan instead of generating new ones.
         """
         from app.core.database import ActionPlan
+        from datetime import timedelta
         
         # Get today's date in user's timezone
         today = self._get_user_today(user_timezone)
         
-        # Check if plan exists
+        # Check if plan exists for today
         existing_plan = await self._get_existing_plan(user_id, today, db)
         
         if existing_plan:
             logger.info(f"Found existing plan for user {user_id} on {today}")
             return await self._format_plan_response(existing_plan, db)
+        
+        # Check for carryforward from frozen days
+        # If yesterday (or recent days) were frozen AND had incomplete items,
+        # carry those forward instead of generating new plan
+        carryforward_result = await self._check_and_carryforward_frozen_plan(
+            user_id, today, user_timezone, db
+        )
+        
+        if carryforward_result and carryforward_result.get("success"):
+            logger.info(f"Carried forward incomplete items from frozen day for {user_id}")
+            return carryforward_result
         
         # Generate new plan
         logger.info(f"Generating new plan for user {user_id} on {today}")
@@ -899,6 +914,153 @@ class ActionPlanGenerator:
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Error checking existing plan: {e}")
+            return None
+    
+    async def _check_and_carryforward_frozen_plan(
+        self,
+        user_id: str,
+        today: date,
+        user_timezone: str,
+        db: AsyncSession
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Check if yesterday was frozen and had incomplete items.
+        If so, carry forward those items to today's plan.
+        
+        Returns:
+            Formatted plan response if carryforward happened, None otherwise
+        """
+        from datetime import timedelta
+        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserStreakData
+        
+        try:
+            # Get user's streak data to check frozen dates
+            streak_result = await db.execute(
+                select(UserStreakData).where(UserStreakData.uid == user_id)
+            )
+            streak_data = streak_result.scalar_one_or_none()
+            
+            if not streak_data or not streak_data.freeze_used_dates:
+                return None  # No frozen dates
+            
+            # Parse frozen dates
+            frozen_dates = []
+            try:
+                frozen_dates = [date.fromisoformat(d) for d in streak_data.freeze_used_dates if d]
+            except (ValueError, TypeError):
+                return None
+            
+            # Check if yesterday (or recent days) were frozen
+            yesterday = today - timedelta(days=1)
+            
+            if yesterday not in frozen_dates:
+                return None  # Yesterday wasn't frozen
+            
+            logger.info(f"Yesterday ({yesterday}) was frozen for user {user_id}, checking for incomplete items")
+            
+            # Get yesterday's plan
+            yesterday_plan_result = await db.execute(
+                select(ActionPlan).where(
+                    and_(
+                        ActionPlan.uid == user_id,
+                        ActionPlan.plan_date == yesterday
+                    )
+                )
+            )
+            yesterday_plan = yesterday_plan_result.scalar_one_or_none()
+            
+            if not yesterday_plan:
+                logger.info(f"No plan found for frozen day {yesterday}")
+                return None
+            
+            # Get incomplete items from yesterday's plan
+            incomplete_items_result = await db.execute(
+                select(ActionPlanItem).where(
+                    and_(
+                        ActionPlanItem.plan_id == yesterday_plan.id,
+                        ActionPlanItem.is_completed == False,
+                        ActionPlanItem.is_replaced.isnot(True)
+                    )
+                )
+            )
+            incomplete_items = incomplete_items_result.scalars().all()
+            
+            if not incomplete_items:
+                logger.info(f"No incomplete items in frozen day plan - user completed all yesterday")
+                return None
+            
+            logger.info(f"Carrying forward {len(incomplete_items)} incomplete items from {yesterday}")
+            
+            # Create today's plan by copying incomplete items
+            new_plan = ActionPlan(
+                uid=user_id,
+                plan_date=today,
+                created_at=datetime.utcnow(),
+                feedback_collected=False
+                # Note: Could add carryforward_from_date column via migration to track this
+            )
+            db.add(new_plan)
+            await db.flush()  # Get new plan ID
+            
+            # Copy incomplete items to new plan
+            for old_item in incomplete_items:
+                new_item = ActionPlanItem(
+                    uid=user_id,
+                    plan_id=new_plan.id,
+                    slot=old_item.slot,
+                    time_slot=old_item.time_slot,
+                    category=old_item.category,
+                    title=old_item.title,
+                    specific_action=old_item.specific_action,
+                    purpose=old_item.purpose,
+                    target_hormone=old_item.target_hormone,
+                    hormone_persona_intro=old_item.hormone_persona_intro,
+                    hero_image_url=old_item.hero_image_url,
+                    research_studies=old_item.research_studies,
+                    conditions=old_item.conditions,
+                    symptoms=old_item.symptoms,
+                    food_items=old_item.food_items,
+                    food_amounts=old_item.food_amounts,
+                    exercise_types=old_item.exercise_types,
+                    exercise_durations=old_item.exercise_durations,
+                    exercise_intensities=old_item.exercise_intensities,
+                    mindfulness_techniques=old_item.mindfulness_techniques,
+                    mindfulness_durations=old_item.mindfulness_durations,
+                    is_completed=False,  # Reset completion status
+                    is_replaced=False,
+                    created_at=datetime.utcnow()
+                )
+                db.add(new_item)
+                await db.flush()
+                
+                # Copy variants too
+                variants_result = await db.execute(
+                    select(ActionPlanItemVariant).where(
+                        ActionPlanItemVariant.item_id == old_item.id
+                    )
+                )
+                variants = variants_result.scalars().all()
+                
+                for old_variant in variants:
+                    new_variant = ActionPlanItemVariant(
+                        item_id=new_item.id,
+                        variant_type=old_variant.variant_type,
+                        title=old_variant.title,
+                        description=old_variant.description,
+                        image_url=old_variant.image_url
+                    )
+                    db.add(new_variant)
+            
+            await db.commit()
+            await db.refresh(new_plan)
+            
+            logger.info(f"Created carryforward plan {new_plan.id} with {len(incomplete_items)} items from {yesterday}")
+            
+            # Return formatted response
+            return await self._format_plan_response(new_plan, db)
+            
+        except Exception as e:
+            logger.error(f"Error checking for carryforward plan: {e}")
             return None
     
     async def _load_user_context(
