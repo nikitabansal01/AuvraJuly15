@@ -93,13 +93,15 @@ class RewardService:
             return {"success": False, "error": "Already claimed"}
         
         # Check streak requirement
-        # TEST MODE: For specific test user, use stored value if >= 30
+        # TEST MODE: For specific test user, bypass streak check entirely
         TEST_USER_UID = "AMu7Bum6Kfbc3xIYdmpDVAyHQUF2"
-        streak_data = self.streak_service.get_or_create_streak_data(uid)
-        if uid == TEST_USER_UID and streak_data.current_streak >= 30:
-            current = streak_data.current_streak
+        if uid == TEST_USER_UID:
+            # Test user can claim any reward without streak check
+            logger.info(f"🧪 TEST MODE: Bypassing streak check for {uid}")
+            current = 100  # Fake high streak for test mode
         else:
             current = self.streak_service.calculate_streak_from_actions(uid)
+        
         if current < reward["days"]:
             return {
                 "success": False, 
