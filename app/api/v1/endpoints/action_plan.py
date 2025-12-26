@@ -618,6 +618,103 @@ async def batch_replace_actions(
         raise HTTPException(status_code=500, detail="Failed to replace actions")
 
 
+@router.post("/refresh-all-incomplete")
+async def refresh_all_incomplete_actions(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Refresh all incomplete actions for today.
+    
+    Uses the daily refresh limit (1 default, 2 with plan_refresh_2x reward).
+    Counts as 1 refresh regardless of how many actions are replaced.
+    """
+    try:
+        uid = current_user.get("uid")
+        if not uid:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        
+        # Check refresh limit
+        from app.services.reward_service import RewardService
+        reward_service = RewardService(db)
+        refresh_status = reward_service.get_refresh_status(uid)
+        
+        if not refresh_status["can_refresh"]:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily refresh limit reached ({refresh_status['limit']}/day). Try again tomorrow!"
+            )
+        
+        # Get today's incomplete items
+        from app.core.database import ActionPlan, ActionPlanItem
+        from datetime import date
+        
+        today = date.today()
+        plan = db.query(ActionPlan).filter(
+            ActionPlan.uid == uid,
+            ActionPlan.is_active == True
+        ).order_by(ActionPlan.created_at.desc()).first()
+        
+        if not plan:
+            raise HTTPException(status_code=404, detail="No active action plan found")
+        
+        incomplete_items = db.query(ActionPlanItem).filter(
+            ActionPlanItem.plan_id == plan.id,
+            ActionPlanItem.is_completed == False
+        ).all()
+        
+        if not incomplete_items:
+            return {
+                "success": True,
+                "message": "No incomplete actions to refresh",
+                "replaced_count": 0,
+                "refresh_status": refresh_status
+            }
+        
+        item_ids = [item.id for item in incomplete_items]
+        
+        # Get async session and regenerate
+        async_db = await get_async_db_session()
+        generator = get_action_plan_generator()
+        
+        result = await generator.batch_replace_actions(
+            user_id=uid,
+            plan_id=plan.id,
+            item_ids=item_ids,
+            reasons=["User requested refresh all" for _ in item_ids],
+            db=async_db
+        )
+        
+        await async_db.close()
+        
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("error", "Failed to refresh actions")
+            )
+        
+        # Use 1 refresh (counts as single refresh regardless of count)
+        reward_service.use_refresh(uid)
+        
+        # Get updated refresh status
+        new_refresh_status = reward_service.get_refresh_status(uid)
+        
+        return {
+            "success": True,
+            "message": f"Refreshed {result.get('replaced_count', 0)} actions",
+            "replaced_count": result.get("replaced_count", 0),
+            "replacements": result.get("replacements", []),
+            "refresh_status": new_refresh_status
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to refresh all incomplete: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to refresh actions")
+
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
