@@ -51,6 +51,20 @@ class StreakService:
         ).first()
         
         if not streak_data:
+            # Check if user profile exists first (FK constraint)
+            from app.core.database import UserProfile
+            profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+            if not profile:
+                logger.warning(f"Cannot create streak data for user {uid} - no profile exists")
+                # Return None or default streak data without persisting
+                # Create transient object (not committed) to avoid FK violation
+                return UserStreakData(
+                    uid=uid,
+                    current_streak=0,
+                    longest_streak=0,
+                    freeze_count=0
+                )
+            
             streak_data = UserStreakData(
                 uid=uid, 
                 current_streak=0, 
