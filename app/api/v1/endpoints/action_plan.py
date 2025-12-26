@@ -280,6 +280,17 @@ async def replace_action(
         if not uid:
             raise HTTPException(status_code=400, detail="User ID not found")
         
+        # Check refresh limit (2x Plan Refresh reward gives 2/day, default is 1/day)
+        from app.services.reward_service import RewardService
+        reward_service = RewardService(db)
+        refresh_status = reward_service.get_refresh_status(uid)
+        
+        if not refresh_status["can_refresh"]:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily refresh limit reached ({refresh_status['limit']}/day). Try again tomorrow!"
+            )
+        
         # Get async session
         async_db = await get_async_db_session()
         
@@ -298,6 +309,9 @@ async def replace_action(
                 status_code=400,
                 detail=result.get("error", "Failed to replace action")
             )
+        
+        # Consume a refresh on success
+        refresh_result = reward_service.use_refresh(uid)
         
         return ReplacementResponse(
             success=True,

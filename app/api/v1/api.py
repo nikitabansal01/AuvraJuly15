@@ -9,6 +9,7 @@ from app.api.v1.endpoints import cycle
 from app.api.v1.endpoints import chat
 from app.api.v1.endpoints import rewards
 from app.api.v1.endpoints import preferences
+from app.api.v1.endpoints import insights
 
 api_router = APIRouter()
 
@@ -47,4 +48,7 @@ api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(rewards.router, prefix="/rewards", tags=["rewards"])
 
 # Preferences router (gated by rewards - diet, allergies, etc.)
-api_router.include_router(preferences.router, prefix="/preferences", tags=["preferences"]) 
+api_router.include_router(preferences.router, prefix="/preferences", tags=["preferences"])
+
+# Insights router (analytics - symptom patterns, etc.)
+api_router.include_router(insights.router, prefix="/insights", tags=["insights"]) 

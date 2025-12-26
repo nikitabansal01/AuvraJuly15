@@ -181,3 +181,108 @@ class RewardService:
         """
         claimed = self.db.query(UserReward).filter(UserReward.uid == uid).all()
         return [c.reward_id for c in claimed]
+    
+    def get_daily_refresh_limit(self, uid: str) -> int:
+        """
+        Get user's daily refresh limit based on rewards.
+        
+        Default: 1 refresh per day
+        With 2x_refresh reward: 2 refreshes per day
+        """
+        if self.is_reward_unlocked(uid, "plan_refresh_2x"):
+            return 2
+        return 1
+    
+    def get_refresh_status(self, uid: str) -> dict:
+        """
+        Get current refresh usage for today.
+        
+        Returns dict with:
+        - limit: max refreshes allowed
+        - used: refreshes used today
+        - remaining: refreshes left
+        - can_refresh: boolean
+        """
+        from datetime import date as date_type
+        from app.core.database import UserStreakData
+        
+        limit = self.get_daily_refresh_limit(uid)
+        today = date_type.today()
+        
+        streak_data = self.db.query(UserStreakData).filter(
+            UserStreakData.uid == uid
+        ).first()
+        
+        if not streak_data:
+            # No streak data = never used refresh
+            return {
+                "limit": limit,
+                "used": 0,
+                "remaining": limit,
+                "can_refresh": True
+            }
+        
+        # Check if last refresh was today
+        if streak_data.last_refresh_date == today:
+            used = streak_data.daily_refresh_count or 0
+        else:
+            # Different day, reset counter
+            used = 0
+        
+        remaining = max(0, limit - used)
+        
+        return {
+            "limit": limit,
+            "used": used,
+            "remaining": remaining,
+            "can_refresh": remaining > 0
+        }
+    
+    def use_refresh(self, uid: str) -> dict:
+        """
+        Use one refresh for today.
+        
+        Returns success status and updated refresh info.
+        """
+        from datetime import date as date_type
+        from app.core.database import UserStreakData
+        
+        status = self.get_refresh_status(uid)
+        
+        if not status["can_refresh"]:
+            return {
+                "success": False,
+                "error": "No refreshes remaining today",
+                **status
+            }
+        
+        today = date_type.today()
+        
+        streak_data = self.db.query(UserStreakData).filter(
+            UserStreakData.uid == uid
+        ).first()
+        
+        if not streak_data:
+            streak_data = UserStreakData(
+                uid=uid,
+                daily_refresh_count=1,
+                last_refresh_date=today
+            )
+            self.db.add(streak_data)
+        else:
+            # Reset if new day
+            if streak_data.last_refresh_date != today:
+                streak_data.daily_refresh_count = 1
+                streak_data.last_refresh_date = today
+            else:
+                streak_data.daily_refresh_count = (streak_data.daily_refresh_count or 0) + 1
+        
+        self.db.commit()
+        
+        return {
+            "success": True,
+            "limit": status["limit"],
+            "used": streak_data.daily_refresh_count,
+            "remaining": max(0, status["limit"] - streak_data.daily_refresh_count),
+            "can_refresh": (streak_data.daily_refresh_count < status["limit"])
+        }

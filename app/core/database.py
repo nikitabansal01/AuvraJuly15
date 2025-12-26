@@ -949,6 +949,10 @@ class UserStreakData(Base):
     freeze_count = Column(Integer, default=0)  # Available freezes
     freeze_used_date = Column(Date, nullable=True)  # Date freeze was last auto-used
     
+    # Plan refresh tracking (2x refresh reward)
+    daily_refresh_count = Column(Integer, default=0)  # Refreshes used today
+    last_refresh_date = Column(Date, nullable=True)  # Date refreshes were tracked
+    
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

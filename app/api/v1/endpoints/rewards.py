@@ -30,11 +30,19 @@ class RewardResponse(BaseModel):
     days_remaining: int
 
 
+class RefreshStatus(BaseModel):
+    limit: int
+    used: int
+    remaining: int
+    can_refresh: bool
+
+
 class RewardsStatusResponse(BaseModel):
     current_streak: int
     longest_streak: int
     freeze_count: int
     last_activity_date: Optional[str]
+    refresh_status: RefreshStatus  # NEW: Plan refresh tracking
     rewards: List[RewardResponse]
 
 
@@ -65,14 +73,19 @@ async def get_rewards_status(
     Get all rewards with current streak status.
     
     Returns the user's current streak, longest streak, available freeze tokens,
-    and all rewards with their current state (locked/available/claimed).
+    plan refresh status, and all rewards with their current state.
     """
     uid = current_user.get("uid")
     if not uid:
         raise HTTPException(status_code=400, detail="User ID not found")
     
     reward_service = RewardService(db)
-    return reward_service.get_all_rewards_status(uid)
+    result = reward_service.get_all_rewards_status(uid)
+    
+    # Add refresh status
+    result["refresh_status"] = reward_service.get_refresh_status(uid)
+    
+    return result
 
 
 @router.post("/claim", response_model=ClaimResponse)
