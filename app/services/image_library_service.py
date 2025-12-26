@@ -335,7 +335,10 @@ class ImageLibraryService:
         user_id: str,
         db: AsyncSession
     ) -> None:
-        """Update image usage statistics."""
+        """Update image usage statistics.
+        
+        Note: Does NOT commit - let parent transaction handle it.
+        """
         from app.core.database import ImageLibrary
         
         try:
@@ -360,11 +363,10 @@ class ImageLibraryService:
                         used_by_users=used_by
                     )
                 )
-                await db.commit()
+                # Do NOT commit here - let parent transaction handle it
                 
         except Exception as e:
-            logger.error(f"Error updating image usage: {e}")
-            await db.rollback()
+            logger.error(f"Error updating image usage (non-critical): {e}")
     
     async def _generate_and_store_image(
         self,
@@ -837,7 +839,11 @@ class ImageLibraryService:
         generation_time_ms: int,
         db: AsyncSession
     ) -> None:
-        """Store generated image in the library for future semantic matching."""
+        """Store generated image in the library for future semantic matching.
+        
+        Note: Does NOT commit - parent transaction will handle commit.
+        This avoids "can't commit during flush" errors when called from replace_action.
+        """
         from app.core.database import ImageLibrary
         
         try:
@@ -859,13 +865,14 @@ class ImageLibraryService:
             )
             
             db.add(new_image)
-            await db.commit()
+            # Do NOT commit here - let parent transaction handle it
+            # This prevents "can't commit during flush" errors
             
             logger.info(f"📚 Image stored in library: {category}/{variant_type}")
             
         except Exception as e:
-            logger.error(f"Error storing in library: {e}")
-            await db.rollback()
+            # Log but don't fail - image library storage is non-critical
+            logger.error(f"Error storing in library (non-critical): {e}")
     
     async def generate_batch_images(
         self,
