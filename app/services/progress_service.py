@@ -241,49 +241,16 @@ class ProgressService:
         ).count()
     
     def _calculate_streak_days(self, uid: str, target_date: date) -> int:
-        """Calculate current consecutive completion days."""
-        streak = 0
-        current_date = target_date
-        
-        while True:
-            # Check if there's a completion record for the date
-            completion = self.db.query(RecommendationCompletion).filter(
-                and_(
-                    RecommendationCompletion.uid == uid,
-                    RecommendationCompletion.completion_date == current_date
-                )
-            ).first()
-            
-            if completion:
-                streak += 1
-                current_date -= timedelta(days=1)
-            else:
-                break
-        
-        return streak
+        """Calculate current consecutive completion days using unified StreakService."""
+        from app.services.streak_service import StreakService
+        streak_service = StreakService(self.db)
+        return streak_service.calculate_streak_from_actions(uid)
     
     def _get_longest_streak(self, uid: str) -> int:
-        """Calculate longest consecutive completion days."""
-        # Get all completion dates and calculate continuity
-        completions = self.db.query(RecommendationCompletion.completion_date).filter(
-            RecommendationCompletion.uid == uid
-        ).distinct().order_by(RecommendationCompletion.completion_date).all()
-        
-        if not completions:
-            return 0
-        
-        completion_dates = [comp[0] for comp in completions]
-        longest_streak = 1
-        current_streak = 1
-        
-        for i in range(1, len(completion_dates)):
-            if (completion_dates[i] - completion_dates[i-1]).days == 1:
-                current_streak += 1
-                longest_streak = max(longest_streak, current_streak)
-            else:
-                current_streak = 1
-        
-        return longest_streak
+        """Calculate longest consecutive completion days using unified StreakService."""
+        from app.services.streak_service import StreakService
+        streak_service = StreakService(self.db)
+        return streak_service.get_longest_streak(uid)
     
     def _get_daily_completion_stats(self, uid: str, week_start: date, week_end: date) -> Dict[str, Any]:
         """Calculate daily completion statistics."""

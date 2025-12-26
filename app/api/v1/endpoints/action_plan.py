@@ -343,7 +343,12 @@ async def complete_action(
         item.completed_at = datetime.utcnow()
         db.commit()
         
-        logger.info(f"Action completed: item_id={item_id}, uid={uid}")
+        # Update user's streak data
+        from app.services.streak_service import StreakService
+        streak_service = StreakService(db)
+        current_streak, longest_streak = streak_service.update_streak_on_completion(uid)
+        
+        logger.info(f"Action completed: item_id={item_id}, uid={uid}, streak={current_streak}")
         
         return CompletionResponse(
             success=True,

@@ -913,6 +913,51 @@ class ActionPlanEvaluation(Base):
     )
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# STREAK REWARDS SYSTEM TABLES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class UserReward(Base):
+    """Track claimed rewards by users."""
+    __tablename__ = "user_rewards"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), 
+                 nullable=False, index=True)
+    reward_id = Column(String(50), nullable=False)  # e.g., "streak_freeze", "diet_prefs"
+    claimed_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_user_reward_uid', 'uid'),
+    )
+
+
+class UserStreakData(Base):
+    """Persistent streak tracking with freeze support."""
+    __tablename__ = "user_streak_data"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"),
+                 nullable=False, unique=True)
+    
+    # Streak stats
+    current_streak = Column(Integer, default=0)
+    longest_streak = Column(Integer, default=0)
+    last_activity_date = Column(Date, nullable=True)  # Last date action was completed
+    
+    # Freeze tokens
+    freeze_count = Column(Integer, default=0)  # Available freezes
+    freeze_used_date = Column(Date, nullable=True)  # Date freeze was last auto-used
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_streak_uid', 'uid'),
+    )
+
+
 # Database table creation
 def create_tables():
     """Create tables"""

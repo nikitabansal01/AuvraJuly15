@@ -1104,21 +1104,10 @@ async def get_progress_stats(
     completed = sum(1 for a in assignments if a.is_completed)
     completion_rate = completed / total if total > 0 else 0
     
-    # Calculate streak
-    streak = 0
-    check_date = date.today()
-    
-    while True:
-        day_assignments = [a for a in assignments if a.assignment_date == check_date]
-        if not day_assignments:
-            break
-        
-        day_completed = all(a.is_completed for a in day_assignments)
-        if day_completed:
-            streak += 1
-            check_date -= timedelta(days=1)
-        else:
-            break
+    # Calculate streak using unified StreakService
+    from app.services.streak_service import StreakService
+    streak_service = StreakService(db_session)
+    streak = streak_service.calculate_streak_from_actions(user_id)
     
     # Hormone progress (what hormones are being targeted)
     hormone_stats = {}

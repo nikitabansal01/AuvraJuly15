@@ -7,6 +7,7 @@ from app.api.v1.endpoints import progress
 from app.api.v1.endpoints import action_plan  # New action plan system
 from app.api.v1.endpoints import cycle
 from app.api.v1.endpoints import chat
+from app.api.v1.endpoints import rewards
 
 api_router = APIRouter()
 
@@ -39,4 +40,7 @@ api_router.include_router(action_plan.router, prefix="/new-scheduling", tags=["a
 api_router.include_router(cycle.router, prefix="/cycle", tags=["cycle"])
 
 # AI Chatbot router (LangGraph-powered)
-api_router.include_router(chat.router, prefix="/chat", tags=["chat"]) 
+api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+
+# Rewards router (streak-based rewards system)
+api_router.include_router(rewards.router, prefix="/rewards", tags=["rewards"]) 
