@@ -82,7 +82,9 @@ class StreakService:
         """
         Calculate streak based on ActionPlanItem completions.
         
-        Following Duolingo model: 1+ action completed per day = streak day.
+        UPDATED: ALL actions must be completed for a day to count as streak.
+        Previously: 1+ action = streak (Duolingo model)
+        Now: ALL 4 actions completed = streak day
         
         Args:
             uid: User ID
@@ -97,27 +99,48 @@ class StreakService:
         streak_data = self.get_or_create_streak_data(uid)
         
         while True:
-            # Check if ANY action was completed on this date
-            completed_count = self.db.query(func.count(ActionPlanItem.id)).join(
-                ActionPlan, ActionPlanItem.plan_id == ActionPlan.id
-            ).filter(
+            # Get the plan for this date
+            plan = self.db.query(ActionPlan).filter(
                 and_(
                     ActionPlan.uid == uid,
-                    ActionPlanItem.is_completed == True,
-                    func.date(ActionPlanItem.completed_at) == check_date
+                    ActionPlan.plan_date == check_date
                 )
-            ).scalar()
+            ).first()
             
-            if completed_count and completed_count > 0:
-                streak += 1
-                check_date -= timedelta(days=1)
-            else:
-                # Check if freeze was used on this date (supports multi-day)
-                if self._is_date_frozen(streak_data, check_date):
-                    # Freeze covered this day, continue checking
+            if plan:
+                # Count total items in this plan (excluding replaced items)
+                total_items = self.db.query(func.count(ActionPlanItem.id)).filter(
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_replaced.isnot(True)
+                    )
+                ).scalar() or 0
+                
+                # Count completed items
+                completed_count = self.db.query(func.count(ActionPlanItem.id)).filter(
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_completed == True,
+                        ActionPlanItem.is_replaced.isnot(True)
+                    )
+                ).scalar() or 0
+                
+                # ALL items must be completed for streak to count
+                if total_items > 0 and completed_count == total_items:
+                    streak += 1
                     check_date -= timedelta(days=1)
                 else:
-                    # No completion, no freeze - streak ends
+                    # Not all completed - check if frozen
+                    if self._is_date_frozen(streak_data, check_date):
+                        check_date -= timedelta(days=1)
+                    else:
+                        break
+            else:
+                # No plan for this date - check if frozen
+                if self._is_date_frozen(streak_data, check_date):
+                    check_date -= timedelta(days=1)
+                else:
+                    # No plan and not frozen - streak ends
                     break
         
         return streak
@@ -271,6 +294,8 @@ class StreakService:
         """
         Get list of consecutive missed days starting from yesterday going back.
         
+        UPDATED: A day is only considered "complete" if ALL items are done.
+        
         Returns:
             List of date objects for each missed day (most recent first)
         """
@@ -279,34 +304,58 @@ class StreakService:
         check_date = date.today() - timedelta(days=1)  # Start from yesterday
         
         while True:
-            # Check if there were any completions on this date
-            completed_count = self.db.query(func.count(ActionPlanItem.id)).join(
-                ActionPlan, ActionPlanItem.plan_id == ActionPlan.id
-            ).filter(
+            # Get the plan for this date
+            plan = self.db.query(ActionPlan).filter(
                 and_(
                     ActionPlan.uid == uid,
-                    ActionPlanItem.is_completed == True,
-                    func.date(ActionPlanItem.completed_at) == check_date
+                    ActionPlan.plan_date == check_date
                 )
-            ).scalar()
+            ).first()
             
             # Check if this date is already frozen
             is_frozen = self._is_date_frozen(streak_data, check_date)
             
-            if completed_count and completed_count > 0:
-                # Day was completed, stop checking
-                break
-            elif is_frozen:
-                # Day was frozen, skip but continue checking
-                check_date -= timedelta(days=1)
-            else:
-                # Day was missed
-                missed_days.append(check_date)
-                check_date -= timedelta(days=1)
+            if plan:
+                # Count total items in this plan (excluding replaced)
+                total_items = self.db.query(func.count(ActionPlanItem.id)).filter(
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_replaced.isnot(True)
+                    )
+                ).scalar() or 0
                 
-                # Safety limit - don't check more than 7 days back
-                if len(missed_days) >= 7:
+                # Count completed items
+                completed_count = self.db.query(func.count(ActionPlanItem.id)).filter(
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_completed == True,
+                        ActionPlanItem.is_replaced.isnot(True)
+                    )
+                ).scalar() or 0
+                
+                # ALL items must be completed for the day to count as complete
+                if total_items > 0 and completed_count == total_items:
+                    # Day was fully completed, stop checking
                     break
+                elif is_frozen:
+                    # Day was frozen, skip but continue checking
+                    check_date -= timedelta(days=1)
+                else:
+                    # Day was not fully completed - it's missed
+                    missed_days.append(check_date)
+                    check_date -= timedelta(days=1)
+            else:
+                # No plan for this date
+                if is_frozen:
+                    check_date -= timedelta(days=1)
+                else:
+                    # No plan and not frozen - missed
+                    missed_days.append(check_date)
+                    check_date -= timedelta(days=1)
+            
+            # Safety limit - don't check more than 7 days back
+            if len(missed_days) >= 7:
+                break
         
         return missed_days
     
