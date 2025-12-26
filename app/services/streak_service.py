@@ -253,8 +253,9 @@ class StreakService:
         freeze_used_today = streak_data.freeze_used_date == yesterday
         
         # Calculate current streak (recalculated to be accurate)
-        # TEST MODE: If stored current_streak is >= 30, use it (allows testing rewards)
-        if streak_data.current_streak >= 30:
+        # TEST MODE: Only for specific test user - use stored value if >= 30
+        TEST_USER_UID = "AMu7Bum6Kfbc3xIYdmpDVAyHQUF2"
+        if uid == TEST_USER_UID and streak_data.current_streak >= 30:
             current = streak_data.current_streak
         else:
             current = self.calculate_streak_from_actions(uid)
