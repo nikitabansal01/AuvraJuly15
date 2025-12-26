@@ -674,7 +674,8 @@ async def refresh_all_incomplete_actions(
         
         incomplete_items = db.query(ActionPlanItem).filter(
             ActionPlanItem.plan_id == plan.id,
-            ActionPlanItem.is_completed == False
+            ActionPlanItem.is_completed == False,
+            ActionPlanItem.is_replaced.isnot(True)  # Only active items, not already replaced
         ).all()
         
         if not incomplete_items:
