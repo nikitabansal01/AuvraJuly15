@@ -94,7 +94,7 @@ class RewardService:
         
         # Check streak requirement
         # TEST MODE: For specific test user, bypass streak check entirely
-        TEST_USER_UID = "AMu7Bum6Kfbc3xIYdmpDVAyHQUF2"
+        TEST_USER_UID = "HirhzncRGRfT1g73g8QMCJJ4NAz1"
         if uid == TEST_USER_UID:
             # Test user can claim any reward without streak check
             logger.info(f"🧪 TEST MODE: Bypassing streak check for {uid}")
