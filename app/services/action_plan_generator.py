@@ -927,11 +927,15 @@ class ActionPlanGenerator:
         Check if yesterday was frozen and had incomplete items.
         If so, carry forward those items to today's plan.
         
+        NEW: If incomplete items < 4, generate additional new items to fill up to 4.
+        
         Returns:
             Formatted plan response if carryforward happened, None otherwise
         """
         from datetime import timedelta
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserStreakData
+        
+        TARGET_ACTIONS = 4  # Standard action plan size
         
         try:
             # Get user's streak data to check frozen dates
@@ -989,25 +993,30 @@ class ActionPlanGenerator:
                 logger.info(f"No incomplete items in frozen day plan - user completed all yesterday")
                 return None
             
-            logger.info(f"Carrying forward {len(incomplete_items)} incomplete items from {yesterday}")
+            num_incomplete = len(incomplete_items)
+            num_to_generate = TARGET_ACTIONS - num_incomplete
             
-            # Create today's plan by copying incomplete items
+            logger.info(f"Carryforward: {num_incomplete} incomplete items from {yesterday}, will generate {num_to_generate} new items")
+            
+            # Create today's plan
             new_plan = ActionPlan(
                 uid=user_id,
                 plan_date=today,
                 created_at=datetime.utcnow(),
                 feedback_collected=False
-                # Note: Could add carryforward_from_date column via migration to track this
             )
             db.add(new_plan)
             await db.flush()  # Get new plan ID
             
+            # Track carried forward items for excluding from new generation
+            carried_items = []
+            
             # Copy incomplete items to new plan
-            for old_item in incomplete_items:
+            for slot_idx, old_item in enumerate(incomplete_items):
                 new_item = ActionPlanItem(
                     uid=user_id,
                     plan_id=new_plan.id,
-                    slot=old_item.slot,
+                    slot=slot_idx,  # Re-assign slots starting from 0
                     time_slot=old_item.time_slot,
                     category=old_item.category,
                     title=old_item.title,
@@ -1033,6 +1042,12 @@ class ActionPlanGenerator:
                 db.add(new_item)
                 await db.flush()
                 
+                carried_items.append({
+                    "title": old_item.title,
+                    "category": old_item.category,
+                    "target_hormone": old_item.target_hormone
+                })
+                
                 # Copy variants too
                 variants_result = await db.execute(
                     select(ActionPlanItemVariant).where(
@@ -1052,9 +1067,81 @@ class ActionPlanGenerator:
                     db.add(new_variant)
             
             await db.commit()
+            
+            # If we need more items to reach 4, generate them
+            if num_to_generate > 0:
+                logger.info(f"Generating {num_to_generate} new actions to complete the plan")
+                
+                try:
+                    # Load user context for generation
+                    user_context = await self._load_user_context(user_id, db)
+                    if user_context:
+                        # Generate new actions for the remaining slots
+                        new_actions, gen_cost = await self._generate_partial_actions(
+                            user_context=user_context,
+                            num_actions=num_to_generate,
+                            existing_actions=carried_items,
+                            db=db
+                        )
+                        
+                        if new_actions:
+                            # Generate images for new actions
+                            actions_with_images, img_cost = await self._generate_all_images(
+                                new_actions, user_id, db
+                            )
+                            
+                            # Store the new actions
+                            start_slot = num_incomplete
+                            for i, action_data in enumerate(actions_with_images):
+                                new_item = ActionPlanItem(
+                                    uid=user_id,
+                                    plan_id=new_plan.id,
+                                    slot=start_slot + i,
+                                    time_slot=action_data.get("time_slot", "anytime"),
+                                    category=action_data.get("category", "food"),
+                                    title=action_data.get("title", ""),
+                                    specific_action=action_data.get("specific_action", ""),
+                                    purpose=action_data.get("purpose", ""),
+                                    target_hormone=action_data.get("target_hormone", ""),
+                                    hormone_persona_intro=action_data.get("hormone_persona_intro", ""),
+                                    hero_image_url=action_data.get("hero_image_url", ""),
+                                    research_studies=action_data.get("research_studies", []),
+                                    conditions=action_data.get("conditions", []),
+                                    symptoms=action_data.get("symptoms", []),
+                                    food_items=action_data.get("food_items", []),
+                                    food_amounts=action_data.get("food_amounts", []),
+                                    exercise_types=action_data.get("exercise_types", []),
+                                    exercise_durations=action_data.get("exercise_durations", []),
+                                    exercise_intensities=action_data.get("exercise_intensities", []),
+                                    mindfulness_techniques=action_data.get("mindfulness_techniques", []),
+                                    mindfulness_durations=action_data.get("mindfulness_durations", []),
+                                    is_completed=False,
+                                    is_replaced=False,
+                                    created_at=datetime.utcnow()
+                                )
+                                db.add(new_item)
+                                await db.flush()
+                                
+                                # Store variants
+                                for variant in action_data.get("variants", []):
+                                    var = ActionPlanItemVariant(
+                                        item_id=new_item.id,
+                                        variant_type=variant.get("variant_type", ""),
+                                        title=variant.get("title", ""),
+                                        description=variant.get("description", ""),
+                                        image_url=variant.get("image_url", "")
+                                    )
+                                    db.add(var)
+                            
+                            await db.commit()
+                            logger.info(f"Added {len(actions_with_images)} new actions to carryforward plan")
+                except Exception as gen_err:
+                    logger.error(f"Failed to generate additional actions: {gen_err}")
+                    # Continue with partial plan - better than nothing
+            
             await db.refresh(new_plan)
             
-            logger.info(f"Created carryforward plan {new_plan.id} with {len(incomplete_items)} items from {yesterday}")
+            logger.info(f"Created carryforward plan {new_plan.id} with {num_incomplete} carried + {num_to_generate} new items")
             
             # Return formatted response
             return await self._format_plan_response(new_plan, db)
@@ -1062,6 +1149,96 @@ class ActionPlanGenerator:
         except Exception as e:
             logger.error(f"Error checking for carryforward plan: {e}")
             return None
+    
+    async def _generate_partial_actions(
+        self,
+        user_context: Dict[str, Any],
+        num_actions: int,
+        existing_actions: List[Dict],
+        db: Optional[AsyncSession] = None
+    ) -> Tuple[Optional[List[Dict]], float]:
+        """
+        Generate a specific number of actions, avoiding duplicates with existing actions.
+        
+        Used for carryforward plans where we need to fill remaining slots.
+        """
+        if num_actions <= 0:
+            return ([], 0.0)
+        
+        if not self.openai_api_key:
+            logger.error("OpenAI API key not configured")
+            return (None, 0.0)
+        
+        # Get cycle phase for hormone context
+        cycle_phase = user_context.get("cycle_phase", "follicular").lower()
+        primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
+        secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
+        
+        # Build prompt for partial generation
+        existing_summary = json.dumps(existing_actions, indent=2) if existing_actions else "None"
+        
+        prompt = f"""Generate exactly {num_actions} wellness action(s) for this user.
+
+══════════════════════════════════════════════════════════════════════
+EXISTING ACTIONS (user already has these - DO NOT duplicate)
+══════════════════════════════════════════════════════════════════════
+{existing_summary}
+
+══════════════════════════════════════════════════════════════════════
+USER PROFILE
+══════════════════════════════════════════════════════════════════════
+- Age: {user_context.get('age', 'Not specified')}
+- Cycle Day: {user_context.get('cycle_day', 'Unknown')}
+- Cycle Phase: {cycle_phase}
+- Primary Hormone: {primary_hormone}
+- Secondary Hormone: {secondary_hormone}
+- Top Concern: {user_context.get('top_concern', 'general wellness')}
+- Conditions: {', '.join(user_context.get('diagnosed_conditions', [])) or 'none'}
+
+══════════════════════════════════════════════════════════════════════
+REQUIREMENTS
+══════════════════════════════════════════════════════════════════════
+1. Generate exactly {num_actions} NEW action(s) - different from existing ones
+2. Mix categories (food, movement, mindfulness) to complement existing
+3. Target the user's primary/secondary hormones
+4. Each action needs: title, specific_action, purpose, category, target_hormone, time_slot, symptoms (2 from user's concerns)
+5. Include food_items/food_amounts for food, exercise_types/durations for movement, mindfulness_techniques/durations for mindfulness
+
+Return as JSON array with {num_actions} action objects.
+"""
+        
+        try:
+            import openai
+            client = openai.AsyncOpenAI(api_key=self.openai_api_key)
+            
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content
+            cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
+            
+            # Parse response
+            parsed = json.loads(content)
+            actions = parsed.get("actions", parsed if isinstance(parsed, list) else [parsed])
+            
+            # Ensure we have a list
+            if not isinstance(actions, list):
+                actions = [actions]
+            
+            logger.info(f"Generated {len(actions)} partial actions for carryforward plan")
+            return (actions[:num_actions], cost)
+            
+        except Exception as e:
+            logger.error(f"Failed to generate partial actions: {e}")
+            return (None, 0.0)
     
     async def _load_user_context(
         self,
