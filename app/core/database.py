@@ -948,7 +948,8 @@ class UserStreakData(Base):
     
     # Freeze tokens
     freeze_count = Column(Integer, default=0)  # Available freezes
-    freeze_used_date = Column(Date, nullable=True)  # Date freeze was last auto-used
+    freeze_used_date = Column(Date, nullable=True)  # DEPRECATED: Kept for backward compat
+    freeze_used_dates = Column(JSONB, default=[])  # Array of dates when freeze was used ["2024-12-25", "2024-12-26"]
     
     # Plan refresh tracking (2x refresh reward)
     daily_refresh_count = Column(Integer, default=0)  # Refreshes used today
