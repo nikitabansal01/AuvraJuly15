@@ -134,3 +134,21 @@ async def get_rewards_config():
             for r in REWARDS_CONFIG
         ]
     }
+
+
+@router.get("/claimed")
+async def get_claimed_rewards(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_firebase_token)
+):
+    """
+    Get list of rewards claimed by user (for badge display).
+    
+    Returns array of claimed rewards with id, title, icon, and claimed_at.
+    """
+    uid = current_user.get("uid")
+    if not uid:
+        raise HTTPException(status_code=400, detail="User ID not found")
+    
+    service = RewardService(db)
+    return service.get_claimed_rewards(uid)

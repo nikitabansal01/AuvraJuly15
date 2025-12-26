@@ -241,12 +241,16 @@ class StreakService:
             uid: User ID
             
         Returns:
-            Dictionary with current_streak, longest_streak, freeze_count, last_activity_date
+            Dictionary with current_streak, longest_streak, freeze_count, last_activity_date, freeze_used_today
         """
         streak_data = self.get_or_create_streak_data(uid)
         
-        # Auto-check and use freeze if needed
-        self.try_use_freeze(uid)
+        # Auto-check and use freeze if needed - capture if it was used
+        freeze_used = self.try_use_freeze(uid)
+        
+        # Check if freeze was used today (yesterday's date in freeze_used_date)
+        yesterday = date.today() - timedelta(days=1)
+        freeze_used_today = streak_data.freeze_used_date == yesterday
         
         # Calculate current streak (recalculated to be accurate)
         current = self.calculate_streak_from_actions(uid)
@@ -261,5 +265,7 @@ class StreakService:
             "current_streak": current,
             "longest_streak": longest,
             "freeze_count": streak_data.freeze_count,
-            "last_activity_date": streak_data.last_activity_date.isoformat() if streak_data.last_activity_date else None
+            "last_activity_date": streak_data.last_activity_date.isoformat() if streak_data.last_activity_date else None,
+            "freeze_used_today": freeze_used_today,
+            "freeze_just_used": freeze_used  # True if freeze was JUST consumed in this request
         }
