@@ -9,6 +9,7 @@ Metrics tracked:
 - personalization_score: Actions tailored to user conditions (0-100)
 - condition_appropriateness: Safe for diagnosed conditions (0-100)
 - feedback_alignment_score: Respects prior likes/dislikes (0-100)
+- preference_compliance_score: Respects diet, allergies, cuisine preferences (0-100)
 - citation_validity_score: Research PMIDs are valid (0-100)
 - citation_relevance_score: Findings match recommendations (0-100)
 - overall_quality_score: Weighted average (0-100)
@@ -29,12 +30,13 @@ logger = logging.getLogger(__name__)
 
 # Weights for overall score calculation
 METRIC_WEIGHTS = {
-    "structure_valid": 0.20,  # 20% - structural validity
-    "personalization_score": 0.20,  # 20% - user personalization
+    "structure_valid": 0.15,  # 15% - structural validity
+    "personalization_score": 0.15,  # 15% - user personalization
     "condition_appropriateness": 0.15,  # 15% - safety for conditions
     "feedback_alignment_score": 0.15,  # 15% - respects feedback
-    "citation_validity_score": 0.15,  # 15% - valid PMIDs
-    "citation_relevance_score": 0.15,  # 15% - citations support claims
+    "preference_compliance_score": 0.15,  # 15% - respects diet/allergy/cuisine preferences
+    "citation_validity_score": 0.125,  # 12.5% - valid PMIDs
+    "citation_relevance_score": 0.125,  # 12.5% - citations support claims
 }
 
 # LLM Evaluation Prompt
@@ -111,7 +113,16 @@ Score each metric from 0-100:
    - 50-69: Partially considers feedback
    - 0-49: Ignores or contradicts feedback
 
-4. **citation_relevance_score**: Do the research citations actually support the specific recommendations?
+4. **preference_compliance_score**: Does the plan respect user's preference settings?
+   - Diet preference (vegetarian/vegan/pescatarian/none)
+   - Food allergies (nuts, gluten, dairy, etc.)
+   - Cuisine preferences (Mediterranean, Asian, Mexican, etc.)
+   - 90-100: All actions comply with preferences
+   - 70-89: Most actions comply, minor issues
+   - 50-69: Some actions violate preferences
+   - 0-49: Major preference violations
+
+5. **citation_relevance_score**: Do the research citations actually support the specific recommendations?
    - Check if the study findings match the claimed benefits
    - 90-100: All citations directly support claims
    - 70-89: Most citations are relevant
@@ -123,11 +134,13 @@ Respond with ONLY valid JSON in this exact format:
   "personalization_score": <0-100>,
   "condition_appropriateness": <0-100>,
   "feedback_alignment_score": <0-100>,
+  "preference_compliance_score": <0-100>,
   "citation_relevance_score": <0-100>,
   "reasoning": {{
     "personalization": "<brief explanation>",
     "condition": "<brief explanation>",
     "feedback": "<brief explanation>",
+    "preference": "<brief explanation>",
     "citation": "<brief explanation>"
   }}
 }}"""
@@ -200,6 +213,7 @@ class ActionPlanEvaluator:
                     "personalization_score": None,
                     "condition_appropriateness": None,
                     "feedback_alignment_score": None,
+                    "preference_compliance_score": None,
                     "citation_relevance_score": None,
                     "reasoning": {}
                 }
@@ -210,6 +224,7 @@ class ActionPlanEvaluator:
                 personalization_score=llm_scores.get("personalization_score"),
                 condition_appropriateness=llm_scores.get("condition_appropriateness"),
                 feedback_alignment_score=llm_scores.get("feedback_alignment_score"),
+                preference_compliance_score=llm_scores.get("preference_compliance_score"),
                 citation_validity_score=citation_validity,
                 citation_relevance_score=llm_scores.get("citation_relevance_score")
             )
@@ -222,6 +237,7 @@ class ActionPlanEvaluator:
                 personalization_score=llm_scores.get("personalization_score"),
                 condition_appropriateness=llm_scores.get("condition_appropriateness"),
                 feedback_alignment_score=llm_scores.get("feedback_alignment_score"),
+                preference_compliance_score=llm_scores.get("preference_compliance_score"),
                 citation_validity_score=citation_validity,
                 citation_relevance_score=llm_scores.get("citation_relevance_score"),
                 overall_quality_score=overall_score,
@@ -246,6 +262,7 @@ class ActionPlanEvaluator:
                 "personalization_score": llm_scores.get("personalization_score"),
                 "condition_appropriateness": llm_scores.get("condition_appropriateness"),
                 "feedback_alignment_score": llm_scores.get("feedback_alignment_score"),
+                "preference_compliance_score": llm_scores.get("preference_compliance_score"),
                 "citation_validity_score": citation_validity,
                 "citation_relevance_score": llm_scores.get("citation_relevance_score"),
                 "overall_quality_score": overall_score,
@@ -426,6 +443,7 @@ class ActionPlanEvaluator:
         personalization_score: Optional[int],
         condition_appropriateness: Optional[int],
         feedback_alignment_score: Optional[int],
+        preference_compliance_score: Optional[int],
         citation_validity_score: Optional[int],
         citation_relevance_score: Optional[int]
     ) -> int:
@@ -439,6 +457,7 @@ class ActionPlanEvaluator:
             "personalization_score": personalization_score,
             "condition_appropriateness": condition_appropriateness,
             "feedback_alignment_score": feedback_alignment_score,
+            "preference_compliance_score": preference_compliance_score,
             "citation_validity_score": citation_validity_score,
             "citation_relevance_score": citation_relevance_score,
         }

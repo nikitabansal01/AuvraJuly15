@@ -887,6 +887,7 @@ class ActionPlanEvaluation(Base):
     personalization_score = Column(Integer, nullable=True)
     condition_appropriateness = Column(Integer, nullable=True)
     feedback_alignment_score = Column(Integer, nullable=True)
+    preference_compliance_score = Column(Integer, nullable=True)  # Diet/allergy/cuisine compliance
     
     # Citation Quality (0-100)
     citation_validity_score = Column(Integer, nullable=True)
