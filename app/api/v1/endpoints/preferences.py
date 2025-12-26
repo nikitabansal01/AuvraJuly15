@@ -78,15 +78,18 @@ PREFERENCE_OPTIONS = {
         {"id": "very_often", "label": "Very Often (4+/week)", "icon": "🏪"},
     ],
     "cultural_background": [
-        {"id": "south_asian", "label": "South Asian", "icon": "🇮🇳"},
-        {"id": "east_asian", "label": "East Asian", "icon": "🇯🇵"},
-        {"id": "southeast_asian", "label": "Southeast Asian", "icon": "🇹🇭"},
-        {"id": "middle_eastern", "label": "Middle Eastern", "icon": "🇸🇦"},
-        {"id": "african", "label": "African", "icon": "🇳🇬"},
-        {"id": "european", "label": "European", "icon": "🇪🇺"},
-        {"id": "latin_american", "label": "Latin American", "icon": "🇲🇽"},
-        {"id": "north_american", "label": "North American", "icon": "🇺🇸"},
-        {"id": "other", "label": "Other", "icon": "🌍"},
+        {"id": "south_asian", "label": "South Asian", "icon": "🍛"},  # Curry
+        {"id": "east_asian", "label": "East Asian", "icon": "🍜"},  # Noodles
+        {"id": "southeast_asian", "label": "Southeast Asian", "icon": "🍲"},  # Stew/Pho
+        {"id": "middle_eastern", "label": "Middle Eastern", "icon": "🧆"},  # Falafel
+        {"id": "african", "label": "African", "icon": "🥘"},  # Traditional dish
+        {"id": "european", "label": "European", "icon": "🥐"},  # Croissant
+        {"id": "latin_american", "label": "Latin American", "icon": "🌮"},  # Taco
+        {"id": "north_american", "label": "North American", "icon": "🍔"},  # Burger
+        {"id": "caribbean", "label": "Caribbean", "icon": "🥭"},  # Mango
+        {"id": "pacific_islander", "label": "Pacific Islander", "icon": "🥥"},  # Coconut
+        {"id": "mixed", "label": "Mixed Heritage", "icon": "🌎"},  # Globe
+        {"id": "other", "label": "Other", "icon": "🍽️"},  # Plate
     ],
 }
 
