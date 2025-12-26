@@ -2334,7 +2334,12 @@ USER CONTEXT:
 - Diet preference: {user_context.get('diet_preference', 'none')}
 - Food allergies: {user_context.get('food_allergies', 'none')}
 
-FEEDBACK MEMORY (avoid similar to disliked actions):
+FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HISTORICAL SUMMARY (learned patterns over time):
+{user_context.get('feedback_summary', 'No summary yet')}
+
+RECENT FEEDBACK (last 20-50 actions):
 {user_context.get('feedback_memory', 'No previous feedback')}
 
 🔴 MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
