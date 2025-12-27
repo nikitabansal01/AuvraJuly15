@@ -50,6 +50,9 @@ class StreakService:
             UserStreakData.uid == uid
         ).first()
         
+        if streak_data:
+            logger.info(f"🔍 Found streak data for {uid}: freeze_count={streak_data.freeze_count}, current={streak_data.current_streak}")
+        
         if not streak_data:
             # Check if user profile exists first (FK constraint)
             from app.core.database import UserProfile
@@ -530,7 +533,7 @@ class StreakService:
         risk_status = self.get_streak_risk_status(uid)
         
         # Calculate current streak (recalculated to be accurate)
-        # TEST MODE: Force streak=30 for specific test user
+        # NOTE: Removed TEST_USER hardcode - now calculates real streak for all users
         current = self.calculate_streak_from_actions(uid)
         
         # Update longest if needed
