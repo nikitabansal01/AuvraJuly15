@@ -81,29 +81,47 @@ class StreakService:
         
         return streak_data
     
-    def calculate_streak_from_actions(self, uid: str) -> int:
+    def _get_user_today(self, timezone_str: str = None) -> date:
+        """Get today's date in user's timezone."""
+        from datetime import datetime
+        
+        if not timezone_str:
+            # Default to IST (India Standard Time) as that's the user's timezone
+            timezone_str = "Asia/Kolkata"
+        
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(timezone_str)
+            return datetime.now(tz).date()
+        except Exception:
+            # Fallback to UTC
+            return datetime.utcnow().date()
+    
+    def calculate_streak_from_actions(self, uid: str, user_timezone: str = None) -> int:
         """
         Calculate streak based on ActionPlanItem completions.
         
         STREAK RULES:
         1. Fully completed day (4/4 items) = counts towards streak (+1)
-        2. Frozen day with ANY completions = counts towards streak (+1)
-           (Freeze = "I did some work, count this day")
-        3. Frozen day with NO completions = continues chain but doesn't add
-           (Proactive freeze = "I can't do anything today, don't break my streak")
-        4. Incomplete day (not frozen) = breaks streak
+        2. Frozen day = counts towards streak (+1) - freeze protects the day
+        3. Incomplete day (not frozen) = breaks streak
         
         Starts from YESTERDAY (today excluded - user hasn't had full day).
         
         Args:
             uid: User ID
+            user_timezone: User's timezone string (e.g., "Asia/Kolkata")
             
         Returns:
             Current consecutive day streak count
         """
         streak = 0
-        # START FROM YESTERDAY - today excluded
-        check_date = date.today() - timedelta(days=1)
+        
+        # Get today in user's timezone, then calculate yesterday
+        today = self._get_user_today(user_timezone)
+        check_date = today - timedelta(days=1)
+        
+        logger.info(f"Streak calc for {uid}: user_timezone={user_timezone}, today={today}, starting from yesterday={check_date}")
         
         # Get streak data for freeze check
         streak_data = self.get_or_create_streak_data(uid)
@@ -145,26 +163,22 @@ class StreakService:
                     logger.info(f"  → FULL COMPLETE: streak={streak}")
                     check_date -= timedelta(days=1)
                 
-                # Case 2: FROZEN with SOME completions = streak day (user did work + froze)
-                elif is_frozen and completed_count > 0:
+                # Case 2: FROZEN = streak day (freeze protects regardless of completion)
+                elif is_frozen:
                     streak += 1
-                    logger.info(f"  → FROZEN+PARTIAL: streak={streak}")
+                    logger.info(f"  → FROZEN: streak={streak}")
                     check_date -= timedelta(days=1)
                 
-                # Case 3: FROZEN with NO completions = continue chain (proactive freeze)
-                elif is_frozen and completed_count == 0:
-                    logger.info(f"  → FROZEN+PROACTIVE: continuing chain")
-                    check_date -= timedelta(days=1)
-                
-                # Case 4: NOT frozen and NOT complete = streak ends
+                # Case 3: NOT frozen and NOT complete = streak ends
                 else:
-                    logger.info(f"  → INCOMPLETE: streak ends at {streak}")
+                    logger.info(f"  → INCOMPLETE (not frozen): streak ends at {streak}")
                     break
             else:
                 # No plan for this date
                 if is_frozen:
-                    # Proactive freeze with no plan - continue chain
-                    logger.info(f"Streak calc: {check_date} - NO PLAN but FROZEN, continuing")
+                    # Proactive freeze - counts as streak
+                    streak += 1
+                    logger.info(f"Streak calc: {check_date} - NO PLAN but FROZEN, streak={streak}")
                     check_date -= timedelta(days=1)
                 else:
                     # No plan and not frozen - streak ends
@@ -319,22 +333,26 @@ class StreakService:
         frozen_dates = self._get_frozen_dates(streak_data)
         return check_date in frozen_dates
     
-    def get_missed_days(self, uid: str) -> list:
+    def get_missed_days(self, uid: str, user_timezone: str = None) -> list:
         """
         Get list of consecutive missed days starting from yesterday going back.
         
         MISSED DAY RULES (consistent with streak calculation):
         - Fully completed = NOT missed
-        - Frozen with ANY completions = NOT missed (counted as streak day)
-        - Frozen with NO completions = NOT missed (proactive freeze)
+        - Frozen = NOT missed (freeze protects the day)
         - Incomplete and NOT frozen = MISSED
+        
+        Args:
+            uid: User ID
+            user_timezone: User's timezone string
         
         Returns:
             List of date objects for each missed day (most recent first)
         """
         streak_data = self.get_or_create_streak_data(uid)
         missed_days = []
-        check_date = date.today() - timedelta(days=1)  # Start from yesterday
+        today = self._get_user_today(user_timezone)
+        check_date = today - timedelta(days=1)  # Start from yesterday
         
         while True:
             # Get the plan for this date
@@ -399,9 +417,13 @@ class StreakService:
         
         return missed_days
     
-    def get_streak_risk_status(self, uid: str) -> Dict[str, Any]:
+    def get_streak_risk_status(self, uid: str, user_timezone: str = None) -> Dict[str, Any]:
         """
         Check if user's streak is at risk and return status.
+        
+        Args:
+            uid: User ID
+            user_timezone: User's timezone string
         
         Returns:
             {
@@ -415,7 +437,7 @@ class StreakService:
             }
         """
         streak_data = self.get_or_create_streak_data(uid)
-        today = date.today()
+        today = self._get_user_today(user_timezone)
         
         # Check if today has any completions
         today_completed = self.db.query(func.count(ActionPlanItem.id)).join(
@@ -431,8 +453,8 @@ class StreakService:
         # Check if today is already frozen
         today_frozen = self._is_date_frozen(streak_data, today)
         
-        # Get missed days
-        missed_days = self.get_missed_days(uid)
+        # Get missed days (with timezone)
+        missed_days = self.get_missed_days(uid, user_timezone)
         missed_days_count = len(missed_days)
         
         # Determine if at risk
@@ -451,9 +473,13 @@ class StreakService:
             "today_frozen": today_frozen
         }
     
-    def use_freeze_proactive(self, uid: str) -> Dict[str, Any]:
+    def use_freeze_proactive(self, uid: str, user_timezone: str = None) -> Dict[str, Any]:
         """
         Use freeze proactively for today (user knows they won't complete actions).
+        
+        Args:
+            uid: User ID
+            user_timezone: User's timezone string
         
         Returns:
             {
@@ -463,7 +489,7 @@ class StreakService:
             }
         """
         streak_data = self.get_or_create_streak_data(uid)
-        today = date.today()
+        today = self._get_user_today(user_timezone)
         
         # Check if already frozen today
         if self._is_date_frozen(streak_data, today):
@@ -550,7 +576,7 @@ class StreakService:
             "frozen_dates": frozen_dates
         }
     
-    def get_full_streak_status(self, uid: str) -> Dict[str, Any]:
+    def get_full_streak_status(self, uid: str, user_timezone: str = None) -> Dict[str, Any]:
         """
         Get complete streak status for API response.
         
@@ -559,19 +585,31 @@ class StreakService:
         
         Args:
             uid: User ID
+            user_timezone: User's timezone string (e.g., "Asia/Kolkata")
             
         Returns:
-            Dictionary with streak status and risk information
+            Dictionary with streak status and risk information including:
+            - is_broken: True if streak is broken (missed days and can't recover)
+            - at_risk: True if streak can be recovered with freezes
         """
         streak_data = self.get_or_create_streak_data(uid)
-        today = date.today()
+        today = self._get_user_today(user_timezone)
         
-        # Get risk status
-        risk_status = self.get_streak_risk_status(uid)
+        # Get risk status (with timezone)
+        risk_status = self.get_streak_risk_status(uid, user_timezone)
         
-        # Calculate current streak (recalculated to be accurate)
-        # NOTE: Removed TEST_USER hardcode - now calculates real streak for all users
-        current = self.calculate_streak_from_actions(uid)
+        # Calculate current streak (with timezone)
+        current = self.calculate_streak_from_actions(uid, user_timezone)
+        
+        # Determine if streak is broken or at risk
+        missed_days_count = risk_status["missed_days_count"]
+        freeze_count = streak_data.freeze_count
+        
+        # At risk = has missed days AND has enough freezes to recover
+        at_risk = missed_days_count > 0 and freeze_count >= missed_days_count
+        
+        # Broken = has missed days AND NOT enough freezes
+        is_broken = missed_days_count > 0 and freeze_count < missed_days_count
         
         # Update longest if needed
         longest = max(current, streak_data.longest_streak)
@@ -579,17 +617,23 @@ class StreakService:
             streak_data.longest_streak = longest
             self.db.commit()
         
+        logger.info(f"Streak status for {uid}: current={current}, missed={missed_days_count}, "
+                   f"freezes={freeze_count}, at_risk={at_risk}, is_broken={is_broken}")
+        
         return {
             "current_streak": current,
             "longest_streak": longest,
-            "freeze_count": streak_data.freeze_count,
+            "freeze_count": freeze_count,
             "last_activity_date": streak_data.last_activity_date.isoformat() if streak_data.last_activity_date else None,
             # Risk and freeze status
+            "is_broken": is_broken,
+            "at_risk": at_risk,
             "streak_at_risk": risk_status["streak_at_risk"],
-            "missed_days_count": risk_status["missed_days_count"],
+            "missed_days_count": missed_days_count,
             "missed_dates": risk_status.get("missed_dates", []),
             "can_freeze": risk_status["can_freeze"],
             "freezes_needed": risk_status["freezes_needed"],
             "today_completed": risk_status["today_completed"],
             "today_frozen": risk_status["today_frozen"]
         }
+
