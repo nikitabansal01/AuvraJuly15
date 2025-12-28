@@ -933,11 +933,37 @@ class ActionPlanGenerator:
             Formatted plan response if carryforward happened, None otherwise
         """
         from datetime import timedelta
+        from sqlalchemy import text
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserStreakData
         
         TARGET_ACTIONS = 4  # Standard action plan size
+        lock_key = hash(f"carryforward:{user_id}:{today}") % 2147483647  # int32 range
+        got_lock = False
         
         try:
+            # Acquire advisory lock to prevent race conditions
+            lock_result = await db.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": lock_key}
+            )
+            got_lock = lock_result.scalar()
+            
+            if not got_lock:
+                logger.info(f"🧊 CARRYFORWARD: Another request already processing for {user_id}, checking for existing plan")
+                # Another request is handling this, wait a bit and check for existing plan
+                import asyncio
+                await asyncio.sleep(0.5)
+                existing = await self._get_existing_plan(user_id, today, db)
+                if existing:
+                    return await self._format_plan_response(existing, db)
+                return None
+            
+            # Double-check: plan might have been created while we waited for lock
+            existing_plan = await self._get_existing_plan(user_id, today, db)
+            if existing_plan:
+                logger.info(f"🧊 CARRYFORWARD: Plan already exists after acquiring lock, returning existing")
+                return await self._format_plan_response(existing_plan, db)
+            
             logger.info(f"🧊 CARRYFORWARD CHECK: user={user_id}, today={today}")
             
             # Get user's streak data to check frozen dates
@@ -1177,6 +1203,16 @@ class ActionPlanGenerator:
                     logger.error(f"Failed to fetch existing plan after race condition: {fetch_err}")
             
             return None
+        finally:
+            # Release advisory lock if we acquired it
+            if got_lock:
+                try:
+                    await db.execute(
+                        text("SELECT pg_advisory_unlock(:key)"),
+                        {"key": lock_key}
+                    )
+                except Exception as unlock_err:
+                    logger.warning(f"Failed to release carryforward lock: {unlock_err}")
     
     async def _generate_partial_actions(
         self,
