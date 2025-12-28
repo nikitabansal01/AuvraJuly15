@@ -1161,7 +1161,21 @@ class ActionPlanGenerator:
             return await self._format_plan_response(new_plan, db)
             
         except Exception as e:
+            error_str = str(e)
             logger.error(f"Error checking for carryforward plan: {e}")
+            
+            # Handle race condition - if plan already exists, rollback and fetch it
+            if "duplicate key" in error_str.lower() or "unique" in error_str.lower():
+                logger.info(f"Race condition detected - plan already exists, rolling back and fetching")
+                try:
+                    await db.rollback()
+                    # Fetch the existing plan that was created by the other request
+                    existing = await self._get_existing_plan(user_id, today, db)
+                    if existing:
+                        return await self._format_plan_response(existing, db)
+                except Exception as fetch_err:
+                    logger.error(f"Failed to fetch existing plan after race condition: {fetch_err}")
+            
             return None
     
     async def _generate_partial_actions(
