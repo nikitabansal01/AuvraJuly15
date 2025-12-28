@@ -89,6 +89,10 @@ class StreakService:
         Previously: 1+ action = streak (Duolingo model)
         Now: ALL 4 actions completed = streak day
         
+        IMPORTANT: Starts from YESTERDAY, not today.
+        Today is excluded because user may not have had a chance to complete yet.
+        Frozen days continue the streak (don't break it) but don't add to count.
+        
         Args:
             uid: User ID
             
@@ -96,12 +100,22 @@ class StreakService:
             Current consecutive day streak count
         """
         streak = 0
-        check_date = date.today()
+        # START FROM YESTERDAY - today is excluded because user hasn't had full day yet
+        check_date = date.today() - timedelta(days=1)
         
         # Get streak data for freeze check
         streak_data = self.get_or_create_streak_data(uid)
         
         while True:
+            # Check if this date is frozen - frozen days continue streak but don't add to count
+            is_frozen = self._is_date_frozen(streak_data, check_date)
+            
+            if is_frozen:
+                # Frozen day - continue streak chain but don't increment count
+                logger.info(f"Streak calc: {check_date} is FROZEN, continuing chain")
+                check_date -= timedelta(days=1)
+                continue
+            
             # Get the plan for this date
             plan = self.db.query(ActionPlan).filter(
                 and_(
@@ -131,21 +145,18 @@ class StreakService:
                 # ALL items must be completed for streak to count
                 if total_items > 0 and completed_count == total_items:
                     streak += 1
+                    logger.info(f"Streak calc: {check_date} COMPLETED ({completed_count}/{total_items}), streak={streak}")
                     check_date -= timedelta(days=1)
                 else:
-                    # Not all completed - check if frozen
-                    if self._is_date_frozen(streak_data, check_date):
-                        check_date -= timedelta(days=1)
-                    else:
-                        break
-            else:
-                # No plan for this date - check if frozen
-                if self._is_date_frozen(streak_data, check_date):
-                    check_date -= timedelta(days=1)
-                else:
-                    # No plan and not frozen - streak ends
+                    # Not all completed and not frozen - streak ends
+                    logger.info(f"Streak calc: {check_date} INCOMPLETE ({completed_count}/{total_items}), streak ends")
                     break
+            else:
+                # No plan for this date and not frozen - streak ends
+                logger.info(f"Streak calc: {check_date} NO PLAN, streak ends")
+                break
         
+        logger.info(f"Final streak for {uid}: {streak}")
         return streak
     
     def get_longest_streak(self, uid: str) -> int:
