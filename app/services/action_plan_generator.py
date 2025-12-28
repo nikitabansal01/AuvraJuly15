@@ -702,16 +702,16 @@ class ActionPlanGenerator:
         # Get today's date in user's timezone
         today = self._get_user_today(user_timezone)
         
-        # Check if plan exists for today
+        # Check if plan exists for today - ONE plan per day
         existing_plan = await self._get_existing_plan(user_id, today, db)
         
+        # If plan already exists for today, return it (never replace)
         if existing_plan:
             logger.info(f"Found existing plan for user {user_id} on {today}")
             return await self._format_plan_response(existing_plan, db)
         
-        # Check for carryforward from frozen days
-        # If yesterday (or recent days) were frozen AND had incomplete items,
-        # carry those forward instead of generating new plan
+        # No plan for today - check if we should carryforward from frozen day
+        # This only runs when generating a NEW plan for today
         carryforward_result = await self._check_and_carryforward_frozen_plan(
             user_id, today, user_timezone, db
         )
@@ -938,26 +938,40 @@ class ActionPlanGenerator:
         TARGET_ACTIONS = 4  # Standard action plan size
         
         try:
+            logger.info(f"🧊 CARRYFORWARD CHECK: user={user_id}, today={today}")
+            
             # Get user's streak data to check frozen dates
             streak_result = await db.execute(
                 select(UserStreakData).where(UserStreakData.uid == user_id)
             )
             streak_data = streak_result.scalar_one_or_none()
             
-            if not streak_data or not streak_data.freeze_used_dates:
+            if not streak_data:
+                logger.info(f"🧊 CARRYFORWARD: No streak data found for {user_id}")
+                return None
+            
+            logger.info(f"🧊 CARRYFORWARD: freeze_used_dates = {streak_data.freeze_used_dates}")
+            
+            if not streak_data.freeze_used_dates:
+                logger.info(f"🧊 CARRYFORWARD: No frozen dates for {user_id}")
                 return None  # No frozen dates
             
             # Parse frozen dates
             frozen_dates = []
             try:
                 frozen_dates = [date.fromisoformat(d) for d in streak_data.freeze_used_dates if d]
-            except (ValueError, TypeError):
+                logger.info(f"🧊 CARRYFORWARD: Parsed frozen dates = {frozen_dates}")
+            except (ValueError, TypeError) as e:
+                logger.error(f"🧊 CARRYFORWARD: Error parsing dates: {e}")
                 return None
             
             # Check if yesterday (or recent days) were frozen
             yesterday = today - timedelta(days=1)
             
+            logger.info(f"🧊 CARRYFORWARD: yesterday={yesterday}, in frozen_dates? {yesterday in frozen_dates}")
+            
             if yesterday not in frozen_dates:
+                logger.info(f"🧊 CARRYFORWARD: Yesterday {yesterday} was NOT frozen, skipping carryforward")
                 return None  # Yesterday wasn't frozen
             
             logger.info(f"Yesterday ({yesterday}) was frozen for user {user_id}, checking for incomplete items")
