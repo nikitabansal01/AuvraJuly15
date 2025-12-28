@@ -85,13 +85,15 @@ class StreakService:
         """
         Calculate streak based on ActionPlanItem completions.
         
-        UPDATED: ALL actions must be completed for a day to count as streak.
-        Previously: 1+ action = streak (Duolingo model)
-        Now: ALL 4 actions completed = streak day
+        STREAK RULES:
+        1. Fully completed day (4/4 items) = counts towards streak (+1)
+        2. Frozen day with ANY completions = counts towards streak (+1)
+           (Freeze = "I did some work, count this day")
+        3. Frozen day with NO completions = continues chain but doesn't add
+           (Proactive freeze = "I can't do anything today, don't break my streak")
+        4. Incomplete day (not frozen) = breaks streak
         
-        IMPORTANT: Starts from YESTERDAY, not today.
-        Today is excluded because user may not have had a chance to complete yet.
-        Frozen days continue the streak (don't break it) but don't add to count.
+        Starts from YESTERDAY (today excluded - user hasn't had full day).
         
         Args:
             uid: User ID
@@ -100,21 +102,14 @@ class StreakService:
             Current consecutive day streak count
         """
         streak = 0
-        # START FROM YESTERDAY - today is excluded because user hasn't had full day yet
+        # START FROM YESTERDAY - today excluded
         check_date = date.today() - timedelta(days=1)
         
         # Get streak data for freeze check
         streak_data = self.get_or_create_streak_data(uid)
         
         while True:
-            # Check if this date is frozen - frozen days continue streak but don't add to count
             is_frozen = self._is_date_frozen(streak_data, check_date)
-            
-            if is_frozen:
-                # Frozen day - continue streak chain but don't increment count
-                logger.info(f"Streak calc: {check_date} is FROZEN, continuing chain")
-                check_date -= timedelta(days=1)
-                continue
             
             # Get the plan for this date
             plan = self.db.query(ActionPlan).filter(
@@ -142,19 +137,39 @@ class StreakService:
                     )
                 ).scalar() or 0
                 
-                # ALL items must be completed for streak to count
+                logger.info(f"Streak calc: {check_date} - {completed_count}/{total_items} completed, frozen={is_frozen}")
+                
+                # Case 1: ALL items completed = streak day
                 if total_items > 0 and completed_count == total_items:
                     streak += 1
-                    logger.info(f"Streak calc: {check_date} COMPLETED ({completed_count}/{total_items}), streak={streak}")
+                    logger.info(f"  → FULL COMPLETE: streak={streak}")
                     check_date -= timedelta(days=1)
+                
+                # Case 2: FROZEN with SOME completions = streak day (user did work + froze)
+                elif is_frozen and completed_count > 0:
+                    streak += 1
+                    logger.info(f"  → FROZEN+PARTIAL: streak={streak}")
+                    check_date -= timedelta(days=1)
+                
+                # Case 3: FROZEN with NO completions = continue chain (proactive freeze)
+                elif is_frozen and completed_count == 0:
+                    logger.info(f"  → FROZEN+PROACTIVE: continuing chain")
+                    check_date -= timedelta(days=1)
+                
+                # Case 4: NOT frozen and NOT complete = streak ends
                 else:
-                    # Not all completed and not frozen - streak ends
-                    logger.info(f"Streak calc: {check_date} INCOMPLETE ({completed_count}/{total_items}), streak ends")
+                    logger.info(f"  → INCOMPLETE: streak ends at {streak}")
                     break
             else:
-                # No plan for this date and not frozen - streak ends
-                logger.info(f"Streak calc: {check_date} NO PLAN, streak ends")
-                break
+                # No plan for this date
+                if is_frozen:
+                    # Proactive freeze with no plan - continue chain
+                    logger.info(f"Streak calc: {check_date} - NO PLAN but FROZEN, continuing")
+                    check_date -= timedelta(days=1)
+                else:
+                    # No plan and not frozen - streak ends
+                    logger.info(f"Streak calc: {check_date} - NO PLAN, streak ends at {streak}")
+                    break
         
         logger.info(f"Final streak for {uid}: {streak}")
         return streak
@@ -308,7 +323,11 @@ class StreakService:
         """
         Get list of consecutive missed days starting from yesterday going back.
         
-        UPDATED: A day is only considered "complete" if ALL items are done.
+        MISSED DAY RULES (consistent with streak calculation):
+        - Fully completed = NOT missed
+        - Frozen with ANY completions = NOT missed (counted as streak day)
+        - Frozen with NO completions = NOT missed (proactive freeze)
+        - Incomplete and NOT frozen = MISSED
         
         Returns:
             List of date objects for each missed day (most recent first)
@@ -347,20 +366,27 @@ class StreakService:
                     )
                 ).scalar() or 0
                 
-                # ALL items must be completed for the day to count as complete
+                # Fully completed = stop, not missed
                 if total_items > 0 and completed_count == total_items:
-                    # Day was fully completed, stop checking
                     break
-                elif is_frozen:
-                    # Day was frozen, skip but continue checking
+                
+                # Frozen with ANY completions = not missed (counted as streak day)
+                elif is_frozen and completed_count > 0:
+                    break  # This day counts, stop checking
+                
+                # Frozen with NO completions = not missed (proactive freeze)
+                elif is_frozen and completed_count == 0:
                     check_date -= timedelta(days=1)
+                    continue
+                
+                # NOT frozen and NOT complete = missed
                 else:
-                    # Day was not fully completed - it's missed
                     missed_days.append(check_date)
                     check_date -= timedelta(days=1)
             else:
                 # No plan for this date
                 if is_frozen:
+                    # Proactive freeze - not missed
                     check_date -= timedelta(days=1)
                 else:
                     # No plan and not frozen - missed
