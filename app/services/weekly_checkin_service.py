@@ -254,17 +254,47 @@ class WeeklyCheckInService:
         ai_engine = WeeklyCheckInAI(self.db)
         first_question = ai_engine.generate_opening_question(uid, checkin)
         
+        # Store initial bot message
+        messages = [{
+            "role": "assistant",
+            "content": first_question.message,
+            "question_key": first_question.question_key,
+            "timestamp": datetime.utcnow().isoformat()
+        }]
+        checkin.raw_messages = messages
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(checkin, "raw_messages")
+        self.db.commit()
+        
         return checkin, self._format_ai_question(first_question, checkin)
     
+    def _get_chat_history(self, checkin: WeeklyCheckIn) -> List[Dict[str, Any]]:
+        """Convert raw messages to frontend chat format."""
+        history = []
+        if not checkin.raw_messages:
+            return history
+            
+        for i, msg in enumerate(checkin.raw_messages):
+            is_bot = msg.get("role") == "assistant"
+            history.append({
+                "id": f"hist_{i}",
+                "text": msg.get("content", ""),
+                "isBot": is_bot
+            })
+        return history
+
     def _format_ai_question(self, ai_question, checkin: WeeklyCheckIn) -> Dict[str, Any]:
         """Format AI-generated question for API response."""
         from app.services.weekly_checkin_ai import AIQuestion
+        
+        history = self._get_chat_history(checkin)
         
         if ai_question is None:
             return {
                 "is_complete": True,
                 "question_key": None,
-                "message": "Thanks for checking in! 💜 I'll use this to personalize your plan."
+                "message": "Thanks for checking in! 💜 I'll use this to personalize your plan.",
+                "history": history
             }
         
         return {
@@ -276,7 +306,8 @@ class WeeklyCheckInService:
             "is_required": ai_question.is_required,
             "slider_labels": ai_question.slider_labels,
             "current_index": checkin.current_question_index,
-            "total_questions": 6  # Approximate - AI flow is dynamic
+            "total_questions": 6,  # Approximate - AI flow is dynamic
+            "history": history
         }
     
     def get_question_at_index(self, index: int) -> Optional[WeeklyCheckInQuestion]:
@@ -418,6 +449,19 @@ class WeeklyCheckInService:
             previous_response=response,
             previous_question_key=question_key
         )
+        
+        if next_ai_question:
+             # Store bot message
+             messages = checkin.raw_messages or []
+             messages.append({
+                "role": "assistant",
+                "content": next_ai_question.message,
+                "question_key": next_ai_question.question_key,
+                "timestamp": datetime.utcnow().isoformat()
+             })
+             checkin.raw_messages = messages
+             from sqlalchemy.orm.attributes import flag_modified
+             flag_modified(checkin, "raw_messages")
         
         self.db.commit()
         self.db.refresh(checkin)

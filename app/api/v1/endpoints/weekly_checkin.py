@@ -29,6 +29,12 @@ class TapOption(BaseModel):
     text: str
 
 
+class ChatMessage(BaseModel):
+    id: str
+    text: str
+    isBot: bool
+
+
 class QuestionResponse(BaseModel):
     """Response containing the next question in the check-in flow."""
     is_complete: bool
@@ -40,6 +46,7 @@ class QuestionResponse(BaseModel):
     current_index: int = 0
     total_questions: int = 0
     summary: Optional[str] = None  # Only on completion
+    history: List[ChatMessage] = []  # Chat history for context restoration
 
 
 class CheckInStatusResponse(BaseModel):
