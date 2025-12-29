@@ -202,7 +202,7 @@ async def submit_response(
     service = WeeklyCheckInService(db)
     
     try:
-        checkin, question_data = service.submit_response(
+        checkin, question_data = await service.submit_response(
             checkin_id=request.checkin_id,
             question_key=request.question_key,
             response=request.response,
@@ -229,7 +229,8 @@ async def submit_response(
             is_required=question_data.get("is_required", False),
             current_index=question_data.get("current_index", 0),
             total_questions=question_data.get("total_questions", 0),
-            summary=question_data.get("summary")
+            summary=question_data.get("summary"),
+            history=question_data.get("history", [])
         )
     )
 

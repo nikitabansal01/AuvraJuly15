@@ -394,7 +394,7 @@ class WeeklyCheckInService:
     # RESPONSE HANDLING
     # ═══════════════════════════════════════════════════════════════════════════
     
-    def submit_response(
+    async def submit_response(
         self, 
         checkin_id: str, 
         question_key: str, 
@@ -443,7 +443,7 @@ class WeeklyCheckInService:
         # Use AI engine to generate next question dynamically
         from app.services.weekly_checkin_ai import WeeklyCheckInAI
         ai_engine = WeeklyCheckInAI(self.db)
-        next_ai_question = ai_engine.generate_followup_question(
+        next_ai_question = await ai_engine.generate_followup_question(
             uid=checkin.uid,
             checkin=checkin,
             previous_response=response,

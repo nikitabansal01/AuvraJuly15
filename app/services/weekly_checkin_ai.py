@@ -23,12 +23,17 @@ from dataclasses import dataclass
 from enum import Enum
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
+from openai import AsyncOpenAI
 
 from app.core.database import (
     WeeklyCheckIn, UserProfile, SymptomLog, 
     ActionPlan, ActionPlanItem, UserResponse
 )
+from app.core.config import Settings
 from app.utils.timezone_utils import get_user_current_date
+
+settings = Settings()
+client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +255,7 @@ class WeeklyCheckInAI:
             is_required=True
         )
     
-    def generate_followup_question(
+    async def generate_followup_question(
         self, 
         uid: str, 
         checkin: WeeklyCheckIn,
@@ -259,270 +264,103 @@ class WeeklyCheckInAI:
     ) -> Optional[AIQuestion]:
         """
         Generate the next question based on previous response.
-        This is where the AI "decides" what to ask next.
+        Uses LLM to generate dynamic questions and options.
         """
         context = self.get_user_context(uid)
         
-        # Decision tree based on conversation state
-        if previous_question_key == "concern_severity":
-            return self._generate_post_severity_question(checkin, previous_response, context)
+        # If we just finished the severity slider, we can use the LLM to start the investigation
+        # Or if we are in the middle of the conversation
         
-        elif previous_question_key == "factors_negative":
-            return self._generate_positive_factors_question(checkin, context)
+        # Build conversation history for LLM
+        history = []
+        if checkin.raw_messages:
+            for msg in checkin.raw_messages:
+                role = "assistant" if msg.get("role") == "assistant" else "user"
+                history.append({"role": role, "content": msg.get("content", "")})
         
-        elif previous_question_key == "factors_positive":
-            return self._generate_action_reflection_question(checkin, context)
+        # Add the most recent user response if not already in history (it should be added by service)
+        # But just in case, we rely on raw_messages being up to date.
         
-        elif previous_question_key == "action_reflection":
-            return self._generate_wellbeing_question(checkin, context)
-        
-        elif previous_question_key == "overall_wellbeing":
-            return self._generate_closing_question(checkin, context)
-        
-        elif previous_question_key == "closing" or previous_question_key == "concerns_next_week":
-            # End of check-in
-            return None
-        
-        return None
-    
-    def _generate_post_severity_question(
-        self, 
-        checkin: WeeklyCheckIn, 
-        severity: int,
-        context: Dict[str, Any]
-    ) -> AIQuestion:
-        """Generate follow-up after severity rating."""
-        
-        # Categorize severity
-        if severity <= 3:
-            category = "low"
-            message = "That's encouraging! 🌟 Were there things that made it worse at times?"
-        elif severity <= 6:
-            category = "medium"
-            message = "I see. Did any of these affect it?"
-        else:
-            category = "high"
-            message = "I'm sorry to hear that. Let's figure out what might have triggered it."
-        
-        # Get personalized negative factors
-        # Prioritize factors that have been triggers before
-        options = self._get_personalized_factors(
-            self.NEGATIVE_FACTORS,
-            context.get("trigger_factors", []),
-            limit=6
-        )
-        
-        return AIQuestion(
-            question_key="factors_negative",
-            question_type=QuestionType.MULTI_SELECT,
-            message=message,
-            tap_options=options,
-            is_required=True
-        )
-    
-    def _generate_positive_factors_question(
-        self, 
-        checkin: WeeklyCheckIn,
-        context: Dict[str, Any]
-    ) -> AIQuestion:
-        """Generate question about positive factors."""
-        
-        # Adjust message based on severity
-        if checkin.concern_severity and checkin.concern_severity <= 4:
-            message = "What helped you feel better this week? 💜"
-        else:
-            message = "Despite the challenges, was there anything that helped?"
-        
-        # Prioritize factors that have worked before
-        options = self._get_personalized_factors(
-            self.POSITIVE_FACTORS,
-            context.get("effective_factors", []),
-            limit=6
-        )
-        
-        return AIQuestion(
-            question_key="factors_positive",
-            question_type=QuestionType.MULTI_SELECT,
-            message=message,
-            tap_options=options,
-            is_required=True
-        )
-    
-    def _generate_action_reflection_question(
-        self, 
-        checkin: WeeklyCheckIn,
-        context: Dict[str, Any]
-    ) -> AIQuestion:
-        """Generate question about action plan reflection."""
-        
-        message = "How did you find this week's action plan?"
-        
-        options = [
-            {"id": "really_helpful", "text": "Really helpful 🌟"},
-            {"id": "somewhat_helpful", "text": "Somewhat helpful"},
-            {"id": "neutral", "text": "Neutral"},
-            {"id": "too_difficult", "text": "Too difficult"},
-            {"id": "didnt_follow", "text": "Didn't follow it"},
-        ]
-        
-        return AIQuestion(
-            question_key="action_reflection",
-            question_type=QuestionType.TAP_CHOICE,
-            message=message,
-            tap_options=options,
-            is_required=True
-        )
-    
-    def _generate_wellbeing_question(
-        self, 
-        checkin: WeeklyCheckIn,
-        context: Dict[str, Any]
-    ) -> AIQuestion:
-        """Generate overall wellbeing question."""
-        
-        message = "Overall, how would you rate your wellbeing this week?"
-        
-        return AIQuestion(
-            question_key="overall_wellbeing",
-            question_type=QuestionType.SLIDER,
-            message=message,
-            tap_options=[],
-            slider_labels={
-                "1": "Really low",
-                "5": "Okay",
-                "9": "Great!"
-            },
-            is_required=True
-        )
-    
-    def _generate_closing_question(
-        self, 
-        checkin: WeeklyCheckIn,
-        context: Dict[str, Any]
-    ) -> AIQuestion:
-        """Generate closing question or summary."""
-        
-        # Build a personalized closing
-        symptom = checkin.top_concern or "bloating"
-        severity = checkin.concern_severity or 5
-        wellbeing = checkin.overall_wellbeing or 5
-        
-        # Create encouraging closing based on data
-        if wellbeing >= 7 and severity <= 3:
-            message = "You're doing amazing! 🌟 I'll keep optimizing your plan. Anything you want me to focus on next week?"
-        elif wellbeing >= 5:
-            message = "Thanks for sharing! I'll adjust your plan based on what you've told me. Any specific concerns for next week?"
-        else:
-            message = "I hear you. I'll make sure next week's plan addresses what you're going through. Is there anything specific you'd like help with?"
-        
-        return AIQuestion(
-            question_key="concerns_next_week",
-            question_type=QuestionType.FREE_TEXT,
-            message=message,
-            tap_options=[
-                {"id": "nothing", "text": "Nothing specific"},
-                {"id": "more_energy", "text": "More energy"},
-                {"id": "better_sleep", "text": "Better sleep"},
-                {"id": "less_stress", "text": "Less stress"},
-            ],
-            is_required=False
-        )
-    
+        return await self.generate_with_llm(uid, checkin, history, context)
+
     # ═══════════════════════════════════════════════════════════════════════════
-    # HELPER METHODS
-    # ═══════════════════════════════════════════════════════════════════════════
-    
-    def _get_slider_labels_for_symptom(self, symptom: str) -> Dict[str, str]:
-        """Get appropriate slider labels for different symptoms."""
-        symptom_lower = symptom.lower()
-        
-        if symptom_lower in ["bloating", "cramps", "headaches", "pain"]:
-            return {"1": "None", "3": "Mild", "5": "Moderate", "7": "Strong", "9": "Extreme"}
-        elif symptom_lower in ["fatigue", "tiredness"]:
-            return {"1": "Energetic", "3": "Okay", "5": "Tired", "7": "Exhausted", "9": "Drained"}
-        elif symptom_lower in ["mood", "mood swings", "anxiety"]:
-            return {"1": "Stable", "3": "Minor", "5": "Noticeable", "7": "Difficult", "9": "Overwhelming"}
-        elif symptom_lower in ["acne", "skin"]:
-            return {"1": "Clear", "3": "Few spots", "5": "Moderate", "7": "Significant", "9": "Severe"}
-        else:
-            return {"1": "None", "3": "Mild", "5": "Moderate", "7": "Strong", "9": "Extreme"}
-    
-    def _get_personalized_factors(
-        self, 
-        all_factors: List[Dict], 
-        user_history: List[str],
-        limit: int = 6
-    ) -> List[Dict[str, str]]:
-        """
-        Get personalized factor options.
-        Prioritizes factors the user has selected before.
-        """
-        # Count frequency of each factor in history
-        factor_counts = {}
-        for factor in user_history:
-            factor_lower = factor.lower().replace(" ", "_")
-            factor_counts[factor_lower] = factor_counts.get(factor_lower, 0) + 1
-        
-        # Sort factors by historical relevance
-        sorted_factors = sorted(
-            all_factors,
-            key=lambda f: factor_counts.get(f["id"], 0),
-            reverse=True
-        )
-        
-        # Take top factors
-        selected = sorted_factors[:limit]
-        
-        # Format for response
-        return [
-            {"id": f["id"], "text": f.get("emoji", "") + " " + f["text"]}
-            for f in selected
-        ]
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # LLM INTEGRATION (FUTURE ENHANCEMENT)
+    # LLM INTEGRATION
     # ═══════════════════════════════════════════════════════════════════════════
     
     async def generate_with_llm(
         self, 
         uid: str, 
         checkin: WeeklyCheckIn,
-        conversation_so_far: List[Dict]
+        conversation_so_far: List[Dict],
+        context: Dict[str, Any]
     ) -> Optional[AIQuestion]:
         """
         Use LLM to generate truly dynamic questions.
-        
-        This is a future enhancement that will:
-        1. Send conversation context to GPT
-        2. Get a structured response with question + type + options
-        3. Validate and return
-        
-        For now, we use the rule-based system above.
         """
-        # TODO: Implement LLM-powered question generation
-        # 
-        # prompt = f'''
-        # You are Auvra, a caring health companion conducting a weekly check-in.
-        # 
-        # User Context:
-        # {json.dumps(self.get_user_context(uid))}
-        # 
-        # Conversation so far:
-        # {json.dumps(conversation_so_far)}
-        # 
-        # Generate the next question. Respond in JSON:
-        # {{
-        #     "message": "your question",
-        #     "question_type": "slider|tap_choice|multi_select|free_text",
-        #     "tap_options": [{{id, text}}] if applicable,
-        #     "question_key": "unique_key"
-        # }}
-        # '''
-        # 
-        # response = await openai_client.chat.completions.create(...)
-        # return parse_response(response)
+        symptom = checkin.top_concern or context.get("primary_concern", "bloating")
         
-        pass
+        system_prompt = f"""
+        You are Dr. Auvra, an empathetic and knowledgeable health companion conducting a weekly check-in.
+        Your goal is to understand the user's week, focusing on their primary concern: {symptom}.
+        
+        Context:
+        - User Name: {context.get('user_name', 'User')}
+        - Cycle Phase: {context.get('cycle_phase', 'Unknown')} (Day {context.get('cycle_day', 'Unknown')})
+        - Recent Trend: {context.get('improving_trend', 'Unknown')}
+        
+        Instructions:
+        1. Analyze the conversation history.
+        2. Acknowledge the user's input with empathy (keep it brief).
+        3. Ask ONE relevant follow-up question to investigate potential causes (diet, sleep, stress, cycle, etc.) or what helped.
+        4. Generate 3-5 short, likely answers (tap options) for the user.
+        5. If you have enough information to form a comprehensive summary/plan (usually after 3-4 exchanges), set "is_complete" to true.
+        
+        Output JSON format:
+        {{
+            "message": "...",
+            "tap_options": [{{"id": "...", "text": "..."}}],
+            "is_complete": boolean
+        }}
+        """
+        
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    *conversation_so_far
+                ],
+                temperature=0.7,
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content
+            data = json.loads(content)
+            
+            if data.get("is_complete"):
+                # Generate a closing summary/question
+                return self._generate_closing_question(checkin, context)
+            
+            # Map to AIQuestion
+            tap_options = data.get("tap_options", [])
+            # Ensure tap options have IDs
+            for i, opt in enumerate(tap_options):
+                if "id" not in opt:
+                    opt["id"] = f"opt_{i}"
+            
+            return AIQuestion(
+                question_key=f"dynamic_{len(conversation_so_far)}",
+                question_type=QuestionType.TAP_CHOICE if tap_options else QuestionType.FREE_TEXT,
+                message=data.get("message", ""),
+                tap_options=tap_options,
+                is_required=True
+            )
+            
+        except Exception as e:
+            logger.error(f"LLM generation failed: {e}")
+            # Fallback to rule-based if LLM fails
+            return self._generate_post_severity_question(checkin, 5, context)
+
     
     # ═══════════════════════════════════════════════════════════════════════════
     # SUMMARY GENERATION
