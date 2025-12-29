@@ -9,7 +9,7 @@ from datetime import date, timedelta, datetime
 from typing import Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, case
 
 from app.core.database import ActionPlanItem, ActionPlan, UserStreakData, UserReward
 
@@ -112,6 +112,8 @@ class StreakService:
         
         Starts from YESTERDAY (today excluded - user hasn't had full day).
         
+        OPTIMIZED: Batch loads all data in 2 queries instead of per-day queries.
+        
         Args:
             uid: User ID
             user_timezone: User's timezone string (e.g., "Asia/Kolkata")
@@ -130,6 +132,9 @@ class StreakService:
         # Get streak data for freeze check
         streak_data = self.get_or_create_streak_data(uid)
         
+        # Get frozen dates as a set for O(1) lookup
+        frozen_dates_set = set(streak_data.freeze_used_dates or [])
+        
         # Check if user has any plan history - if not, streak is 0
         first_plan = self.db.query(ActionPlan).filter(
             ActionPlan.uid == uid
@@ -141,39 +146,48 @@ class StreakService:
         
         first_plan_date = first_plan.plan_date
         
+        # OPTIMIZATION: Batch load all plans and their completion counts in ONE query
+        # This replaces 90+ individual queries with just 1 query
+        plans_with_counts = self.db.query(
+            ActionPlan.plan_date,
+            func.count(ActionPlanItem.id).label('total_items'),
+            func.sum(
+                case(
+                    (and_(ActionPlanItem.is_completed == True, ActionPlanItem.is_replaced.isnot(True)), 1),
+                    else_=0
+                )
+            ).label('completed_count')
+        ).outerjoin(
+            ActionPlanItem,
+            and_(
+                ActionPlanItem.plan_id == ActionPlan.id,
+                ActionPlanItem.is_replaced.isnot(True)
+            )
+        ).filter(
+            ActionPlan.uid == uid,
+            ActionPlan.plan_date >= first_plan_date,
+            ActionPlan.plan_date <= check_date
+        ).group_by(ActionPlan.plan_date).all()
+        
+        # Convert to dict for O(1) lookup: {date: (total, completed)}
+        plan_data = {
+            row.plan_date: (row.total_items or 0, row.completed_count or 0)
+            for row in plans_with_counts
+        }
+        
+        logger.info(f"Batch loaded {len(plan_data)} plans for streak calculation")
+        
         while True:
             # Don't count days before user's first plan
             if check_date < first_plan_date:
                 logger.info(f"Reached date {check_date} before first plan {first_plan_date} - stopping")
                 break
             
-            is_frozen = self._is_date_frozen(streak_data, check_date)
+            is_frozen = check_date.isoformat() in frozen_dates_set
             
-            # Get the plan for this date
-            plan = self.db.query(ActionPlan).filter(
-                and_(
-                    ActionPlan.uid == uid,
-                    ActionPlan.plan_date == check_date
-                )
-            ).first()
-            
-            if plan:
-                # Count total items in this plan (excluding replaced items)
-                total_items = self.db.query(func.count(ActionPlanItem.id)).filter(
-                    and_(
-                        ActionPlanItem.plan_id == plan.id,
-                        ActionPlanItem.is_replaced.isnot(True)
-                    )
-                ).scalar() or 0
-                
-                # Count completed items
-                completed_count = self.db.query(func.count(ActionPlanItem.id)).filter(
-                    and_(
-                        ActionPlanItem.plan_id == plan.id,
-                        ActionPlanItem.is_completed == True,
-                        ActionPlanItem.is_replaced.isnot(True)
-                    )
-                ).scalar() or 0
+            # Get plan data from pre-loaded dict (O(1) lookup)
+            if check_date in plan_data:
+                total_items, completed_count = plan_data[check_date]
                 
                 logger.info(f"Streak calc: {check_date} - {completed_count}/{total_items} completed, frozen={is_frozen}")
                 
