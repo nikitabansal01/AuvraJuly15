@@ -225,6 +225,19 @@ class WeeklyCheckInAI:
     # DYNAMIC QUESTION GENERATION
     # ═══════════════════════════════════════════════════════════════════════════
     
+    def _get_slider_labels_for_symptom(self, symptom: str) -> List[str]:
+        """Get appropriate slider labels based on symptom type."""
+        symptom_lower = symptom.lower()
+        
+        if any(x in symptom_lower for x in ["energy", "mood", "motivation", "focus"]):
+            return ["Low", "Moderate", "High"]
+        elif any(x in symptom_lower for x in ["pain", "cramps", "headache", "bloating", "acne"]):
+            return ["None", "Moderate", "Severe"]
+        elif any(x in symptom_lower for x in ["sleep", "rest"]):
+            return ["Poor", "Okay", "Great"]
+        else:
+            return ["Not at all", "Somewhat", "Very much"]
+
     def generate_opening_question(self, uid: str, checkin: WeeklyCheckIn) -> AIQuestion:
         """
         Generate the first question - always about their primary symptom.
