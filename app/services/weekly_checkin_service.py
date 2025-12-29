@@ -435,7 +435,31 @@ class WeeklyCheckInService:
         if question_key == "top_concern":
             checkin.top_concern = response
         elif question_key == "concern_severity":
-            checkin.concern_severity = int(response)
+            try:
+                # Try to convert to int directly
+                val = int(response)
+                checkin.concern_severity = val
+            except (ValueError, TypeError):
+                # If response is text (e.g. from "Type" mode), try to extract a number
+                import re
+                if isinstance(response, str):
+                    numbers = re.findall(r'\d+', response)
+                    if numbers:
+                        val = int(numbers[0])
+                        # Clamp to 1-9
+                        val = max(1, min(9, val))
+                        checkin.concern_severity = val
+                        # Update response variable so next steps use the parsed int
+                        response = val
+                    else:
+                        # Fallback if no number found - default to Moderate (5)
+                        # This ensures the flow continues even if user just typed "It was bad"
+                        logger.warning(f"Could not parse severity from '{response}', defaulting to 5")
+                        checkin.concern_severity = 5
+                        response = 5
+                else:
+                    checkin.concern_severity = 5
+                    response = 5
         elif question_key == "overall_wellbeing":
             checkin.overall_wellbeing = int(response)
         elif question_key == "factors_positive":
