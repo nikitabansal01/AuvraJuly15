@@ -88,14 +88,8 @@ class WeeklyCheckInService:
             is_due = user_today >= next_due
             return is_due, next_due
         
-        # Never done a check-in - always due if user has symptom_patterns reward
-        # (Check-in is gated behind 14-day streak reward)
-        from app.services.reward_service import RewardService
-        reward_service = RewardService(self.db)
-        if reward_service.is_reward_unlocked(uid, "symptom_patterns"):
-            return True, user_today
-        
-        return False, None
+        # Never done a check-in - always due immediately
+        return True, user_today
     
     def get_checkin_status(self, uid: str) -> Dict[str, Any]:
         """
@@ -111,21 +105,8 @@ class WeeklyCheckInService:
         """
         user_today = get_user_current_date(uid, self.db)
         
-        # Check if feature is unlocked (symptom_patterns reward at 14-day streak)
-        from app.services.reward_service import RewardService
-        reward_service = RewardService(self.db)
-        is_available = reward_service.is_reward_unlocked(uid, "symptom_patterns")
-        
-        if not is_available:
-            return {
-                "is_available": False,
-                "is_due": False,
-                "due_date": None,
-                "incomplete_id": None,
-                "last_completed": None,
-                "checkin_streak": 0,
-                "unlock_days_remaining": self._get_days_until_unlock(uid)
-            }
+        # Feature is always available
+        is_available = True
         
         # Check for incomplete session
         incomplete = self.db.query(WeeklyCheckIn).filter(
