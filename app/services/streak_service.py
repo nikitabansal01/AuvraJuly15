@@ -106,7 +106,8 @@ class StreakService:
         STREAK RULES:
         1. Fully completed day (4/4 items) = counts towards streak (+1)
         2. Frozen day = counts towards streak (+1) - freeze protects the day
-        3. Incomplete day (not frozen) = breaks streak
+        3. Empty plan (0 items) = counts towards streak (+1) - nothing to complete
+        4. Incomplete day (not frozen) = breaks streak
         
         Starts from YESTERDAY (today excluded - user hasn't had full day).
         
@@ -128,7 +129,23 @@ class StreakService:
         # Get streak data for freeze check
         streak_data = self.get_or_create_streak_data(uid)
         
+        # Check if user has any plan history - if not, streak is 0
+        first_plan = self.db.query(ActionPlan).filter(
+            ActionPlan.uid == uid
+        ).order_by(ActionPlan.plan_date.asc()).first()
+        
+        if not first_plan:
+            logger.info(f"User {uid} has no action plan history - streak is 0")
+            return 0
+        
+        first_plan_date = first_plan.plan_date
+        
         while True:
+            # Don't count days before user's first plan
+            if check_date < first_plan_date:
+                logger.info(f"Reached date {check_date} before first plan {first_plan_date} - stopping")
+                break
+            
             is_frozen = self._is_date_frozen(streak_data, check_date)
             
             # Get the plan for this date
@@ -159,8 +176,14 @@ class StreakService:
                 
                 logger.info(f"Streak calc: {check_date} - {completed_count}/{total_items} completed, frozen={is_frozen}")
                 
+                # Case 0: Empty plan (0 items) = streak day (nothing to complete)
+                if total_items == 0:
+                    streak += 1
+                    logger.info(f"  → EMPTY PLAN (0 items): streak={streak}")
+                    check_date -= timedelta(days=1)
+                
                 # Case 1: ALL items completed = streak day
-                if total_items > 0 and completed_count == total_items:
+                elif completed_count == total_items:
                     streak += 1
                     logger.info(f"  → FULL COMPLETE: streak={streak}")
                     check_date -= timedelta(days=1)
@@ -345,7 +368,10 @@ class StreakService:
         MISSED DAY RULES (consistent with streak calculation):
         - Fully completed = NOT missed, STOP looking (streak is intact from here back)
         - Frozen = NOT missed, STOP looking (freeze protects the day and streak)
+        - Empty plan (0 items) = NOT missed (nothing to complete)
         - Incomplete and NOT frozen = MISSED
+        - No plan exists AND user has plan history = MISSED
+        - No plan exists AND user has NO plan history = NOT missed (new user)
         
         IMPORTANT: We only count days up to the FIRST complete/frozen day.
         Days before a complete/frozen day are part of an OLD streak - not recoverable.
@@ -363,8 +389,27 @@ class StreakService:
         check_date = today - timedelta(days=1)  # Start from yesterday
         days_checked = 0  # Track total days examined, not just missed
         
+        # Check if user has ANY action plan history
+        # If no plans exist at all, user is new - no missed days possible
+        first_plan = self.db.query(ActionPlan).filter(
+            ActionPlan.uid == uid
+        ).order_by(ActionPlan.plan_date.asc()).first()
+        
+        if not first_plan:
+            logger.info(f"User {uid} has no action plan history - no missed days")
+            return []
+        
+        # Don't count days before user's first action plan
+        first_plan_date = first_plan.plan_date
+        
         while True:
             days_checked += 1
+            
+            # Don't check days before user's first plan - they weren't on the platform
+            if check_date < first_plan_date:
+                logger.info(f"Reached date {check_date} before first plan {first_plan_date} - stopping")
+                break
+            
             # Get the plan for this date
             plan = self.db.query(ActionPlan).filter(
                 and_(
@@ -394,8 +439,13 @@ class StreakService:
                     )
                 ).scalar() or 0
                 
+                # Empty plan (0 items) = NOT missed, STOP (nothing to complete)
+                if total_items == 0:
+                    logger.info(f"Plan for {check_date} has 0 items - treating as complete, stopping")
+                    break
+                
                 # Fully completed = stop, not missed (streak is intact from here back)
-                if total_items > 0 and completed_count == total_items:
+                if completed_count == total_items:
                     break
                 
                 # Frozen day = STOP - freeze protects the streak from this point back
@@ -415,7 +465,7 @@ class StreakService:
                     logger.info(f"Found frozen day {check_date} (no plan) - stopping missed days search")
                     break
                 else:
-                    # No plan and not frozen - missed
+                    # No plan and not frozen - missed (within user's plan history period)
                     missed_days.append(check_date)
                     check_date -= timedelta(days=1)
             
