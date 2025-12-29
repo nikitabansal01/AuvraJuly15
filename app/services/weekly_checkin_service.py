@@ -249,9 +249,35 @@ class WeeklyCheckInService:
         
         logger.info(f"Started new check-in {checkin.id} for user {uid}")
         
-        # Get first question
-        first_question = self.get_question_at_index(0)
-        return checkin, self._format_question(first_question, checkin)
+        # Use AI engine to generate first question
+        from app.services.weekly_checkin_ai import WeeklyCheckInAI
+        ai_engine = WeeklyCheckInAI(self.db)
+        first_question = ai_engine.generate_opening_question(uid, checkin)
+        
+        return checkin, self._format_ai_question(first_question, checkin)
+    
+    def _format_ai_question(self, ai_question, checkin: WeeklyCheckIn) -> Dict[str, Any]:
+        """Format AI-generated question for API response."""
+        from app.services.weekly_checkin_ai import AIQuestion
+        
+        if ai_question is None:
+            return {
+                "is_complete": True,
+                "question_key": None,
+                "message": "Thanks for checking in! 💜 I'll use this to personalize your plan."
+            }
+        
+        return {
+            "is_complete": False,
+            "question_key": ai_question.question_key,
+            "question_type": ai_question.question_type.value if hasattr(ai_question.question_type, 'value') else ai_question.question_type,
+            "message": ai_question.message,
+            "tap_options": ai_question.tap_options,
+            "is_required": ai_question.is_required,
+            "slider_labels": ai_question.slider_labels,
+            "current_index": checkin.current_question_index,
+            "total_questions": 6  # Approximate - AI flow is dynamic
+        }
     
     def get_question_at_index(self, index: int) -> Optional[WeeklyCheckInQuestion]:
         """Get the question at a specific index in the flow."""
@@ -378,22 +404,24 @@ class WeeklyCheckInService:
         # Advance to next question
         checkin.current_question_index += 1
         
-        # Check if we have more questions
-        next_question = self.get_question_at_index(checkin.current_question_index)
-        
-        # Check show_condition if present
-        while next_question and not self._should_show_question(next_question, checkin):
-            checkin.current_question_index += 1
-            next_question = self.get_question_at_index(checkin.current_question_index)
+        # Use AI engine to generate next question dynamically
+        from app.services.weekly_checkin_ai import WeeklyCheckInAI
+        ai_engine = WeeklyCheckInAI(self.db)
+        next_ai_question = ai_engine.generate_followup_question(
+            uid=checkin.uid,
+            checkin=checkin,
+            previous_response=response,
+            previous_question_key=question_key
+        )
         
         self.db.commit()
         self.db.refresh(checkin)
         
-        if not next_question:
-            # All questions answered, complete the check-in
+        if not next_ai_question:
+            # AI says we're done - complete the check-in
             return self.complete_checkin(checkin_id)
         
-        return checkin, self._format_question(next_question, checkin)
+        return checkin, self._format_ai_question(next_ai_question, checkin)
     
     def _store_response(self, checkin: WeeklyCheckIn, question_key: str, response: Any):
         """Store response in the appropriate field."""
@@ -451,7 +479,7 @@ class WeeklyCheckInService:
         
         This:
         1. Creates SymptomLog entries from the check-in data
-        2. Generates a summary for memory
+        2. Generates a summary for memory using AI
         3. Schedules the next check-in
         4. Returns completion message
         """
@@ -470,8 +498,11 @@ class WeeklyCheckInService:
         if checkin.top_concern and checkin.concern_severity:
             self._create_symptom_log_from_checkin(checkin)
         
-        # Generate summary for memory
-        checkin.conversation_summary = self._generate_summary(checkin)
+        # Generate AI-powered summary for memory
+        from app.services.weekly_checkin_ai import WeeklyCheckInAI
+        ai_engine = WeeklyCheckInAI(self.db)
+        context = ai_engine.get_user_context(checkin.uid)
+        checkin.conversation_summary = ai_engine.generate_summary(checkin, context)
         
         # Update user profile
         profile = self.db.query(UserProfile).filter(
