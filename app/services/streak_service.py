@@ -550,21 +550,8 @@ class StreakService:
                 "freeze_count": streak_data.freeze_count
             }
         
-        # REQUIREMENT: Can only freeze same day or next day (yesterday only)
-        # Check if any missed day is older than yesterday
-        today = self._get_user_today(uid, user_timezone=None)
-        yesterday = today - timedelta(days=1)
-        
-        for missed_day in missed_days:
-            if missed_day < yesterday:
-                return {
-                    "success": False,
-                    "error": "Can only freeze yesterday. Older missed days cannot be recovered.",
-                    "freeze_count": streak_data.freeze_count,
-                    "oldest_missed_date": missed_day.isoformat()
-                }
-        
         # Check if has enough freeze tokens
+        # User can freeze ANY number of missed days if they have enough tokens
         if streak_data.freeze_count < days_needed:
             return {
                 "success": False,
