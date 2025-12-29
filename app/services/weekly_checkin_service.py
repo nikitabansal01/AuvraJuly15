@@ -239,7 +239,8 @@ class WeeklyCheckInService:
             current_question_index=0,
             is_complete=False,
             started_at=datetime.utcnow(),
-            raw_messages=[]
+            raw_messages=[],
+            top_concern="Bloating"  # Default to Bloating for streamlined flow
         )
         
         self.db.add(checkin)
