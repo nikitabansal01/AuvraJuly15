@@ -389,16 +389,13 @@ class StreakService:
                     )
                 ).scalar() or 0
                 
-                # Fully completed = stop, not missed
+                # Fully completed = stop, not missed (streak is intact from here back)
                 if total_items > 0 and completed_count == total_items:
                     break
                 
-                # Frozen with ANY completions = not missed (counted as streak day)
-                elif is_frozen and completed_count > 0:
-                    break  # This day counts, stop checking
-                
-                # Frozen with NO completions = not missed (proactive freeze)
-                elif is_frozen and completed_count == 0:
+                # Frozen day = not missed, but continue checking for older missed days
+                elif is_frozen:
+                    # Frozen day is protected, continue to check older days
                     check_date -= timedelta(days=1)
                     continue
                 
@@ -442,7 +439,7 @@ class StreakService:
             }
         """
         streak_data = self.get_or_create_streak_data(uid)
-        today = self._get_user_today(user_timezone)
+        today = self._get_user_today(uid, user_timezone)
         
         # Check if today has any completions
         today_completed = self.db.query(func.count(ActionPlanItem.id)).join(
@@ -494,7 +491,7 @@ class StreakService:
             }
         """
         streak_data = self.get_or_create_streak_data(uid)
-        today = self._get_user_today(user_timezone)
+        today = self._get_user_today(uid, user_timezone)
         
         # Check if already frozen today
         if self._is_date_frozen(streak_data, today):
@@ -553,6 +550,20 @@ class StreakService:
                 "freeze_count": streak_data.freeze_count
             }
         
+        # REQUIREMENT: Can only freeze same day or next day (yesterday only)
+        # Check if any missed day is older than yesterday
+        today = self._get_user_today(uid, user_timezone=None)
+        yesterday = today - timedelta(days=1)
+        
+        for missed_day in missed_days:
+            if missed_day < yesterday:
+                return {
+                    "success": False,
+                    "error": "Can only freeze yesterday. Older missed days cannot be recovered.",
+                    "freeze_count": streak_data.freeze_count,
+                    "oldest_missed_date": missed_day.isoformat()
+                }
+        
         # Check if has enough freeze tokens
         if streak_data.freeze_count < days_needed:
             return {
@@ -598,7 +609,7 @@ class StreakService:
             - at_risk: True if streak can be recovered with freezes
         """
         streak_data = self.get_or_create_streak_data(uid)
-        today = self._get_user_today(user_timezone)
+        today = self._get_user_today(uid, user_timezone)
         
         # Get risk status (with timezone)
         risk_status = self.get_streak_risk_status(uid, user_timezone)
