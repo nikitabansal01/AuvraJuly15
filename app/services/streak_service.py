@@ -8,6 +8,7 @@ import logging
 from datetime import date, timedelta, datetime
 from typing import Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func, and_
 
 from app.core.database import ActionPlanItem, ActionPlan, UserStreakData, UserReward
@@ -350,11 +351,14 @@ class StreakService:
     
     def _add_frozen_date(self, streak_data: UserStreakData, freeze_date: date) -> None:
         """Add a date to frozen dates list."""
-        frozen_dates = streak_data.freeze_used_dates or []
+        # Create a new list to ensure SQLAlchemy detects the change (JSONB mutation)
+        frozen_dates = list(streak_data.freeze_used_dates or [])
         date_str = freeze_date.isoformat()
         if date_str not in frozen_dates:
             frozen_dates.append(date_str)
             streak_data.freeze_used_dates = frozen_dates
+            # Explicitly mark the JSONB field as modified for SQLAlchemy
+            flag_modified(streak_data, 'freeze_used_dates')
     
     def _is_date_frozen(self, streak_data: UserStreakData, check_date: date) -> bool:
         """Check if a specific date is frozen."""
