@@ -92,7 +92,7 @@ class WeeklyCheckInService:
         # (Check-in is gated behind 14-day streak reward)
         from app.services.reward_service import RewardService
         reward_service = RewardService(self.db)
-        if reward_service.has_reward(uid, "symptom_patterns"):
+        if reward_service.is_reward_unlocked(uid, "symptom_patterns"):
             return True, user_today
         
         return False, None
@@ -111,10 +111,10 @@ class WeeklyCheckInService:
         """
         user_today = get_user_current_date(uid, self.db)
         
-        # Check if feature is unlocked
+        # Check if feature is unlocked (symptom_patterns reward at 14-day streak)
         from app.services.reward_service import RewardService
         reward_service = RewardService(self.db)
-        is_available = reward_service.has_reward(uid, "symptom_patterns")
+        is_available = reward_service.is_reward_unlocked(uid, "symptom_patterns")
         
         if not is_available:
             return {
