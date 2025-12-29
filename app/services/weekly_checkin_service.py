@@ -350,7 +350,8 @@ class WeeklyCheckInService:
             "tap_options": tap_options,
             "is_required": question.is_required,
             "current_index": checkin.current_question_index,
-            "total_questions": len(self.get_all_questions())
+            "total_questions": len(self.get_all_questions()),
+            "history": self._get_chat_history(checkin)
         }
     
     def _get_personalized_options(self, question: WeeklyCheckInQuestion, checkin: WeeklyCheckIn) -> List[Dict[str, str]]:

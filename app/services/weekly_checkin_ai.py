@@ -363,6 +363,24 @@ class WeeklyCheckInAI:
             # Fallback to rule-based if LLM fails
             return self._generate_post_severity_question(checkin, 5, context)
 
+    def _generate_post_severity_question(self, checkin: WeeklyCheckIn, severity: int, context: Dict[str, Any]) -> AIQuestion:
+        """Fallback question generation if LLM fails."""
+        symptom = checkin.top_concern or "symptoms"
+        
+        if severity >= 7:
+            message = f"I'm sorry to hear that {symptom.lower()} is bothering you. Can you tell me more about what's happening?"
+        elif severity >= 4:
+            message = f"I see. What do you think might be contributing to your {symptom.lower()} this week?"
+        else:
+            message = f"That's good! What have you been doing differently that might be helping?"
+            
+        return AIQuestion(
+            question_key="fallback_followup",
+            question_type=QuestionType.FREE_TEXT,
+            message=message,
+            tap_options=[],
+            is_required=True
+        )
     
     # ═══════════════════════════════════════════════════════════════════════════
     # SUMMARY GENERATION
