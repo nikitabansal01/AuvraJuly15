@@ -311,14 +311,16 @@ class WeeklyCheckInAI:
         Instructions:
         1. Analyze the conversation history.
         2. Acknowledge the user's input with empathy (keep it brief).
-        3. Ask ONE relevant follow-up question to investigate potential causes (diet, sleep, stress, cycle, etc.) or what helped.
-        4. Generate 3-5 short, likely answers (tap options) for the user.
+        3. Ask ONE specific follow-up question in your message to investigate a potential cause (e.g., "Have you been sleeping well?", "Any changes in diet?").
+        4. Generate 3-5 short, likely USER RESPONSES (tap options) for the user to choose from.
+           - These must be ANSWERS to your question, NOT new questions.
+           - Example: If you ask about sleep, options could be ["Slept well", "Insomnia", "Woke up tired"].
         5. If you have enough information to form a comprehensive summary/plan (usually after 3-4 exchanges), set "is_complete" to true.
         
         Output JSON format:
         {{
-            "message": "...",
-            "tap_options": [{{"id": "...", "text": "..."}}],
+            "message": "Your empathetic response + ONE question",
+            "tap_options": [{{"id": "...", "text": "User Answer 1"}}, {{"id": "...", "text": "User Answer 2"}}],
             "is_complete": boolean
         }}
         """
