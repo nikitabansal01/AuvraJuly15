@@ -343,9 +343,12 @@ class StreakService:
         Get list of consecutive missed days starting from yesterday going back.
         
         MISSED DAY RULES (consistent with streak calculation):
-        - Fully completed = NOT missed
-        - Frozen = NOT missed (freeze protects the day)
+        - Fully completed = NOT missed, STOP looking (streak is intact from here back)
+        - Frozen = NOT missed, STOP looking (freeze protects the day and streak)
         - Incomplete and NOT frozen = MISSED
+        
+        IMPORTANT: We only count days up to the FIRST complete/frozen day.
+        Days before a complete/frozen day are part of an OLD streak - not recoverable.
         
         Args:
             uid: User ID
@@ -395,11 +398,11 @@ class StreakService:
                 if total_items > 0 and completed_count == total_items:
                     break
                 
-                # Frozen day = not missed, but continue checking for older missed days
+                # Frozen day = STOP - freeze protects the streak from this point back
+                # User cannot recover days BEFORE a frozen day - those are part of old streak
                 elif is_frozen:
-                    # Frozen day is protected, continue to check older days
-                    check_date -= timedelta(days=1)
-                    continue
+                    logger.info(f"Found frozen day {check_date} - stopping missed days search")
+                    break
                 
                 # NOT frozen and NOT complete = missed
                 else:
@@ -408,8 +411,9 @@ class StreakService:
             else:
                 # No plan for this date
                 if is_frozen:
-                    # Proactive freeze - not missed
-                    check_date -= timedelta(days=1)
+                    # Proactive freeze - STOP - protects streak from this point back
+                    logger.info(f"Found frozen day {check_date} (no plan) - stopping missed days search")
+                    break
                 else:
                     # No plan and not frozen - missed
                     missed_days.append(check_date)
