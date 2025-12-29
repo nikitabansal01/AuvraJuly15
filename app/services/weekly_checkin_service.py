@@ -225,7 +225,7 @@ class WeeklyCheckInService:
         # Get cycle context
         from app.services.cycle_service import CycleService
         cycle_service = CycleService(self.db)
-        cycle_info = cycle_service.get_cycle_info(uid)
+        cycle_info = cycle_service.get_cycle_phase_info(uid)
         
         # Create new check-in
         checkin = WeeklyCheckIn(
@@ -234,8 +234,8 @@ class WeeklyCheckInService:
             week_number=iso_week.week,
             year=iso_week.year,
             check_in_date=user_today,
-            cycle_day_at_checkin=cycle_info.get("day") if cycle_info else None,
-            phase_at_checkin=cycle_info.get("phase") if cycle_info else None,
+            cycle_day_at_checkin=cycle_info.cycle_day,
+            phase_at_checkin=cycle_info.phase,
             current_question_index=0,
             is_complete=False,
             started_at=datetime.utcnow(),
