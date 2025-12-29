@@ -94,12 +94,18 @@ async def get_rewards_status(
     Returns the user's current streak, longest streak, available freeze tokens,
     plan refresh status, and all rewards with their current state.
     """
+    from app.core.database import UserProfile
+    
     uid = current_user.get("uid")
     if not uid:
         raise HTTPException(status_code=400, detail="User ID not found")
     
+    # Get user's timezone for accurate streak calculations
+    profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
+    user_timezone = profile.current_timezone if profile else None
+    
     reward_service = RewardService(db)
-    result = reward_service.get_all_rewards_status(uid)
+    result = reward_service.get_all_rewards_status(uid, user_timezone)
     
     # Add refresh status
     result["refresh_status"] = reward_service.get_refresh_status(uid)
@@ -119,13 +125,18 @@ async def use_freeze_proactive(
     Freezes today so no actions are needed to maintain streak.
     """
     from app.services.streak_service import StreakService
+    from app.core.database import UserProfile
     
     uid = current_user.get("uid")
     if not uid:
         raise HTTPException(status_code=400, detail="User ID not found")
     
+    # Get user's timezone from profile for accurate date calculations
+    profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
+    user_timezone = profile.current_timezone if profile else None
+    
     streak_service = StreakService(db)
-    result = streak_service.use_freeze_proactive(uid)
+    result = streak_service.use_freeze_proactive(uid, user_timezone)
     
     if not result.get("success"):
         return FreezeResponse(

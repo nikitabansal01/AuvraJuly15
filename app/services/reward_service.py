@@ -25,17 +25,18 @@ class RewardService:
         self.db = db
         self.streak_service = StreakService(db)
     
-    def get_all_rewards_status(self, uid: str) -> Dict[str, Any]:
+    def get_all_rewards_status(self, uid: str, user_timezone: str = None) -> Dict[str, Any]:
         """
         Get all rewards with current status for user.
         
         Args:
             uid: User ID
+            user_timezone: User's timezone for accurate date calculations
             
         Returns:
             Dictionary with streak status and all rewards with their states
         """
-        streak_status = self.streak_service.get_full_streak_status(uid)
+        streak_status = self.streak_service.get_full_streak_status(uid, user_timezone)
         current_streak = streak_status["current_streak"]
         
         # Get claimed rewards
