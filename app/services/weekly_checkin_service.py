@@ -331,8 +331,13 @@ class WeeklyCheckInService:
         
         # Parse default options
         try:
-            default_options = json.loads(question.default_tap_options) if question.default_tap_options else []
-        except json.JSONDecodeError:
+            if isinstance(question.default_tap_options, list):
+                default_options = question.default_tap_options
+            elif isinstance(question.default_tap_options, str):
+                default_options = json.loads(question.default_tap_options) if question.default_tap_options else []
+            else:
+                default_options = []
+        except (json.JSONDecodeError, TypeError):
             default_options = []
         
         # Format as objects with id and text
