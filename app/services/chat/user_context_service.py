@@ -202,8 +202,10 @@ class UserContextService:
             
         except Exception as e:
             logger.error(f"Error getting today's plan for {user_id}: {str(e)}")
+            from app.utils.timezone_utils import get_user_current_date
+            fallback_date = get_user_current_date(user_id, self.db)
             return TodaysPlan(
-                date=date.today(),
+                date=fallback_date,
                 total_assignments=0,
                 completed_assignments=0,
                 completion_rate=0
@@ -214,7 +216,10 @@ class UserContextService:
         Get recent activity summary for memory context (Layer 2).
         """
         try:
-            end_date = date.today()
+            from app.utils.timezone_utils import get_user_current_date
+            
+            user_today = get_user_current_date(user_id, self.db)
+            end_date = user_today
             start_date = end_date - timedelta(days=days)
             
             # Get recent symptom logs

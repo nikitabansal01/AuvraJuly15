@@ -81,7 +81,8 @@ async def get_symptom_patterns(
         )
     
     # Get all action items for this user
-    end_date = date.today()
+    from app.utils.timezone_utils import get_user_current_date
+    end_date = get_user_current_date(uid, db)
     start_date = end_date - timedelta(days=30)
     
     items = db.query(ActionPlanItem).filter(

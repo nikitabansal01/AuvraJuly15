@@ -366,14 +366,155 @@ def get_user_current_date(uid: str, db_session) -> date:
         from app.core.database import UserProfile
         
         user_profile = db_session.query(UserProfile).filter(UserProfile.uid == uid).first()
-        current_timezone = user_profile.current_timezone if user_profile else "Asia/Seoul"
+        current_timezone = user_profile.current_timezone if user_profile else "UTC"
+        
+        if not current_timezone:
+            logger.warning(f"No timezone set for user {uid}, defaulting to UTC")
+            current_timezone = "UTC"
         
         tz = ZoneInfo(current_timezone)
         current_date = datetime.now(tz).date()
         
+        logger.debug(f"User {uid} current date: {current_date} (timezone: {current_timezone})")
         return current_date
         
     except Exception as e:
         logger.error(f"Failed to get user current date: {str(e)}")
         return date.today()
+
+def get_user_current_datetime(uid: str, db_session) -> datetime:
+    """
+    Get current datetime in user's timezone (timezone-aware)
+    
+    Args:
+        uid: User ID
+        db_session: Database session
+    
+    Returns:
+        Current datetime in user's timezone (timezone-aware)
+    """
+    try:
+        from app.core.database import UserProfile
+        
+        user_profile = db_session.query(UserProfile).filter(UserProfile.uid == uid).first()
+        current_timezone = user_profile.current_timezone if user_profile else "UTC"
+        
+        if not current_timezone:
+            logger.warning(f"No timezone set for user {uid}, defaulting to UTC")
+            current_timezone = "UTC"
+        
+        tz = ZoneInfo(current_timezone)
+        current_datetime = datetime.now(tz)
+        
+        logger.debug(f"User {uid} current datetime: {current_datetime} (timezone: {current_timezone})")
+        return current_datetime
+        
+    except Exception as e:
+        logger.error(f"Failed to get user current datetime: {str(e)}")
+        return datetime.now(ZoneInfo("UTC"))
+
+def get_user_timezone(uid: str, db_session) -> str:
+    """
+    Get user's timezone string
+    
+    Args:
+        uid: User ID
+        db_session: Database session
+    
+    Returns:
+        User's timezone string (IANA format)
+    """
+    try:
+        from app.core.database import UserProfile
+        
+        user_profile = db_session.query(UserProfile).filter(UserProfile.uid == uid).first()
+        timezone = user_profile.current_timezone if user_profile else "UTC"
+        
+        if not timezone:
+            logger.warning(f"No timezone set for user {uid}, defaulting to UTC")
+            timezone = "UTC"
+        
+        # Validate timezone
+        try:
+            ZoneInfo(timezone)
+        except Exception:
+            logger.error(f"Invalid timezone '{timezone}' for user {uid}, defaulting to UTC")
+            timezone = "UTC"
+        
+        return timezone
+        
+    except Exception as e:
+        logger.error(f"Failed to get user timezone: {str(e)}")
+        return "UTC"
+
+def convert_local_date_to_utc_datetime(local_date: date, timezone_str: str, hour: int = 0, minute: int = 0) -> datetime:
+    """
+    Convert a local date to UTC datetime at specified time
+    
+    Args:
+        local_date: Date in user's local timezone
+        timezone_str: IANA timezone string
+        hour: Hour (0-23)
+        minute: Minute (0-59)
+    
+    Returns:
+        UTC datetime
+    """
+    try:
+        tz = ZoneInfo(timezone_str)
+        local_datetime = datetime.combine(local_date, datetime.min.time())
+        local_datetime = local_datetime.replace(hour=hour, minute=minute, tzinfo=tz)
+        utc_datetime = local_datetime.astimezone(ZoneInfo("UTC"))
+        
+        logger.debug(f"Converted {local_date} {hour}:{minute:02d} ({timezone_str}) -> {utc_datetime} (UTC)")
+        return utc_datetime
+        
+    except Exception as e:
+        logger.error(f"Failed to convert local date to UTC: {str(e)}")
+        return datetime.utcnow()
+
+def is_same_day_in_timezone(dt1_utc: datetime, dt2_utc: datetime, timezone_str: str) -> bool:
+    """
+    Check if two UTC datetimes fall on the same day in a given timezone
+    
+    Args:
+        dt1_utc: First UTC datetime
+        dt2_utc: Second UTC datetime
+        timezone_str: IANA timezone string
+    
+    Returns:
+        True if same day in the timezone
+    """
+    try:
+        tz = ZoneInfo(timezone_str)
+        
+        if dt1_utc.tzinfo is None:
+            dt1_utc = dt1_utc.replace(tzinfo=ZoneInfo("UTC"))
+        if dt2_utc.tzinfo is None:
+            dt2_utc = dt2_utc.replace(tzinfo=ZoneInfo("UTC"))
+        
+        local_date1 = dt1_utc.astimezone(tz).date()
+        local_date2 = dt2_utc.astimezone(tz).date()
+        
+        return local_date1 == local_date2
+        
+    except Exception as e:
+        logger.error(f"Failed to compare dates in timezone: {str(e)}")
+        return False
+
+def validate_timezone(timezone_str: str) -> bool:
+    """
+    Validate if a timezone string is valid IANA timezone
+    
+    Args:
+        timezone_str: Timezone string to validate
+    
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        ZoneInfo(timezone_str)
+        return True
+    except Exception:
+        return False
 

@@ -192,7 +192,9 @@ class MemoryEngine:
         }
         
         # Analyze completion patterns (last 30 days)
-        thirty_days_ago = date.today() - timedelta(days=30)
+        from app.utils.timezone_utils import get_user_current_date
+        user_today = get_user_current_date(user_id, self.db)
+        thirty_days_ago = user_today - timedelta(days=30)
         
         assignments = self.db.query(DailyAssignment).filter(
             and_(
@@ -358,11 +360,13 @@ class MemoryEngine:
                 emotional["recent_mood_trend"] = "stable"
         
         # Check mental health symptoms
+        from app.utils.timezone_utils import get_user_current_date
+        user_today = get_user_current_date(user_id, self.db)
         mental_symptoms = self.db.query(SymptomLog).filter(
             and_(
                 SymptomLog.user_id == user_id,
                 SymptomLog.symptom_type.in_(["anxiety", "mood_swings", "irritability", "sadness", "stress"]),
-                SymptomLog.logged_date >= date.today() - timedelta(days=7)
+                SymptomLog.logged_date >= user_today - timedelta(days=7)
             )
         ).all()
         
@@ -446,7 +450,11 @@ class MemoryEngine:
                 }
             
             # Predict symptoms based on history
-            thirty_days_ago = date.today() - timedelta(days=30)
+            from app.utils.timezone_utils import get_user_current_date
+            from datetime import timedelta
+            
+            user_today = get_user_current_date(user_id, self.db)
+            thirty_days_ago = user_today - timedelta(days=30)
             symptoms = self.db.query(SymptomLog).filter(
                 and_(
                     SymptomLog.user_id == user_id,

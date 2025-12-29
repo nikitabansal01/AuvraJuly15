@@ -81,21 +81,23 @@ class StreakService:
         
         return streak_data
     
-    def _get_user_today(self, timezone_str: str = None) -> date:
+    def _get_user_today(self, uid: str, timezone_str: str = None) -> date:
         """Get today's date in user's timezone."""
         from datetime import datetime
+        from app.utils.timezone_utils import get_user_current_date
         
+        # If timezone not provided, get from database
         if not timezone_str:
-            # Default to IST (India Standard Time) as that's the user's timezone
-            timezone_str = "Asia/Kolkata"
+            return get_user_current_date(uid, self.db)
         
         try:
             from zoneinfo import ZoneInfo
             tz = ZoneInfo(timezone_str)
             return datetime.now(tz).date()
-        except Exception:
-            # Fallback to UTC
-            return datetime.utcnow().date()
+        except Exception as e:
+            logger.error(f"Failed to get user today with timezone {timezone_str}: {e}")
+            # Fallback to database timezone
+            return get_user_current_date(uid, self.db)
     
     def calculate_streak_from_actions(self, uid: str, user_timezone: str = None) -> int:
         """
@@ -118,7 +120,7 @@ class StreakService:
         streak = 0
         
         # Get today in user's timezone, then calculate yesterday
-        today = self._get_user_today(user_timezone)
+        today = self._get_user_today(uid, user_timezone)
         check_date = today - timedelta(days=1)
         
         logger.info(f"Streak calc for {uid}: user_timezone={user_timezone}, today={today}, starting from yesterday={check_date}")
@@ -228,7 +230,7 @@ class StreakService:
         
         return longest
     
-    def update_streak_on_completion(self, uid: str) -> Tuple[int, int]:
+    def update_streak_on_completion(self, uid: str, user_timezone: str = None) -> Tuple[int, int]:
         """
         Called when user completes an action.
         
@@ -236,15 +238,16 @@ class StreakService:
         
         Args:
             uid: User ID
+            user_timezone: User's timezone string
             
         Returns:
             Tuple of (current_streak, longest_streak)
         """
         streak_data = self.get_or_create_streak_data(uid)
-        today = date.today()
+        today = self._get_user_today(uid, user_timezone)
         
         # Calculate current streak
-        current = self.calculate_streak_from_actions(uid)
+        current = self.calculate_streak_from_actions(uid, user_timezone)
         longest = max(current, streak_data.longest_streak)
         
         # Update stored values
@@ -257,7 +260,7 @@ class StreakService:
         logger.info(f"Streak updated for {uid}: current={current}, longest={longest}")
         return (current, longest)
     
-    def try_use_freeze(self, uid: str) -> bool:
+    def try_use_freeze(self, uid: str, user_timezone: str = None) -> bool:
         """
         Attempt to use a streak freeze for yesterday.
         
@@ -265,12 +268,14 @@ class StreakService:
         
         Args:
             uid: User ID
+            user_timezone: User's timezone string
             
         Returns:
             True if freeze was used, False otherwise
         """
         streak_data = self.get_or_create_streak_data(uid)
-        yesterday = date.today() - timedelta(days=1)
+        today = self._get_user_today(uid, user_timezone)
+        yesterday = today - timedelta(days=1)
         
         # Only try to use freeze if we have one and haven't already used it for yesterday
         if streak_data.freeze_count > 0 and streak_data.freeze_used_date != yesterday:
@@ -351,7 +356,7 @@ class StreakService:
         """
         streak_data = self.get_or_create_streak_data(uid)
         missed_days = []
-        today = self._get_user_today(user_timezone)
+        today = self._get_user_today(uid, user_timezone)
         check_date = today - timedelta(days=1)  # Start from yesterday
         
         while True:

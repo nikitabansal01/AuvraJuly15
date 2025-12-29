@@ -10,6 +10,7 @@ from app.api.v1.endpoints import chat
 from app.api.v1.endpoints import rewards
 from app.api.v1.endpoints import preferences
 from app.api.v1.endpoints import insights
+from app.api.v1.endpoints import timezone  # Timezone management
 
 api_router = APIRouter()
 
@@ -51,4 +52,7 @@ api_router.include_router(rewards.router, prefix="/rewards", tags=["rewards"])
 api_router.include_router(preferences.router, prefix="/preferences", tags=["preferences"])
 
 # Insights router (analytics - symptom patterns, etc.)
-api_router.include_router(insights.router, prefix="/insights", tags=["insights"]) 
+api_router.include_router(insights.router, prefix="/insights", tags=["insights"])
+
+# Timezone router (timezone management for users)
+api_router.include_router(timezone.router, prefix="/timezone", tags=["timezone"]) 

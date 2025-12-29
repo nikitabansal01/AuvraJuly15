@@ -213,9 +213,10 @@ class RewardService:
         """
         from datetime import date as date_type
         from app.core.database import UserStreakData
+        from app.utils.timezone_utils import get_user_current_date
         
         limit = self.get_daily_refresh_limit(uid)
-        today = date_type.today()
+        today = get_user_current_date(uid, self.db)
         
         streak_data = self.db.query(UserStreakData).filter(
             UserStreakData.uid == uid
@@ -254,6 +255,7 @@ class RewardService:
         """
         from datetime import date as date_type
         from app.core.database import UserStreakData
+        from app.utils.timezone_utils import get_user_current_date
         
         status = self.get_refresh_status(uid)
         
@@ -264,7 +266,7 @@ class RewardService:
                 **status
             }
         
-        today = date_type.today()
+        today = get_user_current_date(uid, self.db)
         
         streak_data = self.db.query(UserStreakData).filter(
             UserStreakData.uid == uid

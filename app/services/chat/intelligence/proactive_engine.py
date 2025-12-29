@@ -234,11 +234,12 @@ class ProactiveEngine:
     async def _check_streak_status(self, user_id: str) -> List[ProactiveTrigger]:
         """Check streak-related triggers."""
         from app.core.database import DailyAssignment
+        from app.utils.timezone_utils import get_user_current_date
         
         triggers = []
         
         # Calculate current streak
-        today = date.today()
+        today = get_user_current_date(user_id, self.db)
         fourteen_days_ago = today - timedelta(days=14)
         
         assignments = self.db.query(DailyAssignment).filter(
@@ -306,11 +307,13 @@ class ProactiveEngine:
         """Check for symptom patterns worth mentioning."""
         from app.core.database import SymptomLog
         from app.services.cycle_service import CycleService
+        from app.utils.timezone_utils import get_user_current_date
         
         triggers = []
         
         # Get recent symptoms
-        seven_days_ago = date.today() - timedelta(days=7)
+        user_today = get_user_current_date(user_id, self.db)
+        seven_days_ago = user_today - timedelta(days=7)
         recent_symptoms = self.db.query(SymptomLog).filter(
             and_(
                 SymptomLog.user_id == user_id,

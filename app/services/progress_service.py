@@ -14,8 +14,10 @@ class ProgressService:
     
     def get_weekly_progress(self, uid: str, target_date: date = None) -> Dict[str, Any]:
         """Get weekly progress statistics."""
+        from app.utils.timezone_utils import get_user_current_date
+        
         if target_date is None:
-            target_date = date.today()
+            target_date = get_user_current_date(uid, self.db)
         
         # Calculate start and end of the week
         week_start = target_date - timedelta(days=target_date.weekday())
@@ -68,8 +70,10 @@ class ProgressService:
     
     def get_monthly_progress(self, uid: str, target_date: date = None) -> Dict[str, Any]:
         """Get monthly progress statistics."""
+        from app.utils.timezone_utils import get_user_current_date
+        
         if target_date is None:
-            target_date = date.today()
+            target_date = get_user_current_date(uid, self.db)
         
         # Calculate start and end of the month
         month_start = target_date.replace(day=1)
@@ -200,7 +204,8 @@ class ProgressService:
             ).count()
             
             # Consecutive completion days
-            current_streak = self._calculate_streak_days(uid, date.today())
+            from app.utils.timezone_utils import get_user_current_date
+            current_streak = self._calculate_streak_days(uid, get_user_current_date(uid, self.db))
             
             # Hormone-specific statistics
             hormone_stats = self._get_hormone_completion_stats(all_completions)
@@ -243,8 +248,11 @@ class ProgressService:
     def _calculate_streak_days(self, uid: str, target_date: date) -> int:
         """Calculate current consecutive completion days using unified StreakService."""
         from app.services.streak_service import StreakService
+        from app.utils.timezone_utils import get_user_timezone
+        
         streak_service = StreakService(self.db)
-        return streak_service.calculate_streak_from_actions(uid)
+        user_timezone = get_user_timezone(uid, self.db)
+        return streak_service.calculate_streak_from_actions(uid, user_timezone)
     
     def _get_longest_streak(self, uid: str) -> int:
         """Calculate longest consecutive completion days using unified StreakService."""
@@ -342,7 +350,8 @@ class ProgressService:
     def _calculate_recommendation_streak(self, uid: str, recommendation_id: int) -> int:
         """Calculate consecutive completion days for a specific recommendation."""
         streak = 0
-        current_date = date.today()
+        from app.utils.timezone_utils import get_user_current_date
+        current_date = get_user_current_date(uid, self.db)
         
         while True:
             completion = self.db.query(RecommendationCompletion).filter(

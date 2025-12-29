@@ -662,8 +662,9 @@ async def refresh_all_incomplete_actions(
         # Get today's incomplete items
         from app.core.database import ActionPlan, ActionPlanItem
         from datetime import date
+        from app.utils.timezone_utils import get_user_current_date
         
-        today = date.today()
+        today = get_user_current_date(uid, db)
         plan = db.query(ActionPlan).filter(
             ActionPlan.uid == uid,
             ActionPlan.plan_date == today

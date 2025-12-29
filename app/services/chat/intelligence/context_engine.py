@@ -424,7 +424,11 @@ class ContextEngine:
         from app.core.database import DailyAssignment, UserProfile
         
         # Get recent assignment history
-        fourteen_days_ago = date.today() - timedelta(days=14)
+        from app.utils.timezone_utils import get_user_current_date
+        from datetime import timedelta
+        
+        user_today = get_user_current_date(user_id, self.db)
+        fourteen_days_ago = user_today - timedelta(days=14)
         
         assignments = self.db.query(DailyAssignment).filter(
             and_(
@@ -466,7 +470,11 @@ class ContextEngine:
         longest_streak = max(longest_streak, temp_streak)
         
         # Calculate 7-day consistency
-        seven_days_ago = date.today() - timedelta(days=7)
+        from app.utils.timezone_utils import get_user_current_date
+        from datetime import timedelta
+        
+        user_today = get_user_current_date(user_id, self.db)
+        seven_days_ago = user_today - timedelta(days=7)
         recent_completions = [
             daily_completion[d]["completed"] / daily_completion[d]["total"]
             for d in daily_completion
@@ -477,7 +485,9 @@ class ContextEngine:
         # Days since last activity
         days_since = 0
         if sorted_dates:
-            days_since = (date.today() - sorted_dates[0]).days
+            from app.utils.timezone_utils import get_user_current_date
+            user_today = get_user_current_date(user_id, self.db)
+            days_since = (user_today - sorted_dates[0]).days
         
         # Determine streak health
         if current_streak >= 7:

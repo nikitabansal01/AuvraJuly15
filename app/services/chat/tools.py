@@ -78,6 +78,7 @@ async def complete_assignment(
     """
     from app.core.database import DailyAssignment, RecommendationCompletion, RecommendationRecord
     from sqlalchemy import and_
+    from app.utils.timezone_utils import get_user_current_date
     
     assignment = db_session.query(DailyAssignment).filter(
         and_(
@@ -96,11 +97,12 @@ async def complete_assignment(
     assignment.is_completed = True
     assignment.completed_at = datetime.utcnow()
     
-    # Create completion record
+    # Create completion record - use user's local date
+    user_today = get_user_current_date(user_id, db_session)
     completion = RecommendationCompletion(
         uid=user_id,
         recommendation_id=assignment.recommendation_id,
-        completion_date=date.today(),
+        completion_date=user_today,
         completed_at=datetime.utcnow(),
         notes=notes
     )
@@ -144,6 +146,7 @@ async def skip_assignment(
     """
     from app.core.database import DailyAssignment, AssignmentSkipLog, RecommendationRecord
     from sqlalchemy import and_
+    from app.utils.timezone_utils import get_user_current_date
     
     assignment = db_session.query(DailyAssignment).filter(
         and_(
@@ -155,13 +158,14 @@ async def skip_assignment(
     if not assignment:
         return {"success": False, "error": "Assignment not found"}
     
-    # Log the skip
+    # Log the skip - use user's local date
+    user_today = get_user_current_date(user_id, db_session)
     skip_log = AssignmentSkipLog(
         user_id=user_id,
         assignment_id=assignment_id,
         recommendation_id=assignment.recommendation_id,
         skip_reason=reason,
-        skip_date=date.today(),
+        skip_date=user_today,
         skipped_at=datetime.utcnow()
     )
     db_session.add(skip_log)
@@ -333,12 +337,14 @@ async def log_symptom(
     """
     from app.core.database import SymptomLog, UserResponse
     from app.services.cycle_service import CycleService
+    from app.utils.timezone_utils import get_user_current_date
     
     # Get cycle info for context
     cycle_service = CycleService(db_session)
     cycle_info = cycle_service.get_cycle_phase_info(user_id)
     
-    # Create symptom log
+    # Create symptom log - use user's local date
+    user_today = get_user_current_date(user_id, db_session)
     symptom_log = SymptomLog(
         user_id=user_id,
         symptom_type=symptom_type,
@@ -347,7 +353,7 @@ async def log_symptom(
         factors=factors or [],
         cycle_day=cycle_info.cycle_day if cycle_info else None,
         phase=cycle_info.phase if cycle_info else None,
-        logged_date=date.today(),
+        logged_date=user_today,
         logged_at=datetime.utcnow()
     )
     db_session.add(symptom_log)
@@ -386,8 +392,10 @@ async def get_symptom_trends(
     """
     from app.core.database import SymptomLog
     from sqlalchemy import and_
+    from app.utils.timezone_utils import get_user_current_date
     
-    start_date = date.today() - timedelta(days=days)
+    user_today = get_user_current_date(user_id, db_session)
+    start_date = user_today - timedelta(days=days)
     
     logs = db_session.query(SymptomLog).filter(
         and_(
@@ -750,15 +758,17 @@ async def check_proactive_triggers(user_id: str, db_session: Any) -> Dict[str, A
     from app.core.database import UserProfile, DailyAssignment, SymptomLog, ChatSession
     from app.services.cycle_service import CycleService
     from sqlalchemy import and_, func
+    from app.utils.timezone_utils import get_user_current_date
     
     triggers = []
+    user_today = get_user_current_date(user_id, db_session)
     
     # 1. Streak check
     recent_completions = db_session.query(func.count(DailyAssignment.id)).filter(
         and_(
             DailyAssignment.uid == user_id,
             DailyAssignment.is_completed == True,
-            DailyAssignment.assignment_date >= date.today() - timedelta(days=7)
+            DailyAssignment.assignment_date >= user_today - timedelta(days=7)
         )
     ).scalar()
     
@@ -796,7 +806,7 @@ async def check_proactive_triggers(user_id: str, db_session: Any) -> Dict[str, A
     recent_symptoms = db_session.query(SymptomLog).filter(
         and_(
             SymptomLog.user_id == user_id,
-            SymptomLog.logged_date >= date.today() - timedelta(days=3),
+            SymptomLog.logged_date >= user_today - timedelta(days=3),
             SymptomLog.severity >= 6
         )
     ).all()
@@ -813,7 +823,7 @@ async def check_proactive_triggers(user_id: str, db_session: Any) -> Dict[str, A
     today_assignments = db_session.query(DailyAssignment).filter(
         and_(
             DailyAssignment.uid == user_id,
-            DailyAssignment.assignment_date == date.today()
+            DailyAssignment.assignment_date == user_today
         )
     ).all()
     
@@ -1083,14 +1093,17 @@ async def get_progress_stats(
     """
     from app.core.database import DailyAssignment, RecommendationCompletion, RecommendationRecord
     from sqlalchemy import and_, func
+    from app.utils.timezone_utils import get_user_current_date
+    
+    user_today = get_user_current_date(user_id, db_session)
     
     # Determine date range
     if period == "daily":
-        start_date = date.today()
+        start_date = user_today
     elif period == "weekly":
-        start_date = date.today() - timedelta(days=7)
+        start_date = user_today - timedelta(days=7)
     else:  # monthly
-        start_date = date.today() - timedelta(days=30)
+        start_date = user_today - timedelta(days=30)
     
     # Get assignments in range
     assignments = db_session.query(DailyAssignment).filter(
