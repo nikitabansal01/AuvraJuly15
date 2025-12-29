@@ -152,11 +152,29 @@ class WeeklyCheckInAI:
         user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
         if user_response:
             # Extract top symptoms from their onboarding
-            if user_response.current_symptoms:
-                symptoms = user_response.current_symptoms
-                if isinstance(symptoms, list) and symptoms:
-                    context["top_symptoms"] = symptoms[:3]
-                    context["primary_concern"] = symptoms[0] if symptoms else "bloating"
+            # Check top_concern first
+            if user_response.top_concern:
+                context["primary_concern"] = user_response.top_concern
+                context["top_symptoms"] = [user_response.top_concern]
+            
+            # Aggregate other concerns if needed
+            all_concerns = []
+            if user_response.body_concerns and isinstance(user_response.body_concerns, list):
+                all_concerns.extend(user_response.body_concerns)
+            if user_response.period_concerns and isinstance(user_response.period_concerns, list):
+                all_concerns.extend(user_response.period_concerns)
+                
+            if all_concerns:
+                # Update top symptoms list (up to 3)
+                current_top = context["top_symptoms"]
+                for c in all_concerns:
+                    if c not in current_top and len(current_top) < 3:
+                        current_top.append(c)
+                context["top_symptoms"] = current_top
+                
+                # Fallback for primary concern if top_concern was empty
+                if context["primary_concern"] == "bloating" and all_concerns:
+                    context["primary_concern"] = all_concerns[0]
         
         # Get cycle info
         try:
