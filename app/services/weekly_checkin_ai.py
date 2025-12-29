@@ -363,6 +363,15 @@ class WeeklyCheckInAI:
             # Fallback to rule-based if LLM fails
             return self._generate_post_severity_question(checkin, 5, context)
 
+    def _generate_closing_question(self, checkin: WeeklyCheckIn, context: Dict[str, Any]) -> Optional[AIQuestion]:
+        """
+        Generate the final closing message/question when conversation is complete.
+        Returns None to signal completion to the service.
+        """
+        # We return None here because the service handles the actual completion logic
+        # when it receives None from generate_followup_question.
+        return None
+
     def _generate_post_severity_question(self, checkin: WeeklyCheckIn, severity: int, context: Dict[str, Any]) -> AIQuestion:
         """Fallback question generation if LLM fails."""
         symptom = checkin.top_concern or "symptoms"
