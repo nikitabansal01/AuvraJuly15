@@ -358,8 +358,10 @@ class StreakService:
         missed_days = []
         today = self._get_user_today(uid, user_timezone)
         check_date = today - timedelta(days=1)  # Start from yesterday
+        days_checked = 0  # Track total days examined, not just missed
         
         while True:
+            days_checked += 1
             # Get the plan for this date
             plan = self.db.query(ActionPlan).filter(
                 and_(
@@ -413,8 +415,8 @@ class StreakService:
                     missed_days.append(check_date)
                     check_date -= timedelta(days=1)
             
-            # Safety limit - don't check more than 7 days back
-            if len(missed_days) >= 7:
+            # Safety limit - don't check more than 7 days total (not just missed days)
+            if days_checked >= 7:
                 break
         
         return missed_days
@@ -523,10 +525,14 @@ class StreakService:
             "frozen_date": today.isoformat()
         }
     
-    def use_freeze_reactive(self, uid: str) -> Dict[str, Any]:
+    def use_freeze_reactive(self, uid: str, user_timezone: str = None) -> Dict[str, Any]:
         """
         Use freeze(s) reactively to protect streak from missed days.
         Supports multi-day: will use X freezes for X missed days.
+        
+        Args:
+            uid: User ID
+            user_timezone: User's timezone string
         
         Returns:
             {
@@ -537,10 +543,16 @@ class StreakService:
                 "frozen_dates": list
             }
         """
-        streak_data = self.get_or_create_streak_data(uid)
+        # Lock the row to prevent race conditions
+        streak_data = self.db.query(UserStreakData).filter(
+            UserStreakData.uid == uid
+        ).with_for_update().first()
         
-        # Get missed days
-        missed_days = self.get_missed_days(uid)
+        if not streak_data:
+            streak_data = self.get_or_create_streak_data(uid)
+        
+        # Get missed days (with timezone for accuracy)
+        missed_days = self.get_missed_days(uid, user_timezone)
         days_needed = len(missed_days)
         
         if days_needed == 0:

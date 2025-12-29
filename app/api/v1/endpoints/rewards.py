@@ -160,8 +160,13 @@ async def use_freeze_reactive(
     if not uid:
         raise HTTPException(status_code=400, detail="User ID not found")
     
+    # Get user's timezone from profile for accurate date calculations
+    from app.core.database import UserProfile
+    profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
+    user_timezone = profile.current_timezone if profile else None
+    
     streak_service = StreakService(db)
-    result = streak_service.use_freeze_reactive(uid)
+    result = streak_service.use_freeze_reactive(uid, user_timezone)
     
     if not result.get("success"):
         return FreezeResponse(
