@@ -11,6 +11,7 @@ from app.api.v1.endpoints import rewards
 from app.api.v1.endpoints import preferences
 from app.api.v1.endpoints import insights
 from app.api.v1.endpoints import timezone  # Timezone management
+from app.api.v1.endpoints import weekly_checkin  # Weekly check-in system
 
 api_router = APIRouter()
 
@@ -55,4 +56,7 @@ api_router.include_router(preferences.router, prefix="/preferences", tags=["pref
 api_router.include_router(insights.router, prefix="/insights", tags=["insights"])
 
 # Timezone router (timezone management for users)
-api_router.include_router(timezone.router, prefix="/timezone", tags=["timezone"]) 
+api_router.include_router(timezone.router, prefix="/timezone", tags=["timezone"])
+
+# Weekly Check-in router (structured symptom check-ins)
+api_router.include_router(weekly_checkin.router, prefix="/weekly-checkin", tags=["weekly-checkin"]) 

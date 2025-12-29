@@ -108,10 +108,20 @@ async def get_today_assignments(
         
         logger.info(f"Action plan retrieved: uid={uid}, plan_id={result.get('plan_id')}")
         
+        # Get weekly check-in status for dynamic card
+        weekly_checkin_status = None
+        try:
+            from app.services.weekly_checkin_service import WeeklyCheckInService
+            checkin_service = WeeklyCheckInService(db)
+            weekly_checkin_status = checkin_service.get_checkin_status(uid)
+        except Exception as e:
+            logger.warning(f"Failed to get weekly check-in status: {e}")
+        
         # Return in requested format
         if format == "legacy":
-            return _convert_to_legacy_format(result)
+            return _convert_to_legacy_format(result, weekly_checkin_status)
         else:
+            result["weekly_checkin"] = weekly_checkin_status
             return result
         
     except HTTPException:
@@ -848,11 +858,15 @@ def _build_plan_response(plan, db) -> dict:
     }
 
 
-def _convert_to_legacy_format(result: dict) -> dict:
+def _convert_to_legacy_format(result: dict, weekly_checkin_status: dict = None) -> dict:
     """
     Convert new action plan format to legacy assignment format.
     
     This ensures backward compatibility with existing mobile app.
+    
+    Args:
+        result: The action plan result dict
+        weekly_checkin_status: Optional check-in status to include
     """
     if not result.get("success"):
         return {
@@ -867,7 +881,8 @@ def _convert_to_legacy_format(result: dict) -> dict:
             "completed_assignments": 0,
             "completion_rate": 0.0,
             "hormone_stats": {},
-            "generation_source": "action_plan"
+            "generation_source": "action_plan",
+            "weekly_checkin": weekly_checkin_status
         }
     
     # Group actions by time slot
@@ -945,5 +960,6 @@ def _convert_to_legacy_format(result: dict) -> dict:
         "primary_hormone": result.get("primary_hormone"),
         "cycle_phase": result.get("cycle_phase"),
         "show_feedback_prompt_after_seconds": 30,  # 30-second feedback prompt
-        "generation_source": "action_plan"
+        "generation_source": "action_plan",
+        "weekly_checkin": weekly_checkin_status  # Dynamic check-in card status
     }

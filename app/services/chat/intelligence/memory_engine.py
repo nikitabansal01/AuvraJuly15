@@ -97,6 +97,7 @@ class MemoryEngine:
                 "semantic": await self._load_semantic_memory(user_id),
                 "emotional": await self._load_emotional_memory(user_id),
                 "predictive": await self._load_predictive_memory(user_id),
+                "weekly_checkins": await self._load_weekly_checkin_memory(user_id),
                 "insights": await self._extract_insights(user_id),
                 "relationship": await self._load_relationship_context(user_id)
             }
@@ -544,6 +545,116 @@ class MemoryEngine:
             "relationship_stage": self._determine_relationship_stage(days_known, sessions)
         }
     
+    async def _load_weekly_checkin_memory(self, user_id: str) -> Dict[str, Any]:
+        """
+        Load weekly check-in history for personalized context.
+        This gives us structured symptom progression data.
+        """
+        from app.core.database import WeeklyCheckIn
+        
+        checkin_memory = {
+            "recent_checkins": [],
+            "symptom_progression": [],
+            "recurring_concerns": [],
+            "positive_factors": [],
+            "negative_factors": [],
+            "overall_trend": "stable"
+        }
+        
+        try:
+            # Get recent check-ins (last 8 weeks)
+            checkins = self.db.query(WeeklyCheckIn).filter(
+                and_(
+                    WeeklyCheckIn.uid == user_id,
+                    WeeklyCheckIn.is_complete == True
+                )
+            ).order_by(desc(WeeklyCheckIn.completed_at)).limit(8).all()
+            
+            if not checkins:
+                return checkin_memory
+            
+            # Process check-ins for memory
+            severity_values = []
+            wellbeing_values = []
+            concern_counts = {}
+            positive_factor_counts = {}
+            negative_factor_counts = {}
+            
+            for checkin in checkins:
+                # Add to recent checkins
+                checkin_memory["recent_checkins"].append({
+                    "date": checkin.check_in_date.isoformat() if checkin.check_in_date else None,
+                    "concern": checkin.top_concern,
+                    "severity": checkin.concern_severity,
+                    "wellbeing": checkin.overall_wellbeing,
+                    "phase": checkin.phase_at_checkin,
+                    "summary": checkin.conversation_summary
+                })
+                
+                # Track severity progression
+                if checkin.concern_severity:
+                    severity_values.append(checkin.concern_severity)
+                    checkin_memory["symptom_progression"].append({
+                        "week": f"W{checkin.week_number}",
+                        "concern": checkin.top_concern,
+                        "severity": checkin.concern_severity
+                    })
+                
+                if checkin.overall_wellbeing:
+                    wellbeing_values.append(checkin.overall_wellbeing)
+                
+                # Count concerns
+                if checkin.top_concern:
+                    concern = checkin.top_concern.lower()
+                    concern_counts[concern] = concern_counts.get(concern, 0) + 1
+                
+                # Count factors
+                if checkin.factors_positive:
+                    for factor in checkin.factors_positive:
+                        positive_factor_counts[factor] = positive_factor_counts.get(factor, 0) + 1
+                
+                if checkin.factors_negative:
+                    for factor in checkin.factors_negative:
+                        negative_factor_counts[factor] = negative_factor_counts.get(factor, 0) + 1
+            
+            # Find recurring concerns (mentioned 2+ times)
+            checkin_memory["recurring_concerns"] = [
+                {"concern": c, "count": count}
+                for c, count in concern_counts.items()
+                if count >= 2
+            ]
+            
+            # Top positive factors
+            checkin_memory["positive_factors"] = sorted(
+                [{"factor": f, "count": c} for f, c in positive_factor_counts.items()],
+                key=lambda x: x["count"],
+                reverse=True
+            )[:5]
+            
+            # Top negative factors
+            checkin_memory["negative_factors"] = sorted(
+                [{"factor": f, "count": c} for f, c in negative_factor_counts.items()],
+                key=lambda x: x["count"],
+                reverse=True
+            )[:5]
+            
+            # Calculate overall trend
+            if len(severity_values) >= 3:
+                recent_avg = sum(severity_values[:3]) / 3
+                older_avg = sum(severity_values[3:]) / len(severity_values[3:]) if len(severity_values) > 3 else recent_avg
+                
+                if recent_avg < older_avg - 1:
+                    checkin_memory["overall_trend"] = "improving"
+                elif recent_avg > older_avg + 1:
+                    checkin_memory["overall_trend"] = "worsening"
+                else:
+                    checkin_memory["overall_trend"] = "stable"
+            
+        except Exception as e:
+            logger.warning(f"Error loading weekly check-in memory: {e}")
+        
+        return checkin_memory
+    
     def _determine_relationship_stage(self, days: int, conversations: int) -> str:
         """Determine the relationship stage for appropriate tone."""
         if days < 7 or conversations < 3:
@@ -631,6 +742,30 @@ def format_memory_for_prompt(memory: Dict[str, Any]) -> str:
         sections.append("🆕 NEW USER - Be extra welcoming and educational")
     elif rel.get("relationship_stage") == "deep_relationship":
         sections.append(f"💜 ESTABLISHED RELATIONSHIP ({rel.get('total_conversations', 0)} conversations)")
+    
+    # Weekly Check-in Memory (doctor's notes from structured check-ins)
+    checkins = memory.get("weekly_checkins", {})
+    if checkins.get("recent_checkins"):
+        sections.append("\n📋 WEEKLY CHECK-IN HISTORY:")
+        for i, checkin in enumerate(checkins["recent_checkins"][:3]):
+            sections.append(f"   - {checkin.get('date', 'Unknown')}: {checkin.get('concern', 'No concern')} "
+                          f"(severity: {checkin.get('severity', '?')}/9, wellbeing: {checkin.get('wellbeing', '?')}/9)")
+        
+        if checkins.get("overall_trend"):
+            trend_emoji = {"improving": "📈", "worsening": "📉", "stable": "➡️"}.get(checkins["overall_trend"], "")
+            sections.append(f"   {trend_emoji} Overall trend: {checkins['overall_trend']}")
+    
+    if checkins.get("recurring_concerns"):
+        concerns = [c["concern"] for c in checkins["recurring_concerns"][:3]]
+        sections.append(f"   🔄 Recurring concerns: {', '.join(concerns)}")
+    
+    if checkins.get("positive_factors"):
+        factors = [f["factor"] for f in checkins["positive_factors"][:3]]
+        sections.append(f"   ✅ What helps: {', '.join(factors)}")
+    
+    if checkins.get("negative_factors"):
+        factors = [f["factor"] for f in checkins["negative_factors"][:3]]
+        sections.append(f"   ⚠️ What hurts: {', '.join(factors)}")
     
     # Episodic memories
     episodic = memory.get("episodic", {})

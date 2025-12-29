@@ -148,6 +148,10 @@ class UserProfile(Base):
     feedback_summary_updated_at = Column(DateTime, nullable=True)  # When summary was last updated
     feedback_last_count = Column(Integer, default=0, nullable=False)  # Feedback count at last summarization
     
+    # Weekly Check-in scheduling
+    weekly_checkin_due_date = Column(Date, nullable=True)  # When next check-in is due
+    last_weekly_checkin_id = Column(String(36), nullable=True)  # Most recent completed check-in
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -517,6 +521,9 @@ class SymptomLog(Base):
     logged_via = Column(String(30), default="chatbot")  # chatbot, manual, weekly_checkin
     chat_message_id = Column(String(36), ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True)
     
+    # Weekly Check-in link (if symptom was logged during a check-in)
+    weekly_checkin_id = Column(String(36), ForeignKey("weekly_checkins.id", ondelete="SET NULL"), nullable=True, index=True)
+    
     # Timestamps
     logged_at = Column(DateTime, default=datetime.utcnow)
     logged_date = Column(Date, default=date.today)
@@ -525,6 +532,7 @@ class SymptomLog(Base):
     __table_args__ = (
         Index('idx_symptom_logs_user_type_date', 'user_id', 'symptom_type', 'logged_date'),
         Index('idx_symptom_logs_user_date', 'user_id', 'logged_date'),
+        Index('idx_symptom_logs_checkin', 'weekly_checkin_id'),
     )
 
 
@@ -961,6 +969,119 @@ class UserStreakData(Base):
     
     __table_args__ = (
         Index('idx_streak_uid', 'uid'),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WEEKLY CHECK-IN SYSTEM - Doctor Consultation Feature
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WeeklyCheckIn(Base):
+    """
+    Weekly check-in records - structured doctor consultation data.
+    
+    Captures symptom severity, lifestyle factors, action reflections,
+    and concerns through a guided conversation flow.
+    """
+    __tablename__ = "weekly_checkins"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Week identification
+    week_number = Column(Integer, nullable=False)  # ISO week number (1-53)
+    year = Column(Integer, nullable=False)
+    check_in_date = Column(Date, nullable=False)
+    
+    # Primary concern tracking (from user's top_concern)
+    top_concern = Column(String(100), nullable=True)  # e.g., "acne", "bloating", "fatigue"
+    concern_severity = Column(Integer, nullable=True)  # 1-9 scale
+    
+    # Overall wellbeing
+    overall_wellbeing = Column(Integer, nullable=True)  # 1-9 scale
+    
+    # Lifestyle factors (what affected symptoms this week)
+    factors_positive = Column(JSONB, default=[])  # ["good_sleep", "less_stress", "ate_healthy"]
+    factors_negative = Column(JSONB, default=[])  # ["more_dairy", "skipped_meals", "high_stress"]
+    
+    # Action plan reflections
+    action_reflections = Column(JSONB, default={})
+    # Structure:
+    # {
+    #     "worked_well": ["morning yoga", "pumpkin seeds"],
+    #     "didnt_work": ["evening meditation - too tired"],
+    #     "skipped": ["strength training"],
+    #     "favorite_action": "seed cycling"
+    # }
+    
+    # Free-form concerns for next week
+    concerns_next_week = Column(Text, nullable=True)
+    
+    # Cycle context at check-in time
+    cycle_day_at_checkin = Column(Integer, nullable=True)
+    phase_at_checkin = Column(String(30), nullable=True)  # Menses, Follicular, Ovulation, Luteal
+    
+    # Conversation data
+    conversation_summary = Column(Text, nullable=True)  # LLM-generated summary
+    raw_messages = Column(JSONB, default=[])  # Full conversation for memory
+    # Structure: [{"role": "bot", "content": "..."}, {"role": "user", "content": "..."}]
+    
+    # Check-in state
+    is_complete = Column(Boolean, default=False)
+    current_question_index = Column(Integer, default=0)  # Track progress through questions
+    
+    # Timestamps
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_checkin_user_week', 'uid', 'year', 'week_number', unique=True),
+        Index('idx_checkin_user_date', 'uid', 'check_in_date'),
+        Index('idx_checkin_complete', 'uid', 'is_complete'),
+    )
+
+
+class WeeklyCheckInQuestion(Base):
+    """
+    Dynamic question templates for weekly check-in flow.
+    
+    Allows configurable question sequences that can vary by concern type.
+    LLM uses these templates to generate contextual questions and tap options.
+    """
+    __tablename__ = "weekly_checkin_questions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Question identification
+    question_key = Column(String(50), nullable=False, unique=True)  # e.g., "severity_rating", "negative_factors"
+    question_type = Column(String(30), nullable=False)  # severity_scale, multi_select, single_select, free_text, action_reflection
+    
+    # Question content
+    question_template = Column(Text, nullable=False)  # "How was your {concern} this week?"
+    
+    # Default tap options (LLM can override with personalized options)
+    default_tap_options = Column(JSONB, default=[])
+    # Structure for multi_select: [{"id": "more_dairy", "text": "Ate more dairy", "category": "food"}]
+    
+    # Targeting
+    concern_type = Column(String(50), nullable=True)  # null = all concerns, or specific like "acne", "bloating"
+    
+    # Flow control
+    question_order = Column(Integer, nullable=False)  # Order in the check-in flow
+    is_required = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True)
+    
+    # Conditional logic (optional - for advanced flows)
+    show_condition = Column(JSONB, nullable=True)  # {"if_previous": "severity_rating", "value_gte": 5}
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_question_order', 'question_order', 'is_active'),
+        Index('idx_question_concern', 'concern_type', 'is_active'),
     )
 
 
