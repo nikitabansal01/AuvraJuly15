@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import date, datetime, timedelta
 
-from app.core.database import get_db, ActionPlanItem, ActionPlanFeedback
+from app.core.database import get_db, ActionPlanItem, ActionPlanFeedback, ActionPlan
 from app.api.v1.endpoints.auth import get_current_user
 from app.services.reward_service import RewardService
 
@@ -80,16 +80,18 @@ async def get_symptom_patterns(
             detail="This feature requires the 'Symptom Patterns' reward (14-day streak) to be claimed"
         )
     
-    # Get all action items for this user
+    # Get all action items for this user (join with ActionPlan to filter by date)
     from app.utils.timezone_utils import get_user_current_date
     end_date = get_user_current_date(uid, db)
     start_date = end_date - timedelta(days=30)
     
-    items = db.query(ActionPlanItem).filter(
+    items = db.query(ActionPlanItem).join(
+        ActionPlan, ActionPlanItem.plan_id == ActionPlan.id
+    ).filter(
         and_(
             ActionPlanItem.uid == uid,
-            ActionPlanItem.plan_date >= start_date,
-            ActionPlanItem.plan_date <= end_date
+            ActionPlan.plan_date >= start_date,
+            ActionPlan.plan_date <= end_date
         )
     ).all()
     
