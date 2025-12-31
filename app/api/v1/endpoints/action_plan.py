@@ -14,7 +14,7 @@ Endpoints:
 
 import logging
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,12 @@ from app.models.action_plan_models import (
     BatchReplacementResponse,
     LegacyAssignmentResponse,
     LegacyAssignmentInfo,
-    VariantInfo
+    VariantInfo,
+    # Daily Review models
+    DailyReviewRequest,
+    DailyReviewResponse,
+    PendingReviewResponse,
+    PendingReviewItemInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -739,6 +744,619 @@ async def refresh_all_incomplete_actions(
         logger.error(f"Failed to refresh all incomplete: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to refresh actions")
 
+
+# ============================================================================
+# DAILY REVIEW ENDPOINTS - Next-day action plan review flow
+# ============================================================================
+
+@router.get("/pending-review", response_model=PendingReviewResponse)
+async def get_pending_review(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Check if user has a pending daily review for yesterday's (or earlier) action plan.
+    
+    Returns pending review data if:
+    1. There's a plan from yesterday (or earlier) that hasn't been reviewed
+    2. That plan has at least one incomplete item
+    
+    Also handles frozen days - still offers review for GPT learning but no streak penalty.
+    """
+    try:
+        uid = current_user.get("uid")
+        if not uid:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        
+        from app.core.database import ActionPlan, ActionPlanItem, UserStreakData
+        from app.utils.timezone_utils import get_user_current_date
+        from datetime import timedelta
+        
+        today = get_user_current_date(uid, db)
+        yesterday = today - timedelta(days=1)
+        
+        # Find the most recent plan that needs review (plan_date < today AND review_completed = False)
+        # Only check last 3 days to avoid stale reviews
+        three_days_ago = today - timedelta(days=3)
+        
+        plan_needing_review = db.query(ActionPlan).filter(
+            and_(
+                ActionPlan.uid == uid,
+                ActionPlan.plan_date >= three_days_ago,
+                ActionPlan.plan_date < today,
+                ActionPlan.review_completed == False
+            )
+        ).order_by(ActionPlan.plan_date.desc()).first()
+        
+        if not plan_needing_review:
+            return PendingReviewResponse(needs_review=False)
+        
+        # Get items for this plan
+        items = db.query(ActionPlanItem).filter(
+            and_(
+                ActionPlanItem.plan_id == plan_needing_review.id,
+                ActionPlanItem.is_replaced.isnot(True)  # Only active items
+            )
+        ).order_by(ActionPlanItem.slot).all()
+        
+        if not items:
+            # No items means plan was empty - mark as reviewed and skip
+            plan_needing_review.review_completed = True
+            db.commit()
+            return PendingReviewResponse(needs_review=False)
+        
+        # Count completion status
+        total_items = len(items)
+        completed_count = sum(1 for item in items if item.is_completed)
+        incomplete_count = total_items - completed_count
+        
+        # NOTE: We now ALWAYS show review, even if all items are completed
+        # This allows users to:
+        # 1. Confirm they actually completed items (not just marked by mistake)
+        # 2. Change status if they marked complete but actually skipped
+        # 3. Provide additional feedback for GPT learning
+        # The review modal handles both completed and incomplete items
+        
+        # Check if this day was already frozen
+        streak_data = db.query(UserStreakData).filter(UserStreakData.uid == uid).first()
+        was_frozen = False
+        if streak_data and streak_data.freeze_used_dates:
+            was_frozen = plan_needing_review.plan_date.isoformat() in streak_data.freeze_used_dates
+        
+        # Get streak status
+        from app.services.streak_service import StreakService
+        streak_service = StreakService(db)
+        streak_status = streak_service.get_full_streak_status(uid)
+        
+        # Build item info list
+        item_infos = [
+            PendingReviewItemInfo(
+                id=item.id,
+                title=item.title,
+                category=item.category,
+                time_slot=item.time_slot,
+                target_hormone=item.target_hormone,
+                is_completed=item.is_completed,
+                hero_image_url=item.hero_image_url
+            )
+            for item in items
+        ]
+        
+        return PendingReviewResponse(
+            needs_review=True,
+            review_date=plan_needing_review.plan_date.isoformat(),
+            plan_id=plan_needing_review.id,
+            items=item_infos,
+            total_items=total_items,
+            completed_count=completed_count,
+            incomplete_count=incomplete_count,
+            streak_at_risk=streak_status.get("streak_at_risk", False) and not was_frozen,
+            freezes_available=streak_status.get("freeze_count", 0),
+            was_frozen=was_frozen
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get pending review: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to check pending review")
+
+
+@router.post("/submit-daily-review", response_model=DailyReviewResponse)
+async def submit_daily_review(
+    request: DailyReviewRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Submit the daily review for a previous day's action plan.
+    
+    For each item, user specifies:
+    - 'forgot_to_mark': Actually completed, forgot to mark -> mark as completed
+    - 'replaced': Did something else instead -> mark as completed with replacement info
+    - 'skipped': Didn't do anything -> carry forward to today
+    - 'was_completed': Already marked complete (just confirming)
+    
+    Streak logic:
+    - If after review, ALL items are marked complete (including forgot_mark + replaced) -> streak maintained
+    - If NOT all complete and use_freeze=True -> apply freeze, streak maintained
+    - If NOT all complete and use_freeze=False (or no freezes) -> streak breaks
+    
+    Skipped items get carried forward to today's plan.
+    """
+    try:
+        uid = current_user.get("uid")
+        if not uid:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        
+        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanDailyReview, ActionPlanFeedback
+        from app.utils.timezone_utils import get_user_current_date
+        from datetime import timedelta
+        from sqlalchemy.orm.attributes import flag_modified
+        
+        today = get_user_current_date(uid, db)
+        
+        # Get the plan being reviewed
+        plan = db.query(ActionPlan).filter(
+            and_(
+                ActionPlan.id == request.plan_id,
+                ActionPlan.uid == uid
+            )
+        ).first()
+        
+        if not plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        
+        if plan.review_completed:
+            return DailyReviewResponse(
+                success=True,
+                message="This plan has already been reviewed",
+                streak_maintained=True
+            )
+        
+        # Get all active items for this plan
+        items = db.query(ActionPlanItem).filter(
+            and_(
+                ActionPlanItem.plan_id == plan.id,
+                ActionPlanItem.is_replaced.isnot(True)
+            )
+        ).all()
+        
+        items_by_id = {item.id: item for item in items}
+        
+        # Process each item status from the review
+        items_marked_complete = 0
+        items_replaced = 0
+        items_skipped = 0
+        items_to_carry_forward = []
+        
+        for item_status in request.items:
+            item = items_by_id.get(item_status.item_id)
+            if not item:
+                continue
+            
+            if item_status.status == 'forgot_to_mark':
+                # Mark as completed retroactively
+                item.is_completed = True
+                item.completed_at = datetime.utcnow()
+                items_marked_complete += 1
+                
+                # Record feedback for GPT memory
+                feedback = ActionPlanFeedback(
+                    uid=uid,
+                    plan_id=plan.id,
+                    item_id=item.id,
+                    feedback_type="completed",
+                    action_title=item.title,
+                    action_category=item.category,
+                    target_hormone=item.target_hormone,
+                    feedback_source="daily_review",
+                    feedback_text="Completed but forgot to mark in app",
+                    created_at=datetime.utcnow()
+                )
+                db.add(feedback)
+                
+            elif item_status.status == 'replaced':
+                # Mark as completed with replacement info
+                item.is_completed = True
+                item.completed_at = datetime.utcnow()
+                item.is_replaced = True
+                item.replaced_at = datetime.utcnow()
+                item.replacement_reason = item_status.replacement_text or "Replaced with alternative"
+                items_replaced += 1
+                
+                # Record feedback for GPT memory
+                feedback = ActionPlanFeedback(
+                    uid=uid,
+                    plan_id=plan.id,
+                    item_id=item.id,
+                    feedback_type="not_for_me",
+                    action_title=item.title,
+                    action_category=item.category,
+                    target_hormone=item.target_hormone,
+                    feedback_source="daily_review",
+                    feedback_text=f"Replaced with: {item_status.replacement_text or 'alternative'}",
+                    replacement_reason=item_status.replacement_text,
+                    replacement_category=item_status.replacement_category,
+                    was_replaced=True,
+                    created_at=datetime.utcnow()
+                )
+                db.add(feedback)
+                
+            elif item_status.status == 'skipped':
+                # Mark as incomplete (even if previously completed - user correcting mistake)
+                # Will be carried forward to today's plan
+                if item.is_completed:
+                    # User is saying they marked complete by mistake
+                    item.is_completed = False
+                    item.completed_at = None
+                    logger.info(f"User corrected item {item.id} - was marked complete by mistake, now skipped")
+                
+                items_skipped += 1
+                items_to_carry_forward.append(item.id)
+                
+                # Record skip feedback for GPT memory
+                feedback = ActionPlanFeedback(
+                    uid=uid,
+                    plan_id=plan.id,
+                    item_id=item.id,
+                    feedback_type="skipped",
+                    action_title=item.title,
+                    action_category=item.category,
+                    target_hormone=item.target_hormone,
+                    feedback_source="daily_review",
+                    feedback_text="Skipped - carrying forward",
+                    created_at=datetime.utcnow()
+                )
+                db.add(feedback)
+            
+            # 'was_completed' status: item was already complete, just confirming
+            elif item_status.status == 'was_completed':
+                if item.is_completed:
+                    items_marked_complete += 1
+                    # Record confirmation feedback for GPT memory (user liked it enough to confirm)
+                    feedback = ActionPlanFeedback(
+                        uid=uid,
+                        plan_id=plan.id,
+                        item_id=item.id,
+                        feedback_type="completed",
+                        action_title=item.title,
+                        action_category=item.category,
+                        target_hormone=item.target_hormone,
+                        feedback_source="daily_review",
+                        feedback_text="Confirmed completed during daily review",
+                        created_at=datetime.utcnow()
+                    )
+                    db.add(feedback)
+        
+        # Calculate final completion count
+        total_items = len(items)
+        final_completed = sum(1 for item in items if item.is_completed)
+        
+        # Determine streak outcome
+        from app.services.streak_service import StreakService
+        streak_service = StreakService(db)
+        streak_data = streak_service.get_or_create_streak_data(uid)
+        
+        streak_maintained = False
+        streak_broken = False
+        freezes_used = 0
+        streak_action = "maintained"
+        
+        # Check if day was already frozen
+        was_already_frozen = False
+        if streak_data.freeze_used_dates:
+            was_already_frozen = plan.plan_date.isoformat() in streak_data.freeze_used_dates
+        
+        if was_already_frozen:
+            # Day was frozen - streak is safe regardless of completion
+            streak_maintained = True
+            streak_action = "maintained"
+        elif (total_items == 0) or (total_items > 0 and final_completed == total_items):
+            # All completed (or empty plan) - streak maintained
+            streak_maintained = True
+            streak_action = "maintained"
+        elif request.use_freeze and streak_data.freeze_count > 0:
+            # Not enough completed but user wants to use freeze
+            streak_data.freeze_count -= 1
+            frozen_dates = list(streak_data.freeze_used_dates or [])
+            if plan.plan_date.isoformat() not in frozen_dates:
+                frozen_dates.append(plan.plan_date.isoformat())
+                streak_data.freeze_used_dates = frozen_dates
+                flag_modified(streak_data, 'freeze_used_dates')
+            freezes_used = 1
+            streak_maintained = True
+            streak_action = "used_freeze"
+        else:
+            # Not enough completed and no freeze used
+            streak_broken = True
+            streak_action = "broken"
+            streak_data.current_streak = 0
+        
+        # Recalculate streak
+        if streak_maintained:
+            new_streak = streak_service.calculate_streak_from_actions(uid)
+            streak_data.current_streak = new_streak
+            streak_data.longest_streak = max(streak_data.longest_streak, new_streak)
+        
+        # Mark plan as reviewed
+        plan.review_completed = True
+        
+        # Create daily review record
+        review_record = ActionPlanDailyReview(
+            uid=uid,
+            plan_id=plan.id,
+            review_date=today,
+            review_completed_at=datetime.utcnow(),
+            items_review_data=[
+                {
+                    "item_id": item_status.item_id,
+                    "status": item_status.status,
+                    "replacement_text": item_status.replacement_text,
+                    "replacement_category": item_status.replacement_category
+                }
+                for item_status in request.items
+            ],
+            streak_action=streak_action,
+            freezes_used_count=freezes_used,
+            items_carried_forward=items_to_carry_forward,
+            items_marked_complete=items_marked_complete + sum(1 for item in items if item.is_completed and item.id not in [s.item_id for s in request.items]),
+            items_replaced=items_replaced,
+            items_skipped=items_skipped,
+            created_at=datetime.utcnow()
+        )
+        db.add(review_record)
+        
+        db.commit()
+        
+        # Carry forward skipped items to today's plan
+        today_plan_updated = False
+        if items_to_carry_forward:
+            try:
+                today_plan_updated = await _carry_forward_items_to_today(
+                    uid=uid, 
+                    skipped_item_ids=items_to_carry_forward,
+                    source_plan=plan,
+                    db=db
+                )
+            except Exception as carry_error:
+                logger.warning(f"Failed to carry forward items: {carry_error}")
+                # Don't fail the whole request - just log and continue
+        
+        # Build response message
+        if streak_maintained and freezes_used > 0:
+            message = f"Review complete! Used 1 freeze to protect your streak. 🧊"
+        elif streak_maintained:
+            message = f"Great job! Your streak continues! 🔥"
+        else:
+            message = f"Review complete. Let's start a new streak today! 💪"
+        
+        # Add info about carried forward items
+        if items_to_carry_forward and today_plan_updated:
+            message += f" {len(items_to_carry_forward)} action(s) moved to today."
+        
+        logger.info(f"Daily review submitted: uid={uid}, plan_id={plan.id}, "
+                   f"completed={final_completed}/{total_items}, streak_action={streak_action}, "
+                   f"carried_forward={len(items_to_carry_forward)}")
+        
+        return DailyReviewResponse(
+            success=True,
+            streak_maintained=streak_maintained,
+            streak_broken=streak_broken,
+            freezes_used=freezes_used,
+            new_streak_count=streak_data.current_streak,
+            items_carried_forward=items_to_carry_forward,
+            today_plan_updated=today_plan_updated,
+            message=message
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit daily review: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to submit daily review")
+
+
+async def _carry_forward_items_to_today(
+    uid: str,
+    skipped_item_ids: List[int],
+    source_plan,
+    db: Session
+) -> bool:
+    """
+    Carry forward skipped items from a previous day's plan to today's plan.
+    
+    IMPORTANT: This function REPLACES some items in today's plan with carried items,
+    maintaining the total of 4 items and proper hormone balance (2 primary + 2 secondary).
+    
+    Logic:
+    1. Get carried items and their hormones
+    2. Count hormone distribution of carried items
+    3. Delete excess items from today's plan (keeping hormone balance)
+    4. Add carried items to today's plan
+    5. Result: Always 4 items total with proper hormone balance
+    
+    Returns True if successfully modified today's plan.
+    """
+    from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserResponse
+    from app.utils.timezone_utils import get_user_current_date
+    
+    TARGET_ITEMS = 4  # Standard plan size
+    TARGET_PER_HORMONE = 2  # 2 primary + 2 secondary
+    
+    if not skipped_item_ids:
+        return False
+    
+    today = get_user_current_date(uid, db)
+    
+    # Find today's plan
+    today_plan = db.query(ActionPlan).filter(
+        and_(
+            ActionPlan.uid == uid,
+            ActionPlan.plan_date == today
+        )
+    ).first()
+    
+    if not today_plan:
+        logger.warning(f"No plan exists for today ({today}) to carry forward items")
+        return False
+    
+    # Get the source items to copy
+    source_items = db.query(ActionPlanItem).filter(
+        ActionPlanItem.id.in_(skipped_item_ids)
+    ).all()
+    
+    if not source_items:
+        return False
+    
+    # Limit carried items to max 4
+    source_items = source_items[:TARGET_ITEMS]
+    num_carried = len(source_items)
+    
+    # Get user's primary and secondary hormones for balance from UserResponse (not UserProfile)
+    user_response = db.query(UserResponse).filter(UserResponse.uid == uid).first()
+    primary_hormone = (user_response.primary_hormone or "cortisol").lower() if user_response else "cortisol"
+    # secondary_hormones is an array, get first one if exists
+    secondary_hormones = user_response.secondary_hormones if user_response and user_response.secondary_hormones else []
+    secondary_hormone = secondary_hormones[0].lower() if secondary_hormones else "progesterone"
+    
+    # Count hormone distribution of carried items
+    carried_primary = sum(1 for item in source_items if (item.target_hormone or "").lower() == primary_hormone)
+    carried_secondary = num_carried - carried_primary
+    
+    logger.info(f"Carrying forward {num_carried} items: {carried_primary} primary ({primary_hormone}), {carried_secondary} secondary ({secondary_hormone})")
+    
+    # Get all current items in today's plan
+    today_items = db.query(ActionPlanItem).filter(
+        and_(
+            ActionPlanItem.plan_id == today_plan.id,
+            ActionPlanItem.is_replaced.isnot(True)
+        )
+    ).order_by(ActionPlanItem.slot).all()
+    
+    # Calculate how many items to KEEP from today (not delete)
+    items_to_keep_count = TARGET_ITEMS - num_carried
+    
+    if items_to_keep_count < 0:
+        items_to_keep_count = 0
+    
+    # Calculate needed hormone balance for remaining items
+    needed_primary = max(0, TARGET_PER_HORMONE - carried_primary)
+    needed_secondary = max(0, TARGET_PER_HORMONE - carried_secondary)
+    
+    # Group today's items by hormone
+    today_primary = [item for item in today_items if (item.target_hormone or "").lower() == primary_hormone]
+    today_secondary = [item for item in today_items if (item.target_hormone or "").lower() != primary_hormone]
+    
+    # Select items to keep - prioritize maintaining hormone balance
+    items_to_keep = []
+    
+    # Keep needed primary items
+    for item in today_primary[:needed_primary]:
+        items_to_keep.append(item.id)
+    
+    # Keep needed secondary items
+    for item in today_secondary[:needed_secondary]:
+        items_to_keep.append(item.id)
+    
+    # Fill remaining slots with any items if still needed
+    remaining_needed = items_to_keep_count - len(items_to_keep)
+    if remaining_needed > 0:
+        for item in today_items:
+            if item.id not in items_to_keep and remaining_needed > 0:
+                items_to_keep.append(item.id)
+                remaining_needed -= 1
+    
+    logger.info(f"Today has {len(today_items)} items, keeping {len(items_to_keep)}, will have {num_carried + len(items_to_keep)} total")
+    
+    # Delete items NOT in keep list
+    items_to_delete = [item for item in today_items if item.id not in items_to_keep]
+    
+    for item in items_to_delete:
+        # Delete variants first
+        db.query(ActionPlanItemVariant).filter(ActionPlanItemVariant.item_id == item.id).delete()
+        # Delete item
+        db.query(ActionPlanItem).filter(ActionPlanItem.id == item.id).delete()
+    
+    logger.info(f"Deleted {len(items_to_delete)} items from today's plan to make room for carried items")
+    
+    # Renumber remaining items (slots 0 to N-1)
+    remaining_items = db.query(ActionPlanItem).filter(
+        ActionPlanItem.plan_id == today_plan.id
+    ).order_by(ActionPlanItem.slot).all()
+    
+    for idx, item in enumerate(remaining_items):
+        item.slot = idx
+    
+    # Add carried items starting from next slot
+    start_slot = len(remaining_items)
+    items_added = 0
+    
+    for idx, source_item in enumerate(source_items):
+        new_slot = start_slot + idx
+        
+        # Create new item as a copy
+        new_item = ActionPlanItem(
+            plan_id=today_plan.id,
+            uid=uid,
+            slot=new_slot,
+            time_slot=source_item.time_slot,
+            category=source_item.category,
+            target_hormone=source_item.target_hormone,
+            title=f"[Carried Forward] {source_item.title}",
+            specific_action=source_item.specific_action,
+            purpose=source_item.purpose,
+            hormone_persona_intro=source_item.hormone_persona_intro,
+            food_amounts=source_item.food_amounts,
+            food_items=source_item.food_items,
+            exercise_durations=source_item.exercise_durations,
+            exercise_types=source_item.exercise_types,
+            exercise_intensities=source_item.exercise_intensities,
+            mindfulness_durations=source_item.mindfulness_durations,
+            mindfulness_techniques=source_item.mindfulness_techniques,
+            conditions=source_item.conditions,
+            symptoms=source_item.symptoms,
+            hero_image_url=source_item.hero_image_url,
+            hero_image_prompt=source_item.hero_image_prompt,
+            research_studies=source_item.research_studies,
+            is_completed=False,
+            is_replaced=False,
+            carried_forward_from=source_item.id,
+            created_at=datetime.utcnow()
+        )
+        db.add(new_item)
+        db.flush()
+        
+        # Copy variants if they exist
+        source_variants = db.query(ActionPlanItemVariant).filter(
+            ActionPlanItemVariant.item_id == source_item.id
+        ).all()
+        
+        for variant in source_variants:
+            new_variant = ActionPlanItemVariant(
+                item_id=new_item.id,
+                variant_type=variant.variant_type,
+                title=variant.title,
+                description=variant.description,
+                image_url=variant.image_url,
+                image_prompt=variant.image_prompt,
+                created_at=datetime.utcnow()
+            )
+            db.add(new_variant)
+        
+        items_added += 1
+        logger.info(f"Carried forward item {source_item.id} -> new item {new_item.id} in today's plan (slot {new_slot})")
+    
+    db.commit()
+    
+    # Final count
+    final_count = db.query(ActionPlanItem).filter(
+        ActionPlanItem.plan_id == today_plan.id
+    ).count()
+    
+    logger.info(f"Successfully carried forward {items_added} items. Today's plan now has {final_count} items total.")
+    return items_added > 0
 
 
 # ============================================================================

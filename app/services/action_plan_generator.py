@@ -1036,7 +1036,42 @@ class ActionPlanGenerator:
             num_incomplete = len(incomplete_items)
             num_to_generate = TARGET_ACTIONS - num_incomplete
             
-            logger.info(f"Carryforward: {num_incomplete} incomplete items from {yesterday}, will generate {num_to_generate} new items")
+            # Calculate hormone distribution of carried items
+            primary_hormone = user_context.get("primary_hormone", "cortisol").lower() if 'user_context' in dir() else "cortisol"
+            secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower() if 'user_context' in dir() else "progesterone"
+            
+            # We need to load user context first to get hormone info
+            user_context = await self._load_user_context(user_id, db)
+            if user_context:
+                primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
+                secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
+            
+            # Count hormones in carried items
+            carried_primary = sum(1 for item in incomplete_items if (item.target_hormone or "").lower() == primary_hormone)
+            carried_secondary = num_incomplete - carried_primary
+            
+            # Calculate what we need to generate to maintain 2+2 balance
+            TARGET_PER_HORMONE = 2
+            needed_primary = max(0, TARGET_PER_HORMONE - carried_primary)
+            needed_secondary = max(0, TARGET_PER_HORMONE - carried_secondary)
+            
+            # Adjust if we need fewer than calculated (e.g., carried 3 items = only generate 1)
+            if needed_primary + needed_secondary > num_to_generate:
+                # Prioritize balance - reduce whichever we have more of in carried
+                if carried_primary >= carried_secondary:
+                    needed_primary = min(needed_primary, num_to_generate)
+                    needed_secondary = num_to_generate - needed_primary
+                else:
+                    needed_secondary = min(needed_secondary, num_to_generate)
+                    needed_primary = num_to_generate - needed_secondary
+            
+            hormone_requirements = {
+                "primary": needed_primary,
+                "secondary": needed_secondary
+            }
+            
+            logger.info(f"Carryforward: {num_incomplete} incomplete items from {yesterday} ({carried_primary} primary, {carried_secondary} secondary)")
+            logger.info(f"Will generate {num_to_generate} new items with hormone requirements: {hormone_requirements}")
             
             # Create today's plan
             new_plan = ActionPlan(
@@ -1113,15 +1148,15 @@ class ActionPlanGenerator:
                 logger.info(f"Generating {num_to_generate} new actions to complete the plan")
                 
                 try:
-                    # Load user context for generation
-                    user_context = await self._load_user_context(user_id, db)
+                    # user_context already loaded above for hormone calculation
                     if user_context:
-                        # Generate new actions for the remaining slots
+                        # Generate new actions for the remaining slots with hormone balance
                         new_actions, gen_cost = await self._generate_partial_actions(
                             user_context=user_context,
                             num_actions=num_to_generate,
                             existing_actions=carried_items,
-                            db=db
+                            db=db,
+                            hormone_requirements=hormone_requirements
                         )
                         
                         if new_actions:
@@ -1219,12 +1254,21 @@ class ActionPlanGenerator:
         user_context: Dict[str, Any],
         num_actions: int,
         existing_actions: List[Dict],
-        db: Optional[AsyncSession] = None
+        db: Optional[AsyncSession] = None,
+        hormone_requirements: Optional[Dict[str, int]] = None
     ) -> Tuple[Optional[List[Dict]], float]:
         """
         Generate a specific number of actions, avoiding duplicates with existing actions.
         
         Used for carryforward plans where we need to fill remaining slots.
+        
+        Args:
+            user_context: User profile and preferences
+            num_actions: Number of NEW actions to generate
+            existing_actions: Actions already in plan (to avoid duplicates)
+            db: Database session
+            hormone_requirements: Dict with {"primary": N, "secondary": M} specifying
+                                 how many of each hormone type to generate
         """
         if num_actions <= 0:
             return ([], 0.0)
@@ -1238,13 +1282,30 @@ class ActionPlanGenerator:
         primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
         secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
         
+        # Calculate hormone distribution if not specified
+        if hormone_requirements:
+            primary_count = hormone_requirements.get("primary", num_actions // 2)
+            secondary_count = hormone_requirements.get("secondary", num_actions - primary_count)
+        else:
+            # Default: split evenly
+            primary_count = num_actions // 2
+            secondary_count = num_actions - primary_count
+        
+        # Build hormone instruction
+        hormone_instruction = f"""
+HORMONE BALANCE REQUIREMENT (CRITICAL):
+- Generate exactly {primary_count} action(s) targeting PRIMARY hormone ({primary_hormone})
+- Generate exactly {secondary_count} action(s) targeting SECONDARY hormone ({secondary_hormone})
+Total: {num_actions} actions
+"""
+        
         # Build prompt for partial generation
         existing_summary = json.dumps(existing_actions, indent=2) if existing_actions else "None"
         
         prompt = f"""Generate exactly {num_actions} wellness action(s) for this user.
 
 ══════════════════════════════════════════════════════════════════════
-EXISTING ACTIONS (user already has these - DO NOT duplicate)
+EXISTING ACTIONS (user already has these - DO NOT duplicate similar content)
 ══════════════════════════════════════════════════════════════════════
 {existing_summary}
 
@@ -1260,15 +1321,33 @@ USER PROFILE
 - Conditions: {', '.join(user_context.get('diagnosed_conditions', [])) or 'none'}
 
 ══════════════════════════════════════════════════════════════════════
+{hormone_instruction}
+══════════════════════════════════════════════════════════════════════
+
+══════════════════════════════════════════════════════════════════════
 REQUIREMENTS
 ══════════════════════════════════════════════════════════════════════
-1. Generate exactly {num_actions} NEW action(s) - different from existing ones
+1. Generate exactly {num_actions} NEW action(s) - DIFFERENT content from existing ones
 2. Mix categories (food, movement, mindfulness) to complement existing
-3. Target the user's primary/secondary hormones
-4. Each action needs: title, specific_action, purpose, category, target_hormone, time_slot, symptoms (2 from user's concerns)
-5. Include food_items/food_amounts for food, exercise_types/durations for movement, mindfulness_techniques/durations for mindfulness
+3. STRICTLY follow the hormone count requirement above
+4. Each action needs:
+   - title: Clear action title
+   - category: "food" or "movement" or "mindfulness"
+   - time_slot: "morning" or "afternoon" or "evening"
+   - specific_action: Detailed instruction
+   - purpose: Why this helps the user
+   - target_hormone: "{primary_hormone}" OR "{secondary_hormone}" (follow counts above)
+   - hormone_persona_intro: Brief hormone benefit statement
+   - image_prompt: Description for image generation
+   - research_studies: [] (empty array)
+   - variants: [] (empty array - will be filled later)
+   - food_items/food_amounts for food category
+   - exercise_types/exercise_durations/exercise_intensities for movement category
+   - mindfulness_techniques/mindfulness_durations for mindfulness category
+   - symptoms: ["symptom1", "symptom2"] (2 from user's concerns)
+   - conditions: [] (empty array)
 
-Return as JSON array with {num_actions} action objects.
+Return as JSON: {{"actions": [array of {num_actions} action objects]}}
 """
         
         try:
@@ -1278,11 +1357,11 @@ Return as JSON array with {num_actions} action objects.
             response = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions."},
+                    {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
-                max_tokens=2000,
+                max_tokens=3000,
                 response_format={"type": "json_object"}
             )
             
@@ -1590,13 +1669,20 @@ Return as JSON array with {num_actions} action objects.
                 liked_categories[category] = liked_categories.get(category, 0) + 2  # Weight loved more
                 liked_hormones[hormone] = liked_hormones.get(hormone, 0) + 2
             elif fb.feedback_type == "dislike":
+                # Include both replacement_reason (what they did instead) and replacement_category (why)
                 reason = fb.replacement_reason or "unspecified"
-                disliked.append(f"- {category}: {fb.action_title} (reason: {reason})")
+                category_reason = getattr(fb, 'replacement_category', None)
+                if category_reason:
+                    disliked.append(f"- {category}: {fb.action_title} (why: {category_reason}, did instead: {reason})")
+                else:
+                    disliked.append(f"- {category}: {fb.action_title} (did instead: {reason})")
                 disliked_categories[category] = disliked_categories.get(category, 0) + 1
                 disliked_hormones[hormone] = disliked_hormones.get(hormone, 0) + 1
-            elif fb.feedback_type == "not_for_me":  # NEW
-                reason = getattr(fb, 'replacement_category', None) or getattr(fb, 'replacement_reason', None) or "unspecified"
-                not_for_me.append(f"- {category}: {fb.action_title} (reason: {reason})")
+            elif fb.feedback_type == "not_for_me":  # From daily review "replaced" status
+                # Include BOTH: why they replaced (category) AND what they did instead (reason)
+                replaced_with = getattr(fb, 'replacement_reason', None) or "unspecified activity"
+                why_replaced = getattr(fb, 'replacement_category', None) or "unspecified reason"
+                not_for_me.append(f"- {category}: {fb.action_title} (why replaced: {why_replaced}, did instead: {replaced_with})")
                 disliked_categories[category] = disliked_categories.get(category, 0) + 2  # Weight stronger
                 disliked_hormones[hormone] = disliked_hormones.get(hormone, 0) + 2
             elif fb.feedback_type in ["skip", "skipped"]:

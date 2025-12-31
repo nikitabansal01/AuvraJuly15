@@ -631,6 +631,7 @@ class ActionPlan(Base):
     # Status
     is_regenerated = Column(Boolean, default=False)  # If user requested regeneration
     feedback_collected = Column(Boolean, default=False)  # If 30-second feedback was given
+    review_completed = Column(Boolean, default=False)  # If next-day review has been done
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -694,6 +695,9 @@ class ActionPlanItem(Base):
     is_replaced = Column(Boolean, default=False)  # If user replaced this action
     replaced_at = Column(DateTime, nullable=True)
     replacement_reason = Column(Text, nullable=True)
+    
+    # Carry forward tracking
+    carried_forward_from = Column(Integer, nullable=True)  # Source item ID if carried from previous day
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -783,6 +787,48 @@ class ActionPlanFeedback(Base):
         Index('idx_feedback_user', 'uid', 'created_at'),
         Index('idx_feedback_type', 'feedback_type'),
         Index('idx_feedback_source', 'feedback_source'),  # NEW: Index for source filtering
+    )
+
+
+class ActionPlanDailyReview(Base):
+    """
+    Daily review of previous day's action plan.
+    Stores user's retroactive status updates for each incomplete item.
+    """
+    __tablename__ = "action_plan_daily_reviews"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Review date (when the review was submitted, usually day after plan_date)
+    review_date = Column(Date, nullable=False, index=True)
+    review_completed_at = Column(DateTime, nullable=True)
+    
+    # Per-item review data stored as JSONB
+    # Structure: [{"item_id": 1, "status": "forgot_to_mark"|"replaced"|"skipped"|"was_completed", 
+    #              "replacement_text": "...", "replacement_category": "..."}]
+    items_review_data = Column(JSONB, nullable=False, default=[])
+    
+    # Streak action taken
+    streak_action = Column(String(20), nullable=True)  # "maintained", "used_freeze", "broken"
+    freezes_used_count = Column(Integer, default=0)
+    
+    # Items that were carried forward to today's plan
+    items_carried_forward = Column(JSONB, default=[])  # Array of item_ids
+    
+    # Summary counts for quick queries
+    items_marked_complete = Column(Integer, default=0)  # forgot_to_mark + was_completed
+    items_replaced = Column(Integer, default=0)
+    items_skipped = Column(Integer, default=0)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_daily_review_user_date', 'uid', 'review_date'),
+        Index('idx_daily_review_plan', 'plan_id'),
     )
 
 

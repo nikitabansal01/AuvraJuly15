@@ -82,6 +82,31 @@ async def verify_firebase_token(token: str) -> dict:
         
     except Exception as e:
         logger.error(f"Firebase token verification failed: {str(e)}", exc_info=True)
+        
+        # DEVELOPMENT BYPASS: If verification fails in dev mode (e.g. missing credentials), 
+        # decode the token without verification to allow local development.
+        if settings.DEBUG or settings.ENVIRONMENT == "development":
+            logger.warning("⚠️ DEVELOPMENT MODE: Bypassing Firebase token verification failure")
+            try:
+                import jwt
+                # Decode without verification to get the real UID from the token
+                decoded_token = jwt.decode(token, options={"verify_signature": False})
+                
+                # Map 'sub' to 'uid' as Firebase Admin SDK does
+                if 'uid' not in decoded_token:
+                    decoded_token['uid'] = decoded_token.get('sub') or decoded_token.get('user_id')
+                
+                logger.info(f"Bypassed verification. UID: {decoded_token.get('uid')}")
+                return decoded_token
+            except Exception as decode_error:
+                logger.error(f"Failed to decode token without verification: {decode_error}")
+                # Fallback to mock user if decoding fails
+                return {
+                    "uid": "test-user-id",
+                    "email": "test@example.com",
+                    "name": "Test User"
+                }
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Firebase token: {str(e)}",

@@ -52,6 +52,66 @@ class PlanSatisfactionRequest(BaseModel):
 
 
 # ============================================================================
+# DAILY REVIEW MODELS - Next-day action plan review flow
+# ============================================================================
+
+class DailyReviewItemStatus(BaseModel):
+    """Status of a single item during daily review."""
+    item_id: int = Field(..., description="ID of the action item")
+    status: str = Field(..., description="'forgot_to_mark' | 'replaced' | 'skipped' | 'was_completed'")
+    replacement_text: Optional[str] = Field(None, description="What user did instead (if replaced)")
+    replacement_category: Optional[str] = Field(None, description="Categorized reason: 'healthier_option', 'no_time', 'no_ingredients', 'different_activity', 'other'")
+
+
+class DailyReviewRequest(BaseModel):
+    """Request model for submitting daily review of previous day's actions."""
+    plan_id: int = Field(..., description="ID of the plan being reviewed")
+    items: List[DailyReviewItemStatus] = Field(..., description="Status of each incomplete item")
+    use_freeze: bool = Field(False, description="Whether to use streak freeze if needed")
+
+
+class DailyReviewResponse(BaseModel):
+    """Response model for daily review submission."""
+    success: bool
+    streak_maintained: bool = False
+    streak_broken: bool = False
+    freezes_used: int = 0
+    new_streak_count: int = 0
+    items_carried_forward: List[int] = []
+    today_plan_updated: bool = False
+    message: str = ""
+    error: Optional[str] = None
+
+
+class PendingReviewItemInfo(BaseModel):
+    """Information about an item pending review."""
+    id: int
+    title: str
+    category: str
+    time_slot: str
+    target_hormone: str
+    is_completed: bool
+    hero_image_url: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class PendingReviewResponse(BaseModel):
+    """Response model for checking if user has pending daily review."""
+    needs_review: bool = False
+    review_date: Optional[str] = None
+    plan_id: Optional[int] = None
+    items: List[PendingReviewItemInfo] = []
+    total_items: int = 0
+    completed_count: int = 0
+    incomplete_count: int = 0
+    streak_at_risk: bool = False
+    freezes_available: int = 0
+    was_frozen: bool = False  # If the day was already frozen
+
+
+# ============================================================================
 # RESPONSE MODELS
 # ============================================================================
 
