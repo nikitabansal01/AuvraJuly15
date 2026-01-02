@@ -570,11 +570,13 @@ class WeeklyCheckInService:
         if checkin.top_concern and checkin.concern_severity:
             self._create_symptom_log_from_checkin(checkin)
         
-        # Generate AI-powered summary for memory
-        from app.services.weekly_checkin_ai import WeeklyCheckInAI
-        ai_engine = WeeklyCheckInAI(self.db)
-        context = ai_engine.get_user_context(checkin.uid)
-        checkin.conversation_summary = ai_engine.generate_summary(checkin, context)
+        # Extract summary from last AI message (AI naturally includes findings in completion message)
+        # The AI's final message already contains the summary in patient-facing format
+        if checkin.raw_messages and len(checkin.raw_messages) > 0:
+            last_message = checkin.raw_messages[-1]
+            if last_message.get('role') == 'assistant':
+                # Store the AI's completion message as the summary
+                checkin.conversation_summary = last_message.get('content', '')
         
         # Update user profile
         profile = self.db.query(UserProfile).filter(
@@ -591,8 +593,8 @@ class WeeklyCheckInService:
         
         logger.info(f"Completed check-in {checkin.id} for user {checkin.uid}")
         
-        # Build personalized completion message with findings
-        completion_message = self._build_completion_message(checkin, context)
+        # Use AI's completion message directly (it already includes findings)
+        completion_message = checkin.conversation_summary or "Thanks for sharing! I've updated your health profile. 💜"
         
         return checkin, {
             "is_complete": True,
@@ -601,30 +603,7 @@ class WeeklyCheckInService:
             "summary": checkin.conversation_summary
         }
     
-    def _build_completion_message(self, checkin: WeeklyCheckIn, context: Dict[str, Any]) -> str:
-        """
-        Build a personalized completion message summarizing what we learned
-        and how it will be used for future action plans.
-        """
-        user_name = context.get("user_name", "")
-        greeting = f"Thanks for sharing, {user_name}!" if user_name else "Thanks for sharing!"
-        
-        # Use the AI-generated summary (now in second person)
-        summary_part = checkin.conversation_summary
-        if not summary_part:
-             # Fallback if summary generation failed completely
-            symptom = checkin.top_concern or "symptoms"
-            summary_part = f"I've noted your updates about your {symptom.lower()}."
 
-        message = f"""{greeting}
-
-{summary_part}
-
-I've updated your health profile with these insights. I'll use this to personalize your next action plan - focusing on what works for you and helping you manage those triggers. 💜"""
-        
-        return message.strip()
-        
-        return message.strip()
     
     def _create_symptom_log_from_checkin(self, checkin: WeeklyCheckIn):
         """Create a SymptomLog entry from the check-in data."""

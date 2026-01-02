@@ -383,11 +383,20 @@ class WeeklyCheckInAI:
         - Keep it to 3-4 questions max.
         - Be warm, professional, and medically grounded.
         - Generate 4-5 tap options that are likely answers based on the question.
-        - Set "is_complete": true when you have a clear picture of why they feel this way.
+        - When you have enough information (usually after 3-4 exchanges), set "is_complete": true
+        
+        WHEN COMPLETING (is_complete: true):
+        Your final "message" should summarize what you learned in a warm, conversational way.
+        Address the patient directly (second person). Example format:
+        
+        "Thanks for sharing! You mentioned your [symptom] is [status] this week (Severity: X/9). 
+        It seems [triggers] might have triggered it, but you found that [relief factors] helped. 
+        I've updated your health profile with these insights. I'll use this to personalize your next 
+        action plan - focusing on what works for you and helping you manage those triggers. 💜"
         
         Output JSON format:
         {{
-            "message": "Your response + ONE question",
+            "message": "Your response + ONE question (or completion summary if is_complete: true)",
             "tap_options": [{{"id": "opt_1", "text": "Answer option 1"}}, {{"id": "opt_2", "text": "Answer option 2"}}],
             "is_complete": boolean
         }}
