@@ -92,6 +92,32 @@ async def get_today_assignments(
         
         user_timezone = timezone or (user_profile.current_timezone if user_profile else "Asia/Seoul")
         
+        # CRITICAL: Check for pending daily review BEFORE generating new plan
+        # User must complete review of previous days before getting today's plan
+        from app.core.database import ActionPlan
+        from app.utils.timezone_utils import get_user_current_date
+        from datetime import timedelta
+        
+        today_date = get_user_current_date(uid, db)
+        three_days_ago = today_date - timedelta(days=3)
+        
+        pending_review = db.query(ActionPlan).filter(
+            and_(
+                ActionPlan.uid == uid,
+                ActionPlan.plan_date >= three_days_ago,
+                ActionPlan.plan_date < today_date,
+                ActionPlan.review_completed == False
+            )
+        ).first()
+        
+        if pending_review:
+            logger.info(f"Blocking plan generation for {uid} due to pending review for {pending_review.plan_date}")
+            # Return 428 Precondition Required to indicate review is needed
+            raise HTTPException(
+                status_code=428, 
+                detail=f"Daily review pending for {pending_review.plan_date}. Please complete review first."
+            )
+        
         # Get async session for generator
         async_db = await get_async_db_session()
         
