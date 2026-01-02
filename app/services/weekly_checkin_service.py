@@ -41,6 +41,57 @@ class WeeklyCheckInService:
         self.db = db
     
     # ═══════════════════════════════════════════════════════════════════════════
+    # HELPER METHODS
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    def _calculate_next_weekly_due_date(self, uid: str, current_date: date) -> date:
+        """
+        Calculate the next weekly check-in due date based on a fixed weekly schedule.
+        
+        Logic:
+        1. First check-in: Set due date to same day next week
+        2. Subsequent check-ins: Always align to the originally set weekly day
+        3. If completed early: Next due date is still the original weekly day
+        4. If completed late: Next due date is the next occurrence of the weekly day
+        
+        Args:
+            uid: User ID
+            current_date: Current date in user's timezone
+            
+        Returns:
+            date: Next weekly check-in due date
+        """
+        profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+        
+        # Get the last completed check-in to determine the weekly schedule
+        last_checkin = self.db.query(WeeklyCheckIn).filter(
+            and_(
+                WeeklyCheckIn.uid == uid,
+                WeeklyCheckIn.is_complete == True
+            )
+        ).order_by(desc(WeeklyCheckIn.completed_at)).first()
+        
+        if last_checkin and last_checkin.check_in_date:
+            # Use the original check-in day as the weekly anchor
+            anchor_day = last_checkin.check_in_date
+            anchor_weekday = anchor_day.weekday()  # 0=Monday, 6=Sunday
+            
+            # Calculate next occurrence of this weekday
+            days_ahead = anchor_weekday - current_date.weekday()
+            if days_ahead <= 0:  # Target day already happened this week or is today
+                days_ahead += 7  # Move to next week
+            
+            next_due = current_date + timedelta(days=days_ahead)
+            logger.info(f"Weekly schedule: anchor_day={anchor_day} (weekday={anchor_weekday}), "
+                       f"current={current_date}, next_due={next_due}")
+            return next_due
+        else:
+            # First check-in - set due date to same day next week
+            next_due = current_date + timedelta(days=7)
+            logger.info(f"First check-in: setting due date to {next_due} (7 days from {current_date})")
+            return next_due
+    
+    # ═══════════════════════════════════════════════════════════════════════════
     # STATUS & SCHEDULING
     # ═══════════════════════════════════════════════════════════════════════════
     
@@ -578,17 +629,22 @@ class WeeklyCheckInService:
                 # Store the AI's completion message as the summary
                 checkin.conversation_summary = last_message.get('content', '')
         
-        # Update user profile
+        # Update user profile with next weekly due date
         profile = self.db.query(UserProfile).filter(
             UserProfile.uid == checkin.uid
         ).first()
         
         if profile:
             user_today = get_user_current_date(checkin.uid, self.db)
-            next_due_date = user_today + timedelta(days=self.CHECK_IN_INTERVAL_DAYS)
+            
+            # Calculate next due date using weekly schedule (same day next week)
+            next_due_date = self._calculate_next_weekly_due_date(checkin.uid, user_today)
             profile.weekly_checkin_due_date = next_due_date
             profile.last_weekly_checkin_id = checkin.id
-            logger.info(f"Updated weekly_checkin_due_date: today={user_today}, next_due={next_due_date}")
+            
+            logger.info(f"Weekly check-in completed: user={checkin.uid}, "
+                       f"completed_today={user_today}, next_due={next_due_date} "
+                       f"(will be due on {next_due_date.strftime('%A')} every week)")
         
         self.db.commit()
         self.db.refresh(checkin)
