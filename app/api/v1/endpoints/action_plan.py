@@ -1172,15 +1172,17 @@ async def _carry_forward_items_to_today(
     
     Logic:
     1. Get carried items and their hormones
-    2. Count hormone distribution of carried items
-    3. Delete excess items from today's plan (keeping hormone balance)
-    4. Add carried items to today's plan
-    5. Result: Always 4 items total with proper hormone balance
+    2. If today's plan doesn't exist, GENERATE IT FIRST
+    3. Count hormone distribution of carried items
+    4. Delete excess items from today's plan (keeping hormone balance)
+    5. Add carried items to today's plan
+    6. Result: Always 4 items total with proper hormone balance
     
     Returns True if successfully modified today's plan.
     """
-    from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserResponse
+    from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserResponse, UserProfile
     from app.utils.timezone_utils import get_user_current_date
+    from app.services.action_plan_generator import get_action_plan_generator
     
     TARGET_ITEMS = 4  # Standard plan size
     TARGET_PER_HORMONE = 2  # 2 primary + 2 secondary
@@ -1199,8 +1201,49 @@ async def _carry_forward_items_to_today(
     ).first()
     
     if not today_plan:
-        logger.warning(f"No plan exists for today ({today}) to carry forward items")
-        return False
+        # CRITICAL FIX: Generate today's plan if it doesn't exist
+        # This prevents carried items from being lost
+        logger.info(f"No plan exists for today ({today}) - generating plan before carry forward")
+        
+        try:
+            # Get user's timezone
+            user_profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
+            user_timezone = user_profile.current_timezone if user_profile and user_profile.current_timezone else "Asia/Seoul"
+            
+            # Get async session for generator
+            async_db = await get_async_db_session()
+            
+            # Generate today's plan
+            generator = get_action_plan_generator()
+            result = await generator.get_or_generate_today_plan(
+                user_id=uid,
+                user_timezone=user_timezone,
+                db=async_db
+            )
+            
+            await async_db.close()
+            
+            if not result.get("success"):
+                logger.error(f"Failed to generate today's plan for carry forward: {result.get('error')}")
+                return False
+            
+            logger.info(f"Generated today's plan (id={result.get('plan_id')}) for carry forward")
+            
+            # Re-fetch today's plan after generation
+            today_plan = db.query(ActionPlan).filter(
+                and_(
+                    ActionPlan.uid == uid,
+                    ActionPlan.plan_date == today
+                )
+            ).first()
+            
+            if not today_plan:
+                logger.error(f"Plan still not found after generation - sync issue")
+                return False
+                
+        except Exception as gen_error:
+            logger.error(f"Failed to generate plan for carry forward: {gen_error}")
+            return False
     
     # Get the source items to copy
     source_items = db.query(ActionPlanItem).filter(

@@ -1130,6 +1130,23 @@ class WeeklyCheckInQuestion(Base):
         Index('idx_question_concern', 'concern_type', 'is_active'),
     )
 
+class AIModelUsageLog(Base):
+    """
+    Tracks which AI model was used for generation and any switching events.
+    """
+    __tablename__ = "ai_model_usage_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(255), nullable=False, index=True)
+    
+    primary_model = Column(String(100), nullable=False)
+    fallback_model = Column(String(100), nullable=True)
+    switch_reason = Column(Text, nullable=True)
+    final_model_used = Column(String(100), nullable=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 
 # Database table creation
 def create_tables():

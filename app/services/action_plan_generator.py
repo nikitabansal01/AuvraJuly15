@@ -31,6 +31,10 @@ from sqlalchemy import select, and_, update, text
 
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
+from app.core.config import settings
+
+# Get API keys from environment
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
 
 logger = logging.getLogger(__name__)
 
@@ -797,6 +801,11 @@ class ActionPlanGenerator:
             # Pydantic validation ensures complete data - no fallbacks
             actions = None
             gpt_cost = 0.0
+            used_model = self.GPT_MODEL
+            model_switch_reason = None  # Track why we switched models
+            
+            from app.services.evaluation_service import get_action_plan_evaluator
+            evaluator = get_action_plan_evaluator()
             
             for attempt in range(1, self.MAX_RETRIES + 1):
                 logger.info(f"🔄 Generation attempt {attempt}/{self.MAX_RETRIES}")
@@ -809,6 +818,52 @@ class ActionPlanGenerator:
                 if attempt_actions:
                     # Pydantic validated successfully
                     logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} actions validated by Pydantic")
+                    
+                    # ---------------------------------------------------------
+                    # QUALITY CHECK & MODEL SWITCHING
+                    # ---------------------------------------------------------
+                    try:
+                        # Get recent feedback for context (needed for scoring)
+                        feedback_history = await evaluator._get_recent_feedback(user_id, db)
+                        
+                        # Calculate scores without saving to DB yet
+                        scores, eval_cost, _ = await evaluator.calculate_scores(
+                            attempt_actions, user_context, feedback_history
+                        )
+                        gpt_cost += eval_cost
+                        
+                        condition_score = scores.get("condition_appropriateness")
+                        personalization_score = scores.get("personalization_score")
+                        
+                        # If medical accuracy/appropriateness is low, switch to Groq Llama 3
+                        if condition_score is not None and condition_score < 70:
+                            model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
+                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq Llama 3 for deeper research.")
+                            
+                            groq_model = "llama-3.3-70b-versatile"
+                            try:
+                                groq_actions, groq_cost = await self._generate_actions_via_gpt(
+                                    user_context, db, model_override=groq_model
+                                )
+                                gpt_cost += groq_cost
+                                
+                                if groq_actions:
+                                    logger.info(f"✅ Groq generation successful. Using {groq_model} results.")
+                                    attempt_actions = groq_actions
+                                    used_model = groq_model
+                                else:
+                                    logger.error("❌ Groq generation failed (returned None). Falling back to original OpenAI results.")
+                                    model_switch_reason += " | Groq fallback returned None, using original"
+                            except Exception as groq_err:
+                                logger.error(f"❌ Groq API error: {groq_err}. Falling back to original OpenAI results.")
+                                model_switch_reason += f" | Groq error: {str(groq_err)[:100]}"
+                        else:
+                            logger.info(f"✅ Quality check passed (Condition: {condition_score}, Personalization: {personalization_score})")
+                            
+                    except Exception as e:
+                        logger.error(f"⚠️ Quality check failed: {e}. Proceeding with OpenAI results.")
+                        model_switch_reason = f"Quality check error: {str(e)[:100]}"
+                    
                     actions = attempt_actions
                     break
                 else:
@@ -841,6 +896,29 @@ class ActionPlanGenerator:
                 generation_time_ms=int((time.time() - start_time) * 1000),
                 db=db
             )
+            
+            # Step 4.5: Log AI Model Usage (Admin Tracking)
+            try:
+                from app.core.database import AIModelUsageLog
+                
+                # Determine if a switch happened
+                fallback_model = None
+                if used_model != self.GPT_MODEL:
+                    fallback_model = used_model
+
+                usage_log = AIModelUsageLog(
+                    plan_id=plan.id,
+                    user_id=user_id,
+                    primary_model=self.GPT_MODEL,
+                    fallback_model=fallback_model,
+                    switch_reason=model_switch_reason,  # Now captures actual score
+                    final_model_used=used_model
+                )
+                db.add(usage_log)
+                await db.commit()
+                logger.info(f"📊 AI model usage logged for plan {plan.id}")
+            except Exception as log_err:
+                logger.error(f"Failed to log AI model usage: {log_err}")
             
             # Step 5: Fire-and-forget quality evaluation (async, non-blocking)
             # This stores metrics for trend monitoring without impacting UX
@@ -1882,18 +1960,19 @@ Format as bullet points."""
     async def _generate_actions_via_gpt(
         self,
         user_context: Dict[str, Any],
-        db: Optional[AsyncSession] = None
+        db: Optional[AsyncSession] = None,
+        model_override: Optional[str] = None
     ) -> Tuple[Optional[List[Dict]], float]:
         """
-        Generate actions using GPT-4o-mini with tool calling for real citations.
+        Generate actions using GPT-4o-mini (or override model) with tool calling for real citations.
         
         Uses search_research_paper tool to fetch real papers from PubMed/OpenAlex/Semantic Scholar.
         Caches results to database for faster future lookups.
         
         Returns (actions, cost)
         """
-        if not self.openai_api_key:
-            logger.error("OpenAI API key not configured")
+        if not self.openai_api_key and not GROQ_API_KEY:
+            logger.error("No API keys configured")
             return (None, 0.0)
         
         # Get cycle phase for hormone context
@@ -2008,28 +2087,53 @@ If the tool returns empty, set research_studies to an empty array.
                 f"mindfulness stress reduction {primary_hormone} {diagnosed_conditions} women"
             ]
             
-            # Execute research searches
-            research_findings = []
-            for i, query in enumerate(research_queries):
-                categories = ["food", "food", "movement", "mindfulness"]
-                hormones = [primary_hormone, secondary_hormone, primary_hormone, primary_hormone]
-                
-                logger.info(f"  🔍 Searching: {query[:60]}...")
-                paper = await execute_pubmed_tool({
-                    "query": query,
-                    "action_title": f"Research {i+1}",
-                    "category": categories[i],
-                    "target_hormone": hormones[i]
-                }, db=db)
-                
-                if paper and paper.get("title"):
-                    research_findings.append({
+            categories = ["food", "food", "movement", "mindfulness"]
+            hormones = [primary_hormone, secondary_hormone, primary_hormone, primary_hormone]
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # PARALLEL EXECUTION: Run all PubMed searches concurrently for speed
+            # Before: ~2000ms (4 x 500ms sequential)
+            # After:  ~500ms  (parallel)
+            # ═══════════════════════════════════════════════════════════════════════
+            async def fetch_research_paper(index: int, query: str) -> Dict[str, Any]:
+                """Fetch a single research paper for a query."""
+                try:
+                    paper = await execute_pubmed_tool({
                         "query": query,
-                        "category": categories[i],
-                        "hormone": hormones[i],
-                        "paper": paper
-                    })
-                    logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                        "action_title": f"Research {index + 1}",
+                        "category": categories[index],
+                        "target_hormone": hormones[index]
+                    }, db=db)
+                    
+                    if paper and paper.get("title"):
+                        return {
+                            "query": query,
+                            "category": categories[index],
+                            "hormone": hormones[index],
+                            "paper": paper
+                        }
+                    return None
+                except Exception as e:
+                    logger.warning(f"Research query failed: {query[:40]}... Error: {e}")
+                    return None
+            
+            # Execute all searches in parallel
+            logger.info(f"  🔍 Searching {len(research_queries)} queries in parallel...")
+            results = await asyncio.gather(
+                *[fetch_research_paper(i, q) for i, q in enumerate(research_queries)],
+                return_exceptions=True
+            )
+            
+            # Filter out None results and exceptions
+            research_findings = []
+            for i, result in enumerate(results):
+                if result is None:
+                    continue
+                if isinstance(result, Exception):
+                    logger.warning(f"Research query {i} exception: {result}")
+                    continue
+                research_findings.append(result)
+                logger.info(f"  ✅ Found: {result['paper'].get('title', '')[:50]}...")
             
             logger.info(f"🔬 Research complete: Found {len(research_findings)} relevant papers")
             
@@ -2079,29 +2183,48 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
 {research_summary}
 """
             
+            # Determine model and endpoint
+            use_groq = model_override and ("llama" in model_override.lower() or "mixtral" in model_override.lower())
+            
+            api_url = "https://api.groq.com/openai/v1/chat/completions" if use_groq else "https://api.openai.com/v1/chat/completions"
+            api_key = GROQ_API_KEY if use_groq else self.openai_api_key
+            model = model_override if model_override else self.GPT_MODEL
+            
+            if use_groq and not api_key:
+                logger.error("Groq API key not configured but Groq model requested")
+                return (None, total_cost)
+
+            # Groq specific adjustments
+            if use_groq:
+                # Groq supports json_object. We use that and rely on the prompt for schema adherence.
+                response_format = {"type": "json_object"}
+                enhanced_system_with_research += "\n\nIMPORTANT: Output valid JSON matching the schema provided."
+            else:
+                # OpenAI supports Structured Outputs (strict schema)
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "action_plan",
+                        "strict": True,
+                        "schema": ACTION_PLAN_SCHEMA
+                    }
+                }
+
             response = await self.client.post(
-                "https://api.openai.com/v1/chat/completions",
+                api_url,
                 headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": self.GPT_MODEL,
+                    "model": model,
                     "messages": [
                         {"role": "system", "content": enhanced_system_with_research},
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.3,
                     "max_tokens": 6000,
-                    # USE STRUCTURED OUTPUTS - GPT MUST return this exact schema
-                    "response_format": {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "action_plan",
-                            "strict": True,
-                            "schema": ACTION_PLAN_SCHEMA
-                        }
-                    }
+                    "response_format": response_format
                 }
             )
             

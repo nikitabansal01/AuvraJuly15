@@ -164,6 +164,36 @@ class ActionPlanEvaluator:
         self.client = httpx.AsyncClient(timeout=60.0)
         logger.info("ActionPlanEvaluator initialized")
     
+    async def calculate_scores(
+        self,
+        actions: List[Dict[str, Any]],
+        user_context: Dict[str, Any],
+        feedback_history: str
+    ) -> Tuple[Dict[str, Any], float, int]:
+        """
+        Calculate evaluation scores without storing to database.
+        Returns (scores_dict, cost, citation_validity_score).
+        """
+        # Step 1: Check citation validity (no LLM needed)
+        citation_validity = self._evaluate_citation_validity(actions)
+        
+        # Step 2: Run LLM evaluation for relevance metrics
+        llm_scores, llm_cost = await self._run_llm_evaluation(
+            actions, user_context, feedback_history
+        )
+        
+        if llm_scores is None:
+            llm_scores = {
+                "personalization_score": None,
+                "condition_appropriateness": None,
+                "feedback_alignment_score": None,
+                "preference_compliance_score": None,
+                "citation_relevance_score": None,
+                "reasoning": {}
+            }
+            
+        return llm_scores, llm_cost, citation_validity
+
     async def evaluate_plan(
         self,
         plan_id: int,
@@ -198,27 +228,13 @@ class ActionPlanEvaluator:
             # Step 1: Get recent feedback for context
             feedback_history = await self._get_recent_feedback(user_id, db)
             
-            # Step 2: Check citation validity (no LLM needed)
-            citation_validity = self._evaluate_citation_validity(actions)
-            
-            # Step 3: Run LLM evaluation for relevance metrics
-            llm_scores, llm_cost = await self._run_llm_evaluation(
+            # Step 2: Calculate scores
+            llm_scores, llm_cost, citation_validity = await self.calculate_scores(
                 actions, user_context, feedback_history
             )
             total_cost += llm_cost
             
-            if llm_scores is None:
-                logger.warning(f"LLM evaluation failed for plan {plan_id}")
-                llm_scores = {
-                    "personalization_score": None,
-                    "condition_appropriateness": None,
-                    "feedback_alignment_score": None,
-                    "preference_compliance_score": None,
-                    "citation_relevance_score": None,
-                    "reasoning": {}
-                }
-            
-            # Step 4: Calculate overall score
+            # Step 3: Calculate overall score
             overall_score = self._calculate_overall_score(
                 structure_valid=structure_valid,
                 personalization_score=llm_scores.get("personalization_score"),
@@ -229,7 +245,7 @@ class ActionPlanEvaluator:
                 citation_relevance_score=llm_scores.get("citation_relevance_score")
             )
             
-            # Step 5: Store evaluation in database
+            # Step 4: Store evaluation in database
             evaluation = ActionPlanEvaluation(
                 plan_id=plan_id,
                 uid=user_id,
