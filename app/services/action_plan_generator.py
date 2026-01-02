@@ -427,6 +427,15 @@ CHATBOT CONVERSATION CONTEXT
 {chatbot_context}
 
 ══════════════════════════════════════════════════════════════════════
+WEEKLY CHECK-IN INSIGHTS (Recent symptom reports from user)
+══════════════════════════════════════════════════════════════════════
+{weekly_checkin_insights}
+Use these insights to:
+- Target actions that address the user's recent symptom triggers
+- Avoid recommending things that made symptoms worse
+- Build on what helped the user feel better
+
+══════════════════════════════════════════════════════════════════════
 REQUIREMENTS (READ CAREFULLY)
 ══════════════════════════════════════════════════════════════════════
 1. Generate exactly {num_actions} actions total
@@ -1515,7 +1524,8 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "feedback_summary": "No summary yet",
                 "feedback_memory": "No previous feedback",
                 "chatbot_memory": {},
-                "chatbot_context": "No additional context"
+                "chatbot_context": "No additional context",
+                "weekly_checkin_insights": "No weekly check-in data yet"
             }
 
             if not user_response:
@@ -1532,6 +1542,22 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 ).order_by(ActionPlanFeedback.created_at.desc()).limit(50)
             )
             recent_feedback = feedback_result.scalars().all()
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # GET RECENT WEEKLY CHECK-IN DATA FOR PERSONALIZATION
+            # ═══════════════════════════════════════════════════════════════════
+            from app.core.database import WeeklyCheckIn
+            
+            checkin_result = await db.execute(
+                select(WeeklyCheckIn).where(
+                    WeeklyCheckIn.uid == user_id,
+                    WeeklyCheckIn.is_complete == True
+                ).order_by(WeeklyCheckIn.completed_at.desc()).limit(4)  # Last 4 weeks
+            )
+            recent_checkins = checkin_result.scalars().all()
+            
+            # Format weekly check-in insights for action plan
+            weekly_checkin_insights = self._format_weekly_checkin_insights(recent_checkins)
             
             # Calculate cycle day and phase
             cycle_day, cycle_phase = self._calculate_cycle_info(
@@ -1629,7 +1655,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "feedback_summary": feedback_summary or "No summary yet",
                 "feedback_memory": feedback_memory,
                 "chatbot_memory": chatbot_memory,
-                "chatbot_context": chatbot_context
+                "chatbot_context": chatbot_context,
+                # Weekly check-in insights for personalization
+                "weekly_checkin_insights": weekly_checkin_insights
             })
             
             return context
@@ -1670,6 +1698,46 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             context_parts.append(f"Other notes: {chatbot_memory['notes']}")
         
         return "\n".join(context_parts) if context_parts else "No additional context from conversations."
+    
+    def _format_weekly_checkin_insights(self, recent_checkins: List[Any]) -> str:
+        """Format weekly check-in summaries for action plan personalization."""
+        if not recent_checkins:
+            return "No weekly check-in data yet"
+        
+        insights = []
+        for i, checkin in enumerate(recent_checkins):
+            week_label = "This week" if i == 0 else f"{i} week(s) ago"
+            parts = []
+            
+            # Add severity info
+            if checkin.concern_severity:
+                severity = checkin.concern_severity
+                concern = checkin.top_concern or "symptoms"
+                if severity <= 3:
+                    parts.append(f"{concern}: minimal (severity {severity}/9)")
+                elif severity <= 6:
+                    parts.append(f"{concern}: moderate (severity {severity}/9)")
+                else:
+                    parts.append(f"{concern}: significant (severity {severity}/9)")
+            
+            # Add negative factors (triggers)
+            if checkin.factors_negative:
+                triggers = ", ".join(checkin.factors_negative[:3])
+                parts.append(f"Triggers: {triggers}")
+            
+            # Add positive factors (what helped)
+            if checkin.factors_positive:
+                helpers = ", ".join(checkin.factors_positive[:3])
+                parts.append(f"Helped: {helpers}")
+            
+            # Add the AI-generated conversation summary if available
+            if checkin.conversation_summary:
+                parts.append(f"Summary: {checkin.conversation_summary}")
+            
+            if parts:
+                insights.append(f"[{week_label}] " + " | ".join(parts))
+        
+        return "\n".join(insights) if insights else "No weekly check-in data yet"
     
     def _calculate_cycle_info(
         self,
@@ -2038,6 +2106,7 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
             chatbot_context=user_context.get("chatbot_context", "No additional context"),
             feedback_summary=user_context.get("feedback_summary", "No summary yet"),
+            weekly_checkin_insights=user_context.get("weekly_checkin_insights", "No weekly check-in data yet"),
             # Generation params
             primary_count=2,
             secondary_count=2,

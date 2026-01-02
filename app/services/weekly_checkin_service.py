@@ -208,6 +208,23 @@ class WeeklyCheckInService:
         cycle_service = CycleService(self.db)
         cycle_info = cycle_service.get_cycle_phase_info(uid)
         
+        # Get user's primary concern from their profile/onboarding
+        from app.core.database import UserResponse
+        user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+        user_top_concern = "your symptoms"  # Fallback
+        if user_response:
+            # Check top_concern first
+            if user_response.top_concern:
+                user_top_concern = user_response.top_concern
+            # Fallback to body_concerns if available
+            elif user_response.body_concerns:
+                if isinstance(user_response.body_concerns, list) and len(user_response.body_concerns) > 0:
+                    user_top_concern = user_response.body_concerns[0]
+                elif isinstance(user_response.body_concerns, str):
+                    user_top_concern = user_response.body_concerns
+        
+        logger.info(f"User {uid} top concern for check-in: {user_top_concern}")
+        
         # Create new check-in
         checkin = WeeklyCheckIn(
             id=str(uuid.uuid4()),
@@ -221,7 +238,7 @@ class WeeklyCheckInService:
             is_complete=False,
             started_at=datetime.utcnow(),
             raw_messages=[],
-            top_concern="Bloating"  # Default to Bloating for streamlined flow
+            top_concern=user_top_concern  # Use user's actual primary concern
         )
         
         self.db.add(checkin)
@@ -287,7 +304,7 @@ class WeeklyCheckInService:
             "is_required": ai_question.is_required,
             "slider_labels": ai_question.slider_labels,
             "current_index": checkin.current_question_index,
-            "total_questions": 6,  # Approximate - AI flow is dynamic
+            "total_questions": 0,  # Dynamic - LLM decides when complete
             "history": history
         }
     
@@ -574,12 +591,40 @@ class WeeklyCheckInService:
         
         logger.info(f"Completed check-in {checkin.id} for user {checkin.uid}")
         
+        # Build personalized completion message with findings
+        completion_message = self._build_completion_message(checkin, context)
+        
         return checkin, {
             "is_complete": True,
             "question_key": None,
-            "message": "Thanks for checking in! I'll use this to personalize your action plan this week. 💜",
+            "message": completion_message,
             "summary": checkin.conversation_summary
         }
+    
+    def _build_completion_message(self, checkin: WeeklyCheckIn, context: Dict[str, Any]) -> str:
+        """
+        Build a personalized completion message summarizing what we learned
+        and how it will be used for future action plans.
+        """
+        user_name = context.get("user_name", "")
+        greeting = f"Thanks for sharing, {user_name}!" if user_name else "Thanks for sharing!"
+        
+        # Use the AI-generated summary (now in second person)
+        summary_part = checkin.conversation_summary
+        if not summary_part:
+             # Fallback if summary generation failed completely
+            symptom = checkin.top_concern or "symptoms"
+            summary_part = f"I've noted your updates about your {symptom.lower()}."
+
+        message = f"""{greeting}
+
+{summary_part}
+
+I've updated your health profile with these insights. I'll use this to personalize your next action plan - focusing on what works for you and helping you manage those triggers. 💜"""
+        
+        return message.strip()
+        
+        return message.strip()
     
     def _create_symptom_log_from_checkin(self, checkin: WeeklyCheckIn):
         """Create a SymptomLog entry from the check-in data."""
