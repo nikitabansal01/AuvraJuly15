@@ -93,22 +93,21 @@ async def get_today_assignments(
         user_timezone = timezone or (user_profile.current_timezone if user_profile else "Asia/Seoul")
         
         # CRITICAL: Check for pending daily review BEFORE generating new plan
-        # User must complete review of previous days before getting today's plan
+        # User must complete review of their LAST plan before getting today's plan
+        # No time limit - even if user comes back after weeks, they must review their last plan
         from app.core.database import ActionPlan
         from app.utils.timezone_utils import get_user_current_date
-        from datetime import timedelta
         
         today_date = get_user_current_date(uid, db)
-        three_days_ago = today_date - timedelta(days=3)
         
+        # Find the LAST plan that hasn't been reviewed (regardless of how old)
         pending_review = db.query(ActionPlan).filter(
             and_(
                 ActionPlan.uid == uid,
-                ActionPlan.plan_date >= three_days_ago,
                 ActionPlan.plan_date < today_date,
                 ActionPlan.review_completed == False
             )
-        ).first()
+        ).order_by(ActionPlan.plan_date.desc()).first()
         
         if pending_review:
             logger.info(f"Blocking plan generation for {uid} due to pending review for {pending_review.plan_date}")
@@ -799,16 +798,13 @@ async def get_pending_review(
         from datetime import timedelta
         
         today = get_user_current_date(uid, db)
-        yesterday = today - timedelta(days=1)
         
         # Find the most recent plan that needs review (plan_date < today AND review_completed = False)
-        # Only check last 3 days to avoid stale reviews
-        three_days_ago = today - timedelta(days=3)
-        
+        # NO TIME LIMIT - user must review their last plan even if they come back after weeks
+        # This ensures the review flow is always enforced before generating a new plan
         plan_needing_review = db.query(ActionPlan).filter(
             and_(
                 ActionPlan.uid == uid,
-                ActionPlan.plan_date >= three_days_ago,
                 ActionPlan.plan_date < today,
                 ActionPlan.review_completed == False
             )
