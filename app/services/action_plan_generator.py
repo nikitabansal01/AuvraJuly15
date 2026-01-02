@@ -840,7 +840,11 @@ class ActionPlanGenerator:
                             model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
                             logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq Llama 3 for deeper research.")
                             
-                            groq_model = "llama-3.3-70b-versatile"
+                            # Use the most powerful model available on Groq for deep reasoning
+                            groq_model = "llama-3.3-70b-versatile" 
+                            # Alternative: "mixtral-8x7b-32768" (faster) or "gemma-7b-it" (Google)
+                            # Llama 3.3 70B is currently the SOTA open model on Groq
+                            
                             try:
                                 groq_actions, groq_cost = await self._generate_actions_via_gpt(
                                     user_context, db, model_override=groq_model
