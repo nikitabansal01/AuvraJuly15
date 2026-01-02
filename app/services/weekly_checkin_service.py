@@ -512,6 +512,11 @@ class WeeklyCheckInService:
              checkin.raw_messages = messages
              from sqlalchemy.orm.attributes import flag_modified
              flag_modified(checkin, "raw_messages")
+        else:
+            # AI returned None (completion) - it may have added a completion message
+            # Flag raw_messages as modified so it gets saved
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(checkin, "raw_messages")
         
         self.db.commit()
         self.db.refresh(checkin)

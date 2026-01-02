@@ -310,6 +310,15 @@ class WeeklyCheckInAI:
         """
         Use LLM to generate truly dynamic questions.
         """
+        # HARD LIMIT: Force completion after 3 doctor turns (6 total messages: 3 questions + 3 responses)
+        # Count assistant messages (doctor's turns)
+        doctor_turns = sum(1 for msg in conversation_so_far if msg.get("role") == "assistant")
+        if doctor_turns >= 3:
+            logger.info(f"Forcing completion after {doctor_turns} doctor turns - generating completion message")
+            # Generate a warm completion message
+            symptom = checkin.top_concern or "your symptoms"
+            return await self._generate_forced_completion_message(uid, checkin, conversation_so_far, context)
+        
         symptom = checkin.top_concern or context.get("primary_concern", "symptoms")
         
         user_name = context.get('user_name', 'there')
@@ -380,24 +389,34 @@ class WeeklyCheckInAI:
         
         RULES:
         - Ask ONE question at a time.
-        - Keep it to 3-4 questions max.
+        - Keep it to 2-3 questions MAXIMUM (not more than 3 exchanges after severity rating).
         - Be warm, professional, and medically grounded.
         - Generate 4-5 tap options that are likely answers based on the question.
-        - When you have enough information (usually after 3-4 exchanges), set "is_complete": true
         
-        WHEN COMPLETING (is_complete: true):
-        Your final "message" should summarize what you learned in a warm, conversational way.
-        Address the patient directly (second person). Example format:
+        WHEN TO COMPLETE:
+        After 2-3 follow-up questions (total 3-4 exchanges including severity), you MUST set "is_complete": true.
+        Count the conversation turns - if you've asked 3 questions after severity, STOP and complete.
         
-        "Thanks for sharing! You mentioned your [symptom] is [status] this week (Severity: X/9). 
-        It seems [triggers] might have triggered it, but you found that [relief factors] helped. 
-        I've updated your health profile with these insights. I'll use this to personalize your next 
-        action plan - focusing on what works for you and helping you manage those triggers. 💜"
+        COMPLETION FORMAT (when is_complete: true):
+        DO NOT ask another question. Instead, provide a warm summary that includes:
+        1. Acknowledge their symptom status this week
+        2. Mention specific triggers you identified
+        3. Mention what helped (if anything)
+        4. Reassure them you'll use this for their action plan
+        
+        Example completion message:
+        "Thanks for sharing, [name]! You mentioned your [symptom] is [better/worse/same] this week with a severity of [X]/9. 
+        I noticed that [trigger 1] and [trigger 2] seem to have contributed to this. 
+        It's great that you tried [what they did]. I've updated your health profile with these insights, 
+        and I'll use this to personalize your next action plan - focusing on what works for you. 💜"
+        
+        CRITICAL: When is_complete is true, "message" MUST be a summary, NOT a question. 
+        Do NOT include tap_options when is_complete is true - set it to an empty array [].
         
         Output JSON format:
         {{
             "message": "Your response + ONE question (or completion summary if is_complete: true)",
-            "tap_options": [{{"id": "opt_1", "text": "Answer option 1"}}, {{"id": "opt_2", "text": "Answer option 2"}}],
+            "tap_options": [{{"id": "opt_1", "text": "Answer 1"}}, ...] (empty array [] if is_complete: true),
             "is_complete": boolean
         }}
         """
@@ -439,6 +458,81 @@ class WeeklyCheckInAI:
             logger.error(f"LLM generation failed: {e}")
             # Fallback to rule-based if LLM fails
             return self._generate_post_severity_question(checkin, 5, context)
+    
+    async def _generate_forced_completion_message(
+        self,
+        uid: str,
+        checkin: WeeklyCheckIn,
+        conversation_so_far: List[Dict],
+        context: Dict[str, Any]
+    ) -> Optional[AIQuestion]:
+        """
+        Generate a warm completion message when hard limit is reached.
+        Uses LLM to summarize the conversation and provide reassurance.
+        """
+        symptom = checkin.top_concern or "your symptoms"
+        user_name = context.get('user_name', 'there')
+        
+        # Build conversation for summary
+        history_text = ""
+        for msg in conversation_so_far:
+            role = "Doctor" if msg.get("role") == "assistant" else "Patient"
+            history_text += f"{role}: {msg.get('content', '')}\n"
+        
+        prompt = f"""
+        You are Dr. Auvra completing a weekly check-in with {user_name} about their {symptom}.
+        
+        CONVERSATION SO FAR:
+        {history_text}
+        
+        Generate a warm, concise completion message (2-4 sentences) that:
+        1. Acknowledges their current status and what you learned
+        2. Notes any triggers or factors that affected their {symptom}
+        3. Provides brief reassurance or encouragement
+        4. Mentions you'll use this to personalize their plan
+        
+        Write in second person (e.g., "You mentioned that..."). Keep it warm and supportive.
+        
+        Return ONLY the completion message text, no JSON.
+        """
+        
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7
+            )
+            
+            completion_message = response.choices[0].message.content.strip()
+            
+            # Store completion message directly in checkin's raw_messages
+            messages = checkin.raw_messages or []
+            messages.append({
+                "role": "assistant",
+                "content": completion_message,
+                "question_key": "completion",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            checkin.raw_messages = messages
+            
+            # Return None to signal completion
+            logger.info(f"Generated forced completion message: {completion_message[:100]}...")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to generate completion message: {e}")
+            # Fallback to a generic completion message
+            messages = checkin.raw_messages or []
+            fallback_msg = f"Thank you for sharing about your {symptom} this week. I'll use this information to help personalize your action plan. Take care! 💜"
+            messages.append({
+                "role": "assistant",
+                "content": fallback_msg,
+                "question_key": "completion",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            checkin.raw_messages = messages
+            return None
+
 
     def _generate_closing_question(self, checkin: WeeklyCheckIn, context: Dict[str, Any]) -> Optional[AIQuestion]:
         """
