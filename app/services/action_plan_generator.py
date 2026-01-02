@@ -838,14 +838,13 @@ class ActionPlanGenerator:
                         # If medical accuracy/appropriateness is low, switch to Groq Llama 3
                         if condition_score is not None and condition_score < 70:
                             model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
-                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq Reasoning Model for deeper research.")
+                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq Llama 3.3 for deeper research.")
                             
-                            # Use dedicated Reasoning Model (OpenAI GPT-OSS 120B)
-                            # This model supports 'reasoning_effort' parameter for deep thinking
-                            groq_model = "openai/gpt-oss-120b"
+                            # Use Llama 3.3 70B - The most powerful open model on Groq
+                            # We use manual Chain of Thought (CoT) prompting to enforce reasoning
+                            groq_model = "llama-3.3-70b-versatile"
                             
                             try:
-                                # Pass reasoning_effort="high" for maximum depth
                                 groq_actions, groq_cost = await self._generate_actions_via_gpt(
                                     user_context, db, model_override=groq_model
                                 )
@@ -2240,12 +2239,33 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
 
             if use_groq:
                 # Groq supports json_object. We use that and rely on the prompt for schema adherence.
-                payload["response_format"] = {"type": "json_object"}
-                enhanced_system_with_research += "\n\nIMPORTANT: Output valid JSON matching the schema provided."
-                
-                # Add reasoning_effort for reasoning models
+                # However, for reasoning models (GPT-OSS), JSON mode might conflict with reasoning output
+                # So we only use json_object for non-reasoning models
                 if "gpt-oss" in model.lower():
-                    payload["reasoning_effort"] = "high"
+                    # Reasoning model: No response_format, just strict prompting
+                    # payload["reasoning_effort"] = "high" # Removed to fix 400 error
+                    enhanced_system_with_research += "\n\nIMPORTANT: Output ONLY valid JSON. No markdown, no thinking, no preamble."
+                else:
+                    # Standard model (Llama 3.3): Use JSON mode
+                    payload["response_format"] = {"type": "json_object"}
+                    # Add EXTRA STRONG instructions for Llama 3.3 to ensure fields are present
+                    enhanced_system_with_research += """
+                    
+                    ⚠️ CRITICAL SCHEMA ENFORCEMENT ⚠️
+                    You MUST include ALL fields for EVERY action, even if they are not relevant to the category.
+                    If a field is not relevant, you MUST provide an empty list [].
+                    
+                    REQUIRED FIELDS FOR EVERY ACTION:
+                    - "time_slot": MUST be one of "morning", "afternoon", "evening" (NO "lunch", "dinner", etc.)
+                    - "food_items", "food_amounts" (Use [] if not food)
+                    - "exercise_types", "exercise_durations", "exercise_intensities" (Use [] if not movement)
+                    - "mindfulness_techniques", "mindfulness_durations" (Use [] if not mindfulness)
+                    - "research_studies" (Must include "verification_link")
+                    
+                    Do not omit ANY field. The system requires a fixed schema.
+                    """
+                    # Update the system message content with the new instructions
+                    payload["messages"][0]["content"] = enhanced_system_with_research
             else:
                 # OpenAI supports Structured Outputs (strict schema)
                 payload["response_format"] = {
@@ -2279,7 +2299,22 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             logger.info(f"✅ GPT generated recommendations based on {len(research_findings)} research papers")
             
             # Parse response
-            response_data = json.loads(content.strip())
+            try:
+                # Clean content for reasoning models that might output markdown
+                cleaned_content = content.strip()
+                if cleaned_content.startswith("```json"):
+                    cleaned_content = cleaned_content[7:]
+                if cleaned_content.startswith("```"):
+                    cleaned_content = cleaned_content[3:]
+                if cleaned_content.endswith("```"):
+                    cleaned_content = cleaned_content[:-3]
+                cleaned_content = cleaned_content.strip()
+                
+                response_data = json.loads(cleaned_content)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON response: {e}")
+                logger.error(f"Raw content: {content[:500]}...")
+                return (None, total_cost)
             
             # Extract actions array from response
             if isinstance(response_data, dict) and "actions" in response_data:
