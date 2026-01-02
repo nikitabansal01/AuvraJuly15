@@ -838,14 +838,14 @@ class ActionPlanGenerator:
                         # If medical accuracy/appropriateness is low, switch to Groq Llama 3
                         if condition_score is not None and condition_score < 70:
                             model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
-                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq Llama 3 for deeper research.")
+                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq Reasoning Model for deeper research.")
                             
-                            # Use the most powerful model available on Groq for deep reasoning
-                            groq_model = "llama-3.3-70b-versatile" 
-                            # Alternative: "mixtral-8x7b-32768" (faster) or "gemma-7b-it" (Google)
-                            # Llama 3.3 70B is currently the SOTA open model on Groq
+                            # Use dedicated Reasoning Model (OpenAI GPT-OSS 120B)
+                            # This model supports 'reasoning_effort' parameter for deep thinking
+                            groq_model = "openai/gpt-oss-120b"
                             
                             try:
+                                # Pass reasoning_effort="high" for maximum depth
                                 groq_actions, groq_cost = await self._generate_actions_via_gpt(
                                     user_context, db, model_override=groq_model
                                 )
@@ -2068,8 +2068,10 @@ If the tool returns empty, set research_studies to an empty array.
 """
 
         # ---------------------------------------------------------------------
-        # REASONING ENHANCEMENT FOR FALLBACK MODEL (Groq Llama 3.3)
+        # REASONING ENHANCEMENT FOR FALLBACK MODEL
         # ---------------------------------------------------------------------
+        # Note: openai/gpt-oss-120b has native reasoning, so we don't need manual CoT prompt
+        # But we keep it for other models just in case
         if model_override and "llama" in model_override.lower():
             enhanced_system += """
             
@@ -2215,7 +2217,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
 """
             
             # Determine model and endpoint
-            use_groq = model_override and ("llama" in model_override.lower() or "mixtral" in model_override.lower())
+            use_groq = model_override and ("llama" in model_override.lower() or "mixtral" in model_override.lower() or "gpt-oss" in model_override.lower())
             
             api_url = "https://api.groq.com/openai/v1/chat/completions" if use_groq else "https://api.openai.com/v1/chat/completions"
             api_key = GROQ_API_KEY if use_groq else self.openai_api_key
@@ -2226,13 +2228,27 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                 return (None, total_cost)
 
             # Groq specific adjustments
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": enhanced_system_with_research},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": self.GPT_TEMPERATURE,
+                "max_tokens": 4000
+            }
+
             if use_groq:
                 # Groq supports json_object. We use that and rely on the prompt for schema adherence.
-                response_format = {"type": "json_object"}
+                payload["response_format"] = {"type": "json_object"}
                 enhanced_system_with_research += "\n\nIMPORTANT: Output valid JSON matching the schema provided."
+                
+                # Add reasoning_effort for reasoning models
+                if "gpt-oss" in model.lower():
+                    payload["reasoning_effort"] = "high"
             else:
                 # OpenAI supports Structured Outputs (strict schema)
-                response_format = {
+                payload["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {
                         "name": "action_plan",
@@ -2247,16 +2263,8 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json"
                 },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": enhanced_system_with_research},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 6000,
-                    "response_format": response_format
-                }
+                json=payload,
+                timeout=60.0
             )
             
             response.raise_for_status()
