@@ -91,6 +91,7 @@ class PendingReviewItemInfo(BaseModel):
     time_slot: str
     target_hormone: str
     is_completed: bool
+    is_replaced: bool = False
     hero_image_url: Optional[str] = None
     
     class Config:

@@ -813,12 +813,9 @@ async def get_pending_review(
         if not plan_needing_review:
             return PendingReviewResponse(needs_review=False)
         
-        # Get items for this plan
+        # Get ALL items for this plan (including replaced ones for complete review)
         items = db.query(ActionPlanItem).filter(
-            and_(
-                ActionPlanItem.plan_id == plan_needing_review.id,
-                ActionPlanItem.is_replaced.isnot(True)  # Only active items
-            )
+            ActionPlanItem.plan_id == plan_needing_review.id
         ).order_by(ActionPlanItem.slot).all()
         
         if not items:
@@ -827,9 +824,10 @@ async def get_pending_review(
             db.commit()
             return PendingReviewResponse(needs_review=False)
         
-        # Count completion status
-        total_items = len(items)
-        completed_count = sum(1 for item in items if item.is_completed)
+        # Count completion status (only for non-replaced items)
+        active_items = [item for item in items if not item.is_replaced]
+        total_items = len(active_items)
+        completed_count = sum(1 for item in active_items if item.is_completed)
         incomplete_count = total_items - completed_count
         
         # NOTE: We now ALWAYS show review, even if all items are completed
@@ -850,7 +848,7 @@ async def get_pending_review(
         streak_service = StreakService(db)
         streak_status = streak_service.get_full_streak_status(uid)
         
-        # Build item info list
+        # Build item info list (all items including replaced ones)
         item_infos = [
             PendingReviewItemInfo(
                 id=item.id,
@@ -859,6 +857,7 @@ async def get_pending_review(
                 time_slot=item.time_slot,
                 target_hormone=item.target_hormone,
                 is_completed=item.is_completed,
+                is_replaced=item.is_replaced or False,
                 hero_image_url=item.hero_image_url
             )
             for item in items
