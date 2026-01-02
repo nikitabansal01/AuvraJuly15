@@ -40,13 +40,20 @@ class StreakService:
     Unified streak calculation and management.
     
     All streak-related operations go through this service to ensure consistency.
+    Uses internal caching to avoid redundant database queries within the same request.
     """
     
     def __init__(self, db: Session):
         self.db = db
+        self._streak_data_cache: Dict[str, UserStreakData] = {}  # Cache for streak data
+        self._today_cache: Dict[str, date] = {}  # Cache for user's today date
     
     def get_or_create_streak_data(self, uid: str) -> UserStreakData:
-        """Get or create user's streak data record."""
+        """Get or create user's streak data record. Cached per request."""
+        # Check cache first
+        if uid in self._streak_data_cache:
+            return self._streak_data_cache[uid]
+        
         streak_data = self.db.query(UserStreakData).filter(
             UserStreakData.uid == uid
         ).first()
@@ -80,25 +87,38 @@ class StreakService:
             self.db.refresh(streak_data)
             logger.info(f"Created new streak data for user {uid}")
         
+        # Cache and return
+        self._streak_data_cache[uid] = streak_data
         return streak_data
     
     def _get_user_today(self, uid: str, timezone_str: str = None) -> date:
-        """Get today's date in user's timezone."""
+        """Get today's date in user's timezone. Cached per request."""
         from datetime import datetime
         from app.utils.timezone_utils import get_user_current_date
         
+        # Create cache key
+        cache_key = f"{uid}:{timezone_str or 'db'}"
+        if cache_key in self._today_cache:
+            return self._today_cache[cache_key]
+        
         # If timezone not provided, get from database
         if not timezone_str:
-            return get_user_current_date(uid, self.db)
+            result = get_user_current_date(uid, self.db)
+            self._today_cache[cache_key] = result
+            return result
         
         try:
             from zoneinfo import ZoneInfo
             tz = ZoneInfo(timezone_str)
-            return datetime.now(tz).date()
+            result = datetime.now(tz).date()
+            self._today_cache[cache_key] = result
+            return result
         except Exception as e:
             logger.error(f"Failed to get user today with timezone {timezone_str}: {e}")
             # Fallback to database timezone
-            return get_user_current_date(uid, self.db)
+            result = get_user_current_date(uid, self.db)
+            self._today_cache[cache_key] = result
+            return result
     
     def calculate_streak_from_actions(self, uid: str, user_timezone: str = None) -> int:
         """
