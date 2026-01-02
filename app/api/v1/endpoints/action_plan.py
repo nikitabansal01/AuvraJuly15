@@ -824,10 +824,9 @@ async def get_pending_review(
             db.commit()
             return PendingReviewResponse(needs_review=False)
         
-        # Count completion status (only for non-replaced items)
-        active_items = [item for item in items if not item.is_replaced]
-        total_items = len(active_items)
-        completed_count = sum(1 for item in active_items if item.is_completed)
+        # Count completion status (treat all returned items as reviewable actions)
+        total_items = len(items)
+        completed_count = sum(1 for item in items if item.is_completed)
         incomplete_count = total_items - completed_count
         
         # NOTE: We now ALWAYS show review, even if all items are completed
