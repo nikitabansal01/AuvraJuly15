@@ -585,8 +585,10 @@ class WeeklyCheckInService:
         
         if profile:
             user_today = get_user_current_date(checkin.uid, self.db)
-            profile.weekly_checkin_due_date = user_today + timedelta(days=self.CHECK_IN_INTERVAL_DAYS)
+            next_due_date = user_today + timedelta(days=self.CHECK_IN_INTERVAL_DAYS)
+            profile.weekly_checkin_due_date = next_due_date
             profile.last_weekly_checkin_id = checkin.id
+            logger.info(f"Updated weekly_checkin_due_date: today={user_today}, next_due={next_due_date}")
         
         self.db.commit()
         self.db.refresh(checkin)
