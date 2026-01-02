@@ -838,11 +838,11 @@ class ActionPlanGenerator:
                         # If medical accuracy/appropriateness is low, switch to Groq Llama 3
                         if condition_score is not None and condition_score < 70:
                             model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
-                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq Llama 3.3 for deeper research.")
+                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq for deeper research.")
                             
-                            # Use Llama 3.3 70B - The most powerful open model on Groq
-                            # We use manual Chain of Thought (CoT) prompting to enforce reasoning
-                            groq_model = "llama-3.3-70b-versatile"
+                            # Use configured Groq model (default to Llama 3.3 70B)
+                            # Llama 3.3 is currently the most stable/powerful open model on Groq
+                            groq_model = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.3-70b-versatile")
                             
                             try:
                                 groq_actions, groq_cost = await self._generate_actions_via_gpt(
