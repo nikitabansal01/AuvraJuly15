@@ -20,7 +20,7 @@ import json
 import logging
 import time
 import httpx
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession

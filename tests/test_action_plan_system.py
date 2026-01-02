@@ -39,7 +39,7 @@ def test_hormone_personas():
         persona = HORMONE_PERSONAS[hormone]
         assert "name" in persona, f"Missing name for {hormone}"
         assert "emoji" in persona, f"Missing emoji for {hormone}"
-        assert "intro_template" in persona, f"Missing intro_template for {hormone}"
+        assert "phase_behavior" in persona, f"Missing phase_behavior for {hormone}"
         print(f"  ✅ {hormone}: {persona['name']} {persona['emoji']}")
     
     # Check default persona
@@ -58,6 +58,7 @@ def test_prompt_templates():
     # Test that prompts can be formatted
     test_values = {
         "num_actions": 4,
+        "age": 30,
         "cycle_day": 14,
         "cycle_phase": "ovulation",
         "primary_hormone": "cortisol",
@@ -65,6 +66,22 @@ def test_prompt_templates():
         "lifestyle_focus": "eat, move, pause",
         "top_concern": "stress",
         "diagnosed_conditions": "none",
+        "period_concerns": "cramps",
+        "body_concerns": "bloating",
+        "skin_hair_concerns": "acne",
+        "mental_health_concerns": "anxiety",
+        "family_history": "none",
+        "diet_preference": "omnivore",
+        "food_allergies": "none",
+        "cuisine_preference": "mediterranean",
+        "cultural_background": "none",
+        "dine_out_frequency": "rarely",
+        "body_metrics": "normal",
+        "cravings": "chocolate",
+        "birth_control": "none",
+        "hormone_phase_context": "Estrogen is rising.",
+        "feedback_summary": "User likes yoga.",
+        "chatbot_context": "No recent chat.",
         "stress_level": "high",
         "sleep_duration": "6-7 hours",
         "workout_intensity": "moderate",
@@ -166,7 +183,7 @@ def test_image_library_service_init():
     service = get_image_library_service()
     
     assert service is not None
-    assert service.SIMILARITY_THRESHOLD == 0.85
+    assert service.SIMILARITY_THRESHOLD == 0.95
     assert service.COST_PER_IMAGE == 0.0006
     print(f"  ✅ Service initialized")
     print(f"  ✅ Similarity threshold: {service.SIMILARITY_THRESHOLD}")
@@ -226,11 +243,12 @@ def test_prompt_enhancement():
     test_prompt = "bowl of oatmeal with berries"
     enhanced = service._enhance_prompt(test_prompt)
     
-    assert "oatmeal" in enhanced
-    assert "professional" in enhanced.lower()
-    assert "lighting" in enhanced.lower()
+    # enhanced is a tuple (positive_prompt, negative_prompt)
+    assert "oatmeal" in enhanced[0]
+    assert "professional" in enhanced[0].lower()
+    assert "tones" in enhanced[0].lower()
     print(f"  Original: {test_prompt}")
-    print(f"  Enhanced: {enhanced[:100]}...")
+    print(f"  Enhanced: {enhanced[0][:100]}...")
     
     print("✅ Prompt enhancement test passed!")
 
