@@ -36,7 +36,9 @@ from app.core.config import settings
 
 # Get API keys from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
-GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
+
+# Fallback model: openai/gpt-oss-120b is a high-quality reasoning model on Groq
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"
 
 logger = logging.getLogger(__name__)
 
@@ -846,31 +848,30 @@ class ActionPlanGenerator:
                         condition_score = scores.get("condition_appropriateness")
                         personalization_score = scores.get("personalization_score")
                         
-                        # If medical accuracy/appropriateness is low, switch to Groq Llama 3
+                        # If medical accuracy/appropriateness is low, switch to fallback model
                         if condition_score is not None and condition_score < 70:
                             model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
-                            logger.warning(f"⚠️ {model_switch_reason}. Switching to Groq for deeper research.")
+                            logger.warning(f"⚠️ {model_switch_reason}. Switching to fallback model for better quality.")
                             
-                            # Use configured Groq model (default to Llama 3.3 70B)
-                            # Llama 3.3 is currently the most stable/powerful open model on Groq
-                            groq_model = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.3-70b-versatile")
+                            # Use openai/gpt-oss-120b - high quality reasoning model
+                            fallback_model = GROQ_FALLBACK_MODEL
                             
                             try:
-                                groq_actions, groq_cost = await self._generate_actions_via_gpt(
-                                    user_context, db, model_override=groq_model
+                                fallback_actions, fallback_cost = await self._generate_actions_via_gpt(
+                                    user_context, db, model_override=fallback_model
                                 )
-                                gpt_cost += groq_cost
+                                gpt_cost += fallback_cost
                                 
-                                if groq_actions:
-                                    logger.info(f"✅ Groq generation successful. Using {groq_model} results.")
-                                    attempt_actions = groq_actions
-                                    used_model = groq_model
+                                if fallback_actions:
+                                    logger.info(f"✅ Fallback generation successful. Using {fallback_model} results.")
+                                    attempt_actions = fallback_actions
+                                    used_model = fallback_model
                                 else:
-                                    logger.error("❌ Groq generation failed (returned None). Falling back to original OpenAI results.")
-                                    model_switch_reason += " | Groq fallback returned None, using original"
-                            except Exception as groq_err:
-                                logger.error(f"❌ Groq API error: {groq_err}. Falling back to original OpenAI results.")
-                                model_switch_reason += f" | Groq error: {str(groq_err)[:100]}"
+                                    logger.error("❌ Fallback generation failed (returned None). Using original OpenAI results.")
+                                    model_switch_reason += " | Fallback returned None, using original"
+                            except Exception as fallback_err:
+                                logger.error(f"❌ Fallback API error: {fallback_err}. Using original OpenAI results.")
+                                model_switch_reason += f" | Fallback error: {str(fallback_err)[:100]}"
                         else:
                             logger.info(f"✅ Quality check passed (Condition: {condition_score}, Personalization: {personalization_score})")
                             
@@ -2374,7 +2375,10 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                 use_groq = True
                 is_groq = True
                 
-                # Build Groq payload (uses json_object mode, not strict schema)
+                # Build Groq payload
+                # openai/gpt-oss-120b is a reasoning model - doesn't support response_format
+                is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                
                 groq_system = enhanced_system_with_research + """
 
 ⚠️ CRITICAL SCHEMA ENFORCEMENT ⚠️
@@ -2389,6 +2393,7 @@ REQUIRED FIELDS FOR EVERY ACTION:
 - "research_studies" (Must include "verification_link")
 
 Do not omit ANY field. The system requires a fixed schema.
+IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
 """
                 
                 groq_payload = {
@@ -2398,9 +2403,12 @@ Do not omit ANY field. The system requires a fixed schema.
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 8000,
-                    "response_format": {"type": "json_object"}
+                    "max_tokens": 16000  # gpt-oss-120b can handle more tokens
                 }
+                
+                # Only add response_format for non-reasoning models
+                if not is_reasoning_model:
+                    groq_payload["response_format"] = {"type": "json_object"}
                 
                 try:
                     response = await self.client.post(

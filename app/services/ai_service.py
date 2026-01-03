@@ -107,7 +107,7 @@ class AIService:
         """
         Return fallback model configuration (extensible)
         """
-        fallback_model = os.getenv("FALLBACK_MODEL", "llama-3.3-70b")
+        fallback_model = os.getenv("FALLBACK_MODEL", "openai/gpt-oss-120b")
         provider = AIService.determine_provider_from_model_name(fallback_model)
         
         # Default configuration by provider

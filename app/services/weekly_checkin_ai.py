@@ -49,7 +49,9 @@ settings = Settings()
 
 # API Keys
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
+
+# Fallback model: openai/gpt-oss-120b is a high-quality reasoning model on Groq
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"
 
 # Initialize clients - OpenAI is primary, Groq is fallback
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
@@ -472,16 +474,27 @@ OUTPUT JSON:
             # Fallback to Groq if OpenAI failed
             if openai_error and groq_client:
                 logger.info(f"🔄 Falling back to Groq with {GROQ_FALLBACK_MODEL}...")
+                
+                # gpt-oss models are reasoning models - don't support response_format
+                is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                enhanced_prompt = system_prompt
+                if is_reasoning_model:
+                    enhanced_prompt += "\n\nIMPORTANT: Output ONLY valid JSON. No markdown, no thinking, no preamble."
+                
                 try:
-                    response = await groq_client.chat.completions.create(
-                        model=GROQ_FALLBACK_MODEL,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
+                    create_params = {
+                        "model": GROQ_FALLBACK_MODEL,
+                        "messages": [
+                            {"role": "system", "content": enhanced_prompt},
                             *conversation_so_far
                         ],
-                        temperature=0.7,
-                        response_format={"type": "json_object"}
-                    )
+                        "temperature": 0.7
+                    }
+                    # Only add response_format for non-reasoning models
+                    if not is_reasoning_model:
+                        create_params["response_format"] = {"type": "json_object"}
+                    
+                    response = await groq_client.chat.completions.create(**create_params)
                     logger.info("✅ Groq fallback successful!")
                 except Exception as e:
                     logger.error(f"❌ Groq also failed: {e}")
@@ -491,7 +504,18 @@ OUTPUT JSON:
                 return self._generate_post_severity_question(checkin, 5, context)
             
             content = response.choices[0].message.content
-            data = json.loads(content)
+            
+            # Clean content for reasoning models that might output markdown
+            cleaned_content = content.strip()
+            if cleaned_content.startswith("```json"):
+                cleaned_content = cleaned_content[7:]
+            if cleaned_content.startswith("```"):
+                cleaned_content = cleaned_content[3:]
+            if cleaned_content.endswith("```"):
+                cleaned_content = cleaned_content[:-3]
+            cleaned_content = cleaned_content.strip()
+            
+            data = json.loads(cleaned_content)
             
             if data.get("is_complete"):
                 # Store insights in checkin for action plan generation
@@ -636,13 +660,23 @@ RULES:
             # Fallback to Groq if OpenAI failed
             if openai_error and groq_client:
                 logger.info(f"🔄 Falling back to Groq with {GROQ_FALLBACK_MODEL}...")
+                
+                # gpt-oss models are reasoning models - don't support response_format
+                is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                enhanced_prompt = prompt
+                if is_reasoning_model:
+                    enhanced_prompt += "\n\nIMPORTANT: Output ONLY valid JSON. No markdown, no thinking, no preamble."
+                
                 try:
-                    response = await groq_client.chat.completions.create(
-                        model=GROQ_FALLBACK_MODEL,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.7,
-                        response_format={"type": "json_object"}
-                    )
+                    create_params = {
+                        "model": GROQ_FALLBACK_MODEL,
+                        "messages": [{"role": "user", "content": enhanced_prompt}],
+                        "temperature": 0.7
+                    }
+                    if not is_reasoning_model:
+                        create_params["response_format"] = {"type": "json_object"}
+                    
+                    response = await groq_client.chat.completions.create(**create_params)
                     logger.info("✅ Groq fallback successful!")
                 except Exception as e:
                     logger.error(f"❌ Groq also failed: {e}")
@@ -650,7 +684,19 @@ RULES:
             elif openai_error:
                 raise Exception(f"OpenAI failed and no Groq fallback: {openai_error}")
             
-            data = json.loads(response.choices[0].message.content)
+            content = response.choices[0].message.content
+            
+            # Clean content for reasoning models
+            cleaned_content = content.strip()
+            if cleaned_content.startswith("```json"):
+                cleaned_content = cleaned_content[7:]
+            if cleaned_content.startswith("```"):
+                cleaned_content = cleaned_content[3:]
+            if cleaned_content.endswith("```"):
+                cleaned_content = cleaned_content[:-3]
+            cleaned_content = cleaned_content.strip()
+            
+            data = json.loads(cleaned_content)
             messages_list = data.get("messages", [])
             insights = data.get("insights", {})
             
