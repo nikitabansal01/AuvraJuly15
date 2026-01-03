@@ -40,13 +40,15 @@ class QuestionResponse(BaseModel):
     is_complete: bool
     question_key: Optional[str] = None
     question_type: Optional[str] = None  # "slider", "tap_choice", "multi_select", "free_text"
-    message: str
+    message: str  # Combined message for backward compatibility
+    messages: List[str] = []  # Array of short messages for multi-bubble display
     tap_options: List[TapOption] = []
     is_required: bool = False
     current_index: int = 0
     total_questions: int = 0
     summary: Optional[str] = None  # Only on completion
     history: List[ChatMessage] = []  # Chat history for context restoration
+    slider_labels: Optional[Dict[str, str]] = None  # For slider questions
 
 
 class CheckInStatusResponse(BaseModel):
@@ -170,6 +172,11 @@ async def start_checkin(
     # Format tap options
     tap_options = [TapOption(**opt) for opt in question_data.get("tap_options", [])]
     
+    # Get messages array or create from single message
+    messages = question_data.get("messages", [])
+    if not messages and question_data.get("message"):
+        messages = [question_data.get("message")]
+    
     return StartCheckInResponse(
         checkin_id=checkin.id,
         week_number=checkin.week_number,
@@ -179,10 +186,12 @@ async def start_checkin(
             question_key=question_data.get("question_key"),
             question_type=question_data.get("question_type"),
             message=question_data.get("message", ""),
+            messages=messages,
             tap_options=tap_options,
             is_required=question_data.get("is_required", False),
             current_index=question_data.get("current_index", 0),
-            total_questions=question_data.get("total_questions", 0)
+            total_questions=question_data.get("total_questions", 0),
+            slider_labels=question_data.get("slider_labels")
         )
     )
 
@@ -218,6 +227,21 @@ async def submit_response(
     # Format tap options
     tap_options = [TapOption(**opt) for opt in question_data.get("tap_options", [])]
     
+    # Get messages array or create from single message
+    messages = question_data.get("messages", [])
+    if not messages and question_data.get("message"):
+        messages = [question_data.get("message")]
+    
+    # Format history for response
+    history = []
+    for msg in question_data.get("history", []):
+        if isinstance(msg, dict):
+            history.append(ChatMessage(
+                id=msg.get("id", ""),
+                text=msg.get("text", ""),
+                isBot=msg.get("isBot", False)
+            ))
+    
     return SubmitResponseResponse(
         checkin_id=checkin.id,
         question=QuestionResponse(
@@ -225,12 +249,14 @@ async def submit_response(
             question_key=question_data.get("question_key"),
             question_type=question_data.get("question_type"),
             message=question_data.get("message", ""),
+            messages=messages,
             tap_options=tap_options,
             is_required=question_data.get("is_required", False),
             current_index=question_data.get("current_index", 0),
             total_questions=question_data.get("total_questions", 0),
             summary=question_data.get("summary"),
-            history=question_data.get("history", [])
+            history=history,
+            slider_labels=question_data.get("slider_labels")
         )
     )
 

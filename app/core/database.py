@@ -1072,6 +1072,19 @@ class WeeklyCheckIn(Base):
     raw_messages = Column(JSONB, default=[])  # Full conversation for memory
     # Structure: [{"role": "bot", "content": "..."}, {"role": "user", "content": "..."}]
     
+    # Actionable insights extracted from conversation (for action plan generation)
+    actionable_insights = Column(JSONB, default={})
+    # Structure:
+    # {
+    #     "triggers_identified": ["work stress", "poor sleep", "skipped meals"],
+    #     "relief_factors_identified": ["morning meditation", "walking", "better sleep"],
+    #     "severity_trend": "worsening" | "improving" | "stable",
+    #     "suggested_additions": ["evening walk", "stress management exercise"],
+    #     "suggested_removals": ["high-intensity workout during luteal"],
+    #     "priority_focus": "stress management",
+    #     "key_insight": "User's stress worsens with work demands, meditation helps"
+    # }
+    
     # Check-in state
     is_complete = Column(Boolean, default=False)
     current_question_index = Column(Integer, default=0)  # Track progress through questions

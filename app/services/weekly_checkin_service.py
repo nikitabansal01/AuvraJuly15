@@ -339,18 +339,33 @@ class WeeklyCheckInService:
         history = self._get_chat_history(checkin)
         
         if ai_question is None:
+            # Completion - get messages from raw_messages
+            completion_messages = []
+            if checkin.raw_messages:
+                for msg in checkin.raw_messages:
+                    if msg.get("question_key") == "completion" and msg.get("role") == "assistant":
+                        completion_messages.append(msg.get("content", ""))
+            
+            if not completion_messages:
+                completion_messages = ["Thanks for checking in! 💜", "I'll use this to personalize your plan."]
+            
             return {
                 "is_complete": True,
                 "question_key": None,
-                "message": "Thanks for checking in! 💜 I'll use this to personalize your plan.",
+                "message": " ".join(completion_messages),  # Combined for backward compatibility
+                "messages": completion_messages,  # Array for multi-bubble display
                 "history": history
             }
+        
+        # Get messages array if available, otherwise create from single message
+        messages = getattr(ai_question, 'messages', None) or [ai_question.message]
         
         return {
             "is_complete": False,
             "question_key": ai_question.question_key,
             "question_type": ai_question.question_type.value if hasattr(ai_question.question_type, 'value') else ai_question.question_type,
-            "message": ai_question.message,
+            "message": ai_question.message,  # Combined for backward compatibility
+            "messages": messages,  # Array for multi-bubble display
             "tap_options": ai_question.tap_options,
             "is_required": ai_question.is_required,
             "slider_labels": ai_question.slider_labels,

@@ -52,11 +52,12 @@ class AIQuestion:
     """A dynamically generated question"""
     question_key: str
     question_type: QuestionType
-    message: str
+    message: str  # Combined message for backward compatibility
     tap_options: List[Dict[str, str]]
     follow_up_context: Optional[str] = None
     is_required: bool = True
     slider_labels: Optional[Dict[str, str]] = None  # For slider: {1: "None", 9: "Extreme"}
+    messages: Optional[List[str]] = None  # Array of short messages for multi-bubble display
 
 
 class WeeklyCheckInAI:
@@ -351,75 +352,77 @@ class WeeklyCheckInAI:
             """
 
         system_prompt = f"""
-        You are Dr. Auvra, a highly knowledgeable and empathetic women's health specialist.
-        You are conducting a weekly check-in with {user_name} regarding their primary concern: {symptom}.
-        
-        YOUR GOAL:
-        Act like a real doctor. Investigate why their symptoms improved or worsened compared to last week.
-        Use your medical knowledge to ask relevant questions about diet, lifestyle, and habits that affect {symptom}.
-        
-        PATIENT CONTEXT:
-        - Name: {user_name}
-        - Primary Concern: {symptom}
-        - Cycle Phase: {context.get('cycle_phase', 'Unknown')} (Day {context.get('cycle_day', 'Unknown')})
-        {prev_checkin_context}
-        {action_plan_context}
-        
-        MEDICAL KNOWLEDGE FOR {symptom.upper()}:
-        - Common Triggers: {', '.join(medical_context.get('common_triggers', []))}
-        - Relief Factors: {', '.join(medical_context.get('relief_factors', []))}
-        - Cycle Connection: {medical_context.get('cycle_connection', '')}
-        
-        CONVERSATION FLOW (AFTER SEVERITY RATING):
-        The user has already rated their severity for this week.
-        
-        1. COMPARE TO LAST WEEK:
-           - If severity improved: Celebrate it! Ask what they did differently (referencing their action plan).
-           - If severity worsened: Show concern. Ask about specific triggers (referencing medical knowledge).
-           - If stable: Ask if they noticed any patterns.
-           
-        2. INVESTIGATE CAUSES (Like a Doctor):
-           - Don't just ask "what happened?". Ask specific questions based on their condition.
-           - Example for bloating: "Did you notice it more after specific meals or when stressed?"
-           - Example for acne: "Have you been sleeping well? Any changes in skincare?"
-           
-        3. CONNECT TO ACTIONS:
-           - Ask if their completed actions helped.
-           - Ask if they struggled with specific habits.
-        
-        RULES:
-        - Ask ONE question at a time.
-        - Keep it to 2-3 questions MAXIMUM (not more than 3 exchanges after severity rating).
-        - Be warm, professional, and medically grounded.
-        - Generate 4-5 tap options that are likely answers based on the question.
-        
-        WHEN TO COMPLETE:
-        After 2-3 follow-up questions (total 3-4 exchanges including severity), you MUST set "is_complete": true.
-        Count the conversation turns - if you've asked 3 questions after severity, STOP and complete.
-        
-        COMPLETION FORMAT (when is_complete: true):
-        DO NOT ask another question. Instead, provide a warm summary that includes:
-        1. Acknowledge their symptom status this week
-        2. Mention specific triggers you identified
-        3. Mention what helped (if anything)
-        4. Reassure them you'll use this for their action plan
-        
-        Example completion message:
-        "Thanks for sharing, [name]! You mentioned your [symptom] is [better/worse/same] this week with a severity of [X]/9. 
-        I noticed that [trigger 1] and [trigger 2] seem to have contributed to this. 
-        It's great that you tried [what they did]. I've updated your health profile with these insights, 
-        and I'll use this to personalize your next action plan - focusing on what works for you. 💜"
-        
-        CRITICAL: When is_complete is true, "message" MUST be a summary, NOT a question. 
-        Do NOT include tap_options when is_complete is true - set it to an empty array [].
-        
-        Output JSON format:
-        {{
-            "message": "Your response + ONE question (or completion summary if is_complete: true)",
-            "tap_options": [{{"id": "opt_1", "text": "Answer 1"}}, ...] (empty array [] if is_complete: true),
-            "is_complete": boolean
-        }}
-        """
+You are Dr. Auvra, an empathetic women's health specialist conducting a brief weekly check-in.
+
+PATIENT: {user_name}
+CONCERN: {symptom}
+CYCLE: {context.get('cycle_phase', 'Unknown')} (Day {context.get('cycle_day', 'Unknown')})
+{prev_checkin_context}
+{action_plan_context}
+
+MEDICAL KNOWLEDGE ({symptom.upper()}):
+- Triggers: {', '.join(medical_context.get('common_triggers', [])[:5])}
+- Relief: {', '.join(medical_context.get('relief_factors', [])[:5])}
+
+YOUR GOAL: Quickly identify what caused symptoms to improve/worsen this week.
+- If better → What helped? (to reinforce in action plan)
+- If worse → What triggered it? (to avoid in action plan)
+
+CRITICAL RESPONSE RULES:
+1. KEEP RESPONSES SHORT - Max 2 sentences per message
+2. SPLIT INTO MULTIPLE MESSAGES - Return an array of 2 short messages, not 1 long one
+3. First message: Acknowledge/empathize (1 sentence)
+4. Second message: Ask ONE specific question (1 sentence)
+5. Generate 4-5 tap options
+
+EXAMPLE GOOD RESPONSE:
+{{
+    "messages": [
+        "I'm sorry your stress has been strong this week, {user_name}.",
+        "Has anything changed at work or home that might have contributed?"
+    ],
+    "tap_options": [
+        {{"id": "work_stress", "text": "Work has been demanding"}},
+        {{"id": "sleep_issues", "text": "I haven't been sleeping well"}},
+        {{"id": "personal_issues", "text": "Personal issues came up"}},
+        {{"id": "same_as_usual", "text": "Everything's been about the same"}}
+    ],
+    "is_complete": false
+}}
+
+EXAMPLE BAD RESPONSE (TOO LONG):
+{{
+    "messages": ["I'm sorry to hear that your stress has been strong this week, {user_name}. Compared to last week, has anything changed in your routine or environment that might have contributed to this increase?"],
+    ...
+}}
+
+COMPLETION (after 2-3 questions):
+When is_complete: true, provide a SHORT summary (2-3 sentences max):
+{{
+    "messages": [
+        "Thanks for sharing, {user_name}! 💜",
+        "I've noted that [trigger] affected your {symptom} this week.",
+        "I'll use this to personalize your next action plan."
+    ],
+    "tap_options": [],
+    "is_complete": true,
+    "insights": {{
+        "triggers_identified": ["work stress", "poor sleep"],
+        "relief_factors_identified": ["meditation", "walking"],
+        "severity_trend": "worsening",
+        "suggested_additions": ["evening relaxation routine"],
+        "key_insight": "Work stress is main trigger"
+    }}
+}}
+
+OUTPUT JSON:
+{{
+    "messages": ["short msg 1", "short msg 2"],
+    "tap_options": [...],
+    "is_complete": boolean,
+    "insights": {{...}} // Only when is_complete: true
+}}
+"""
         
         try:
             response = await client.chat.completions.create(
@@ -436,23 +439,60 @@ class WeeklyCheckInAI:
             data = json.loads(content)
             
             if data.get("is_complete"):
-                # Generate a closing summary/question
-                return self._generate_closing_question(checkin, context)
+                # Store insights in checkin for action plan generation
+                insights = data.get("insights", {})
+                if insights:
+                    checkin.actionable_insights = insights
+                    checkin.factors_negative = insights.get("triggers_identified", [])
+                    checkin.factors_positive = insights.get("relief_factors_identified", [])
+                
+                # Combine messages into one for storage, but return as array for frontend
+                messages = data.get("messages", [])
+                if isinstance(messages, list):
+                    combined_message = " ".join(messages)
+                else:
+                    combined_message = messages
+                
+                # Store completion message
+                raw_messages = checkin.raw_messages or []
+                for msg in messages if isinstance(messages, list) else [messages]:
+                    raw_messages.append({
+                        "role": "assistant",
+                        "content": msg,
+                        "question_key": "completion",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                checkin.raw_messages = raw_messages
+                
+                # Return None to signal completion
+                return None
             
-            # Map to AIQuestion
+            # Handle multiple messages format
+            messages = data.get("messages", [])
+            if isinstance(messages, str):
+                messages = [messages]
+            
+            # Combine for the single message field, but also store separately
+            combined_message = " ".join(messages) if messages else data.get("message", "")
+            
+            # Map to AIQuestion with messages array for frontend
             tap_options = data.get("tap_options", [])
-            # Ensure tap options have IDs
             for i, opt in enumerate(tap_options):
                 if "id" not in opt:
                     opt["id"] = f"opt_{i}"
             
-            return AIQuestion(
+            # Create AIQuestion with additional messages field
+            question = AIQuestion(
                 question_key=f"dynamic_{len(conversation_so_far)}",
                 question_type=QuestionType.TAP_CHOICE if tap_options else QuestionType.FREE_TEXT,
-                message=data.get("message", ""),
+                message=combined_message,
                 tap_options=tap_options,
                 is_required=True
             )
+            # Attach messages array for frontend multi-bubble display
+            question.messages = messages
+            
+            return question
             
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
@@ -477,53 +517,80 @@ class WeeklyCheckInAI:
         history_text = ""
         for msg in conversation_so_far:
             role = "Doctor" if msg.get("role") == "assistant" else "Patient"
-            history_text += f"{role}: {msg.get('content', '')}\n"
+            history_text += f"{msg.get('content', '')}\n"
         
         prompt = f"""
-        You are Dr. Auvra completing a weekly check-in with {user_name} about their {symptom}.
-        
-        CONVERSATION SO FAR:
-        {history_text}
-        
-        Generate a warm, concise completion message (2-4 sentences) that:
-        1. Acknowledges their current status and what you learned
-        2. Notes any triggers or factors that affected their {symptom}
-        3. Provides brief reassurance or encouragement
-        4. Mentions you'll use this to personalize their plan
-        
-        Write in second person (e.g., "You mentioned that..."). Keep it warm and supportive.
-        
-        Return ONLY the completion message text, no JSON.
-        """
+You are Dr. Auvra completing a weekly check-in with {user_name} about their {symptom}.
+
+CONVERSATION:
+{history_text}
+
+Generate a JSON response with:
+1. "messages": Array of 2-3 SHORT messages (1 sentence each) for the completion
+2. "insights": Extracted actionable insights from the conversation
+
+Example output:
+{{
+    "messages": [
+        "Thanks for sharing, {user_name}! 💜",
+        "I've noted that work stress has been affecting your {symptom}.",
+        "I'll use this to adjust your action plan."
+    ],
+    "insights": {{
+        "triggers_identified": ["work stress", "poor sleep"],
+        "relief_factors_identified": ["morning meditation"],
+        "severity_trend": "worsening",
+        "suggested_additions": ["evening relaxation routine", "stress management"],
+        "suggested_removals": [],
+        "key_insight": "Work stress is the main trigger this week"
+    }}
+}}
+
+RULES:
+- Messages must be SHORT (1 sentence each)
+- Extract SPECIFIC triggers and relief factors from conversation
+- severity_trend: "improving" | "worsening" | "stable"
+- suggested_additions: Actions to add to next action plan
+- key_insight: One sentence summary for action plan generator
+"""
         
         try:
             response = await client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
+                temperature=0.7,
+                response_format={"type": "json_object"}
             )
             
-            completion_message = response.choices[0].message.content.strip()
+            data = json.loads(response.choices[0].message.content)
+            messages_list = data.get("messages", [])
+            insights = data.get("insights", {})
             
-            # Store completion message directly in checkin's raw_messages
-            messages = checkin.raw_messages or []
-            messages.append({
-                "role": "assistant",
-                "content": completion_message,
-                "question_key": "completion",
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            checkin.raw_messages = messages
+            # Store insights in checkin for action plan generation
+            checkin.actionable_insights = insights
+            checkin.factors_negative = insights.get("triggers_identified", [])
+            checkin.factors_positive = insights.get("relief_factors_identified", [])
+            
+            # Store completion messages in raw_messages
+            raw_messages = checkin.raw_messages or []
+            for msg in messages_list:
+                raw_messages.append({
+                    "role": "assistant",
+                    "content": msg,
+                    "question_key": "completion",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            checkin.raw_messages = raw_messages
             
             # Return None to signal completion
-            logger.info(f"Generated forced completion message: {completion_message[:100]}...")
+            logger.info(f"Generated forced completion with insights: {insights}")
             return None
             
         except Exception as e:
             logger.error(f"Failed to generate completion message: {e}")
             # Fallback to a generic completion message
             messages = checkin.raw_messages or []
-            fallback_msg = f"Thank you for sharing about your {symptom} this week. I'll use this information to help personalize your action plan. Take care! 💜"
+            fallback_msg = f"Thank you for sharing about your {symptom} this week. I'll use this to personalize your action plan. Take care! 💜"
             messages.append({
                 "role": "assistant",
                 "content": fallback_msg,

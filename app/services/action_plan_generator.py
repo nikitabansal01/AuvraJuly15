@@ -1720,19 +1720,39 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 else:
                     parts.append(f"{concern}: significant (severity {severity}/9)")
             
-            # Add negative factors (triggers)
-            if checkin.factors_negative:
-                triggers = ", ".join(checkin.factors_negative[:3])
-                parts.append(f"Triggers: {triggers}")
-            
-            # Add positive factors (what helped)
-            if checkin.factors_positive:
-                helpers = ", ".join(checkin.factors_positive[:3])
-                parts.append(f"Helped: {helpers}")
-            
-            # Add the AI-generated conversation summary if available
-            if checkin.conversation_summary:
-                parts.append(f"Summary: {checkin.conversation_summary}")
+            # Use actionable_insights if available (new structured format)
+            if hasattr(checkin, 'actionable_insights') and checkin.actionable_insights:
+                ai_insights = checkin.actionable_insights
+                
+                if ai_insights.get("triggers_identified"):
+                    triggers = ", ".join(ai_insights["triggers_identified"][:3])
+                    parts.append(f"Triggers: {triggers}")
+                
+                if ai_insights.get("relief_factors_identified"):
+                    helpers = ", ".join(ai_insights["relief_factors_identified"][:3])
+                    parts.append(f"Helped: {helpers}")
+                
+                if ai_insights.get("severity_trend"):
+                    parts.append(f"Trend: {ai_insights['severity_trend']}")
+                
+                if ai_insights.get("suggested_additions"):
+                    additions = ", ".join(ai_insights["suggested_additions"][:2])
+                    parts.append(f"Suggested: {additions}")
+                
+                if ai_insights.get("key_insight"):
+                    parts.append(f"Key: {ai_insights['key_insight']}")
+            else:
+                # Fallback to old format
+                if checkin.factors_negative:
+                    triggers = ", ".join(checkin.factors_negative[:3])
+                    parts.append(f"Triggers: {triggers}")
+                
+                if checkin.factors_positive:
+                    helpers = ", ".join(checkin.factors_positive[:3])
+                    parts.append(f"Helped: {helpers}")
+                
+                if checkin.conversation_summary:
+                    parts.append(f"Summary: {checkin.conversation_summary}")
             
             if parts:
                 insights.append(f"[{week_label}] " + " | ".join(parts))
