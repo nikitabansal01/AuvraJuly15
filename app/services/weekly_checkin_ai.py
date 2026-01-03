@@ -13,6 +13,8 @@ The AI dynamically:
 
 This is the "brain" behind the weekly check-in - making it feel like a real
 consultation, not a rigid form.
+
+PROVIDER STRATEGY: OpenAI primary, Groq fallback on ANY error
 ═══════════════════════════════════════════════════════════════════════════════
 """
 import logging
@@ -26,7 +28,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from openai import AsyncOpenAI
 
-# Try to import Groq - it may not be installed
+# Try to import Groq for fallback
 try:
     from groq import AsyncGroq
     GROQ_AVAILABLE = True
@@ -45,28 +47,13 @@ logger = logging.getLogger(__name__)
 
 settings = Settings()
 
-# Provider configuration - Use Groq as primary when OpenAI has no credits
-USE_GROQ_AS_PRIMARY = os.getenv("USE_GROQ_AS_PRIMARY", "true").lower() in ("true", "1", "yes")
+# API Keys
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
 
-# Initialize clients
+# Initialize clients - OpenAI is primary, Groq is fallback
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_AVAILABLE and GROQ_API_KEY else None
-
-# Select primary client based on configuration
-if USE_GROQ_AS_PRIMARY and groq_client:
-    client = groq_client
-    PRIMARY_MODEL = GROQ_PRIMARY_MODEL
-    logger.info(f"🚀 Weekly Check-in AI using Groq as primary with model: {PRIMARY_MODEL}")
-elif openai_client:
-    client = openai_client
-    PRIMARY_MODEL = "gpt-4o"
-    logger.info(f"🚀 Weekly Check-in AI using OpenAI with model: {PRIMARY_MODEL}")
-else:
-    client = None
-    PRIMARY_MODEL = None
-    logger.error("❌ No AI client available - both OpenAI and Groq keys missing!")
 
 
 class QuestionType(str, Enum):
@@ -456,19 +443,52 @@ OUTPUT JSON:
 """
         
         try:
-            if not client or not PRIMARY_MODEL:
-                logger.error("No AI client available for weekly check-in")
-                return self._generate_post_severity_question(checkin, 5, context)
+            # ================================================================
+            # API CALL: OpenAI PRIMARY, Groq FALLBACK on ANY error
+            # ================================================================
+            response = None
+            openai_error = None
             
-            response = await client.chat.completions.create(
-                model=PRIMARY_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    *conversation_so_far
-                ],
-                temperature=0.7,
-                response_format={"type": "json_object"}
-            )
+            # Try OpenAI first
+            if openai_client:
+                logger.info("🚀 Trying OpenAI for weekly check-in...")
+                try:
+                    response = await openai_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            *conversation_so_far
+                        ],
+                        temperature=0.7,
+                        response_format={"type": "json_object"}
+                    )
+                    logger.info("✅ OpenAI response received")
+                except Exception as e:
+                    openai_error = str(e)
+                    logger.warning(f"❌ OpenAI failed: {openai_error[:200]}")
+            else:
+                openai_error = "No OpenAI API key"
+            
+            # Fallback to Groq if OpenAI failed
+            if openai_error and groq_client:
+                logger.info(f"🔄 Falling back to Groq with {GROQ_FALLBACK_MODEL}...")
+                try:
+                    response = await groq_client.chat.completions.create(
+                        model=GROQ_FALLBACK_MODEL,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            *conversation_so_far
+                        ],
+                        temperature=0.7,
+                        response_format={"type": "json_object"}
+                    )
+                    logger.info("✅ Groq fallback successful!")
+                except Exception as e:
+                    logger.error(f"❌ Groq also failed: {e}")
+                    return self._generate_post_severity_question(checkin, 5, context)
+            elif openai_error:
+                logger.error("❌ OpenAI failed and no Groq available for fallback")
+                return self._generate_post_severity_question(checkin, 5, context)
             
             content = response.choices[0].message.content
             data = json.loads(content)
@@ -590,16 +610,45 @@ RULES:
 """
         
         try:
-            if not client or not PRIMARY_MODEL:
-                logger.error("No AI client available for completion")
-                raise Exception("No AI client available")
+            # ================================================================
+            # API CALL: OpenAI PRIMARY, Groq FALLBACK on ANY error
+            # ================================================================
+            response = None
+            openai_error = None
             
-            response = await client.chat.completions.create(
-                model=PRIMARY_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                response_format={"type": "json_object"}
-            )
+            # Try OpenAI first
+            if openai_client:
+                logger.info("🚀 Trying OpenAI for completion...")
+                try:
+                    response = await openai_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.7,
+                        response_format={"type": "json_object"}
+                    )
+                    logger.info("✅ OpenAI response received")
+                except Exception as e:
+                    openai_error = str(e)
+                    logger.warning(f"❌ OpenAI failed: {openai_error[:200]}")
+            else:
+                openai_error = "No OpenAI API key"
+            
+            # Fallback to Groq if OpenAI failed
+            if openai_error and groq_client:
+                logger.info(f"🔄 Falling back to Groq with {GROQ_FALLBACK_MODEL}...")
+                try:
+                    response = await groq_client.chat.completions.create(
+                        model=GROQ_FALLBACK_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.7,
+                        response_format={"type": "json_object"}
+                    )
+                    logger.info("✅ Groq fallback successful!")
+                except Exception as e:
+                    logger.error(f"❌ Groq also failed: {e}")
+                    raise Exception("Both OpenAI and Groq failed")
+            elif openai_error:
+                raise Exception(f"OpenAI failed and no Groq fallback: {openai_error}")
             
             data = json.loads(response.choices[0].message.content)
             messages_list = data.get("messages", [])

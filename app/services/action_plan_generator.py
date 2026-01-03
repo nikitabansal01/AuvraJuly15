@@ -36,11 +36,7 @@ from app.core.config import settings
 
 # Get API keys from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
-
-# Use Groq as primary provider (set to True when OpenAI has no credits)
-# Can be controlled via environment variable
-USE_GROQ_AS_PRIMARY = os.getenv("USE_GROQ_AS_PRIMARY", "true").lower() in ("true", "1", "yes")
-GROQ_PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
 
 logger = logging.getLogger(__name__)
 
@@ -2319,71 +2315,22 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
 {research_summary}
 """
             
-            # Determine model and endpoint
-            # Check if model_override explicitly requests a specific provider
-            explicit_groq = model_override and ("llama" in model_override.lower() or "mixtral" in model_override.lower() or "gpt-oss" in model_override.lower())
+            # ================================================================
+            # API CALL: OpenAI PRIMARY, Groq FALLBACK on ANY error
+            # ================================================================
+            use_groq = False
+            openai_error = None
             
-            # Use Groq as primary if configured (useful when OpenAI has no credits)
-            use_groq = explicit_groq or (USE_GROQ_AS_PRIMARY and GROQ_API_KEY)
-            
-            if use_groq:
-                api_url = "https://api.groq.com/openai/v1/chat/completions"
-                api_key = GROQ_API_KEY
-                model = model_override if model_override else GROQ_PRIMARY_MODEL
-                logger.info(f"🚀 Using Groq as primary provider with model: {model}")
-            else:
-                api_url = "https://api.openai.com/v1/chat/completions"
-                api_key = self.openai_api_key
-                model = model_override if model_override else self.GPT_MODEL
-                logger.info(f"🚀 Using OpenAI with model: {model}")
-            
-            if use_groq and not api_key:
-                logger.error("Groq API key not configured but Groq model requested")
-                return (None, total_cost)
-
-            # Groq specific adjustments
-            payload = {
-                "model": model,
+            # Build OpenAI payload with Structured Outputs
+            openai_payload = {
+                "model": self.GPT_MODEL,
                 "messages": [
                     {"role": "system", "content": enhanced_system_with_research},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": self.GPT_TEMPERATURE,
-                "max_tokens": 4000
-            }
-
-            if use_groq:
-                # Groq supports json_object. We use that and rely on the prompt for schema adherence.
-                # However, for reasoning models (GPT-OSS), JSON mode might conflict with reasoning output
-                # So we only use json_object for non-reasoning models
-                if "gpt-oss" in model.lower():
-                    # Reasoning model: No response_format, just strict prompting
-                    # payload["reasoning_effort"] = "high" # Removed to fix 400 error
-                    enhanced_system_with_research += "\n\nIMPORTANT: Output ONLY valid JSON. No markdown, no thinking, no preamble."
-                else:
-                    # Standard model (Llama 3.3): Use JSON mode
-                    payload["response_format"] = {"type": "json_object"}
-                    # Add EXTRA STRONG instructions for Llama 3.3 to ensure fields are present
-                    enhanced_system_with_research += """
-                    
-                    ⚠️ CRITICAL SCHEMA ENFORCEMENT ⚠️
-                    You MUST include ALL fields for EVERY action, even if they are not relevant to the category.
-                    If a field is not relevant, you MUST provide an empty list [].
-                    
-                    REQUIRED FIELDS FOR EVERY ACTION:
-                    - "time_slot": MUST be one of "morning", "afternoon", "evening" (NO "lunch", "dinner", etc.)
-                    - "food_items", "food_amounts" (Use [] if not food)
-                    - "exercise_types", "exercise_durations", "exercise_intensities" (Use [] if not movement)
-                    - "mindfulness_techniques", "mindfulness_durations" (Use [] if not mindfulness)
-                    - "research_studies" (Must include "verification_link")
-                    
-                    Do not omit ANY field. The system requires a fixed schema.
-                    """
-                    # Update the system message content with the new instructions
-                    payload["messages"][0]["content"] = enhanced_system_with_research
-            else:
-                # OpenAI supports Structured Outputs (strict schema)
-                payload["response_format"] = {
+                "max_tokens": 4000,
+                "response_format": {
                     "type": "json_schema",
                     "json_schema": {
                         "name": "action_plan",
@@ -2391,89 +2338,99 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                         "schema": ACTION_PLAN_SCHEMA
                     }
                 }
-
-            response = await self.client.post(
-                api_url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json=payload,
-                timeout=60.0
-            )
+            }
             
-            # Handle rate limit (429) or quota exceeded errors with Groq fallback
-            # OpenAI returns 429 for both rate limits AND insufficient_quota
-            should_fallback_to_groq = False
-            if response.status_code == 429:
-                try:
-                    error_data = response.json()
-                    error_type = error_data.get("error", {}).get("type", "")
-                    error_code = error_data.get("error", {}).get("code", "")
-                    error_msg = error_data.get("error", {}).get("message", "")
+            # Try OpenAI first
+            logger.info(f"🚀 Trying OpenAI with model: {self.GPT_MODEL}")
+            try:
+                response = await self.client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json=openai_payload,
+                    timeout=60.0
+                )
+                
+                if response.status_code != 200:
+                    openai_error = f"OpenAI returned {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        error_msg = error_data.get("error", {}).get("message", "")
+                        error_type = error_data.get("error", {}).get("type", "")
+                        openai_error = f"{error_type}: {error_msg[:200]}"
+                    except:
+                        pass
+                    logger.warning(f"❌ OpenAI failed: {openai_error}")
                     
-                    if "insufficient_quota" in error_type or "insufficient_quota" in error_code:
-                        logger.error(f"❌ OpenAI QUOTA EXCEEDED - No credits remaining!")
-                        logger.error(f"   Error: {error_msg[:200]}")
-                        logger.warning(f"   💡 Add credits at: https://platform.openai.com/settings/organization/billing")
-                    else:
-                        retry_after = response.headers.get("Retry-After", "60")
-                        limit_remaining = response.headers.get("x-ratelimit-remaining-requests", "?")
-                        limit_reset = response.headers.get("x-ratelimit-reset-requests", "?")
-                        limit_tokens = response.headers.get("x-ratelimit-remaining-tokens", "?")
-                        logger.warning(f"⚠️ OpenAI rate limited (429). Retry-After: {retry_after}s")
-                        logger.warning(f"   Rate limit info: remaining_requests={limit_remaining}, reset={limit_reset}, remaining_tokens={limit_tokens}")
-                except:
-                    logger.warning(f"⚠️ OpenAI returned 429 - rate limited or quota exceeded")
-                
-                should_fallback_to_groq = True
+            except Exception as e:
+                openai_error = str(e)
+                logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
             
-            # Fallback to Groq if OpenAI fails
-            if should_fallback_to_groq and GROQ_API_KEY and not use_groq:
-                logger.warning(f"🔄 Falling back to Groq...")
-                groq_model = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.3-70b-versatile")
-                logger.info(f"🔄 Attempting Groq fallback with {groq_model}...")
+            # Fallback to Groq if OpenAI failed for ANY reason
+            if openai_error and GROQ_API_KEY:
+                logger.info(f"🔄 Falling back to Groq with model: {GROQ_FALLBACK_MODEL}")
+                use_groq = True
+                is_groq = True
                 
-                # Switch to Groq API
+                # Build Groq payload (uses json_object mode, not strict schema)
+                groq_system = enhanced_system_with_research + """
+
+⚠️ CRITICAL SCHEMA ENFORCEMENT ⚠️
+You MUST include ALL fields for EVERY action, even if they are not relevant to the category.
+If a field is not relevant, you MUST provide an empty list [].
+
+REQUIRED FIELDS FOR EVERY ACTION:
+- "time_slot": MUST be one of "morning", "afternoon", "evening" (NO "lunch", "dinner", etc.)
+- "food_items", "food_amounts" (Use [] if not food)
+- "exercise_types", "exercise_durations", "exercise_intensities" (Use [] if not movement)
+- "mindfulness_techniques", "mindfulness_durations" (Use [] if not mindfulness)
+- "research_studies" (Must include "verification_link")
+
+Do not omit ANY field. The system requires a fixed schema.
+"""
+                
                 groq_payload = {
-                    "model": groq_model,
-                    "messages": payload["messages"],
+                    "model": GROQ_FALLBACK_MODEL,
+                    "messages": [
+                        {"role": "system", "content": groq_system},
+                        {"role": "user", "content": prompt}
+                    ],
                     "temperature": 0.3,
                     "max_tokens": 8000,
                     "response_format": {"type": "json_object"}
                 }
                 
-                groq_response = await self.client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {GROQ_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    json=groq_payload,
-                    timeout=90.0
-                )
-                
-                if groq_response.status_code == 200:
-                    logger.info(f"✅ Groq fallback successful!")
-                    response = groq_response
-                    is_groq = True
-                    use_groq = True  # Mark as using Groq for schema handling
-                else:
-                    logger.error(f"❌ Groq fallback also failed: {groq_response.status_code}")
-                    try:
-                        groq_error = groq_response.json()
-                        logger.error(f"   Groq error: {groq_error}")
-                    except:
-                        pass
-                    response.raise_for_status()  # Raise the original error
-            elif should_fallback_to_groq and use_groq:
-                # Already using Groq and it failed
-                response.raise_for_status()
-            elif should_fallback_to_groq:
-                logger.error("❌ No Groq API key configured for fallback")
-                response.raise_for_status()
-            elif response.status_code != 200:
-                response.raise_for_status()
+                try:
+                    response = await self.client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {GROQ_API_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=groq_payload,
+                        timeout=90.0
+                    )
+                    
+                    if response.status_code == 200:
+                        logger.info(f"✅ Groq fallback successful!")
+                    else:
+                        logger.error(f"❌ Groq also failed: {response.status_code}")
+                        try:
+                            groq_error = response.json()
+                            logger.error(f"   Groq error: {groq_error}")
+                        except:
+                            pass
+                        return (None, total_cost)
+                        
+                except Exception as e:
+                    logger.error(f"❌ Groq exception: {e}")
+                    return (None, total_cost)
+                    
+            elif openai_error:
+                logger.error(f"❌ OpenAI failed and no Groq API key for fallback")
+                return (None, total_cost)
             
             data = response.json()
             
