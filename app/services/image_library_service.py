@@ -152,6 +152,9 @@ class ImageLibraryService:
         Generate embedding using OpenAI ada-002.
         
         Cost: $0.0001 per 1K tokens (~$0.0001 per call for typical prompts)
+        
+        NOTE: If OpenAI returns 429 (quota exceeded), we gracefully return None
+        and the image will still be generated/stored without embedding-based search.
         """
         # Check in-memory cache first
         cache_key = hashlib.md5(text.encode()).hexdigest()
@@ -159,7 +162,7 @@ class ImageLibraryService:
             return self._embedding_cache[cache_key]
         
         if not self.openai_api_key:
-            logger.warning("OpenAI API key not configured for embeddings")
+            # Silently skip - not critical
             return None
         
         try:
@@ -174,6 +177,12 @@ class ImageLibraryService:
                     "model": self.EMBEDDING_MODEL
                 }
             )
+            
+            # Handle 429 gracefully - embeddings are optional, not critical
+            if response.status_code == 429:
+                # Don't log error - just silently skip embedding (OpenAI quota issue)
+                return None
+            
             response.raise_for_status()
             data = response.json()
             embedding = data["data"][0]["embedding"]
@@ -184,7 +193,7 @@ class ImageLibraryService:
             return embedding
             
         except Exception as e:
-            logger.error(f"Error getting embedding: {e}")
+            # Silently skip - embeddings are optional for image generation
             return None
     
     async def _get_batch_embeddings(self, texts: List[str]) -> List[Optional[List[float]]]:
@@ -193,9 +202,11 @@ class ImageLibraryService:
         More efficient than calling _get_embedding multiple times.
         
         Cost: $0.0001 per 1K tokens (batches are more efficient)
+        
+        NOTE: If OpenAI returns 429, gracefully return None for uncached items.
         """
         if not self.openai_api_key:
-            logger.warning("OpenAI API key not configured for embeddings")
+            # Silently skip - not critical
             return [None] * len(texts)
         
         if not texts:
@@ -230,6 +241,12 @@ class ImageLibraryService:
                     "model": self.EMBEDDING_MODEL
                 }
             )
+            
+            # Handle 429 gracefully - embeddings are optional
+            if response.status_code == 429:
+                # Return partial results (cached ones) - don't spam logs
+                return results
+            
             response.raise_for_status()
             data = response.json()
             
@@ -244,11 +261,10 @@ class ImageLibraryService:
                 cache_key = hashlib.md5(uncached_texts[idx].encode()).hexdigest()
                 self._embedding_cache[cache_key] = embedding
             
-            logger.info(f"Batch embeddings: fetched {len(uncached_texts)} new, {len(texts) - len(uncached_texts)} from cache")
             return results
             
         except Exception as e:
-            logger.error(f"Error getting batch embeddings: {e}")
+            # Silently skip - embeddings are optional
             return results  # Return partial results (cached ones)
     
     async def _find_similar_image(
