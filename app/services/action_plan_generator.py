@@ -2073,6 +2073,9 @@ Format as bullet points."""
             logger.error("No API keys configured")
             return (None, 0.0)
         
+        # Track if we're using Groq fallback
+        is_groq = False
+        
         # Get cycle phase for hormone context
         cycle_phase = user_context.get("cycle_phase", "follicular").lower()
         primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
@@ -2383,7 +2386,47 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                 timeout=60.0
             )
             
-            response.raise_for_status()
+            # Handle rate limit errors with Groq fallback
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After", "60")
+                logger.warning(f"⚠️ OpenAI rate limited (429). Retry-After: {retry_after}s. Falling back to Groq...")
+                
+                # Immediately try Groq as fallback
+                if GROQ_API_KEY:
+                    groq_model = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.3-70b-versatile")
+                    logger.info(f"🔄 Attempting Groq fallback with {groq_model}...")
+                    
+                    # Switch to Groq API
+                    groq_payload = {
+                        "model": groq_model,
+                        "messages": payload["messages"],
+                        "temperature": 0.3,
+                        "max_tokens": 8000
+                    }
+                    
+                    groq_response = await self.client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {GROQ_API_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=groq_payload,
+                        timeout=90.0
+                    )
+                    
+                    if groq_response.status_code == 200:
+                        logger.info(f"✅ Groq fallback successful!")
+                        response = groq_response
+                        is_groq = True
+                    else:
+                        logger.error(f"❌ Groq fallback also failed: {groq_response.status_code}")
+                        response.raise_for_status()  # Raise the original 429 error
+                else:
+                    logger.error("❌ No Groq API key configured for fallback")
+                    response.raise_for_status()
+            else:
+                response.raise_for_status()
+            
             data = response.json()
             
             # Calculate cost
