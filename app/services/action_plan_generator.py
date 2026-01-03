@@ -2389,7 +2389,12 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             # Handle rate limit errors with Groq fallback
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After", "60")
-                logger.warning(f"⚠️ OpenAI rate limited (429). Retry-After: {retry_after}s. Falling back to Groq...")
+                limit_remaining = response.headers.get("x-ratelimit-remaining-requests", "?")
+                limit_reset = response.headers.get("x-ratelimit-reset-requests", "?")
+                limit_tokens = response.headers.get("x-ratelimit-remaining-tokens", "?")
+                logger.warning(f"⚠️ OpenAI rate limited (429). Retry-After: {retry_after}s")
+                logger.warning(f"   Rate limit info: remaining_requests={limit_remaining}, reset={limit_reset}, remaining_tokens={limit_tokens}")
+                logger.warning(f"   Falling back to Groq...")
                 
                 # Immediately try Groq as fallback
                 if GROQ_API_KEY:
