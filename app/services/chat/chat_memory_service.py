@@ -11,12 +11,14 @@ This enables doctor-like memory across conversations.
 """
 
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 import json
 from openai import AsyncOpenAI
+from groq import AsyncGroq
 
 from app.core.database import (
     ChatSession, ChatMessage, ConversationSummary, UserProfile
@@ -25,6 +27,10 @@ from app.core.config import settings
 from app.models.chat_models import ConversationContext
 
 logger = logging.getLogger(__name__)
+
+# Groq fallback configuration
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"  # High-quality reasoning model
 
 
 class ChatMemoryService:
@@ -35,7 +41,8 @@ class ChatMemoryService:
     
     def __init__(self, db: Session):
         self.db = db
-        self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
+        self.groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
     
     # ═══════════════════════════════════════════════════════════════════════════
     # LAYER 1: Session Memory (Current Conversation)
@@ -292,17 +299,50 @@ class ChatMemoryService:
             Provide a concise summary (max 300 words) from a healthcare perspective.
             """
             
-            # Generate summary using OpenAI
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a healthcare AI summarizing patient conversations."},
-                    {"role": "user", "content": summary_prompt}
-                ],
-                max_tokens=500,
-                temperature=0.7
-            )
-            summary_text = response.choices[0].message.content
+            # Generate summary - OpenAI primary, Groq fallback
+            summary_text = None
+            openai_error = None
+            
+            # Try OpenAI first
+            if self.openai_client:
+                try:
+                    response = await self.openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are a healthcare AI summarizing patient conversations."},
+                            {"role": "user", "content": summary_prompt}
+                        ],
+                        max_tokens=500,
+                        temperature=0.7
+                    )
+                    summary_text = response.choices[0].message.content
+                    logger.info("✅ Weekly summary generated via OpenAI")
+                except Exception as e:
+                    openai_error = str(e)
+                    logger.warning(f"❌ OpenAI failed for weekly summary: {openai_error[:200]}")
+            else:
+                openai_error = "No OpenAI API key"
+            
+            # Groq fallback
+            if openai_error and self.groq_client:
+                try:
+                    logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                    response = await self.groq_client.chat.completions.create(
+                        model=GROQ_FALLBACK_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are a healthcare AI summarizing patient conversations."},
+                            {"role": "user", "content": summary_prompt}
+                        ],
+                        max_tokens=500,
+                        temperature=0.7
+                    )
+                    summary_text = response.choices[0].message.content
+                    logger.info("✅ Weekly summary generated via Groq fallback")
+                except Exception as e:
+                    logger.error(f"❌ Groq fallback also failed: {e}")
+                    raise Exception(f"Both OpenAI and Groq failed: {openai_error}")
+            elif openai_error:
+                raise Exception(f"OpenAI failed and no Groq fallback: {openai_error}")
             
             # Create summary record
             summary = ConversationSummary(
@@ -400,17 +440,48 @@ class ChatMemoryService:
                 f"{msg.role}: {msg.content}" for msg in messages
             ])
             
-            # Generate summary using OpenAI
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a healthcare AI. Summarize conversations concisely."},
-                    {"role": "user", "content": f"Summarize this health conversation in 2-3 sentences:\n{conversation}"}
-                ],
-                max_tokens=150,
-                temperature=0.7
-            )
-            summary = response.choices[0].message.content
+            # Generate summary - OpenAI primary, Groq fallback
+            summary = None
+            openai_error = None
+            
+            # Try OpenAI first
+            if self.openai_client:
+                try:
+                    response = await self.openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are a healthcare AI. Summarize conversations concisely."},
+                            {"role": "user", "content": f"Summarize this health conversation in 2-3 sentences:\n{conversation}"}
+                        ],
+                        max_tokens=150,
+                        temperature=0.7
+                    )
+                    summary = response.choices[0].message.content
+                except Exception as e:
+                    openai_error = str(e)
+                    logger.warning(f"❌ OpenAI failed for session summary: {openai_error[:200]}")
+            else:
+                openai_error = "No OpenAI API key"
+            
+            # Groq fallback
+            if openai_error and self.groq_client:
+                try:
+                    logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                    response = await self.groq_client.chat.completions.create(
+                        model=GROQ_FALLBACK_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are a healthcare AI. Summarize conversations concisely."},
+                            {"role": "user", "content": f"Summarize this health conversation in 2-3 sentences:\n{conversation}"}
+                        ],
+                        max_tokens=150,
+                        temperature=0.7
+                    )
+                    summary = response.choices[0].message.content
+                except Exception as e:
+                    logger.error(f"❌ Groq fallback also failed: {e}")
+                    return "Session completed"  # Graceful fallback
+            elif openai_error:
+                return "Session completed"  # Graceful fallback
             
             return summary
             

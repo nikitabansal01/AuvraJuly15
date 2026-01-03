@@ -1451,21 +1451,79 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         
         try:
             import openai
-            client = openai.AsyncOpenAI(api_key=self.openai_api_key)
+            from groq import AsyncGroq
             
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=3000,
-                response_format={"type": "json_object"}
-            )
+            openai_error = None
+            content = None
+            cost = 0.0
             
-            content = response.choices[0].message.content
-            cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
+            # Try OpenAI first
+            if self.openai_api_key:
+                try:
+                    client = openai.AsyncOpenAI(api_key=self.openai_api_key)
+                    
+                    response = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=3000,
+                        response_format={"type": "json_object"}
+                    )
+                    
+                    content = response.choices[0].message.content
+                    cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
+                    logger.info("✅ Partial actions generated via OpenAI")
+                except Exception as e:
+                    openai_error = str(e)
+                    logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+            else:
+                openai_error = "No OpenAI API key"
+            
+            # Groq fallback
+            if openai_error and GROQ_API_KEY:
+                try:
+                    logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                    groq_client = AsyncGroq(api_key=GROQ_API_KEY)
+                    
+                    # gpt-oss-120b is a reasoning model - doesn't support response_format
+                    is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                    enhanced_prompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown." if is_reasoning_model else prompt
+                    
+                    response = await groq_client.chat.completions.create(
+                        model=GROQ_FALLBACK_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
+                            {"role": "user", "content": enhanced_prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=3000
+                    )
+                    
+                    content = response.choices[0].message.content
+                    
+                    # Clean reasoning model output
+                    if is_reasoning_model:
+                        if content.startswith("```json"):
+                            content = content[7:]
+                        if content.startswith("```"):
+                            content = content[3:]
+                        if content.endswith("```"):
+                            content = content[:-3]
+                        content = content.strip()
+                    
+                    logger.info("✅ Partial actions generated via Groq fallback")
+                except Exception as e:
+                    logger.error(f"❌ Groq fallback also failed: {e}")
+                    return (None, 0.0)
+            elif openai_error:
+                logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                return (None, 0.0)
+            
+            if not content:
+                return (None, 0.0)
             
             # Parse response
             parsed = json.loads(content)
@@ -1967,29 +2025,78 @@ Create a summary focusing on:
 Keep it concise (max 200 words) and actionable for generating future action plans.
 Format as bullet points."""
 
-                try:
-                    response = await self.client.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {self.openai_api_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "model": "gpt-4o-mini",
-                            "messages": [
-                                {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
-                                {"role": "user", "content": summary_prompt}
-                            ],
-                            "temperature": 0.3,
-                            "max_tokens": 500
-                        }
-                    )
-                    
-                    response.raise_for_status()
-                    data = response.json()
-                    summary = data["choices"][0]["message"]["content"].strip()
-                    
-                    logger.info(f"✅ Feedback summary generated, length: {len(summary)} chars")
+                # Try OpenAI first, fallback to Groq
+                openai_error = None
+                summary = None
+                
+                if self.openai_api_key:
+                    try:
+                        response = await self.client.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {self.openai_api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": "gpt-4o-mini",
+                                "messages": [
+                                    {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
+                                    {"role": "user", "content": summary_prompt}
+                                ],
+                                "temperature": 0.3,
+                                "max_tokens": 500
+                            }
+                        )
+                        
+                        if response.status_code != 200:
+                            openai_error = f"OpenAI returned {response.status_code}"
+                            logger.warning(f"❌ {openai_error}")
+                        else:
+                            data = response.json()
+                            summary = data["choices"][0]["message"]["content"].strip()
+                            logger.info(f"✅ Feedback summary generated via OpenAI, length: {len(summary)} chars")
+                    except Exception as e:
+                        openai_error = str(e)
+                        logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                else:
+                    openai_error = "No OpenAI API key"
+                
+                # Groq fallback
+                if openai_error and GROQ_API_KEY:
+                    try:
+                        logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                        response = await self.client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {GROQ_API_KEY}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": GROQ_FALLBACK_MODEL,
+                                "messages": [
+                                    {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
+                                    {"role": "user", "content": summary_prompt}
+                                ],
+                                "temperature": 0.3,
+                                "max_tokens": 500
+                            },
+                            timeout=90.0
+                        )
+                        
+                        if response.status_code != 200:
+                            raise Exception(f"Groq returned {response.status_code}")
+                        
+                        data = response.json()
+                        summary = data["choices"][0]["message"]["content"].strip()
+                        logger.info(f"✅ Feedback summary generated via Groq fallback, length: {len(summary)} chars")
+                    except Exception as e:
+                        logger.error(f"❌ Groq fallback also failed: {e}")
+                        return None  # Return None, don't crash
+                elif openai_error:
+                    logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                    return None
+                
+                if summary:
                     
                     # Save summary to profile
                     profile.feedback_summary = summary
@@ -2024,11 +2131,6 @@ Format as bullet points."""
                         logger.info(f"🗑️  Deleted {deleted_count} old feedback records, kept last 20")
                     
                     return summary
-                    
-                except Exception as gpt_error:
-                    logger.error(f"❌ Error generating feedback summary with GPT: {gpt_error}")
-                    # If summarization fails, continue with raw feedback
-                    return None
             
             # Less than 100 feedback - no summary needed yet
             return getattr(profile, 'feedback_summary', None)
@@ -3300,28 +3402,86 @@ Respond with valid JSON object only."""
             for attempt in range(1, MAX_REPLACEMENT_RETRIES + 1):
                 logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_REPLACEMENT_RETRIES}")
                 
-                response = await self.client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.openai_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.GPT_MODEL,
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": replacement_prompt}
-                        ],
-                        # No tools needed - research already pre-fetched
-                        "temperature": 0.7,
-                        "max_tokens": 2500,
-                        "response_format": {"type": "json_object"}
-                    }
-                )
+                # Try OpenAI first, fallback to Groq
+                openai_error = None
+                content = None
                 
-                response.raise_for_status()
-                data = response.json()
-                content = data["choices"][0]["message"].get("content", "{}")
+                if self.openai_api_key:
+                    try:
+                        response = await self.client.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {self.openai_api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": self.GPT_MODEL,
+                                "messages": [
+                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "user", "content": replacement_prompt}
+                                ],
+                                # No tools needed - research already pre-fetched
+                                "temperature": 0.7,
+                                "max_tokens": 2500,
+                                "response_format": {"type": "json_object"}
+                            }
+                        )
+                        
+                        if response.status_code != 200:
+                            openai_error = f"OpenAI returned {response.status_code}"
+                            logger.warning(f"❌ {openai_error}")
+                        else:
+                            data = response.json()
+                            content = data["choices"][0]["message"].get("content", "{}")
+                            logger.info("✅ Replacement action generated via OpenAI")
+                    except Exception as e:
+                        openai_error = str(e)
+                        logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                else:
+                    openai_error = "No OpenAI API key"
+                
+                # Groq fallback
+                if openai_error and GROQ_API_KEY:
+                    try:
+                        logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                        
+                        # gpt-oss-120b is a reasoning model - doesn't support response_format
+                        is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                        enhanced_prompt = replacement_prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown." if is_reasoning_model else replacement_prompt
+                        
+                        response = await self.client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {GROQ_API_KEY}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": GROQ_FALLBACK_MODEL,
+                                "messages": [
+                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "user", "content": enhanced_prompt}
+                                ],
+                                "temperature": 0.7,
+                                "max_tokens": 2500
+                            },
+                            timeout=90.0
+                        )
+                        
+                        if response.status_code != 200:
+                            raise Exception(f"Groq returned {response.status_code}")
+                        
+                        data = response.json()
+                        content = data["choices"][0]["message"].get("content", "{}")
+                        logger.info("✅ Replacement action generated via Groq fallback")
+                    except Exception as e:
+                        logger.error(f"❌ Groq fallback also failed: {e}")
+                        continue  # Try next attempt
+                elif openai_error:
+                    logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                    continue  # Try next attempt
+                
+                if not content:
+                    continue
                 
                 # Parse replacement action
                 if content.startswith("```"):
@@ -3797,101 +3957,171 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             for attempt in range(1, self.MAX_RETRIES + 1):
                 logger.info(f"🔄 Replacement generation attempt {attempt}/{self.MAX_RETRIES}")
                 
-                # Generate replacement actions WITH tool calling for real citations
-                response = await self.client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.openai_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.GPT_MODEL,
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": batch_prompt}
-                        ],
-                        "tools": [PUBMED_SEARCH_TOOL],
-                        "tool_choice": "auto",
-                        "temperature": 0.3,
-                        "max_tokens": 8000
-                    }
-                )
+                # Try OpenAI first, fallback to Groq
+                openai_error = None
+                content = None
                 
-                response.raise_for_status()
-                data = response.json()
-                
-                # Calculate GPT cost
-                input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
-                output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
-                gpt_cost += attempt_cost
-                
-                message = data["choices"][0]["message"]
-                
-                # Handle tool calls if GPT wants to search for papers
-                if message.get("tool_calls"):
-                    logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for replacement citations")
-                    
-                    tool_results = []
-                    for tool_call in message["tool_calls"]:
-                        if tool_call["function"]["name"] == "search_research_paper":
-                            args = json.loads(tool_call["function"]["arguments"])
-                            logger.info(f"  🔍 Searching for: {args.get('action_title', 'unknown')}")
+                if self.openai_api_key:
+                    try:
+                        # Generate replacement actions WITH tool calling for real citations
+                        response = await self.client.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {self.openai_api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": self.GPT_MODEL,
+                                "messages": [
+                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "user", "content": batch_prompt}
+                                ],
+                                "tools": [PUBMED_SEARCH_TOOL],
+                                "tool_choice": "auto",
+                                "temperature": 0.3,
+                                "max_tokens": 8000
+                            }
+                        )
+                        
+                        if response.status_code != 200:
+                            openai_error = f"OpenAI returned {response.status_code}"
+                            logger.warning(f"❌ {openai_error}")
+                        else:
+                            data = response.json()
                             
-                            # Execute the tool with db for caching
-                            paper = await execute_pubmed_tool(args, db=db)
+                            # Calculate GPT cost
+                            input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+                            output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+                            attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                            gpt_cost += attempt_cost
                             
-                            if paper and paper.get("title"):
-                                logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                            message = data["choices"][0]["message"]
+                            
+                            # Handle tool calls if GPT wants to search for papers
+                            if message.get("tool_calls"):
+                                logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for replacement citations")
+                                
+                                tool_results = []
+                                for tool_call in message["tool_calls"]:
+                                    if tool_call["function"]["name"] == "search_research_paper":
+                                        args = json.loads(tool_call["function"]["arguments"])
+                                        logger.info(f"  🔍 Searching for: {args.get('action_title', 'unknown')}")
+                                        
+                                        # Execute the tool with db for caching
+                                        paper = await execute_pubmed_tool(args, db=db)
+                                        
+                                        if paper and paper.get("title"):
+                                            logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                                        else:
+                                            logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
+                                        
+                                        tool_results.append({
+                                            "tool_call_id": tool_call["id"],
+                                            "role": "tool",
+                                            "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
+                                        })
+                                
+                                # Send tool results back to GPT
+                                assistant_message = {
+                                    "role": "assistant",
+                                    "content": message.get("content"),
+                                    "tool_calls": message.get("tool_calls")
+                                }
+                                
+                                response2 = await self.client.post(
+                                    "https://api.openai.com/v1/chat/completions",
+                                    headers={
+                                        "Authorization": f"Bearer {self.openai_api_key}",
+                                        "Content-Type": "application/json"
+                                    },
+                                    json={
+                                        "model": self.GPT_MODEL,
+                                        "messages": [
+                                            {"role": "system", "content": SYSTEM_PROMPT},
+                                            {"role": "user", "content": batch_prompt},
+                                            assistant_message,
+                                            *tool_results
+                                        ],
+                                        "temperature": 0.3,
+                                        "max_tokens": 8000,
+                                        "response_format": {"type": "json_object"}
+                                    }
+                                )
+                                
+                                if response2.status_code != 200:
+                                    openai_error = f"OpenAI second call returned {response2.status_code}"
+                                    logger.warning(f"❌ {openai_error}")
+                                else:
+                                    data = response2.json()
+                                    
+                                    # Add second call cost
+                                    input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+                                    output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+                                    gpt_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                                    
+                                    content = data["choices"][0]["message"]["content"]
+                                    logger.info("✅ Batch replacements generated via OpenAI")
                             else:
-                                logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
-                            
-                            tool_results.append({
-                                "tool_call_id": tool_call["id"],
-                                "role": "tool",
-                                "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
-                            })
-                    
-                    # Send tool results back to GPT
-                    assistant_message = {
-                        "role": "assistant",
-                        "content": message.get("content"),
-                        "tool_calls": message.get("tool_calls")
-                    }
-                    
-                    response2 = await self.client.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {self.openai_api_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "model": self.GPT_MODEL,
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT},
-                                {"role": "user", "content": batch_prompt},
-                                assistant_message,
-                                *tool_results
-                            ],
-                            "temperature": 0.3,
-                            "max_tokens": 8000,
-                            "response_format": {"type": "json_object"}
-                        }
-                    )
-                    
-                    response2.raise_for_status()
-                    data = response2.json()
-                    
-                    # Add second call cost
-                    input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
-                    output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                    gpt_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
-                    
-                    content = data["choices"][0]["message"]["content"]
+                                # GPT didn't call tools - use response as-is
+                                logger.warning("⚠️ GPT did not call tools - replacement citations may be fabricated")
+                                content = message.get("content", "{}")
+                    except Exception as e:
+                        openai_error = str(e)
+                        logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
                 else:
-                    # GPT didn't call tools - use response as-is
-                    logger.warning("⚠️ GPT did not call tools - replacement citations may be fabricated")
-                    content = message.get("content", "{}")
+                    openai_error = "No OpenAI API key"
+                
+                # Groq fallback (no tool calling support - will generate without PubMed research)
+                if openai_error and GROQ_API_KEY:
+                    try:
+                        logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL}) - no tool calling")
+                        
+                        # gpt-oss-120b doesn't support response_format, add JSON instructions
+                        enhanced_prompt = batch_prompt + "\n\nIMPORTANT: Respond with valid JSON array only. No markdown, no explanation. Set research_studies to empty array []."
+                        
+                        response = await self.client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {GROQ_API_KEY}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": GROQ_FALLBACK_MODEL,
+                                "messages": [
+                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "user", "content": enhanced_prompt}
+                                ],
+                                "temperature": 0.3,
+                                "max_tokens": 8000
+                            },
+                            timeout=120.0
+                        )
+                        
+                        if response.status_code != 200:
+                            raise Exception(f"Groq returned {response.status_code}")
+                        
+                        data = response.json()
+                        content = data["choices"][0]["message"]["content"]
+                        
+                        # Clean reasoning model output
+                        if content.startswith("```json"):
+                            content = content[7:]
+                        if content.startswith("```"):
+                            content = content[3:]
+                        if content.endswith("```"):
+                            content = content[:-3]
+                        content = content.strip()
+                        
+                        logger.info("✅ Batch replacements generated via Groq fallback")
+                    except Exception as e:
+                        logger.error(f"❌ Groq fallback also failed: {e}")
+                        continue  # Try next attempt
+                elif openai_error:
+                    logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                    continue  # Try next attempt
+                
+                if not content:
+                    continue
                 
                 # Parse response
                 if content.startswith("```"):

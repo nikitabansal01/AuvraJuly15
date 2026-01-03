@@ -28,6 +28,10 @@ from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
+# Groq fallback configuration
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"  # High-quality reasoning model
+
 # Weights for overall score calculation
 METRIC_WEIGHTS = {
     "structure_valid": 0.15,  # 15% - structural validity
@@ -355,8 +359,8 @@ class ActionPlanEvaluator:
         Run GPT-4o-mini to evaluate relevance metrics.
         Returns (scores_dict, cost) or (None, cost) on failure.
         """
-        if not self.openai_api_key:
-            logger.warning("OpenAI API key not set, skipping LLM evaluation")
+        if not self.openai_api_key and not GROQ_API_KEY:
+            logger.warning("No API keys set (OpenAI or Groq), skipping LLM evaluation")
             return None, 0.0
         
         # Format actions for evaluation (compact)
@@ -408,49 +412,115 @@ class ActionPlanEvaluator:
             actions_json=json.dumps(actions_summary, indent=2)
         )
         
-        try:
-            response = await self.client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.GPT_MODEL,
-                    "temperature": self.GPT_TEMPERATURE,
-                    "messages": [
-                        {"role": "system", "content": "You are a health recommendation quality evaluator. Respond only with valid JSON."},
-                        {"role": "user", "content": prompt}
-                    ]
-                }
-            )
-            
-            response.raise_for_status()
-            data = response.json()
-            
-            # Calculate cost
-            usage = data.get("usage", {})
-            input_tokens = usage.get("prompt_tokens", 0)
-            output_tokens = usage.get("completion_tokens", 0)
-            cost = (input_tokens * self.INPUT_COST_PER_1M / 1_000_000) + \
-                   (output_tokens * self.OUTPUT_COST_PER_1M / 1_000_000)
-            
-            # Parse response
-            content = data["choices"][0]["message"]["content"].strip()
-            
-            # Clean up markdown code blocks if present
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            
-            scores = json.loads(content)
-            
-            logger.info(f"LLM evaluation complete: {scores}")
-            return scores, cost
-            
-        except Exception as e:
-            logger.error(f"LLM evaluation failed: {e}")
+        # Try OpenAI first, fallback to Groq
+        openai_error = None
+        cost = 0.0
+        
+        # Try OpenAI first
+        if self.openai_api_key:
+            try:
+                response = await self.client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.GPT_MODEL,
+                        "temperature": self.GPT_TEMPERATURE,
+                        "messages": [
+                            {"role": "system", "content": "You are a health recommendation quality evaluator. Respond only with valid JSON."},
+                            {"role": "user", "content": prompt}
+                        ]
+                    }
+                )
+                
+                if response.status_code != 200:
+                    openai_error = f"OpenAI API returned {response.status_code}: {response.text[:200]}"
+                    logger.warning(f"❌ {openai_error}")
+                else:
+                    data = response.json()
+                    
+                    # Calculate cost
+                    usage = data.get("usage", {})
+                    input_tokens = usage.get("prompt_tokens", 0)
+                    output_tokens = usage.get("completion_tokens", 0)
+                    cost = (input_tokens * self.INPUT_COST_PER_1M / 1_000_000) + \
+                           (output_tokens * self.OUTPUT_COST_PER_1M / 1_000_000)
+                    
+                    # Parse response
+                    content = data["choices"][0]["message"]["content"].strip()
+                    
+                    # Clean up markdown code blocks if present
+                    if content.startswith("```"):
+                        content = content.split("```")[1]
+                        if content.startswith("json"):
+                            content = content[4:]
+                    
+                    scores = json.loads(content)
+                    
+                    logger.info(f"✅ LLM evaluation complete via OpenAI: {scores}")
+                    return scores, cost
+                    
+            except Exception as e:
+                openai_error = str(e)
+                logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+        else:
+            openai_error = "No OpenAI API key"
+        
+        # Groq fallback
+        if openai_error and GROQ_API_KEY:
+            try:
+                logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                
+                # gpt-oss-120b is a reasoning model - doesn't support response_format
+                is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                enhanced_prompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no explanation." if is_reasoning_model else prompt
+                
+                response = await self.client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": GROQ_FALLBACK_MODEL,
+                        "temperature": self.GPT_TEMPERATURE,
+                        "messages": [
+                            {"role": "system", "content": "You are a health recommendation quality evaluator. Respond only with valid JSON."},
+                            {"role": "user", "content": enhanced_prompt}
+                        ]
+                    },
+                    timeout=90.0
+                )
+                
+                if response.status_code != 200:
+                    raise Exception(f"Groq API returned {response.status_code}: {response.text[:200]}")
+                
+                data = response.json()
+                
+                # Parse response
+                content = data["choices"][0]["message"]["content"].strip()
+                
+                # Clean up markdown code blocks if present
+                if content.startswith("```json"):
+                    content = content[7:]
+                if content.startswith("```"):
+                    content = content[3:]
+                if content.endswith("```"):
+                    content = content[:-3]
+                content = content.strip()
+                
+                scores = json.loads(content)
+                
+                logger.info(f"✅ LLM evaluation complete via Groq fallback: {scores}")
+                return scores, cost
+                
+            except Exception as e:
+                logger.error(f"❌ Groq fallback also failed: {e}")
+                return None, 0.0
+        else:
+            logger.error(f"❌ LLM evaluation failed: {openai_error}")
             return None, 0.0
     
     def _calculate_overall_score(

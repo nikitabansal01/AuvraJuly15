@@ -19,15 +19,19 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Fallback: Still support Gemini if explicitly configured
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Determine which LLM provider to use (priority: OpenAI > Gemini)
-LLM_PROVIDER = "openai" if OPENAI_API_KEY else ("gemini" if GEMINI_API_KEY else None)
+# Groq fallback configuration
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"  # High-quality reasoning model
+
+# Determine which LLM provider to use (priority: OpenAI > Groq > Gemini)
+LLM_PROVIDER = "openai" if OPENAI_API_KEY else ("groq" if GROQ_API_KEY else ("gemini" if GEMINI_API_KEY else None))
 
 # Auto-enable LLM if API key is present (unless explicitly disabled)
 _enable_llm_env = os.getenv("ENABLE_LLM_OTHERS", "").lower()
 if _enable_llm_env in ("0", "false", "no", "off"):
     ENABLE_LLM_OTHERS = False
 else:
-    ENABLE_LLM_OTHERS = bool(OPENAI_API_KEY) or bool(GEMINI_API_KEY) or _enable_llm_env in ("1", "true", "yes", "on")
+    ENABLE_LLM_OTHERS = bool(OPENAI_API_KEY) or bool(GROQ_API_KEY) or bool(GEMINI_API_KEY) or _enable_llm_env in ("1", "true", "yes", "on")
     
 LLM_OTHERS_TIMEOUT = int(os.getenv("LLM_OTHERS_TIMEOUT", "30"))  # seconds
 LLM_OTHERS_MODEL = os.getenv("LLM_OTHERS_MODEL", "gpt-4o-mini")  # Fast, cheap, good for JSON
@@ -41,6 +45,7 @@ from app.utils.cache_utils import hormone_analysis_cache, generate_cache_key
 # Debug logging
 logger.info(f"🔑 LLM Provider: {LLM_PROVIDER or 'NONE (disabled)'}")
 logger.info(f"🔑 OPENAI_API_KEY loaded: {'Yes' if OPENAI_API_KEY else 'No'}")
+logger.info(f"🔑 GROQ_API_KEY loaded: {'Yes' if GROQ_API_KEY else 'No'}")
 logger.info(f"🔑 ENABLE_LLM_OTHERS: {ENABLE_LLM_OTHERS}")
 logger.info(f"🔑 LLM Model: {LLM_OTHERS_MODEL}")
 
@@ -140,71 +145,211 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
     
     @staticmethod
     async def _call_openai_async(prompt: str) -> str:
-        """Call OpenAI API asynchronously (preferred for production)"""
+        """Call OpenAI API asynchronously with Groq fallback"""
         import httpx
         
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {OPENAI_API_KEY}'
-        }
+        openai_error = None
         
-        body = {
-            'model': LLM_OTHERS_MODEL,
-            'messages': [
-                {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            'temperature': 0.3,  # Lower temperature for consistent JSON output
-            'max_tokens': 200,   # JSON response is small
-            'response_format': {"type": "json_object"}  # Enforce JSON output
-        }
+        # Try OpenAI first
+        if OPENAI_API_KEY:
+            try:
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {OPENAI_API_KEY}'
+                }
+                
+                body = {
+                    'model': LLM_OTHERS_MODEL,
+                    'messages': [
+                        {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    'temperature': 0.3,  # Lower temperature for consistent JSON output
+                    'max_tokens': 200,   # JSON response is small
+                    'response_format': {"type": "json_object"}  # Enforce JSON output
+                }
+                
+                async with httpx.AsyncClient(timeout=LLM_OTHERS_TIMEOUT) as client:
+                    response = await client.post(
+                        'https://api.openai.com/v1/chat/completions',
+                        headers=headers,
+                        json=body
+                    )
+                    
+                    if response.status_code != 200:
+                        openai_error = f"OpenAI API error: {response.status_code} - {response.text[:200]}"
+                        logger.warning(f"❌ {openai_error}")
+                    else:
+                        data = response.json()
+                        logger.info("✅ Hormone analysis via OpenAI")
+                        return data['choices'][0]['message']['content']
+            except Exception as e:
+                openai_error = str(e)
+                logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+        else:
+            openai_error = "No OpenAI API key"
         
-        async with httpx.AsyncClient(timeout=LLM_OTHERS_TIMEOUT) as client:
-            response = await client.post(
-                'https://api.openai.com/v1/chat/completions',
-                headers=headers,
-                json=body
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
-            
-            data = response.json()
-            return data['choices'][0]['message']['content']
+        # Groq fallback
+        if openai_error and GROQ_API_KEY:
+            try:
+                logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                
+                # gpt-oss-120b doesn't support response_format
+                is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                enhanced_prompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown." if is_reasoning_model else prompt
+                
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {GROQ_API_KEY}'
+                }
+                
+                body = {
+                    'model': GROQ_FALLBACK_MODEL,
+                    'messages': [
+                        {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
+                        {"role": "user", "content": enhanced_prompt}
+                    ],
+                    'temperature': 0.3,
+                    'max_tokens': 200
+                }
+                
+                if not is_reasoning_model:
+                    body['response_format'] = {"type": "json_object"}
+                
+                async with httpx.AsyncClient(timeout=LLM_OTHERS_TIMEOUT + 30) as client:
+                    response = await client.post(
+                        'https://api.groq.com/openai/v1/chat/completions',
+                        headers=headers,
+                        json=body
+                    )
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"Groq API error: {response.status_code} - {response.text[:200]}")
+                    
+                    data = response.json()
+                    content = data['choices'][0]['message']['content']
+                    
+                    # Clean reasoning model output
+                    if is_reasoning_model:
+                        if content.startswith("```json"):
+                            content = content[7:]
+                        if content.startswith("```"):
+                            content = content[3:]
+                        if content.endswith("```"):
+                            content = content[:-3]
+                        content = content.strip()
+                    
+                    logger.info("✅ Hormone analysis via Groq fallback")
+                    return content
+                    
+            except Exception as e:
+                logger.error(f"❌ Groq fallback also failed: {e}")
+                raise Exception(f"Both OpenAI and Groq failed: {openai_error}")
+        elif openai_error:
+            raise Exception(f"OpenAI failed and no Groq fallback: {openai_error}")
     
     @staticmethod
     def _call_openai_sync(prompt: str) -> str:
-        """Call OpenAI API synchronously (fallback)"""
+        """Call OpenAI API synchronously with Groq fallback"""
         import httpx
         
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {OPENAI_API_KEY}'
-        }
+        openai_error = None
         
-        body = {
-            'model': LLM_OTHERS_MODEL,
-            'messages': [
-                {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            'temperature': 0.3,
-            'max_tokens': 200,
-            'response_format': {"type": "json_object"}
-        }
+        # Try OpenAI first
+        if OPENAI_API_KEY:
+            try:
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {OPENAI_API_KEY}'
+                }
+                
+                body = {
+                    'model': LLM_OTHERS_MODEL,
+                    'messages': [
+                        {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    'temperature': 0.3,
+                    'max_tokens': 200,
+                    'response_format': {"type": "json_object"}
+                }
+                
+                with httpx.Client(timeout=LLM_OTHERS_TIMEOUT) as client:
+                    response = client.post(
+                        'https://api.openai.com/v1/chat/completions',
+                        headers=headers,
+                        json=body
+                    )
+                    
+                    if response.status_code != 200:
+                        openai_error = f"OpenAI API error: {response.status_code} - {response.text[:200]}"
+                        logger.warning(f"❌ {openai_error}")
+                    else:
+                        data = response.json()
+                        logger.info("✅ Hormone analysis via OpenAI (sync)")
+                        return data['choices'][0]['message']['content']
+            except Exception as e:
+                openai_error = str(e)
+                logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+        else:
+            openai_error = "No OpenAI API key"
         
-        with httpx.Client(timeout=LLM_OTHERS_TIMEOUT) as client:
-            response = client.post(
-                'https://api.openai.com/v1/chat/completions',
-                headers=headers,
-                json=body
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
-            
-            data = response.json()
-            return data['choices'][0]['message']['content']
+        # Groq fallback
+        if openai_error and GROQ_API_KEY:
+            try:
+                logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                
+                is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                enhanced_prompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown." if is_reasoning_model else prompt
+                
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {GROQ_API_KEY}'
+                }
+                
+                body = {
+                    'model': GROQ_FALLBACK_MODEL,
+                    'messages': [
+                        {"role": "system", "content": "You are a clinical AI specializing in hormone imbalance analysis. Return only valid JSON."},
+                        {"role": "user", "content": enhanced_prompt}
+                    ],
+                    'temperature': 0.3,
+                    'max_tokens': 200
+                }
+                
+                if not is_reasoning_model:
+                    body['response_format'] = {"type": "json_object"}
+                
+                with httpx.Client(timeout=LLM_OTHERS_TIMEOUT + 30) as client:
+                    response = client.post(
+                        'https://api.groq.com/openai/v1/chat/completions',
+                        headers=headers,
+                        json=body
+                    )
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"Groq API error: {response.status_code} - {response.text[:200]}")
+                    
+                    data = response.json()
+                    content = data['choices'][0]['message']['content']
+                    
+                    if is_reasoning_model:
+                        if content.startswith("```json"):
+                            content = content[7:]
+                        if content.startswith("```"):
+                            content = content[3:]
+                        if content.endswith("```"):
+                            content = content[:-3]
+                        content = content.strip()
+                    
+                    logger.info("✅ Hormone analysis via Groq fallback (sync)")
+                    return content
+                    
+            except Exception as e:
+                logger.error(f"❌ Groq fallback also failed: {e}")
+                raise Exception(f"Both OpenAI and Groq failed: {openai_error}")
+        elif openai_error:
+            raise Exception(f"OpenAI failed and no Groq fallback: {openai_error}")
     
     @staticmethod
     def _call_gemini_sync(prompt: str) -> str:
@@ -223,10 +368,11 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
     @staticmethod
     def process_others_with_llm(symptom_others: Optional[str], family_others: Optional[str]) -> Dict[str, int]:
         """
-        Process free-text "Others" input using LLM (OpenAI primary, Gemini fallback)
+        Process free-text "Others" input using LLM (OpenAI primary, Groq fallback, Gemini last)
         
         OPTIMIZED:
         - Uses OpenAI (3,500+ RPM) instead of Gemini (5 RPM)
+        - Falls back to Groq (openai/gpt-oss-120b) if OpenAI fails
         - Caches results to prevent duplicate calls within same session
         - Uses JSON mode for reliable parsing
         
@@ -257,16 +403,16 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             import time as _time
             start_ts = _time.time()
             
-            logger.info(f"🤖 LLM PROCESSING ({LLM_PROVIDER.upper()}, model={LLM_OTHERS_MODEL})")
+            logger.info(f"🤖 LLM PROCESSING ({LLM_PROVIDER.upper()}, model={LLM_OTHERS_MODEL if LLM_PROVIDER == 'openai' else GROQ_FALLBACK_MODEL})")
             logger.info(f"   Symptoms: {symptom_others[:100] if symptom_others else 'None'}...")
             logger.info(f"   Family: {family_others[:100] if family_others else 'None'}...")
             
             # Build prompt
             prompt = RootCauseEngine._build_hormone_prompt(symptom_others, family_others)
             
-            # Call appropriate LLM provider
-            if LLM_PROVIDER == "openai":
-                # Try async first, fall back to sync
+            # Call appropriate LLM provider (OpenAI first, with Groq fallback built-in)
+            if LLM_PROVIDER == "openai" or LLM_PROVIDER == "groq":
+                # Both OpenAI and Groq use the same methods with built-in fallback
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
@@ -280,7 +426,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
                     # No event loop - use sync
                     response_text = RootCauseEngine._call_openai_sync(prompt)
             else:
-                # Gemini fallback
+                # Gemini fallback (last resort)
                 response_text = RootCauseEngine._call_gemini_sync(prompt)
             
             elapsed = _time.time() - start_ts

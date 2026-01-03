@@ -108,6 +108,10 @@ MINIMAL_COUNT = 2        # Opposite of preference (still important)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL = "gpt-4o-mini"  # Cost-optimized: $0.00015/1K input, $0.0006/1K output
 
+# Groq fallback configuration
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"  # High-quality reasoning model
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FEW-SHOT EXAMPLES (Critical for consistency)
@@ -552,46 +556,120 @@ class PromptRecommendationEngine:
             return self._get_fallback_recommendations(user_profile, category)
     
     async def _call_openai(self, prompt: str) -> str:
-        """Call OpenAI API with the prompt."""
+        """Call OpenAI API with the prompt, with Groq fallback."""
         
         logger.info("🔌 Calling OpenAI API...")
         
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        openai_error = None
         
-        body = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": "You are AUVRA, a women's hormone health AI. Return only valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 3000,
-            "response_format": {"type": "json_object"}  # Force JSON output
-        }
+        # Try OpenAI first
+        if self.api_key:
+            try:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                body = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": "You are AUVRA, a women's hormone health AI. Return only valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 3000,
+                    "response_format": {"type": "json_object"}  # Force JSON output
+                }
+                
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers=headers,
+                        json=body
+                    )
+                    
+                    if response.status_code != 200:
+                        openai_error = f"OpenAI API returned {response.status_code}: {response.text[:200]}"
+                        logger.warning(f"❌ {openai_error}")
+                    else:
+                        data = response.json()
+                        content = data['choices'][0]['message']['content']
+                        
+                        # Log token usage
+                        usage = data.get('usage', {})
+                        logger.info(f"📊 Token usage: {usage.get('prompt_tokens', 0)} in, {usage.get('completion_tokens', 0)} out")
+                        logger.info("✅ Recommendations generated via OpenAI")
+                        
+                        return content
+            except Exception as e:
+                openai_error = str(e)
+                logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+        else:
+            openai_error = "No OpenAI API key"
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=body
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"❌ OpenAI API error: {response.status_code}")
-                logger.error(f"   Response: {response.text[:500]}")
-                raise Exception(f"OpenAI API returned {response.status_code}")
-            
-            data = response.json()
-            content = data['choices'][0]['message']['content']
-            
-            # Log token usage
-            usage = data.get('usage', {})
-            logger.info(f"📊 Token usage: {usage.get('prompt_tokens', 0)} in, {usage.get('completion_tokens', 0)} out")
-            
-            return content
+        # Groq fallback
+        if openai_error and GROQ_API_KEY:
+            try:
+                logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                
+                # gpt-oss-120b is a reasoning model - doesn't support response_format
+                is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+                
+                # Add JSON instruction to prompt for reasoning model
+                enhanced_prompt = prompt
+                if is_reasoning_model:
+                    enhanced_prompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no explanation."
+                
+                headers = {
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                
+                body = {
+                    "model": GROQ_FALLBACK_MODEL,
+                    "messages": [
+                        {"role": "system", "content": "You are AUVRA, a women's hormone health AI. Return only valid JSON."},
+                        {"role": "user", "content": enhanced_prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 3000
+                }
+                
+                # Only add response_format if not a reasoning model
+                if not is_reasoning_model:
+                    body["response_format"] = {"type": "json_object"}
+                
+                async with httpx.AsyncClient(timeout=90.0) as client:
+                    response = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers=headers,
+                        json=body
+                    )
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"Groq API returned {response.status_code}: {response.text[:200]}")
+                    
+                    data = response.json()
+                    content = data['choices'][0]['message']['content']
+                    
+                    # Clean up reasoning model output
+                    if is_reasoning_model:
+                        if content.startswith("```json"):
+                            content = content[7:]
+                        if content.startswith("```"):
+                            content = content[3:]
+                        if content.endswith("```"):
+                            content = content[:-3]
+                        content = content.strip()
+                    
+                    logger.info("✅ Recommendations generated via Groq fallback")
+                    return content
+                    
+            except Exception as e:
+                logger.error(f"❌ Groq fallback also failed: {e}")
+                raise Exception(f"Both OpenAI and Groq failed: {openai_error}")
+        elif openai_error:
+            raise Exception(f"OpenAI failed and no Groq fallback: {openai_error}")
     
     def _parse_response(self, response: str, category: str) -> List[Dict[str, Any]]:
         """Parse LLM response into recommendation list."""
