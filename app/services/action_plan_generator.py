@@ -18,6 +18,7 @@ import os
 import json
 import logging
 import time
+import random
 import asyncio
 import traceback
 import hashlib
@@ -881,7 +882,13 @@ class ActionPlanGenerator:
                 else:
                     logger.warning(f"❌ Attempt {attempt}: Generation or validation failed")
                     if attempt < self.MAX_RETRIES:
-                        logger.info(f"🔄 Retrying generation...")
+                        # Exponential backoff with jitter: 2^attempt + random(0-1)
+                        # Attempt 1: ~2-3s
+                        # Attempt 2: ~4-5s
+                        # Attempt 3: ~8-9s
+                        delay = (2 ** attempt) + random.uniform(0, 1)
+                        logger.info(f"🔄 Retrying generation in {delay:.2f}s...")
+                        await asyncio.sleep(delay)
                     else:
                         # Max retries exceeded - FAIL CLEANLY, no fallbacks
                         logger.error(f"❌ Max retries ({self.MAX_RETRIES}) exceeded. Failing without fallbacks.")
@@ -3895,7 +3902,9 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     logger.warning(f"   • {error}")
                 
                 if attempt < self.MAX_RETRIES:
-                    logger.info(f"🔄 Retrying generation...")
+                    delay = (2 ** attempt) + random.uniform(0, 1)
+                    logger.info(f"🔄 Retrying generation in {delay:.2f}s...")
+                    await asyncio.sleep(delay)
                 else:
                     # Max retries exceeded - NO fallbacks, fail clearly
                     logger.error(f"❌ Max retries ({self.MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
