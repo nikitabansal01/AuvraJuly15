@@ -578,14 +578,14 @@ EXAMPLE FOOD ACTION (notice food_items and food_amounts are REQUIRED):
   "purpose": "Zinc in pumpkin seeds is a cofactor for enzymes that synthesize progesterone, while magnesium helps reduce cortisol, creating an optimal hormonal environment for your luteal phase.",
   "target_hormone": "Progesterone",
   "hormone_persona_intro": "Hey there, it's Progesterone. I'm here to help you feel calm and balanced today. Let me start by sharing something delicious that will help boost my levels.",
-  "image_prompt": "Professional food photography of pumpkin seeds in wooden bowl, overhead view, rustic table, natural lighting, 4K quality",
+  "image_prompt": "Professional food photography of golden pumpkin seeds scattered on creamy Greek yogurt in a ceramic bowl, fresh mint garnish, wooden spoon, overhead view, natural morning light streaming in, rustic wooden table, warm appetizing colors, healthy breakfast aesthetic, 4K quality",
   "food_items": ["pumpkin seeds", "raw seeds"],
   "food_amounts": ["2 tablespoons", "a handful"],
   "research_studies": [{{"title": "Zinc supplementation and hormone levels", "journal": "J Nutr", "year": 2022, "participants": 120, "finding": "Zinc improved progesterone levels in women", "pmid": "12345678"}}],
   "variants": [
-    {{"variant_type": "tasty", "title": "Roasted with Honey", "description": "Roast seeds with honey and cinnamon for a sweet, crunchy snack", "image_prompt": "..."}},
-    {{"variant_type": "easy", "title": "Sprinkle on Meals", "description": "Simply sprinkle raw seeds on salads, yogurt, or oatmeal", "image_prompt": "..."}},
-    {{"variant_type": "healthy", "title": "Soaked Overnight", "description": "Soak seeds overnight in water to activate enzymes for better absorption", "image_prompt": "..."}}
+    {{"variant_type": "tasty", "title": "Roasted with Honey", "description": "Roast seeds with honey and cinnamon for a sweet, crunchy snack", "image_prompt": "Professional food photography of roasted pumpkin seeds glistening with honey glaze in a small ceramic dish, cinnamon sticks nearby, golden brown color, rustic kitchen setting, appetizing snack presentation, 4K quality"}},
+    {{"variant_type": "easy", "title": "Sprinkle on Meals", "description": "Simply sprinkle raw seeds on salads, yogurt, or oatmeal", "image_prompt": "Professional food photography of raw pumpkin seeds being sprinkled from a wooden spoon onto a colorful salad bowl, fresh vegetables visible, casual lunch setting, healthy eating moment, 4K quality"}},
+    {{"variant_type": "healthy", "title": "Soaked Overnight", "description": "Soak seeds overnight in water to activate enzymes for better absorption", "image_prompt": "Professional food photography of pumpkin seeds soaking in a glass mason jar filled with water, morning kitchen counter, natural light, preparation for healthy eating, wellness aesthetic, 4K quality"}}
   ],
   "symptoms": ["fatigue", "anxiety"],
   "conditions": ["PCOS"]
@@ -600,15 +600,15 @@ EXAMPLE MOVEMENT ACTION (notice exercise_types, exercise_durations, exercise_int
   "purpose": "Forward folds and hip openers activate the parasympathetic nervous system, directly lowering cortisol release and helping prevent the stress-induced disruption of your reproductive hormones.",
   "target_hormone": "Cortisol",
   "hormone_persona_intro": "Good morning! It's Cortisol here. Instead of spiking your stress, let's channel my energy into something calming that will help you feel centered all day.",
-  "image_prompt": "Serene photograph of woman practicing yoga, soft morning light, peaceful setting, warm earth tones, 4K quality",
+  "image_prompt": "Serene photograph of woman in child's pose on a purple yoga mat, arms extended forward, wearing comfortable athletic wear, peaceful living room with indoor plants, soft morning sunlight streaming through sheer curtains, wellness aesthetic, warm earth tones, calming atmosphere, 4K quality",
   "exercise_types": ["yoga", "stretching", "hip openers"],
   "exercise_durations": ["15 minutes", "10-20 min"],
   "exercise_intensities": ["low", "gentle"],
   "research_studies": [{{"title": "Yoga and cortisol reduction in women", "journal": "Psychoneuroendocrinology", "year": 2021, "participants": 80, "finding": "Yoga reduced cortisol levels significantly", "pmid": "98765432"}}],
   "variants": [
-    {{"variant_type": "gentle", "title": "Restorative Poses", "description": "Use props like blankets and bolsters for supported, restful poses", "image_prompt": "..."}},
-    {{"variant_type": "energizing", "title": "Sun Salutations", "description": "Add 3-5 rounds of sun salutations to boost energy and circulation", "image_prompt": "..."}},
-    {{"variant_type": "quick", "title": "5-Minute Flow", "description": "A quick sequence of cat-cow, child's pose, and downward dog for busy mornings", "image_prompt": "..."}}
+    {{"variant_type": "gentle", "title": "Restorative Poses", "description": "Use props like blankets and bolsters for supported, restful poses", "image_prompt": "Serene photograph of woman in supported bridge pose with yoga bolster under back, cozy blanket nearby, soft candles lit, peaceful bedroom setting, ultimate relaxation, warm dim lighting, 4K quality"}},
+    {{"variant_type": "energizing", "title": "Sun Salutations", "description": "Add 3-5 rounds of sun salutations to boost energy and circulation", "image_prompt": "Serene photograph of woman in upward facing dog pose during sun salutation sequence, arms strong, chest lifted, bright morning light flooding room, energizing yoga flow moment, vibrant wellness aesthetic, 4K quality"}},
+    {{"variant_type": "quick", "title": "5-Minute Flow", "description": "A quick sequence of cat-cow, child's pose, and downward dog for busy mornings", "image_prompt": "Serene photograph of woman transitioning from cat to cow pose on yoga mat, arched back, comfortable clothing, minimalist room, quick morning routine vibe, efficient wellness moment, 4K quality"}}
   ],
   "symptoms": ["stress", "tension"],
   "conditions": []
@@ -623,14 +623,14 @@ EXAMPLE MINDFULNESS ACTION (notice mindfulness_techniques and mindfulness_durati
   "purpose": "Deep breathing signals safety to your nervous system, helping me (Cortisol) decrease so you can rest and restore.",
   "target_hormone": "Cortisol",
   "hormone_persona_intro": "Hey, it's Cortisol checking in for the evening. Let's work together to wind down so you can get the restorative sleep you deserve.",
-  "image_prompt": "Peaceful zen scene with candles, soft pillows, diffused lighting, calming atmosphere, 4K quality",
+  "image_prompt": "Peaceful photograph of woman sitting cross-legged on cushion with both hands resting on belly practicing deep diaphragmatic breathing, eyes gently closed, serene expression, soft candles glowing nearby, cozy bedroom with fairy lights, dim warm lighting, ultimate relaxation moment, 4K quality",
   "mindfulness_techniques": ["deep breathing", "diaphragmatic breathing", "4-4-6 breathing"],
   "mindfulness_durations": ["10 minutes", "5-15 min"],
   "research_studies": [{{"title": "Breathing exercises and stress reduction", "journal": "Frontiers Psychol", "year": 2023, "participants": 95, "finding": "Deep breathing reduced perceived stress in women", "pmid": "11223344"}}],
   "variants": [
-    {{"variant_type": "guided", "title": "App-Guided", "description": "Follow along with a breathing app like Calm or Headspace for guided sessions", "image_prompt": "..."}},
-    {{"variant_type": "solo", "title": "Silent Practice", "description": "Practice in complete silence, focusing only on your breath counts", "image_prompt": "..."}},
-    {{"variant_type": "brief", "title": "5-Breath Reset", "description": "Take just 5 slow, deep breaths whenever you feel stressed during the day", "image_prompt": "..."}}
+    {{"variant_type": "guided", "title": "App-Guided", "description": "Follow along with a breathing app like Calm or Headspace for guided sessions", "image_prompt": "Peaceful photograph of woman wearing headphones practicing guided breathing meditation, eyes closed, phone showing meditation app on cushion beside her, soft ambient lighting, cozy corner setup, relaxation moment, 4K quality"}},
+    {{"variant_type": "solo", "title": "Silent Practice", "description": "Practice in complete silence, focusing only on your breath counts", "image_prompt": "Peaceful photograph of woman sitting in meditation pose in complete silence, hands on knees in mudra position, minimal zen room with single plant, early morning soft light, deep focus expression, tranquil atmosphere, 4K quality"}},
+    {{"variant_type": "brief", "title": "5-Breath Reset", "description": "Take just 5 slow, deep breaths whenever you feel stressed during the day", "image_prompt": "Peaceful photograph of woman taking a deep breath at her desk, one hand on chest, eyes briefly closed, office or home workspace background, moment of calm during busy day, stress relief break, 4K quality"}}
   ],
   "symptoms": ["anxiety", "insomnia"],
   "conditions": []
@@ -639,10 +639,54 @@ EXAMPLE MINDFULNESS ACTION (notice mindfulness_techniques and mindfulness_durati
 CRITICAL: Every action MUST include ALL of its category-specific fields (food_items/food_amounts for food, exercise_types/exercise_durations/exercise_intensities for movement, mindfulness_techniques/mindfulness_durations for mindfulness).
 
 IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
-Generate professional, appetizing, calming visuals that work in a mobile wellness app:
-- For FOOD: "Professional food photography of [specific dish], overhead view, natural lighting, rustic wooden table background, fresh ingredients visible, warm color tones, appetizing presentation, 4K quality"
-- For MOVEMENT: "Serene photograph of woman practicing [specific exercise], soft natural lighting, peaceful indoor/outdoor setting, wellness aesthetic, warm earth tones, calm atmosphere, 4K quality"
-- For MINDFULNESS: "Peaceful zen scene with [specific elements like candles, tea, cushion], soft diffused lighting, minimalist aesthetic, calming colors, cozy atmosphere, 4K quality"
+Generate HIGHLY ILLUSTRATIVE visuals that clearly show WHAT THE ACTION IS. User should understand the action just by looking at the image!
+
+🎯 KEY PRINCIPLE: The image must SHOW the actual food item, exercise pose, or mindfulness setup so users instantly know what to do.
+
+═══════════════════════════════════════════════════════════════════════
+FOR FOOD - Show the ACTUAL FOOD being consumed/prepared:
+═══════════════════════════════════════════════════════════════════════
+Template: "Professional food photography of [EXACT FOOD ITEM with preparation style], [serving context], overhead view, natural lighting, rustic wooden table, warm appetizing colors, 4K quality"
+
+✅ GOOD EXAMPLES (specific and illustrative):
+- "Professional food photography of golden pumpkin seeds scattered on Greek yogurt in a ceramic bowl, fresh mint garnish, overhead view, natural morning light, rustic wooden table, warm appetizing colors, 4K quality"
+- "Professional food photography of Ceylon cinnamon sticks and ground cinnamon in a wooden spoon next to a warm oatmeal bowl, honey drizzle visible, cozy breakfast setting, 4K quality"
+- "Professional food photography of raw flaxseeds in a small glass jar with a smoothie glass nearby, fresh berries scattered, bright kitchen counter, healthy breakfast vibe, 4K quality"
+- "Professional food photography of fresh salmon fillet with lemon slices and herbs on a white plate, grilled marks visible, dinner table setting, appetizing presentation, 4K quality"
+
+❌ BAD EXAMPLES (too generic):
+- "Professional food photography of healthy food" (What food?!)
+- "Food on a table" (Useless)
+
+═══════════════════════════════════════════════════════════════════════
+FOR MOVEMENT - Show a WOMAN DOING the exact exercise/pose:
+═══════════════════════════════════════════════════════════════════════
+Template: "Serene photograph of woman [EXACT POSE/MOVEMENT DESCRIPTION], [setting], soft natural lighting, wellness aesthetic, warm earth tones, 4K quality"
+
+✅ GOOD EXAMPLES (specific and illustrative):
+- "Serene photograph of woman in child's pose on a yoga mat, arms extended forward, peaceful living room with plants, soft morning light through window, wellness aesthetic, 4K quality"
+- "Serene photograph of woman walking briskly in a park after eating, casual athletic wear, trees and greenery, golden hour lighting, healthy active lifestyle, 4K quality"
+- "Serene photograph of woman doing hip stretches on a yoga mat, one leg extended, peaceful bedroom setting, soft natural lighting, relaxed atmosphere, 4K quality"
+- "Serene photograph of woman doing gentle swimming laps in a pool, clear blue water, peaceful indoor pool setting, natural lighting, refreshing wellness vibe, 4K quality"
+
+❌ BAD EXAMPLES (too generic):
+- "Woman exercising" (What exercise?!)
+- "Yoga pose" (Which one?!)
+
+═══════════════════════════════════════════════════════════════════════
+FOR MINDFULNESS - Show the TECHNIQUE/SETUP clearly:
+═══════════════════════════════════════════════════════════════════════
+Template: "Peaceful photograph of [EXACT MINDFULNESS SETUP/TECHNIQUE visualization], [calming elements], soft diffused lighting, minimalist aesthetic, calming colors, 4K quality"
+
+✅ GOOD EXAMPLES (specific and illustrative):
+- "Peaceful photograph of woman sitting cross-legged with hands on belly practicing deep breathing, eyes closed, serene expression, soft candles nearby, minimalist room, calming atmosphere, 4K quality"
+- "Peaceful close-up of hands writing in a gratitude journal with a cup of tea nearby, cozy blanket, soft evening lighting, peaceful bedroom setting, journaling moment, 4K quality"
+- "Peaceful photograph of woman lying down with eyes closed doing body scan meditation, comfortable cushion, dim peaceful room with fairy lights, relaxation moment, 4K quality"
+- "Peaceful photograph of woman practicing 4-7-8 breathing with one hand on chest, peaceful expression, morning light, zen corner with plants, calming wellness aesthetic, 4K quality"
+
+❌ BAD EXAMPLES (too generic):
+- "Peaceful zen scene" (What technique?!)
+- "Meditation" (Show what KIND!)
 
 VARIANT FORMAT (REQUIRED structure):
 Each variant MUST be an object with these exact fields:
@@ -3944,9 +3988,16 @@ For MINDFULNESS actions, MUST include:
 - mindfulness_techniques: Array like ["deep breathing", "meditation"]
 
 IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
-- For FOOD: "Professional food photography of [specific dish], overhead view, natural lighting, rustic wooden table background, fresh ingredients visible, warm color tones, appetizing presentation, 4K quality"
-- For MOVEMENT: "Serene photograph of woman practicing [specific exercise], soft natural lighting, peaceful setting, wellness aesthetic, warm earth tones, calm atmosphere, 4K quality"
-- For MINDFULNESS: "Peaceful zen scene with [specific elements], soft diffused lighting, minimalist aesthetic, calming colors, cozy atmosphere, 4K quality"
+Generate HIGHLY ILLUSTRATIVE visuals - user should understand the action just by looking at the image!
+
+- For FOOD: "Professional food photography of [EXACT FOOD with preparation], [context like bowl, plate], overhead view, natural lighting, rustic wooden table, warm appetizing colors, 4K quality"
+  Example: "Professional food photography of golden quinoa in ceramic bowl with fresh herbs and lemon wedge, steam rising, overhead view, natural lighting, rustic table, warm appetizing colors, 4K quality"
+
+- For MOVEMENT: "Serene photograph of woman [EXACT POSE/MOVEMENT], [clothing], [setting], soft natural lighting, wellness aesthetic, 4K quality"  
+  Example: "Serene photograph of woman in downward dog pose on yoga mat, comfortable athletic wear, peaceful living room with plants, soft morning light, wellness aesthetic, 4K quality"
+
+- For MINDFULNESS: "Peaceful photograph of woman [EXACT TECHNIQUE visualization], [setup], soft diffused lighting, calming atmosphere, 4K quality"
+  Example: "Peaceful photograph of woman sitting cross-legged with hands on belly practicing deep breathing, eyes closed, serene expression, candles nearby, cozy room, calming atmosphere, 4K quality"
 
 VARIANT FORMAT (REQUIRED structure):
 Each variant MUST be an object with these exact fields:
