@@ -117,8 +117,11 @@ GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"  # High-quality reasoning model
 # FEW-SHOT EXAMPLES (Critical for consistency)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# IMPORTANT: Titles should be SIMPLE - just the food item, exercise name, or technique name
+# NO adjectives like "powerful", "amazing", etc. Just the clean name.
+
 FOOD_EXAMPLE = {
-    "title": "Cinnamon Supplementation",
+    "title": "Cinnamon",  # Simple - just the food name
     "purpose": "Cinnamon helps improve insulin sensitivity and stabilize blood sugar levels throughout the day",
     "specificAction": "Add 1/2 teaspoon (about 1.5g) of Ceylon cinnamon to your morning oatmeal or smoothie",
     "frequency": "Daily",
@@ -148,7 +151,7 @@ FOOD_EXAMPLE = {
 }
 
 MOVEMENT_EXAMPLE = {
-    "title": "Morning Yoga Flow",
+    "title": "Morning Yoga",  # Simple - just the activity name
     "purpose": "Gentle yoga reduces cortisol levels and improves insulin sensitivity through stress reduction",
     "specificAction": "Practice 20-minute gentle yoga flow focusing on hip openers and twists",
     "frequency": "Daily",
@@ -179,7 +182,7 @@ MOVEMENT_EXAMPLE = {
 }
 
 MINDFULNESS_EXAMPLE = {
-    "title": "Evening Breathing Practice",
+    "title": "4-7-8 Breathing",  # Simple - just the technique name
     "purpose": "Deep breathing activates the parasympathetic nervous system, reducing cortisol and improving sleep quality",
     "specificAction": "Practice 4-7-8 breathing technique: inhale 4 seconds, hold 7 seconds, exhale 8 seconds",
     "frequency": "Daily",
@@ -342,7 +345,7 @@ OUTPUT FORMAT (JSON Array)
 Return ONLY a valid JSON array with exactly {rec_count} recommendations.
 
 REQUIRED FIELDS for each recommendation:
-- title: 1-3 word name (e.g., "Cinnamon Supplementation")
+- title: Simple name - just the food item, activity, or technique (e.g., "Cinnamon", "Morning Yoga", "Deep Breathing")
 - purpose: 1-2 sentence explanation of benefits
 - specificAction: EXACT instructions with amounts/durations
 - frequency: "Daily", "Weekly", etc.
@@ -357,6 +360,11 @@ REQUIRED FIELDS for each recommendation:
 - duration_weeks: Number (8, 12, 16)
 - optimal_times: Array ["morning"], ["afternoon"], ["evening"], or ["anytime"]
 - researchBacking: Object with "summary" string and "studies" array
+
+🎯 TITLE RULES (KEEP IT SIMPLE):
+- FOOD: Just the food name (e.g., "Cinnamon", "Salmon", "Flaxseeds")
+- MOVEMENT: Just the activity (e.g., "Morning Yoga", "Swimming", "Hip Stretches")
+- MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Meditation", "Body Scan")
 
 CATEGORY-SPECIFIC FIELDS ({category}):
 - {category_fields.get(category.lower(), '')}

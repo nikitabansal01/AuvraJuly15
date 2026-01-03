@@ -154,7 +154,7 @@ Generate 3 advice items in the following categories:
 3. HEALTHY: Healthiest way to consume this food/nutrient
 
 Each advice should include:
-- title: Short, catchy title
+- title: Simple title describing the method (e.g., "Smoothie Add-in", "Roasted with Honey", "Raw with Salad")
 - description: Detailed explanation (2-3 sentences)
 
 Return as JSON array:
@@ -198,7 +198,7 @@ Focus on:
 - Making it enjoyable and sustainable
 
 Each tip should include:
-- title: Short, catchy title
+- title: Simple title describing the approach (e.g., "Start with 5 Minutes", "Add Music", "Morning Routine")
 - description: Detailed explanation (2-3 sentences)
 
 Return as JSON array:
@@ -242,7 +242,7 @@ Focus on:
 - Making it enjoyable and sustainable
 
 Each tip should include:
-- title: Short, catchy title
+- title: Simple title describing the approach (e.g., "While Waiting", "With Music", "Before Bed")
 - description: Detailed explanation (2-3 sentences)
 
 Return as JSON array:
@@ -284,14 +284,14 @@ Generate exactly 3 advice items in the following categories:
 
 Each advice must include:
 - advice_type: "easy", "tasty", or "healthy"
-- title: Short, catchy title (string)
+- title: Simple title describing the method (e.g., "Smoothie Add-in", "Roasted with Herbs", "Raw Snack")
 - description: Detailed explanation (2-3 sentences, string)
 
 RESPONSE FORMAT (JSON array only):
 [
-  {{"advice_type": "easy", "title": "Quick Breakfast Boost", "description": "Add this food to your morning smoothie or yogurt for an easy hormone-balancing start to your day."}},
-  {{"advice_type": "tasty", "title": "Delicious Recipe Idea", "description": "Try roasting this food with olive oil and herbs for a flavorful side dish that supports hormone health."}},
-  {{"advice_type": "healthy", "title": "Optimal Preparation", "description": "For maximum benefits, consume this food raw or lightly steamed to preserve its hormone-balancing nutrients."}}
+  {{"advice_type": "easy", "title": "Smoothie Add-in", "description": "Add this food to your morning smoothie or yogurt for an easy hormone-balancing start to your day."}},
+  {{"advice_type": "tasty", "title": "Roasted with Herbs", "description": "Try roasting this food with olive oil and herbs for a flavorful side dish that supports hormone health."}},
+  {{"advice_type": "healthy", "title": "Raw Snack", "description": "For maximum benefits, consume this food raw or lightly steamed to preserve its hormone-balancing nutrients."}}
 ]
 
 Remember: Return ONLY the JSON array, no other text.
@@ -339,14 +339,14 @@ Generate exactly 3 advice items in the following categories:
 
 Each advice must include:
 - advice_type: "tip1", "tip2", or "tip3"
-- title: Short, catchy title (string)
+- title: Simple title describing the approach (e.g., "Start with 5 Minutes", "Add Resistance", "Focus on Form")
 - description: Detailed explanation (2-3 sentences, string)
 
 RESPONSE FORMAT (JSON array only):
 [
-  {{"advice_type": "tip1", "title": "Beginner-Friendly Start", "description": "Start with just 5-10 minutes of this exercise to build confidence and gradually increase duration."}},
-  {{"advice_type": "tip2", "title": "Advanced Variation", "description": "Once comfortable, add resistance or increase intensity to challenge your body and improve hormone balance."}},
-  {{"advice_type": "tip3", "title": "Safety First", "description": "Focus on proper form and breathing to prevent injury and maximize the hormone-balancing benefits."}}
+  {{"advice_type": "tip1", "title": "Start with 5 Minutes", "description": "Start with just 5-10 minutes of this exercise to build confidence and gradually increase duration."}},
+  {{"advice_type": "tip2", "title": "Add Resistance", "description": "Once comfortable, add resistance or increase intensity to challenge your body and improve hormone balance."}},
+  {{"advice_type": "tip3", "title": "Focus on Form", "description": "Focus on proper form and breathing to prevent injury and maximize the hormone-balancing benefits."}}
 ]
 
 Remember: Return ONLY the JSON array, no other text.
@@ -394,14 +394,14 @@ Generate exactly 3 advice items in the following categories:
 
 Each advice must include:
 - advice_type: "tip1", "tip2", or "tip3"
-- title: Short, catchy title (string)
+- title: Simple title describing the approach (e.g., "Find Quiet Space", "Extend Duration", "Before Bed")
 - description: Detailed explanation (2-3 sentences, string)
 
 RESPONSE FORMAT (JSON array only):
 [
-  {{"advice_type": "tip1", "title": "Easy Setup", "description": "Find a quiet space and sit comfortably with your back straight to begin this mindfulness practice."}},
-  {{"advice_type": "tip2", "title": "Advanced Technique", "description": "Once comfortable, try extending the duration or adding guided imagery to deepen your practice."}},
-  {{"advice_type": "tip3", "title": "Daily Integration", "description": "Incorporate this practice into your morning routine or before bed for consistent hormone-balancing benefits."}}
+  {{"advice_type": "tip1", "title": "Find Quiet Space", "description": "Find a quiet space and sit comfortably with your back straight to begin this mindfulness practice."}},
+  {{"advice_type": "tip2", "title": "Extend Duration", "description": "Once comfortable, try extending the duration or adding guided imagery to deepen your practice."}},
+  {{"advice_type": "tip3", "title": "Before Bed", "description": "Incorporate this practice into your morning routine or before bed for consistent hormone-balancing benefits."}}
 ]
 
 Remember: Return ONLY the JSON array, no other text.

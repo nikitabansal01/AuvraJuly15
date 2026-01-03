@@ -470,7 +470,7 @@ REQUIREMENTS (READ CAREFULLY)
 ══════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (for each action)
 ══════════════════════════════════════════════════════════════════════
-1. title: Short, catchy title (3-5 words, e.g., "Pumpkin Seed Power")
+1. title: SIMPLE, CLEAN NAME ONLY (see TITLE RULES below)
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: Detailed, actionable description (50-100 words)
@@ -482,9 +482,58 @@ OUTPUT FORMAT (for each action)
 7. hormone_persona_intro: Write naturally following the example style in system prompt
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES (see format below)
-10. variants: Array of 3 variant objects with REQUIRED fields (see VARIANT FORMAT below)
+10. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action (see VARIANT FORMAT below)
 11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., ["acne", "fatigue", "bloating"])
 12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
+
+══════════════════════════════════════════════════════════════════════
+🎯 TITLE RULES (VERY IMPORTANT - KEEP IT SIMPLE!)
+══════════════════════════════════════════════════════════════════════
+Titles should be SHORT, CLEAN, and NAME THE ITEM/ACTIVITY ONLY.
+NO adjectives like "powerful", "amazing", "gentle morning", etc.
+
+✅ GOOD FOOD TITLES (just the food item):
+- "Pumpkin Seeds"
+- "Ashwagandha"
+- "Flaxseeds"
+- "Chia Seeds"
+- "Turmeric Latte"
+- "Salmon"
+- "Dark Chocolate"
+- "Spearmint Tea"
+- "Maca Powder"
+
+❌ BAD FOOD TITLES (too wordy):
+- "Pumpkin Seed Power" → should be "Pumpkin Seeds"
+- "Amazing Ashwagandha Boost" → should be "Ashwagandha"
+- "Flaxseed Morning Magic" → should be "Flaxseeds"
+
+✅ GOOD MOVEMENT TITLES (simple activity name):
+- "Post-Meal Walk"
+- "Morning Yoga"
+- "Gentle Stretching"
+- "Swimming"
+- "Pilates"
+- "Evening Walk"
+- "Hip Stretches"
+- "Strength Training"
+
+❌ BAD MOVEMENT TITLES (too descriptive):
+- "Gentle Morning Yoga Flow" → should be "Morning Yoga"
+- "Relaxing Evening Stretch" → should be "Evening Stretching"
+
+✅ GOOD MINDFULNESS TITLES (technique name only):
+- "Deep Breathing"
+- "Box Breathing"
+- "Body Scan"
+- "Gratitude Journal"
+- "Meditation"
+- "Progressive Relaxation"
+- "4-7-8 Breathing"
+
+❌ BAD MINDFULNESS TITLES (too wordy):
+- "Evening Calm Breathing Practice" → should be "Deep Breathing"
+- "Peaceful Meditation Session" → should be "Meditation"
 
 CATEGORY-SPECIFIC REQUIRED FIELDS:
 **ALL category fields are REQUIRED in every action.** Fill with actual values for matching category, use empty array [] for non-matching categories.
@@ -522,7 +571,7 @@ COMPLETE OUTPUT EXAMPLES (FOLLOW THIS EXACT STRUCTURE)
 
 EXAMPLE FOOD ACTION (notice food_items and food_amounts are REQUIRED):
 {{
-  "title": "Pumpkin Seed Power",
+  "title": "Pumpkin Seeds",
   "category": "food",
   "time_slot": "morning",
   "specific_action": "Add 2 tablespoons of raw pumpkin seeds to your morning yogurt or smoothie. These zinc-rich seeds support hormone production and reduce inflammation.",
@@ -534,9 +583,9 @@ EXAMPLE FOOD ACTION (notice food_items and food_amounts are REQUIRED):
   "food_amounts": ["2 tablespoons", "a handful"],
   "research_studies": [{{"title": "Zinc supplementation and hormone levels", "journal": "J Nutr", "year": 2022, "participants": 120, "finding": "Zinc improved progesterone levels in women", "pmid": "12345678"}}],
   "variants": [
-    {{"variant_type": "tasty", "title": "Roasted Honey Pumpkin Seeds", "description": "Roast with honey and cinnamon for a sweet treat", "image_prompt": "..."}},
-    {{"variant_type": "easy", "title": "Seed Sprinkle", "description": "Just sprinkle on any meal", "image_prompt": "..."}},
-    {{"variant_type": "healthy", "title": "Raw Soaked Seeds", "description": "Soak overnight for maximum absorption", "image_prompt": "..."}}
+    {{"variant_type": "tasty", "title": "Roasted with Honey", "description": "Roast seeds with honey and cinnamon for a sweet, crunchy snack", "image_prompt": "..."}},
+    {{"variant_type": "easy", "title": "Sprinkle on Meals", "description": "Simply sprinkle raw seeds on salads, yogurt, or oatmeal", "image_prompt": "..."}},
+    {{"variant_type": "healthy", "title": "Soaked Overnight", "description": "Soak seeds overnight in water to activate enzymes for better absorption", "image_prompt": "..."}}
   ],
   "symptoms": ["fatigue", "anxiety"],
   "conditions": ["PCOS"]
@@ -544,7 +593,7 @@ EXAMPLE FOOD ACTION (notice food_items and food_amounts are REQUIRED):
 
 EXAMPLE MOVEMENT ACTION (notice exercise_types, exercise_durations, exercise_intensities are REQUIRED):
 {{
-  "title": "Gentle Morning Yoga",
+  "title": "Morning Yoga",
   "category": "movement",
   "time_slot": "morning",
   "specific_action": "Start your day with 15 minutes of gentle yoga focusing on hip openers and forward folds. These poses help reduce cortisol and support hormone balance.",
@@ -557,9 +606,9 @@ EXAMPLE MOVEMENT ACTION (notice exercise_types, exercise_durations, exercise_int
   "exercise_intensities": ["low", "gentle"],
   "research_studies": [{{"title": "Yoga and cortisol reduction in women", "journal": "Psychoneuroendocrinology", "year": 2021, "participants": 80, "finding": "Yoga reduced cortisol levels significantly", "pmid": "98765432"}}],
   "variants": [
-    {{"variant_type": "gentle", "title": "Restorative Poses", "description": "Focus on supported poses with props", "image_prompt": "..."}},
-    {{"variant_type": "energizing", "title": "Sun Salutations", "description": "Add 3 rounds of sun salutations", "image_prompt": "..."}},
-    {{"variant_type": "quick", "title": "5-Minute Stretch", "description": "Quick sequence for busy mornings", "image_prompt": "..."}}
+    {{"variant_type": "gentle", "title": "Restorative Poses", "description": "Use props like blankets and bolsters for supported, restful poses", "image_prompt": "..."}},
+    {{"variant_type": "energizing", "title": "Sun Salutations", "description": "Add 3-5 rounds of sun salutations to boost energy and circulation", "image_prompt": "..."}},
+    {{"variant_type": "quick", "title": "5-Minute Flow", "description": "A quick sequence of cat-cow, child's pose, and downward dog for busy mornings", "image_prompt": "..."}}
   ],
   "symptoms": ["stress", "tension"],
   "conditions": []
@@ -567,7 +616,7 @@ EXAMPLE MOVEMENT ACTION (notice exercise_types, exercise_durations, exercise_int
 
 EXAMPLE MINDFULNESS ACTION (notice mindfulness_techniques and mindfulness_durations are REQUIRED):
 {{
-  "title": "Evening Calm Breathing",
+  "title": "Deep Breathing",
   "category": "mindfulness",
   "time_slot": "evening",
   "specific_action": "Practice 10 minutes of deep diaphragmatic breathing before bed. Breathe in for 4 counts, hold for 4, exhale for 6. This activates your rest-and-digest response.",
@@ -579,9 +628,9 @@ EXAMPLE MINDFULNESS ACTION (notice mindfulness_techniques and mindfulness_durati
   "mindfulness_durations": ["10 minutes", "5-15 min"],
   "research_studies": [{{"title": "Breathing exercises and stress reduction", "journal": "Frontiers Psychol", "year": 2023, "participants": 95, "finding": "Deep breathing reduced perceived stress in women", "pmid": "11223344"}}],
   "variants": [
-    {{"variant_type": "guided", "title": "App-Guided Session", "description": "Use Calm or Headspace app", "image_prompt": "..."}},
-    {{"variant_type": "solo", "title": "Silent Practice", "description": "Practice in complete silence", "image_prompt": "..."}},
-    {{"variant_type": "brief", "title": "5-Breath Reset", "description": "Just 5 deep breaths when stressed", "image_prompt": "..."}}
+    {{"variant_type": "guided", "title": "App-Guided", "description": "Follow along with a breathing app like Calm or Headspace for guided sessions", "image_prompt": "..."}},
+    {{"variant_type": "solo", "title": "Silent Practice", "description": "Practice in complete silence, focusing only on your breath counts", "image_prompt": "..."}},
+    {{"variant_type": "brief", "title": "5-Breath Reset", "description": "Take just 5 slow, deep breaths whenever you feel stressed during the day", "image_prompt": "..."}}
   ],
   "symptoms": ["anxiety", "insomnia"],
   "conditions": []
@@ -3378,7 +3427,7 @@ IF category="mindfulness":
 
 REQUIRED OUTPUT FIELDS (ALL actions):
 1. category: "food", "movement", or "mindfulness"
-2. title: Short, catchy title (3-5 words)
+2. title: Simple, clean name (just the food item, activity, or technique - see TITLE RULES section)
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: Detailed description GROUNDED IN THE RESEARCH above
 5. purpose: Explain WHY this works, citing the research mechanism
@@ -3386,9 +3435,14 @@ REQUIRED OUTPUT FIELDS (ALL actions):
 7. hormone_persona_intro: First-person intro from hormone perspective
 8. image_prompt: FLUX.1 Schnell optimized prompt
 9. research_studies: Use the research provided above - format as single-item array with the paper details
-10. variants: Array of 3 variant objects with variant_type, title, description, image_prompt
+10. variants: Array of 3 variant objects - each showing DIFFERENT WAYS to consume/do the action
 11. symptoms: Pick 1-3 from user's health concerns
 12. conditions: Array of conditions this helps
+
+🎯 TITLE RULES:
+- FOOD: Just the food name (e.g., "Pumpkin Seeds", "Ashwagandha", "Salmon")
+- MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Hip Stretches")
+- MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
 
 ⚠️ BEFORE RESPONDING: Double-check that you included ALL category-specific arrays.
 
@@ -3857,7 +3911,7 @@ OUTPUT FORMAT (for each replacement action)
    - FOOD: food_amounts (array like ["1 cup", "1/2 cup"]) AND food_items (array like ["quinoa", "lentils"])
    - MOVEMENT: exercise_durations, exercise_types, exercise_intensities (all arrays)
    - MINDFULNESS: mindfulness_durations, mindfulness_techniques (both arrays)
-4. title: Short, catchy title (3-5 words)
+4. title: Simple, clean name (see TITLE RULES below - just the food/activity/technique name!)
 5. time_slot: "morning", "afternoon", or "evening"
 6. specific_action: Detailed, actionable description (50-100 words)
 7. purpose: One clear sentence explaining how this helps the target hormone
@@ -3865,9 +3919,15 @@ OUTPUT FORMAT (for each replacement action)
 9. hormone_persona_intro: Natural first-person intro (see examples in system prompt)
 10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
 11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
-12. variants: Array of 3 variant objects (see VARIANT FORMAT below)
+12. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action
 13. symptoms: REQUIRED - Pick 1-3 from USER'S HEALTH CONCERNS above that THIS ACTION specifically helps - NEVER EMPTY!
 14. conditions: Array of conditions this helps (e.g., ["PCOS"]) - can be empty []
+
+🎯 TITLE RULES (VERY IMPORTANT - KEEP IT SIMPLE!):
+- FOOD: Just the food name (e.g., "Quinoa", "Salmon", "Flaxseeds", "Chia Seeds")
+- MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Swimming")
+- MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
+- NO adjectives like "powerful", "amazing", "savory", etc.
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
 For FOOD actions, MUST include:
@@ -3908,7 +3968,7 @@ EXAMPLE OUTPUT for FOOD replacement:
 [{{
   "slot": 1,
   "category": "food",
-  "title": "Savory Quinoa Bowl",
+  "title": "Quinoa",
   "food_amounts": ["1 cup", "1/2 cup", "1 tbsp"],
   "food_items": ["cooked quinoa", "cooked lentils", "olive oil"],
   "time_slot": "morning",
@@ -3929,20 +3989,20 @@ EXAMPLE OUTPUT for FOOD replacement:
   "variants": [
     {{
       "variant_type": "tasty",
-      "title": "Maple Pecan Quinoa",
-      "description": "Add maple syrup and toasted pecans for a sweet twist.",
+      "title": "With Maple and Pecans",
+      "description": "Add maple syrup and toasted pecans for a sweet, nutty twist.",
       "image_prompt": "Professional food photography of quinoa with maple syrup and pecans..."
     }},
     {{
       "variant_type": "easy",
-      "title": "One-Pot Quinoa",
-      "description": "Cook everything in one pot for quick cleanup.",
+      "title": "One-Pot Method",
+      "description": "Cook everything in one pot for quick, easy cleanup.",
       "image_prompt": "Professional food photography of one-pot quinoa..."
     }},
     {{
       "variant_type": "healthy",
-      "title": "Green Quinoa Bowl",
-      "description": "Add spinach and kale for extra nutrients.",
+      "title": "With Leafy Greens",
+      "description": "Add spinach and kale for extra nutrients and fiber.",
       "image_prompt": "Professional food photography of quinoa with leafy greens..."
     }}
   ]
