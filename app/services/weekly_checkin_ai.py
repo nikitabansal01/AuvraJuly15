@@ -17,6 +17,7 @@ consultation, not a rigid form.
 """
 import logging
 import json
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
@@ -25,6 +26,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from openai import AsyncOpenAI
 
+# Try to import Groq - it may not be installed
+try:
+    from groq import AsyncGroq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    AsyncGroq = None
+
 from app.core.database import (
     WeeklyCheckIn, UserProfile, SymptomLog, 
     ActionPlan, ActionPlanItem, UserResponse
@@ -32,10 +41,32 @@ from app.core.database import (
 from app.core.config import Settings
 from app.utils.timezone_utils import get_user_current_date
 
-settings = Settings()
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
 logger = logging.getLogger(__name__)
+
+settings = Settings()
+
+# Provider configuration - Use Groq as primary when OpenAI has no credits
+USE_GROQ_AS_PRIMARY = os.getenv("USE_GROQ_AS_PRIMARY", "true").lower() in ("true", "1", "yes")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "llama-3.3-70b-versatile")
+
+# Initialize clients
+openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
+groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_AVAILABLE and GROQ_API_KEY else None
+
+# Select primary client based on configuration
+if USE_GROQ_AS_PRIMARY and groq_client:
+    client = groq_client
+    PRIMARY_MODEL = GROQ_PRIMARY_MODEL
+    logger.info(f"🚀 Weekly Check-in AI using Groq as primary with model: {PRIMARY_MODEL}")
+elif openai_client:
+    client = openai_client
+    PRIMARY_MODEL = "gpt-4o"
+    logger.info(f"🚀 Weekly Check-in AI using OpenAI with model: {PRIMARY_MODEL}")
+else:
+    client = None
+    PRIMARY_MODEL = None
+    logger.error("❌ No AI client available - both OpenAI and Groq keys missing!")
 
 
 class QuestionType(str, Enum):
@@ -425,8 +456,12 @@ OUTPUT JSON:
 """
         
         try:
+            if not client or not PRIMARY_MODEL:
+                logger.error("No AI client available for weekly check-in")
+                return self._generate_post_severity_question(checkin, 5, context)
+            
             response = await client.chat.completions.create(
-                model="gpt-4o",
+                model=PRIMARY_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     *conversation_so_far
@@ -555,8 +590,12 @@ RULES:
 """
         
         try:
+            if not client or not PRIMARY_MODEL:
+                logger.error("No AI client available for completion")
+                raise Exception("No AI client available")
+            
             response = await client.chat.completions.create(
-                model="gpt-4o",
+                model=PRIMARY_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
                 response_format={"type": "json_object"}

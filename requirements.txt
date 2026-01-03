@@ -42,3 +42,4 @@ supabase>=2.0.0
 
 # Cloudinary image storage
 cloudinary>=1.36.0
+groq>=1.0.0
