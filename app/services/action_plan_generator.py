@@ -919,18 +919,25 @@ class ActionPlanGenerator:
             got_lock = lock_result.scalar()
             
             if not got_lock:
-                # Another request is already generating - wait and check for result
-                logger.info(f"🔒 Another request is generating plan for {user_id}, waiting...")
-                await asyncio.sleep(3)  # Wait for the other request to complete
+                # Another request is already generating - wait and poll for result
+                # Generation can take 30-60+ seconds due to image generation
+                logger.info(f"🔒 Another request is generating plan for {user_id}, polling for result...")
                 
-                # Check if plan was created by the other request
-                existing_plan = await self._get_existing_plan(user_id, plan_date, db)
-                if existing_plan:
-                    logger.info(f"✅ Found plan created by concurrent request")
-                    return await self._format_plan_response(existing_plan, db)
+                # Poll for existing plan with exponential backoff (3s, 6s, 12s, 24s = ~45s total)
+                wait_times = [3, 6, 12, 24]
+                for wait_time in wait_times:
+                    await asyncio.sleep(wait_time)
+                    
+                    # Check if plan was created by the other request
+                    existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                    if existing_plan:
+                        logger.info(f"✅ Found plan created by concurrent request after {wait_time}s wait")
+                        return await self._format_plan_response(existing_plan, db)
+                    
+                    logger.info(f"🔒 Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
                 
-                # Still no plan - try to acquire lock (blocking)
-                logger.info(f"🔒 Acquiring blocking lock for {user_id}...")
+                # After ~45s of waiting, try to acquire blocking lock
+                logger.info(f"🔒 Timed out waiting for concurrent request, acquiring blocking lock for {user_id}...")
                 await db.execute(
                     text("SELECT pg_advisory_lock(:key)"),
                     {"key": lock_key}

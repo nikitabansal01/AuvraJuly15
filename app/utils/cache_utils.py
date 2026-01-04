@@ -273,6 +273,18 @@ hormone_analysis_cache: TTLCache[Dict[str, int]] = TTLCache(
 )
 logger.info(f"🚀 CACHE INITIALIZED: hormone_analysis_cache (maxsize=50, TTL=600s)")
 
+# Cache for FULL session hormone analysis results (by session_id)
+# This prevents re-running the entire rule-based + LLM analysis multiple times
+# during signup flow (get_hormone_results → start_recommendations → background_task)
+# TTL: 30 minutes (covers entire signup flow with buffer)
+# Max: 100 entries (one per active session)
+session_hormone_analysis_cache: TTLCache[Dict] = TTLCache(
+    maxsize=100,
+    ttl_seconds=1800,  # 30 minutes
+    name="session_hormone_analysis"
+)
+logger.info(f"🚀 CACHE INITIALIZED: session_hormone_analysis_cache (maxsize=100, TTL=1800s)")
+
 # Cache for Pinecone/RAG query results  
 # TTL: 5 minutes (research papers don't change frequently)
 # Max: 200 entries (different queries for food/movement/mindfulness)
@@ -294,9 +306,10 @@ def clear_all_caches() -> Dict[str, int]:
     logger.info("🧹 CLEARING ALL CACHES...")
     results = {
         "hormone_analysis": hormone_analysis_cache.clear(),
+        "session_hormone_analysis": session_hormone_analysis_cache.clear(),
         "rag_query": rag_query_cache.clear(),
     }
-    logger.info(f"🧹 ALL CACHES CLEARED: hormone_analysis={results['hormone_analysis']} entries, rag_query={results['rag_query']} entries")
+    logger.info(f"🧹 ALL CACHES CLEARED: {results}")
     return results
 
 
@@ -309,15 +322,18 @@ def get_all_cache_stats() -> Dict[str, Dict[str, Any]]:
     """
     stats = {
         "hormone_analysis": hormone_analysis_cache.stats(),
+        "session_hormone_analysis": session_hormone_analysis_cache.stats(),
         "rag_query": rag_query_cache.stats(),
     }
     
     # Log summary
     ha = stats["hormone_analysis"]
+    sha = stats["session_hormone_analysis"]
     rq = stats["rag_query"]
     logger.info(
         f"📊 CACHE STATS: "
         f"hormone_analysis(size={ha['size']}/{ha['maxsize']}, hits={ha['hits']}, rate={ha['hit_rate_percent']}%) | "
+        f"session_hormone_analysis(size={sha['size']}/{sha['maxsize']}, hits={sha['hits']}, rate={sha['hit_rate_percent']}%) | "
         f"rag_query(size={rq['size']}/{rq['maxsize']}, hits={rq['hits']}, rate={rq['hit_rate_percent']}%)"
     )
     return stats
@@ -332,7 +348,11 @@ def log_cache_summary() -> None:
     logger.info("📊 CACHE SUMMARY REPORT")
     logger.info("=" * 60)
     
-    for cache_name, cache in [("hormone_analysis", hormone_analysis_cache), ("rag_query", rag_query_cache)]:
+    for cache_name, cache in [
+        ("hormone_analysis", hormone_analysis_cache), 
+        ("session_hormone_analysis", session_hormone_analysis_cache),
+        ("rag_query", rag_query_cache)
+    ]:
         s = cache.stats()
         logger.info(
             f"  [{cache_name}]\n"

@@ -9,7 +9,7 @@ from app.models.question_models import (
     UserResponseFull, SessionLinkRequest, AnalyticsResponse
 )
 from app.core.security import get_current_active_user, get_current_user
-from typing import Optional
+from typing import Optional, Dict
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.database import create_tables
@@ -19,6 +19,49 @@ from app.models.question_models import TimezoneUpdateRequest, TimezoneUpdateResp
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ============================================
+# SESSION-LEVEL HORMONE ANALYSIS CACHING
+# ============================================
+# Prevents running full rule-based + LLM analysis multiple times during signup flow:
+# 1. get_session_hormone_results (user views hormone results)
+# 2. start_session_recommendation_generation (user clicks generate)
+# 3. _generate_recommendations_background (background task)
+# All 3 calls within ~2 minutes should use the same cached result.
+
+def get_cached_hormone_analysis(session_id: str, temp_user_profile: Dict) -> Dict:
+    """
+    Get hormone analysis with session-level caching.
+    
+    First call runs full analysis and caches by session_id.
+    Subsequent calls within 30 minutes return cached result.
+    
+    Args:
+        session_id: Unique session identifier
+        temp_user_profile: User profile data for analysis
+        
+    Returns:
+        Full hormone analysis result dict with all_scores, levels, etc.
+    """
+    from app.utils.cache_utils import session_hormone_analysis_cache
+    from app.services.root_cause_engine import RootCauseEngine
+    
+    # Check session-level cache first
+    cached = session_hormone_analysis_cache.get(session_id)
+    if cached is not None:
+        logger.info(f"✅ [HormoneAnalysis] SESSION CACHE HIT for {session_id[:8]}... (saved full re-computation)")
+        return cached
+    
+    # Cache miss - run full analysis
+    logger.info(f"🔬 [HormoneAnalysis] SESSION CACHE MISS for {session_id[:8]}... running full analysis")
+    result = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
+    
+    # Cache the full result by session_id
+    session_hormone_analysis_cache.set(session_id, result)
+    logger.info(f"💾 [HormoneAnalysis] Cached full result for session {session_id[:8]}...")
+    
+    return result
 
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(
@@ -263,9 +306,9 @@ async def start_session_recommendations_generation(
             "stress_level": session_data.stress_level
         }
         
-        # Use Root cause engine to analyze hormone imbalance and add
-        from app.services.root_cause_engine import RootCauseEngine
-        root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
+        # Use Root cause engine with session-level caching
+        # This may already be cached from get_session_hormone_results call
+        root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
         temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
         temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
         
@@ -305,9 +348,8 @@ async def _generate_recommendations_background(session_id: str, service, process
         logger.info(f"Background recommendation generation started: {session_id}")
         
         # NOTE: Do NOT clear caches here! The hormone_analysis was already cached
-        # in the main endpoint (line 268) before this background task started.
-        # Clearing here would cause duplicate LLM calls. Caches will be cleared
-        # at the END of this task after all recommendations are generated.
+        # in the main endpoint before this background task started.
+        # Session-level caching via get_cached_hormone_analysis handles this.
         
         # Update to processing started status
         processing_service.update_processing_started(session_id)
@@ -338,9 +380,8 @@ async def _generate_recommendations_background(session_id: str, service, process
                 "lifestyle_focus": getattr(session_data, 'lifestyle_focus', None) or []
             }
             
-            # Use Root cause engine to analyze hormone imbalance and add
-            from app.services.root_cause_engine import RootCauseEngine
-            root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
+            # Use session-level caching - this will be a cache HIT from the main endpoint
+            root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
             temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
             temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
             
@@ -826,9 +867,7 @@ async def get_hormone_analysis(
         except Exception as _e:
             print(f"⚠️ Unable to log other_concerns for session {session_id}: {_e}")
         
-        # Create temp user profile and re-run analysis to get levels
-        from app.services.root_cause_engine import RootCauseEngine
-        
+        # Create temp user profile for analysis
         temp_user_profile = {
             "age": session_data.age,
             "period_description": session_data.period_description,
@@ -847,7 +886,8 @@ async def get_hormone_analysis(
             "stress_level": session_data.stress_level
         }
         
-        root_cause_analysis = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
+        # Use session-level caching - this is often the FIRST call in the flow
+        root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
         
         # Build hormone cards array for frontend
         hormone_cards = []

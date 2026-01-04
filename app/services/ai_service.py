@@ -141,14 +141,31 @@ class AIService:
         return provider_configs.get(provider, provider_configs["groq"])
     
     @staticmethod
-    async def call_ai_model(prompt: str) -> tuple[str, str]:
+    async def call_ai_model(prompt: str, with_fallback: bool = True) -> tuple[str, str]:
         """
         Call appropriate AI model based on environment variables (extensible)
+        Includes automatic Groq fallback if OpenAI fails with 429/rate limit
+        
+        Args:
+            prompt: The prompt to send to the AI
+            with_fallback: If True, automatically fall back to Groq on OpenAI failure
         """
         model_config = AIService.get_current_model_config()
+        fallback_config = AIService.get_fallback_model_config()
         
         if model_config["provider"] == "openai":
             response = await AIService.call_openai(prompt, model_config["model"])
+            
+            # If OpenAI failed and fallback is enabled, try Groq
+            if not response and with_fallback and GROQ_API_KEY:
+                logger.info(f"🔄 [AIService] OpenAI failed, falling back to Groq ({fallback_config['model']})")
+                response = await AIService.call_groq(prompt, fallback_config["model"])
+                if response:
+                    logger.info(f"✅ [AIService] Groq fallback successful")
+                    return response, fallback_config["model"]
+                else:
+                    logger.warning(f"❌ [AIService] Groq fallback also failed")
+            
             return response, model_config["model"]
         elif model_config["provider"] == "groq":
             response = await AIService.call_groq(prompt, model_config["model"])
