@@ -37,8 +37,8 @@ from app.core.config import settings
 # Get API keys from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
 
-# Fallback model: openai/gpt-oss-120b is a high-quality reasoning model on Groq
-GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"
+# Fallback model: llama-3.3-70b-versatile has higher rate limits (30K TPM vs 8K)
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
 
 logger = logging.getLogger(__name__)
 

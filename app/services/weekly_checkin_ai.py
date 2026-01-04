@@ -50,8 +50,8 @@ settings = Settings()
 # API Keys
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Fallback model: openai/gpt-oss-120b is a high-quality reasoning model on Groq
-GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"
+# Fallback model: llama-3.3-70b-versatile has higher rate limits (30K TPM vs 8K)
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
 
 # Initialize clients - OpenAI is primary, Groq is fallback
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None

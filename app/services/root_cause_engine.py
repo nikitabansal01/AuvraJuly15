@@ -21,7 +21,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Groq fallback configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"  # High-quality reasoning model
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Higher rate limits (30K TPM vs 8K)
 
 # Determine which LLM provider to use (priority: OpenAI > Groq > Gemini)
 LLM_PROVIDER = "openai" if OPENAI_API_KEY else ("groq" if GROQ_API_KEY else ("gemini" if GEMINI_API_KEY else None))

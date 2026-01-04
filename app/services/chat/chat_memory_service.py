@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Groq fallback configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"  # High-quality reasoning model
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Higher rate limits (30K TPM vs 8K)
 
 
 class ChatMemoryService:
