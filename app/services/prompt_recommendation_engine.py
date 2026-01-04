@@ -454,6 +454,13 @@ REQUIRED FIELDS for each recommendation:
 - duration_weeks: Number (8, 12, 16)
 - optimal_times: Array ["morning"], ["afternoon"], ["evening"], or ["anytime"]
 - researchBacking: Object with "summary" string and "studies" array
+- image_prompt: A highly detailed, illustrative description of the action.
+  - MUST be descriptive enough for an AI image generator to understand the scene.
+  - Focus on the visual elements: lighting, composition, objects, colors, and mood.
+  - DO NOT use generic terms like "professional photo". Instead, describe the scene.
+  - Example (Food): "Close-up of a rustic wooden bowl filled with vibrant green spinach salad, topped with sliced strawberries and walnuts, natural morning sunlight streaming from the side, soft focus background."
+  - Example (Movement): "A woman performing a gentle yoga stretch on a mat in a sunlit living room, wearing comfortable clothing, peaceful atmosphere, soft warm lighting, plants in the background."
+  - Example (Mindfulness): "A serene person sitting in a comfortable chair with eyes closed, practicing deep breathing, soft blue and purple ambient lighting, calm and tranquil mood."
 
 🎯 TITLE RULES (KEEP IT SIMPLE):
 - FOOD: Just the food name (e.g., "Cinnamon", "Salmon", "Flaxseeds")
