@@ -1211,6 +1211,10 @@ Return ONLY a valid JSON object matching the ActionPlanResponseModel schema.
             if is_reasoning_model:
                 enhanced_prompt += "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no thinking."
             
+            # CRITICAL: Groq models often return {"recommendations": [...]} instead of {"actions": [...]}
+            # We must explicitly instruct it to use the correct key
+            enhanced_prompt += '\n\nCRITICAL: The root JSON key MUST be "actions", NOT "recommendations". Example: {"actions": [...]}'
+            
             body = {
                 "model": GROQ_FALLBACK_MODEL,
                 "messages": [
@@ -1261,6 +1265,11 @@ Return ONLY a valid JSON object matching the ActionPlanResponseModel schema.
     try:
         # Parse JSON first
         parsed_json = json.loads(content)
+        
+        # FIX: Handle common LLM error where it returns {"recommendations": [...]} instead of {"actions": [...]}
+        if "actions" not in parsed_json and "recommendations" in parsed_json:
+            logger.warning("⚠️ LLM returned 'recommendations' key instead of 'actions'. Fixing structure...")
+            parsed_json["actions"] = parsed_json.pop("recommendations")
         
         # Validate with Pydantic
         validated_response = ActionPlanResponseModel.model_validate(parsed_json)
