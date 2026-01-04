@@ -1184,99 +1184,163 @@ Ensure strict adherence to the JSON schema.
 Return ONLY a valid JSON object matching the ActionPlanResponseModel schema.
 """
 
-    # Call GPT
+    # Call GPT (OpenAI with Groq Fallback)
+    content = None
+    openai_error = None
+    
+    # 1. Try OpenAI
+    if OPENAI_API_KEY:
+        try:
+            headers = {
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            body = {
+                "model": MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are AUVRA. Return only valid JSON matching the schema."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 4000,
+                "response_format": {"type": "json_object"}
+            }
+            
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers=headers,
+                    json=body
+                )
+                
+                if response.status_code != 200:
+                    openai_error = f"OpenAI returned {response.status_code}: {response.text[:200]}"
+                    logger.error(f"❌ OpenAI error: {openai_error}")
+                else:
+                    data = response.json()
+                    content = data['choices'][0]['message']['content']
+                    logger.info(f"🤖 OpenAI Response received ({len(content)} chars)")
+                    logger.debug(f"Raw content: {content[:500]}...")
+        except Exception as e:
+            openai_error = str(e)
+            logger.error(f"❌ OpenAI exception: {openai_error}")
+    else:
+        openai_error = "No OpenAI API key"
+
+    # 2. Fallback to Groq if OpenAI failed
+    if not content and GROQ_API_KEY:
+        logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})...")
+        try:
+            # Check if reasoning model (no response_format)
+            is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
+            
+            headers = {
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            # Enhance prompt for reasoning models if needed
+            enhanced_prompt = prompt
+            if is_reasoning_model:
+                enhanced_prompt += "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no thinking."
+            
+            body = {
+                "model": GROQ_FALLBACK_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are AUVRA. Return only valid JSON matching the schema."},
+                    {"role": "user", "content": enhanced_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 4000
+            }
+            
+            if not is_reasoning_model:
+                body["response_format"] = {"type": "json_object"}
+            
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=body
+                )
+                
+                if response.status_code != 200:
+                    logger.error(f"❌ Groq error: {response.text[:200]}")
+                else:
+                    data = response.json()
+                    content = data['choices'][0]['message']['content']
+                    
+                    # Clean markdown if reasoning model
+                    if is_reasoning_model:
+                        content = content.strip()
+                        if content.startswith("```json"): content = content[7:]
+                        if content.startswith("```"): content = content[3:]
+                        if content.endswith("```"): content = content[:-3]
+                        content = content.strip()
+                        
+                    logger.info(f"🤖 Groq Response received ({len(content)} chars)")
+        except Exception as e:
+            logger.error(f"❌ Groq fallback failed: {e}")
+
+    if not content:
+        logger.error("❌ All LLM providers failed")
+        return []
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 3: VALIDATION PHASE - Strict Pydantic Validation
+    # ═══════════════════════════════════════════════════════════════════════
+    logger.info("🛡️ STEP 3: Validating response with Pydantic...")
+    
     try:
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
+        # Parse JSON first
+        parsed_json = json.loads(content)
         
-        body = {
-            "model": MODEL,
-            "messages": [
-                {"role": "system", "content": "You are AUVRA. Return only valid JSON matching the schema."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 4000,
-            "response_format": {"type": "json_object"}
-        }
+        # Validate with Pydantic
+        validated_response = ActionPlanResponseModel.model_validate(parsed_json)
+        logger.info("✅ Pydantic validation SUCCESSFUL")
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=body
-            )
+        # Convert back to dict for return
+        final_recs = [action.model_dump() for action in validated_response.actions]
+        
+        # Post-process: Add legacy fields if needed by frontend
+        for i, rec in enumerate(final_recs):
+            # Ensure research is populated from our search if GPT missed it
+            if not rec.get('research_studies') and i < len(results) and results[i].get('paper'):
+                paper = results[i]['paper']
+                rec['research_studies'] = [{
+                    'title': paper.get('title', ''),
+                    'journal': paper.get('journal', ''),
+                    'year': paper.get('year', 0),
+                    'participants': 0,
+                    'finding': paper.get('finding', ''),
+                    'pmid': paper.get('pmid', ''),
+                    'verification_link': paper.get('verification_link', '')
+                }]
             
-            if response.status_code != 200:
-                logger.error(f"OpenAI error: {response.text[:200]}")
-                raise Exception(f"OpenAI returned {response.status_code}")
+            # Add legacy fields for compatibility
+            rec['citation_verified'] = bool(rec.get('research_studies'))
+            rec['rag_version'] = 'pubmed_backed_strict_v1'
+            rec['priority'] = 'high'
+            rec['frequency'] = 'Daily'
+            rec['intensity'] = 'Moderate'
+            rec['expectedTimeline'] = '4-8 weeks'
             
-            data = response.json()
-            content = data['choices'][0]['message']['content']
-            logger.info(f"🤖 OpenAI Response received ({len(content)} chars)")
-            logger.debug(f"Raw content: {content[:500]}...")
-            
-            # ═══════════════════════════════════════════════════════════════════════
-            # STEP 3: VALIDATION PHASE - Strict Pydantic Validation
-            # ═══════════════════════════════════════════════════════════════════════
-            logger.info("🛡️ STEP 3: Validating response with Pydantic...")
-            
-            try:
-                # Parse JSON first
-                parsed_json = json.loads(content)
-                
-                # Validate with Pydantic
-                validated_response = ActionPlanResponseModel.model_validate(parsed_json)
-                logger.info("✅ Pydantic validation SUCCESSFUL")
-                
-                # Convert back to dict for return
-                final_recs = [action.model_dump() for action in validated_response.actions]
-                
-                # Post-process: Add legacy fields if needed by frontend
-                for i, rec in enumerate(final_recs):
-                    # Ensure research is populated from our search if GPT missed it
-                    if not rec.get('research_studies') and i < len(results) and results[i].get('paper'):
-                        paper = results[i]['paper']
-                        rec['research_studies'] = [{
-                            'title': paper.get('title', ''),
-                            'journal': paper.get('journal', ''),
-                            'year': paper.get('year', 0),
-                            'participants': 0,
-                            'finding': paper.get('finding', ''),
-                            'pmid': paper.get('pmid', ''),
-                            'verification_link': paper.get('verification_link', '')
-                        }]
-                    
-                    # Add legacy fields for compatibility
-                    rec['citation_verified'] = bool(rec.get('research_studies'))
-                    rec['rag_version'] = 'pubmed_backed_strict_v1'
-                    rec['priority'] = 'high'
-                    rec['frequency'] = 'Daily'
-                    rec['intensity'] = 'Moderate'
-                    rec['expectedTimeline'] = '4-8 weeks'
-                    
-                    logger.info(f"   ✅ Rec {i+1}: {rec.get('title', 'N/A')[:30]} | {rec['category']} | {'📚' if rec['citation_verified'] else '❌'}")
-                
-                logger.info("=" * 70)
-                logger.info(f"✅ SESSION RECOMMENDATIONS COMPLETE: {len(final_recs)} recommendations")
-                logger.info(f"   Papers found: {papers_found}/4")
-                logger.info("=" * 70)
-                
-                return final_recs
-                
-            except ValidationError as ve:
-                logger.error(f"❌ Pydantic Validation Failed: {ve}")
-                logger.error(f"Content was: {content[:1000]}...") # Log more content for debugging
-                for err in ve.errors():
-                    logger.error(f"   -> Field: {err['loc']}, Error: {err['msg']}")
-                
-                # In strict mode, we fail or return empty. 
-                # User said "pydantic validation must be accurate", so we should probably fail or retry.
-                # For now, returning empty list to signal failure is safer than returning bad data.
-                return []
-            
+            logger.info(f"   ✅ Rec {i+1}: {rec.get('title', 'N/A')[:30]} | {rec['category']} | {'📚' if rec['citation_verified'] else '❌'}")
+        
+        logger.info("=" * 70)
+        logger.info(f"✅ SESSION RECOMMENDATIONS COMPLETE: {len(final_recs)} recommendations")
+        logger.info(f"   Papers found: {papers_found}/4")
+        logger.info("=" * 70)
+        
+        return final_recs
+        
+    except ValidationError as ve:
+        logger.error(f"❌ Pydantic Validation Failed: {ve}")
+        logger.error(f"Content was: {content[:1000]}...") # Log more content for debugging
+        for err in ve.errors():
+            logger.error(f"   -> Field: {err['loc']}, Error: {err['msg']}")
+        return []
     except Exception as e:
         logger.error(f"❌ Session recommendation generation failed: {e}")
         return []
