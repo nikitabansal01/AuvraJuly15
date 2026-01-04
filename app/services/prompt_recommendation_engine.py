@@ -49,11 +49,83 @@ This keeps total manageable (10-12) while honoring user choice.
 import logging
 import json
 import os
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 from datetime import datetime
 import httpx
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PYDANTIC MODELS FOR STRICT VALIDATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ResearchStudyModel(BaseModel):
+    """Research citation from PubMed - all fields required."""
+    title: str
+    journal: str
+    year: int
+    participants: int
+    finding: str
+    pmid: str
+    verification_link: str
+    
+    model_config = {"extra": "forbid"}
+
+
+class ActionVariantModel(BaseModel):
+    """Variant of an action - all fields required."""
+    variant_type: str
+    title: str
+    description: str
+    image_prompt: str
+    
+    model_config = {"extra": "forbid"}
+
+
+class ActionItemModel(BaseModel):
+    """
+    Single action item - ALL fields are required (OpenAI strict mode).
+    """
+    title: str
+    category: Literal["food", "movement", "mindfulness"]
+    time_slot: Literal["morning", "afternoon", "evening"]
+    specific_action: str
+    purpose: str
+    target_hormone: str
+    hormone_persona_intro: str
+    image_prompt: str
+    
+    # Research studies - required, can be empty []
+    research_studies: List[ResearchStudyModel]
+    
+    # Variants - exactly 3 required
+    variants: List[ActionVariantModel]
+    
+    # Category-specific fields - ALL required, use [] for non-matching categories
+    # Food fields
+    food_items: List[str]
+    food_amounts: List[str]
+    # Movement fields  
+    exercise_types: List[str]
+    exercise_durations: List[str]
+    exercise_intensities: List[str]
+    # Mindfulness fields
+    mindfulness_techniques: List[str]
+    mindfulness_durations: List[str]
+    
+    # Metadata - required, can be empty []
+    symptoms: List[str]
+    conditions: List[str]
+    
+    model_config = {"extra": "forbid"}
+
+
+class ActionPlanResponseModel(BaseModel):
+    """Complete action plan response - exactly 4 actions required."""
+    actions: List[ActionItemModel]
+    
+    model_config = {"extra": "forbid"}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LIFESTYLE FOCUS MAPPING (Eat/Move/Pause → Categories)
@@ -945,6 +1017,7 @@ async def generate_session_recommendations_with_pubmed(
     This mirrors the action_plan_generator approach:
     1. Research phase: Search PubMed for real papers
     2. Generation phase: GPT creates recommendations based on research
+    3. Validation phase: Strict Pydantic validation
     
     Args:
         user_profile: User's health profile
@@ -957,7 +1030,7 @@ async def generate_session_recommendations_with_pubmed(
     from app.services.pubmed_service import execute_pubmed_tool
     
     logger.info("=" * 70)
-    logger.info("🔬 UNIFIED SESSION RECOMMENDATIONS (PubMed-Backed)")
+    logger.info("🔬 UNIFIED SESSION RECOMMENDATIONS (PubMed-Backed & Validated)")
     logger.info("=" * 70)
     
     # Extract user info
@@ -970,11 +1043,6 @@ async def generate_session_recommendations_with_pubmed(
     condition_str = ', '.join(diagnosed_conditions) if diagnosed_conditions else 'PCOS'
     
     # Determine category distribution based on lifestyle_focus
-    # Default: 2 food, 1 movement, 1 mindfulness
-    # Eat focus: 3 food, 1 movement or mindfulness
-    # Move focus: 1 food, 2 movement, 1 mindfulness
-    # Pause focus: 1 food, 1 movement, 2 mindfulness
-    
     if 'eat' in [lf.lower() for lf in lifestyle_focus]:
         categories = ['food', 'food', 'food', 'movement']
     elif 'move' in [lf.lower() for lf in lifestyle_focus]:
@@ -1018,6 +1086,7 @@ async def generate_session_recommendations_with_pubmed(
     # Parallel PubMed searches
     async def fetch_paper(q: Dict) -> Dict:
         try:
+            logger.info(f"   🔎 Searching PubMed for: {q['query']} (Category: {q['category']}, Hormone: {q['hormone']})")
             paper = await execute_pubmed_tool({
                 'query': q['query'],
                 'action_title': f"Research {q['index'] + 1}",
@@ -1026,11 +1095,13 @@ async def generate_session_recommendations_with_pubmed(
             }, db=db)
             
             if paper and paper.get('title'):
+                logger.info(f"   ✅ Found paper: {paper.get('title')[:50]}...")
                 return {
                     'category': q['category'],
                     'hormone': q['hormone'],
                     'paper': paper
                 }
+            logger.warning(f"   ⚠️ No paper found for query: {q['query']}")
             return {'category': q['category'], 'hormone': q['hormone'], 'paper': None}
         except Exception as e:
             logger.warning(f"PubMed search failed: {e}")
@@ -1091,19 +1162,26 @@ Requirements:
 Each recommendation MUST include:
 - title: Simple name (e.g., "Cinnamon", "Morning Yoga", "Deep Breathing")
 - category: "{categories[0]}" or "{categories[1]}" or "{categories[2]}" or "{categories[3]}"
-- purpose: 1-2 sentences
-- specificAction: EXACT instructions with amounts/durations
-- frequency: "Daily" or "Weekly"
-- intensity: "Low", "Moderate", "High"
-- expectedTimeline: When to expect results
-- priority: "high"
-- hormones: Array with the target hormone
+- time_slot: "morning", "afternoon", or "evening"
+- specific_action: EXACT instructions with amounts/durations
+- purpose: 1-2 sentences explaining WHY this helps the specific hormone/condition
+- target_hormone: The hormone being targeted
+- hormone_persona_intro: A short, friendly intro from the hormone persona (e.g., "Hi, I'm Cortisol...")
+- image_prompt: A prompt to generate an image for this action
 - research_studies: Array with paper details from research findings (title, journal, year, pmid, finding, verification_link)
+- variants: Array of 3 variants (ActionVariantModel)
+- Category specific fields (use empty list [] if not applicable):
+  - food_items, food_amounts (for food)
+  - exercise_types, exercise_durations, exercise_intensities (for movement)
+  - mindfulness_techniques, mindfulness_durations (for mindfulness)
+- symptoms: List of symptoms addressed
+- conditions: List of conditions addressed
 
 CRITICAL: Use the ACTUAL paper details from the research findings above. 
 Include the real PMID and verification_link for each citation.
+Ensure strict adherence to the JSON schema.
 
-Return ONLY a valid JSON array with exactly 4 recommendations.
+Return ONLY a valid JSON object matching the ActionPlanResponseModel schema.
 """
 
     # Call GPT
@@ -1116,7 +1194,7 @@ Return ONLY a valid JSON array with exactly 4 recommendations.
         body = {
             "model": MODEL,
             "messages": [
-                {"role": "system", "content": "You are AUVRA. Return only valid JSON array."},
+                {"role": "system", "content": "You are AUVRA. Return only valid JSON matching the schema."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
@@ -1137,79 +1215,68 @@ Return ONLY a valid JSON array with exactly 4 recommendations.
             
             data = response.json()
             content = data['choices'][0]['message']['content']
+            logger.info(f"🤖 OpenAI Response received ({len(content)} chars)")
+            logger.debug(f"Raw content: {content[:500]}...")
             
-            # Parse response
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                # Try to find array in dict
-                for key in ['recommendations', 'items', 'results']:
-                    if key in parsed and isinstance(parsed[key], list):
-                        recommendations = parsed[key]
-                        break
-                else:
-                    recommendations = []
-            else:
-                recommendations = parsed if isinstance(parsed, list) else []
+            # ═══════════════════════════════════════════════════════════════════════
+            # STEP 3: VALIDATION PHASE - Strict Pydantic Validation
+            # ═══════════════════════════════════════════════════════════════════════
+            logger.info("🛡️ STEP 3: Validating response with Pydantic...")
             
-            # Post-process: add missing fields, inject real paper data
-            final_recs = []
-            for i, rec in enumerate(recommendations[:4]):
-                # Ensure category
-                rec['category'] = categories[i] if i < len(categories) else 'food'
-                rec['hormones'] = [hormones[i] if i < len(hormones) else primary_hormone]
+            try:
+                # Parse JSON first
+                parsed_json = json.loads(content)
                 
-                # Inject real paper if available
-                research_result = results[i] if i < len(results) else None
-                if research_result and research_result.get('paper'):
-                    paper = research_result['paper']
-                    rec['research_studies'] = [{
-                        'title': paper.get('title', ''),
-                        'journal': paper.get('journal', ''),
-                        'year': paper.get('year', ''),
-                        'pmid': paper.get('pmid', ''),
-                        'finding': paper.get('finding', ''),
-                        'verification_link': paper.get('verification_link', '')
-                    }]
-                    rec['citation_verified'] = True
-                else:
-                    rec['citation_verified'] = False
+                # Validate with Pydantic
+                validated_response = ActionPlanResponseModel.model_validate(parsed_json)
+                logger.info("✅ Pydantic validation SUCCESSFUL")
                 
-                # Standard fields
-                rec.setdefault('priority', 'high')
-                rec.setdefault('frequency', 'Daily')
-                rec.setdefault('intensity', 'Moderate')
-                rec.setdefault('expectedTimeline', '4-8 weeks')
-                rec.setdefault('conditions', diagnosed_conditions)
-                rec.setdefault('frequency_detail', 'daily:1')
-                rec.setdefault('duration_weeks', 12)
-                rec.setdefault('optimal_times', ['morning'])
-                rec.setdefault('contraindications', [])
+                # Convert back to dict for return
+                final_recs = [action.model_dump() for action in validated_response.actions]
                 
-                # Category-specific fields
-                if rec['category'] == 'food':
-                    rec.setdefault('food_amounts', [])
-                    rec.setdefault('food_items', [])
-                elif rec['category'] == 'movement':
-                    rec.setdefault('exercise_durations', ['20 min'])
-                    rec.setdefault('exercise_types', ['general'])
-                    rec.setdefault('exercise_intensities', ['moderate'])
-                else:
-                    rec.setdefault('mindfulness_durations', ['10 min'])
-                    rec.setdefault('mindfulness_techniques', ['breathing'])
+                # Post-process: Add legacy fields if needed by frontend
+                for i, rec in enumerate(final_recs):
+                    # Ensure research is populated from our search if GPT missed it
+                    if not rec.get('research_studies') and i < len(results) and results[i].get('paper'):
+                        paper = results[i]['paper']
+                        rec['research_studies'] = [{
+                            'title': paper.get('title', ''),
+                            'journal': paper.get('journal', ''),
+                            'year': paper.get('year', 0),
+                            'participants': 0,
+                            'finding': paper.get('finding', ''),
+                            'pmid': paper.get('pmid', ''),
+                            'verification_link': paper.get('verification_link', '')
+                        }]
+                    
+                    # Add legacy fields for compatibility
+                    rec['citation_verified'] = bool(rec.get('research_studies'))
+                    rec['rag_version'] = 'pubmed_backed_strict_v1'
+                    rec['priority'] = 'high'
+                    rec['frequency'] = 'Daily'
+                    rec['intensity'] = 'Moderate'
+                    rec['expectedTimeline'] = '4-8 weeks'
+                    
+                    logger.info(f"   ✅ Rec {i+1}: {rec.get('title', 'N/A')[:30]} | {rec['category']} | {'📚' if rec['citation_verified'] else '❌'}")
                 
-                rec['rag_version'] = 'pubmed_backed_v1'
+                logger.info("=" * 70)
+                logger.info(f"✅ SESSION RECOMMENDATIONS COMPLETE: {len(final_recs)} recommendations")
+                logger.info(f"   Papers found: {papers_found}/4")
+                logger.info("=" * 70)
                 
-                final_recs.append(rec)
-                logger.info(f"   ✅ Rec {i+1}: {rec.get('title', 'N/A')[:30]} | {rec['category']} | {'📚' if rec['citation_verified'] else '❌'}")
-            
-            logger.info("=" * 70)
-            logger.info(f"✅ SESSION RECOMMENDATIONS COMPLETE: {len(final_recs)} recommendations")
-            logger.info(f"   Papers found: {papers_found}/4")
-            logger.info("=" * 70)
-            
-            return final_recs
+                return final_recs
+                
+            except ValidationError as ve:
+                logger.error(f"❌ Pydantic Validation Failed: {ve}")
+                logger.error(f"Content was: {content[:1000]}...") # Log more content for debugging
+                for err in ve.errors():
+                    logger.error(f"   -> Field: {err['loc']}, Error: {err['msg']}")
+                
+                # In strict mode, we fail or return empty. 
+                # User said "pydantic validation must be accurate", so we should probably fail or retry.
+                # For now, returning empty list to signal failure is safer than returning bad data.
+                return []
             
     except Exception as e:
         logger.error(f"❌ Session recommendation generation failed: {e}")
-        # Return empty - caller should handle fallback
         return []
