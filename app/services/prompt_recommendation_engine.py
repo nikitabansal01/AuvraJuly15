@@ -146,29 +146,72 @@ LIFESTYLE_TO_CATEGORY = {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SMART RECOMMENDATION DISTRIBUTION (Based on business research)
+# SMART RECOMMENDATION DISTRIBUTION (EXACTLY 4 ACTIONS)
 # ═══════════════════════════════════════════════════════════════════════════════
 # 
-# Customer Psychology:
-# - Users want MORE of what they prefer (that's why they selected it!)
-# - But they need BALANCED health (can't ignore other areas)
-# - Too many recommendations = overwhelming = poor engagement
-# - Sweet spot: 4 total recommendations per session
+# User Selection Matrix (Total = 4):
+# ┌─────────────────┬───────┬──────────┬─────────────┬───────┐
+# │ Selection       │ Food  │ Movement │ Mindfulness │ Total │
+# ├─────────────────┼───────┼──────────┼─────────────┼───────┤
+# │ Eat only        │   2   │    1     │      1      │   4   │
+# │ Move only       │   1   │    2     │      1      │   4   │
+# │ Pause only      │   1   │    1     │      2      │   4   │
+# │ Eat + Move      │   2   │    2     │      0      │   4   │ ← Skip unselected!
+# │ Eat + Pause     │   2   │    0     │      2      │   4   │ ← Skip unselected!
+# │ Move + Pause    │   0   │    2     │      2      │   4   │ ← Skip unselected!
+# │ All three       │   2   │    1     │      1      │   4   │
+# │ None selected   │   2   │    1     │      1      │   4   │
+# └─────────────────┴───────┴──────────┴─────────────┴───────┘
 #
-# Distribution Strategy:
-# The LLM dynamically determines the mix of Food, Movement, and Mindfulness
-# based on the user's "Lifestyle Focus" (Eat/Move/Pause).
-#
-# Why this distribution:
-# 1. Total is STRICTLY 4 actions per day (User Requirement)
-# 2. Base of 1 per category ensures breadth
-# 3. Extra 1 goes to primary preference (or Food if balanced)
+# Key Insight: When user selects 2 categories, give them ONLY those 2 (split 2+2)
+# This respects their preference - they actively chose NOT to get the third!
 
-# Count constants
-PREFERRED_COUNT = 2      # Boosted category
-NORMAL_COUNT = 1         # Standard category
-SECONDARY_COUNT = 1      # Standard category
-MINIMAL_COUNT = 1        # Standard category
+def get_category_distribution(lifestyle_focus: List[str]) -> Dict[str, int]:
+    """
+    Calculate exact category distribution based on user's lifestyle focus selection.
+    
+    ALWAYS returns exactly 4 total actions.
+    
+    Args:
+        lifestyle_focus: List of user selections like ['eat', 'move'] or ['pause']
+        
+    Returns:
+        Dict mapping category to count, e.g., {'food': 2, 'movement': 2, 'mindfulness': 0}
+    """
+    # Normalize to lowercase
+    focus = [f.lower() for f in (lifestyle_focus or [])]
+    num_selected = len(focus)
+    
+    # Map to categories
+    has_eat = 'eat' in focus
+    has_move = 'move' in focus
+    has_pause = 'pause' in focus
+    
+    # Default distribution (also used for "all three" or "none")
+    distribution = {'food': 2, 'movement': 1, 'mindfulness': 1}
+    
+    if num_selected == 1:
+        # Single selection: Boost that category to 2, others get 1
+        if has_eat:
+            distribution = {'food': 2, 'movement': 1, 'mindfulness': 1}
+        elif has_move:
+            distribution = {'food': 1, 'movement': 2, 'mindfulness': 1}
+        elif has_pause:
+            distribution = {'food': 1, 'movement': 1, 'mindfulness': 2}
+            
+    elif num_selected == 2:
+        # Dual selection: SKIP the unselected category entirely!
+        if has_eat and has_move:
+            distribution = {'food': 2, 'movement': 2, 'mindfulness': 0}
+        elif has_eat and has_pause:
+            distribution = {'food': 2, 'movement': 0, 'mindfulness': 2}
+        elif has_move and has_pause:
+            distribution = {'food': 0, 'movement': 2, 'mindfulness': 2}
+    
+    # num_selected == 0 or 3: Use default (balanced with food priority)
+    
+    logger.info(f"📊 Category Distribution for lifestyle_focus={focus}: {distribution}")
+    return distribution
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -1165,6 +1208,24 @@ async def generate_session_recommendations_with_pubmed(
     # ═══════════════════════════════════════════════════════════════════════
     logger.info("🤖 STEP 2: Generating recommendations based on research...")
     
+    # Get EXACT category distribution based on lifestyle_focus
+    distribution = get_category_distribution(lifestyle_focus)
+    food_count = distribution['food']
+    movement_count = distribution['movement']
+    mindfulness_count = distribution['mindfulness']
+    
+    # Build distribution instruction for GPT
+    distribution_instruction = f"""
+STRICT CATEGORY DISTRIBUTION (Must follow EXACTLY):
+- Food: {food_count} recommendation(s)
+- Movement: {movement_count} recommendation(s)  
+- Mindfulness: {mindfulness_count} recommendation(s)
+- TOTAL: 4 recommendations
+
+⚠️ DO NOT deviate from this distribution. If a category has 0, do NOT include any recommendations for it."""
+
+    logger.info(f"📊 Using distribution: Food={food_count}, Movement={movement_count}, Mindfulness={mindfulness_count}")
+    
     prompt = f"""You are AUVRA, a women's hormone health AI. Generate EXACTLY 4 personalized recommendations.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1174,7 +1235,11 @@ USER PROFILE
 - Secondary Hormone: {secondary_hormone.upper()}
 - Conditions: {condition_str}
 - Age: {user_profile.get('age', 30)}
-- Lifestyle Focus: {', '.join(lifestyle_focus) if lifestyle_focus else 'Balanced'}
+- Lifestyle Focus: {', '.join(lifestyle_focus) if lifestyle_focus else 'Balanced (all categories)'}
+
+═══════════════════════════════════════════════════════════════════════════════
+{distribution_instruction}
+═══════════════════════════════════════════════════════════════════════════════
 
 ═══════════════════════════════════════════════════════════════════════════════
 RESEARCH FINDINGS (USE THESE FOR CITATIONS!)
@@ -1182,18 +1247,13 @@ RESEARCH FINDINGS (USE THESE FOR CITATIONS!)
 {research_summary}
 
 ═══════════════════════════════════════════════════════════════════════════════
-TASK: Generate exactly 4 recommendations
+TASK: Generate exactly 4 recommendations following the distribution above
 ═══════════════════════════════════════════════════════════════════════════════
 Instructions:
-1. Create a balanced plan totaling exactly 4 actions.
-2. You MUST prioritize the user's Lifestyle Focus ({', '.join(lifestyle_focus) if lifestyle_focus else 'Balanced'}).
-   - If they prefer "Eat", include more Food actions.
-   - If they prefer "Move", include more Movement actions.
-   - If they prefer "Pause", include more Mindfulness actions.
-   - If Balanced/None, provide a mix.
-3. Ensure at least 2 actions target the Primary Hormone ({primary_hormone}).
-4. Ensure at least 1 action targets the Secondary Hormone ({secondary_hormone}).
-5. Use the provided research findings to back up your recommendations where possible.
+1. STRICTLY follow the category distribution above (Food={food_count}, Movement={movement_count}, Mindfulness={mindfulness_count}).
+2. Ensure at least 2 actions target the Primary Hormone ({primary_hormone}).
+3. Ensure at least 1 action targets the Secondary Hormone ({secondary_hormone}).
+4. Use the provided research findings to back up your recommendations where possible.
 
 Each recommendation MUST include:
 - title: Simple name (e.g., "Cinnamon", "Morning Yoga", "Deep Breathing")

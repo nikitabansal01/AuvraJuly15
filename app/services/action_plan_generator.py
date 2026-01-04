@@ -2606,23 +2606,46 @@ Format as bullet points."""
 
     
     def _get_category_guidance(self, lifestyle_focus: List[str]) -> str:
-        """Generate category distribution guidance based on lifestyle focus."""
-        focus_map = {
-            "eat": "food",
-            "move": "movement",
-            "pause": "mindfulness"
-        }
+        """
+        Generate STRICT category distribution guidance based on lifestyle focus.
         
-        preferred = [focus_map.get(f, f) for f in lifestyle_focus if f in focus_map]
+        Distribution Matrix (Total = 4):
+        ┌─────────────────┬───────┬──────────┬─────────────┐
+        │ Selection       │ Food  │ Movement │ Mindfulness │
+        ├─────────────────┼───────┼──────────┼─────────────┤
+        │ Eat only        │   2   │    1     │      1      │
+        │ Move only       │   1   │    2     │      1      │
+        │ Pause only      │   1   │    1     │      2      │
+        │ Eat + Move      │   2   │    2     │      0      │
+        │ Eat + Pause     │   2   │    0     │      2      │
+        │ Move + Pause    │   0   │    2     │      2      │
+        │ All three/None  │   2   │    1     │      1      │
+        └─────────────────┴───────┴──────────┴─────────────┘
+        """
+        focus = [f.lower() for f in (lifestyle_focus or [])]
+        num_selected = len(focus)
         
-        if len(preferred) == 3:
-            return "Balanced mix of food, movement, and mindfulness (1-2 each)"
-        elif len(preferred) == 2:
-            return f"Focus on {' and '.join(preferred)} (2 each, or 3+1)"
-        elif len(preferred) == 1:
-            return f"Heavy focus on {preferred[0]} (3 of this, 1 other)"
-        else:
-            return "Balanced mix of food, movement, and mindfulness"
+        has_eat = 'eat' in focus
+        has_move = 'move' in focus
+        has_pause = 'pause' in focus
+        
+        if num_selected == 1:
+            if has_eat:
+                return "STRICT: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
+            elif has_move:
+                return "STRICT: Generate 1 Food + 2 Movement + 1 Mindfulness = 4 total"
+            elif has_pause:
+                return "STRICT: Generate 1 Food + 1 Movement + 2 Mindfulness = 4 total"
+        elif num_selected == 2:
+            if has_eat and has_move:
+                return "STRICT: Generate 2 Food + 2 Movement + 0 Mindfulness = 4 total (NO mindfulness!)"
+            elif has_eat and has_pause:
+                return "STRICT: Generate 2 Food + 0 Movement + 2 Mindfulness = 4 total (NO movement!)"
+            elif has_move and has_pause:
+                return "STRICT: Generate 0 Food + 2 Movement + 2 Mindfulness = 4 total (NO food!)"
+        
+        # Default: All three or none selected
+        return "STRICT: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
     
     async def _generate_actions_via_gpt(
         self,
