@@ -250,8 +250,11 @@ class PubMedService:
         async with self._api_semaphore:
             for attempt in range(self._MAX_RETRIES):
                 try:
-                    # Exclude clinical guidelines and non-original research
-                    enhanced_query = f"({query}) NOT (guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti] OR chemotherapy[ti])"
+                    # Exclude clinical guidelines, non-original research, and non-matching populations
+                    # IMPORTANT: We exclude pregnant women, children, elderly, men - our users are adult women
+                    population_exclusions = "pregnant[ti] OR pregnancy[ti] OR prenatal[ti] OR postnatal[ti] OR children[ti] OR pediatric[ti] OR adolescent[ti] OR elderly[ti] OR geriatric[ti] OR men[ti] OR male[ti] OR postmenopausal[ti] OR menopausal[ti]"
+                    topic_exclusions = "guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti] OR chemotherapy[ti] OR tumor[ti] OR carcinoma[ti]"
+                    enhanced_query = f"({query}) NOT ({population_exclusions}) NOT ({topic_exclusions})"
                     
                     # Search for PMIDs
                     params = {
@@ -313,22 +316,84 @@ class PubMedService:
         return None
     
     def _is_relevant_paper(self, paper: Dict) -> bool:
-        """Check if paper is relevant (not clinical guidelines, cancer, etc.)."""
+        """Check if paper is relevant to our users (adult women, not pregnant).
+        
+        We EXCLUDE studies done on:
+        - Pregnant women (we don't track pregnancy status)
+        - Children/adolescents (our users are adults)
+        - Men (our users are women)
+        - Elderly-specific studies (our target is reproductive-age women)
+        - Cancer/chemotherapy (irrelevant to our recommendations)
+        - COVID-specific (irrelevant)
+        
+        User should see study and think: 'Yes, this was done on people like ME'
+        """
         title = paper.get("title", "").lower()
-        journal = paper.get("journal", "").lower()
+        abstract = paper.get("finding", "").lower()  # Finding comes from abstract
+        full_text = f"{title} {abstract}"
         
-        # Exclude irrelevant topics
-        exclude_terms = [
-            "cancer", "oncology", "chemotherapy", "tumor", "carcinoma",
-            "guideline", "guidelines", "clinical practice",
-            "covid", "coronavirus", "pandemic"
+        # ═══════════════════════════════════════════════════════════════════
+        # POPULATION EXCLUSIONS - Studies not matching our users
+        # ═══════════════════════════════════════════════════════════════════
+        
+        # Pregnant women exclusion (CRITICAL - we don't collect pregnancy status)
+        pregnancy_terms = [
+            "pregnant", "pregnancy", "prenatal", "postnatal", "postpartum",
+            "antenatal", "perinatal", "trimester", "gestation", "gestational",
+            "fetal", "fetus", "maternal", "breastfeeding", "lactating"
         ]
-        
-        for term in exclude_terms:
-            if term in title:
+        for term in pregnancy_terms:
+            if term in full_text:
+                logger.debug(f"Excluded paper (pregnancy-related): {title[:50]}...")
                 return False
         
-        # Must have participants (women in the study) - handle string/int types
+        # Children/adolescent exclusion (our users are adults)
+        child_terms = [
+            "children", "child", "pediatric", "paediatric", "adolescent",
+            "adolescence", "infant", "infants", "newborn", "neonatal",
+            "school-age", "teenager", "teens"
+        ]
+        for term in child_terms:
+            if term in full_text:
+                logger.debug(f"Excluded paper (children-related): {title[:50]}...")
+                return False
+        
+        # Men-only studies exclusion (our users are women)
+        # Be careful: don't exclude "women and men" studies
+        if ("men" in title or "male" in title) and "women" not in title and "female" not in title:
+            logger.debug(f"Excluded paper (men-only): {title[:50]}...")
+            return False
+        
+        # Elderly-specific exclusion (our target is reproductive-age women)
+        elderly_terms = [
+            "elderly", "geriatric", "aged", "older adults", "postmenopausal",
+            "menopause", "menopausal"
+        ]
+        for term in elderly_terms:
+            if term in title:  # Only check title for elderly (abstract might mention age range)
+                logger.debug(f"Excluded paper (elderly-specific): {title[:50]}...")
+                return False
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # TOPIC EXCLUSIONS - Studies on irrelevant conditions
+        # ═══════════════════════════════════════════════════════════════════
+        
+        topic_exclusions = [
+            "cancer", "oncology", "chemotherapy", "tumor", "carcinoma",
+            "malignant", "metastatic", "radiotherapy",
+            "guideline", "guidelines", "clinical practice",
+            "covid", "coronavirus", "pandemic", "sars-cov"
+        ]
+        for term in topic_exclusions:
+            if term in title:
+                logger.debug(f"Excluded paper (topic exclusion): {title[:50]}...")
+                return False
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # POSITIVE SIGNALS - Studies that match our users
+        # ═══════════════════════════════════════════════════════════════════
+        
+        # Check for participants count
         try:
             participants = paper.get("participants", 0)
             if isinstance(participants, str):
@@ -338,11 +403,12 @@ class PubMedService:
         except (ValueError, TypeError):
             pass
         
-        # If no participants, check if it mentions women/female in title
+        # Check if it mentions women/female (positive signal)
         if "women" in title or "female" in title:
             return True
         
-        return True  # Default to relevant if no exclusion criteria matched
+        # Default to relevant if no exclusion criteria matched
+        return True
     
     async def _fetch_pubmed_paper(self, pmid: str) -> Optional[Dict]:
         """Fetch full paper details from PubMed including abstract."""
