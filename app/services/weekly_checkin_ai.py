@@ -99,7 +99,7 @@ class AIQuestion:
     tap_options: List[Dict[str, str]]
     follow_up_context: Optional[str] = None
     is_required: bool = True
-    slider_labels: Optional[Dict[str, str]] = None  # For slider: {1: "None", 9: "Extreme"}
+    slider_labels: Optional[Any] = None  # For slider: ["Low", "High"] or {1: "None", 9: "Extreme"}
     messages: Optional[List[str]] = None  # Array of short messages for multi-bubble display
 
 

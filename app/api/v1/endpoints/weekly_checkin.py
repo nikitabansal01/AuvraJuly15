@@ -48,7 +48,7 @@ class QuestionResponse(BaseModel):
     total_questions: int = 0
     summary: Optional[str] = None  # Only on completion
     history: List[ChatMessage] = []  # Chat history for context restoration
-    slider_labels: Optional[Dict[str, str]] = None  # For slider questions
+    slider_labels: Optional[Any] = None  # For slider questions (List[str] or Dict[str, str])
 
 
 class CheckInStatusResponse(BaseModel):
