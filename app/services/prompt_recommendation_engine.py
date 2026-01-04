@@ -54,12 +54,12 @@ class ResearchStudyModel(BaseModel):
     title: str
     journal: str
     year: int
-    participants: int
+    participants: int = Field(default=0)  # Default to 0 if not found
     finding: str
     pmid: str
-    verification_link: str
+    verification_link: str = Field(default="")
     
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}
 
 
 class ActionVariantModel(BaseModel):
@@ -69,7 +69,26 @@ class ActionVariantModel(BaseModel):
     description: str
     image_prompt: str
     
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}
+
+    @classmethod
+    def model_validate(cls, obj):
+        """Custom validation to handle old format from Groq."""
+        if isinstance(obj, dict):
+            # If Groq sends old format with 'specific_action' or 'action' instead of proper fields
+            if ('specific_action' in obj or 'action' in obj) and 'variant_type' not in obj:
+                # Get description from specific_action or action
+                desc = obj.get('specific_action') or obj.get('action') or ''
+                title = obj.get('title') or desc[:50]
+                
+                # Map old format to new
+                obj = {
+                    'variant_type': 'alternative',  # Default type
+                    'title': title,
+                    'description': desc,
+                    'image_prompt': f"Professional photograph of {title}, high quality, natural lighting"
+                }
+        return super().model_validate(obj)
 
 
 class ActionItemModel(BaseModel):
@@ -86,35 +105,35 @@ class ActionItemModel(BaseModel):
     image_prompt: str
     
     # Research studies - required, can be empty []
-    research_studies: List[ResearchStudyModel]
+    research_studies: List[ResearchStudyModel] = Field(default_factory=list)
     
     # Variants - exactly 3 required
     variants: List[ActionVariantModel]
     
     # Category-specific fields - ALL required, use [] for non-matching categories
     # Food fields
-    food_items: List[str]
-    food_amounts: List[str]
+    food_items: List[str] = Field(default_factory=list)
+    food_amounts: List[str] = Field(default_factory=list)
     # Movement fields  
-    exercise_types: List[str]
-    exercise_durations: List[str]
-    exercise_intensities: List[str]
+    exercise_types: List[str] = Field(default_factory=list)
+    exercise_durations: List[str] = Field(default_factory=list)
+    exercise_intensities: List[str] = Field(default_factory=list)
     # Mindfulness fields
-    mindfulness_techniques: List[str]
-    mindfulness_durations: List[str]
+    mindfulness_techniques: List[str] = Field(default_factory=list)
+    mindfulness_durations: List[str] = Field(default_factory=list)
     
     # Metadata - required, can be empty []
-    symptoms: List[str]
-    conditions: List[str]
+    symptoms: List[str] = Field(default_factory=list)
+    conditions: List[str] = Field(default_factory=list)
     
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}
 
 
 class ActionPlanResponseModel(BaseModel):
     """Complete action plan response - exactly 4 actions required."""
     actions: List[ActionItemModel]
     
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LIFESTYLE FOCUS MAPPING (Eat/Move/Pause → Categories)
@@ -1185,8 +1204,19 @@ Each recommendation MUST include:
 - target_hormone: The hormone being targeted
 - hormone_persona_intro: A short, friendly intro from the hormone persona (e.g., "Hi, I'm Cortisol...")
 - image_prompt: A prompt to generate an image for this action
-- research_studies: Array with paper details from research findings (title, journal, year, pmid, finding, verification_link)
-- variants: Array of 3 variants (ActionVariantModel)
+- research_studies: Array of objects with EXACTLY these fields:
+  - title: str
+  - journal: str
+  - year: int
+  - participants: int (use 0 if unknown)
+  - finding: str
+  - pmid: str
+  - verification_link: str
+- variants: Array of 3 objects with EXACTLY these fields (NO specific_action here!):
+  - variant_type: str (e.g., "Easier", "Harder", "Alternative")
+  - title: str
+  - description: str
+  - image_prompt: str
 - Category specific fields (use empty list [] if not applicable):
   - food_items, food_amounts (for food)
   - exercise_types, exercise_durations, exercise_intensities (for movement)
