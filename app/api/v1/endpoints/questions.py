@@ -344,18 +344,9 @@ async def _generate_recommendations_background(session_id: str, service, process
     """
     Generate session recommendations in background
     
-    FLOW CONTEXT:
-    - Hormone analysis was already done in ResultScreen (before ResearchingScreen)
-    - It's cached with 30-min TTL, so calling it here is instant (cache HIT)
-    - We only need to wait for user to select lifestyle_focus (Eat/Move/Pause)
-    
-    Timeline:
-    - 0s: Task starts (hormone analysis already cached from ResultScreen)
-    - 0-4s: Step 0 - "Researching 25000 papers..."
-    - 4-8s: Step 1 - "Personalizing based on your needs"
-    - 8s: Step 2 - User selects Eat/Move/Pause
-    - 9s: Frontend saves lifestyle_focus (1s debounce)
-    - 10s: We read fresh session data and generate recommendations
+    FLOW: Frontend saves lifestyle_focus FIRST, THEN calls this API
+    - No waiting needed - lifestyle_focus is already in DB when this runs
+    - Hormone analysis was already done in ResultScreen (cached)
     """
     try:
         logger.info(f"Background recommendation generation started: {session_id}")
@@ -365,22 +356,7 @@ async def _generate_recommendations_background(session_id: str, service, process
         
         recommendation_service = RecommendationService(db)
         
-        # ═══════════════════════════════════════════════════════════════════════════
-        # WAIT FOR USER TO SELECT LIFESTYLE_FOCUS (Eat/Move/Pause)
-        # ═══════════════════════════════════════════════════════════════════════════
-        # Frontend flow:
-        # - Step 0 (4s): "Researching papers..."
-        # - Step 1 (4s): "Personalizing..."
-        # - Step 2: User selects options (1-2s to decide)
-        # - Debounce (1s): Frontend waits before saving
-        # Total: ~10 seconds before lifestyle_focus is saved to DB
-        # ═══════════════════════════════════════════════════════════════════════════
-        import asyncio
-        logger.info(f"⏳ Waiting 10s for user to select lifestyle_focus (8s animation + 1s selection + 1s debounce)...")
-        await asyncio.sleep(10)
-        logger.info(f"✅ Wait complete, reading session data with lifestyle_focus")
-        
-        # Read FRESH session data (now includes lifestyle_focus!)
+        # Read session data (lifestyle_focus already saved by frontend!)
         session_data = service.get_session_data(session_id)
         if session_data:
             # Create temporary UserProfile (uid is None)
