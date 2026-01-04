@@ -54,10 +54,10 @@ class ResearchStudyModel(BaseModel):
     title: str
     journal: str
     year: int
-    participants: int = 0
+    participants: int = Field(default=0)  # Default to 0 if LLM doesn't provide
     finding: str
     pmid: str
-    verification_link: str
+    verification_link: str = Field(default="")  # Default empty if LLM doesn't provide
     
     model_config = {"extra": "forbid"}  # additionalProperties: false
 
@@ -69,7 +69,22 @@ class ActionVariantModel(BaseModel):
     description: str
     image_prompt: str
     
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}  # Changed from "forbid" to handle Groq's extra fields
+    
+    @classmethod
+    def model_validate(cls, obj):
+        """Custom validation to handle old format from Groq."""
+        if isinstance(obj, dict):
+            # If Groq sends old format with 'action' instead of proper fields
+            if 'action' in obj and 'variant_type' not in obj:
+                # Map old format to new
+                obj = {
+                    'variant_type': 'alternative',  # Default type
+                    'title': obj.get('action', ''),
+                    'description': obj.get('action', ''),
+                    'image_prompt': f"Professional photograph of {obj.get('action', 'healthy food')}, appetizing presentation, natural lighting, 4K quality"
+                }
+        return super().model_validate(obj)
 
 
 class ActionItemModel(BaseModel):
