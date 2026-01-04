@@ -377,8 +377,9 @@ class QuestionService:
                 logger.info(f"Recommendation linking success rate: {success_rate_rec:.1f}% ({len(updated_recommendations)}/{total_recommendations})")
                 logger.info(f"Advice linking success rate: {success_rate_adv:.1f}% ({len(updated_advices)}/{total_advices})")
                 
-                # Return True if at least some succeeded
-                return len(updated_recommendations) > 0 or len(updated_advices) > 0
+                # Return True if the process completed successfully
+                # Even if there are no recommendations (e.g. generation failed), we should still link the user profile/responses
+                return True
                 
             except Exception as e:
                 logger.error(f"Session recommendation permanent storage migration failed: {str(e)}", exc_info=True)
