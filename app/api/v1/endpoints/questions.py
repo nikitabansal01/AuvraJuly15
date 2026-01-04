@@ -344,24 +344,21 @@ async def _generate_recommendations_background(session_id: str, service, process
     """
     Generate session recommendations in background
     
-    SMART OPTIMIZATION:
-    - Start heavy hormone analysis IMMEDIATELY (uses the 8s animation time)
-    - Wait until user selects lifestyle_focus (Eat/Move/Pause)
-    - Then generate recommendations with user's preference applied
+    FLOW CONTEXT:
+    - Hormone analysis was already done in ResultScreen (before ResearchingScreen)
+    - It's cached with 30-min TTL, so calling it here is instant (cache HIT)
+    - We only need to wait for user to select lifestyle_focus (Eat/Move/Pause)
     
     Timeline:
-    - 0s: Task starts, hormone analysis begins (cache check + LLM if needed)
-    - 0-8s: Frontend shows animation, hormone analysis completes
-    - 8s: User reaches Step 2 (selection screen)
-    - 9s: User makes selection, frontend updates session (1s debounce)
-    - 10s: This task reads fresh lifestyle_focus and generates recommendations
+    - 0s: Task starts (hormone analysis already cached from ResultScreen)
+    - 0-4s: Step 0 - "Researching 25000 papers..."
+    - 4-8s: Step 1 - "Personalizing based on your needs"
+    - 8s: Step 2 - User selects Eat/Move/Pause
+    - 9s: Frontend saves lifestyle_focus (1s debounce)
+    - 10s: We read fresh session data and generate recommendations
     """
     try:
         logger.info(f"Background recommendation generation started: {session_id}")
-        
-        # NOTE: Do NOT clear caches here! The hormone_analysis was already cached
-        # in the main endpoint before this background task started.
-        # Session-level caching via get_cached_hormone_analysis handles this.
         
         # Update to processing started status
         processing_service.update_processing_started(session_id)
@@ -369,48 +366,21 @@ async def _generate_recommendations_background(session_id: str, service, process
         recommendation_service = RecommendationService(db)
         
         # ═══════════════════════════════════════════════════════════════════════════
-        # PHASE 1: Start hormone analysis IMMEDIATELY (heavy computation)
+        # WAIT FOR USER TO SELECT LIFESTYLE_FOCUS (Eat/Move/Pause)
         # ═══════════════════════════════════════════════════════════════════════════
-        # This is the expensive part - runs during frontend animation
-        # Result is cached, so it's instant if already run
-        session_data_initial = service.get_session_data(session_id)
-        if session_data_initial:
-            temp_profile_for_hormone = {
-                "age": session_data_initial.age,
-                "period_description": session_data_initial.period_description,
-                "birth_control": session_data_initial.birth_control,
-                "cycle_length": session_data_initial.cycle_length,
-                "period_concerns": session_data_initial.period_concerns,
-                "body_concerns": session_data_initial.body_concerns,
-                "skin_hair_concerns": session_data_initial.skin_hair_concerns,
-                "mental_health_concerns": session_data_initial.mental_health_concerns,
-                "other_concerns": session_data_initial.other_concerns,
-                "top_concern": session_data_initial.top_concern,
-                "diagnosed_conditions": session_data_initial.diagnosed_conditions,
-                "family_history": session_data_initial.family_history,
-                "workout_intensity": session_data_initial.workout_intensity,
-                "sleep_duration": session_data_initial.sleep_duration,
-                "stress_level": session_data_initial.stress_level
-            }
-            
-            # Run hormone analysis NOW (uses animation time productively)
-            logger.info(f"🔬 Phase 1: Running hormone analysis during animation...")
-            root_cause_analysis = get_cached_hormone_analysis(session_id, temp_profile_for_hormone)
-            logger.info(f"✅ Hormone analysis complete: {root_cause_analysis.get('primary_imbalance')}")
-        
+        # Frontend flow:
+        # - Step 0 (4s): "Researching papers..."
+        # - Step 1 (4s): "Personalizing..."
+        # - Step 2: User selects options (1-2s to decide)
+        # - Debounce (1s): Frontend waits before saving
+        # Total: ~10 seconds before lifestyle_focus is saved to DB
         # ═══════════════════════════════════════════════════════════════════════════
-        # PHASE 2: Wait for user to select lifestyle_focus (Eat/Move/Pause)
-        # ═══════════════════════════════════════════════════════════════════════════
-        # Timeline: 0-4s (Step 0) + 4-8s (Step 1) + ~1-2s (selection)
-        # Total wait: ~10 seconds to ensure user has made selection
         import asyncio
-        logger.info(f"⏳ Phase 2: Waiting 10s for user to select lifestyle_focus...")
-        await asyncio.sleep(10)  # Wait for user selection (8s animation + 1s debounce + buffer)
-        logger.info(f"✅ Wait complete, reading fresh session data with lifestyle_focus")
+        logger.info(f"⏳ Waiting 10s for user to select lifestyle_focus (8s animation + 1s selection + 1s debounce)...")
+        await asyncio.sleep(10)
+        logger.info(f"✅ Wait complete, reading session data with lifestyle_focus")
         
-        # ═══════════════════════════════════════════════════════════════════════════
-        # PHASE 3: Read FRESH session data (now includes lifestyle_focus!)
-        # ═══════════════════════════════════════════════════════════════════════════
+        # Read FRESH session data (now includes lifestyle_focus!)
         session_data = service.get_session_data(session_id)
         if session_data:
             # Create temporary UserProfile (uid is None)
