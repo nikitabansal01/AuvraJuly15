@@ -479,6 +479,13 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             - secondary_levels: List of secondary hormone levels
             - all_scores: Dict of all hormone scores (for debugging)
         """
+        logger.info("🔬 ===== HORMONE ANALYSIS STARTED =====")
+        logger.info(f"🔬 Input data keys: {list(user_data.keys())}")
+        logger.info(f"🔬 period_description: {user_data.get('period_description')}")
+        logger.info(f"🔬 period_concerns: {user_data.get('period_concerns')}")
+        logger.info(f"🔬 mental_health_concerns: {user_data.get('mental_health_concerns')}")
+        logger.info(f"🔬 other_concerns: {user_data.get('other_concerns')}")
+        
         # Initialize scores for 8 hormone states
         scores = {
             "estrogen_high": 0,
@@ -713,9 +720,9 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
         
         # Debug logging to verify extraction
         if symptom_others or family_others:
-            print(f"🔍 Extracted Others text:")
-            print(f"   Symptom sources: {symptom_others_texts}")
-            print(f"   Family sources: {family_others_texts}")
+            logger.info(f"🔍 Extracted Others text:")
+            logger.info(f"   Symptom sources: {symptom_others_texts}")
+            logger.info(f"   Family sources: {family_others_texts}")
         
         # Call LLM if we have any "Others" text
         if symptom_others or family_others:
@@ -723,6 +730,9 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             # Add LLM scores to totals
             for hormone, score in llm_scores.items():
                 scores[hormone] += score
+        
+        # Log scores after all rule-based and LLM scoring
+        logger.info(f"🔬 AFTER ALL SCORING: {scores}")
         
         # 11. TOP CONCERN MULTIPLIER (1.5x)
         # Apply 1.5x multiplier to hormones associated with user's top concern
@@ -765,7 +775,7 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
                 # The LLM already scored it above (section 10)
                 # We apply a general multiplier to all non-zero LLM-scored hormones
                 # This is handled by the LLM process above, no additional action needed
-                print(f"📌 Top concern is custom 'Others:' text: {top_concern}")
+                logger.info(f"📌 Top concern is custom 'Others:' text: {top_concern}")
                 # Note: LLM scores were already added in section 10
 
         
@@ -806,10 +816,10 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             secondary_imbalances.append(h_name)
             secondary_levels.append(h_level)
         
-        print(f"🧬 Hormone Analysis Complete:")
-        print(f"   Primary: {primary_hormone} ({primary_level}) - Score: {primary_score}")
-        print(f"   Secondary: {list(zip(secondary_imbalances, secondary_levels))}")
-        print(f"   All Scores: {sorted_scores[:5]}")  # Top 5 scores
+        logger.info(f"🧬 Hormone Analysis Complete:")
+        logger.info(f"   Primary: {primary_hormone} ({primary_level}) - Score: {primary_score}")
+        logger.info(f"   Secondary: {list(zip(secondary_imbalances, secondary_levels))}")
+        logger.info(f"   All Scores: {sorted_scores[:5]}")  # Top 5 scores
         
         return {
             "primary_imbalance": primary_hormone,
