@@ -1095,6 +1095,8 @@ async def submit_daily_review(
         
         # Recalculate streak
         if streak_maintained:
+            # Flush changes to DB so streak service can see them
+            db.flush()
             new_streak = streak_service.calculate_streak_from_actions(uid)
             streak_data.current_streak = new_streak
             streak_data.longest_streak = max(streak_data.longest_streak, new_streak)
