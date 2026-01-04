@@ -342,96 +342,170 @@ async def start_session_recommendations_generation(
 
 async def _generate_recommendations_background(session_id: str, service, processing_service, db) -> None:
     """
-    Generate session recommendations in background
+    Generate session recommendations in background.
     
-    NEW APPROACH: ONE API call generates exactly 4 recommendations
-    - Distribution based on lifestyle_focus (Eat/Move/Pause)
-    - Much faster than 3 separate API calls
+    NEW ARCHITECTURE (PubMed-Backed):
+    - Generates EXACTLY 4 recommendations total (not 12)
+    - Uses REAL PubMed citations (like action_plan_generator)
+    - 2 for primary hormone, 2 for secondary hormone
+    - Categories based on lifestyle_focus preference
     """
     try:
-        logger.info(f"Background recommendation generation started: {session_id}")
+        logger.info(f"🚀 Background recommendation generation started: {session_id}")
         
         # Update to processing started status
         processing_service.update_processing_started(session_id)
         
-        # Read session data
+        # Create temporary UserProfile from session data
         session_data = service.get_session_data(session_id)
-        if not session_data:
+        if session_data:
+            # Create temporary UserProfile (uid is None)
+            temp_user_profile = {
+                "age": session_data.age,
+                "period_description": session_data.period_description,
+                "birth_control": session_data.birth_control,
+                "cycle_length": session_data.cycle_length,
+                "period_concerns": session_data.period_concerns,
+                "body_concerns": session_data.body_concerns,
+                "skin_hair_concerns": session_data.skin_hair_concerns,
+                "mental_health_concerns": session_data.mental_health_concerns,
+                "other_concerns": session_data.other_concerns,
+                "top_concern": session_data.top_concern,
+                "diagnosed_conditions": session_data.diagnosed_conditions,
+                "family_history": session_data.family_history,
+                "workout_intensity": session_data.workout_intensity,
+                "sleep_duration": session_data.sleep_duration,
+                "stress_level": session_data.stress_level,
+                # PERSONALIZATION: Eat/Move/Pause preference
+                "lifestyle_focus": getattr(session_data, 'lifestyle_focus', None) or [],
+                # For the new engine
+                "conditions": session_data.diagnosed_conditions or ['PCOS']
+            }
+            
+            # Use session-level caching - this will be a cache HIT from the main endpoint
+            root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
+            temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
+            temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
+            
+            # Save root cause results to QuestionSession (only if not already saved)
+            session = service.get_session(session_id)
+            if session and not session.primary_hormone:
+                session.primary_hormone = root_cause_analysis["primary_imbalance"]
+                session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
+                db.commit()
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # NEW: Use PubMed-backed unified recommendation generator
+            # Generates exactly 4 recommendations with REAL citations
+            # ═══════════════════════════════════════════════════════════════════════
+            logger.info(f"🔬 Using PubMed-backed recommendation generator...")
+            
+            # Mark all categories as processing
+            for category in ["food", "movement", "mindfulness"]:
+                processing_service.update_category_status(session_id, category, "processing", f"{category} recommendation generation in progress")
+            
+            # Import the new unified function
+            from app.services.prompt_recommendation_engine import generate_session_recommendations_with_pubmed
+            
+            # Generate all 4 recommendations in one call with PubMed citations
+            recommendations = await generate_session_recommendations_with_pubmed(temp_user_profile, db=None)
+            
+            if recommendations:
+                # Save recommendations to database using the existing model
+                from app.core.database import RecommendationRecord
+                
+                # Group by category for status tracking
+                categories_generated = set()
+                
+                for rec in recommendations:
+                    category = rec.get('category', 'food')
+                    categories_generated.add(category)
+                    
+                    # Extract research studies for the database
+                    research_studies = rec.get('research_studies', [])
+                    research_summary = ''
+                    if research_studies and len(research_studies) > 0:
+                        first_study = research_studies[0]
+                        research_summary = first_study.get('finding', '')
+                    
+                    # Create database record using existing RecommendationRecord model
+                    session_rec = RecommendationRecord(
+                        session_id=session_id,
+                        uid=None,  # Session-based, not user-based
+                        recommendation_type='session_pubmed',
+                        category=category,
+                        title=rec.get('title', 'Recommendation'),
+                        purpose=rec.get('purpose', ''),
+                        specific_action=rec.get('specificAction', ''),
+                        priority=rec.get('priority', 'high'),
+                        contraindications=rec.get('contraindications', []),
+                        conditions=rec.get('conditions', []),
+                        symptoms=rec.get('symptoms', []),
+                        hormones=rec.get('hormones', []),
+                        research_summary=research_summary,
+                        research_studies=research_studies,
+                        # Category-specific fields
+                        food_amounts=rec.get('food_amounts'),
+                        food_items=rec.get('food_items'),
+                        exercise_durations=rec.get('exercise_durations'),
+                        exercise_types=rec.get('exercise_types'),
+                        exercise_intensities=rec.get('exercise_intensities'),
+                        mindfulness_durations=rec.get('mindfulness_durations'),
+                        mindfulness_techniques=rec.get('mindfulness_techniques'),
+                        # Common fields
+                        frequency_detail=rec.get('frequency_detail'),
+                        duration_weeks=rec.get('duration_weeks'),
+                        optimal_times=rec.get('optimal_times')
+                    )
+                    db.add(session_rec)
+                
+                db.commit()
+                
+                # Update status for all generated categories
+                for cat in categories_generated:
+                    processing_service.update_category_status(session_id, cat, "completed", f"{cat} recommendation completed")
+                
+                # Mark unused categories as completed (with 0 recommendations)
+                for cat in ["food", "movement", "mindfulness"]:
+                    if cat not in categories_generated:
+                        processing_service.update_category_status(session_id, cat, "completed", f"No {cat} recommendations (based on lifestyle focus)")
+                
+                logger.info(f"✅ Saved {len(recommendations)} recommendations to database")
+                
+                result_summary = {
+                    "successful_categories": list(categories_generated),
+                    "failed_categories": [],
+                    "total_recommendations": len(recommendations)
+                }
+            else:
+                logger.warning(f"⚠️ No recommendations generated - using fallback")
+                result_summary = {
+                    "successful_categories": [],
+                    "failed_categories": ["all"],
+                    "total_recommendations": 0
+                }
+            
+            # Update heartbeat
+            processing_service.update_heartbeat(session_id)
+            
+            # Complete overall processing
+            processing_service.update_processing_completed(session_id, result_summary)
+            
+            logger.info(f"✅ Background session recommendation generation completed: {session_id}")
+            logger.info(f"   Total recommendations: {result_summary.get('total_recommendations', 0)}")
+            
+            # OPTIMIZATION: Clear session caches AFTER all recommendations are generated
+            try:
+                from app.services.cache_service import clear_session_caches
+                cache_results = clear_session_caches()
+                logger.info(f"🧹 Session caches cleared after completion: {cache_results}")
+            except Exception as cache_err:
+                logger.warning(f"⚠️ Cache clear failed (non-fatal): {cache_err}")
+            
+        else:
             logger.warning(f"Session data not found: {session_id}")
             processing_service.update_processing_failed(session_id, {"error": "Session data not found"})
             return
-        
-        # Build user profile
-        temp_user_profile = {
-            "age": session_data.age,
-            "period_concerns": session_data.period_concerns,
-            "body_concerns": session_data.body_concerns,
-            "skin_hair_concerns": session_data.skin_hair_concerns,
-            "mental_health_concerns": session_data.mental_health_concerns,
-            "other_concerns": session_data.other_concerns,
-            "top_concern": session_data.top_concern,
-            "diagnosed_conditions": session_data.diagnosed_conditions,
-            "lifestyle_focus": getattr(session_data, 'lifestyle_focus', None) or []
-        }
-        
-        # Get hormone analysis (cache HIT from ResultScreen)
-        root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
-        temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
-        temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
-        
-        # Build symptoms list
-        symptoms = []
-        for field in ['period_concerns', 'body_concerns', 'skin_hair_concerns', 'mental_health_concerns', 'other_concerns']:
-            val = getattr(session_data, field, None)
-            if val:
-                if isinstance(val, list):
-                    symptoms.extend(val)
-                else:
-                    symptoms.append(val)
-        temp_user_profile["symptoms"] = symptoms or ['hormone imbalance']
-        temp_user_profile["conditions"] = session_data.diagnosed_conditions or ['PCOS']
-        
-        # Save hormone results
-        session = service.get_session(session_id)
-        if session and not session.primary_hormone:
-            session.primary_hormone = root_cause_analysis["primary_imbalance"]
-            session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
-            db.commit()
-        
-        # Mark as processing
-        processing_service.update_category_status(session_id, "all", "processing", "Generating personalized recommendations")
-        
-        # ═══════════════════════════════════════════════════════════════════════════
-        # NEW: ONE API call generates ALL 4 recommendations
-        # ═══════════════════════════════════════════════════════════════════════════
-        from app.services.session_recommendation_engine import generate_session_recommendations_unified
-        
-        recommendations = await generate_session_recommendations_unified(temp_user_profile)
-        
-        if recommendations:
-            # Save recommendations to DB using existing service
-            recommendation_service = RecommendationService(db)
-            user_hormones = {
-                'primaryImbalance': temp_user_profile.get('primaryImbalance'),
-                'secondaryImbalances': temp_user_profile.get('secondaryImbalances', [])
-            }
-            
-            for rec in recommendations:
-                category = rec.get('category', 'food')
-                # Use existing save method that handles all fields properly
-                await recommendation_service._save_single_session_recommendation(
-                    session_id=session_id,
-                    rec=rec,
-                    category=category,
-                    user_hormones=user_hormones
-                )
-            
-            processing_service.update_category_status(session_id, "all", "completed", f"Generated {len(recommendations)} recommendations")
-            processing_service.update_processing_completed(session_id, {"total": len(recommendations)})
-            logger.info(f"✅ Session recommendations complete: {session_id}, count={len(recommendations)}")
-        else:
-            processing_service.update_processing_failed(session_id, {"error": "No recommendations generated"})
-            logger.error(f"❌ No recommendations generated for {session_id}")
             
     except Exception as e:
         logger.error(f"Background session recommendation generation failed: {str(e)}", exc_info=True)

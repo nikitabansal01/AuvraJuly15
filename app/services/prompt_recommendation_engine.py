@@ -919,3 +919,297 @@ async def generate_prompt_recommendations(
     """
     engine = get_prompt_engine()
     return await engine.generate_recommendations(user_profile, category)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEW: UNIFIED SESSION RECOMMENDATIONS WITH REAL PUBMED CITATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+# 
+# This generates EXACTLY 4 recommendations for signup (similar to action_plan_generator)
+# with REAL PubMed citations - NOT GPT-fabricated citations.
+# 
+# Distribution:
+# - 2 recommendations for PRIMARY hormone
+# - 2 recommendations for SECONDARY hormone
+# 
+# Categories are mixed based on lifestyle_focus preference
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def generate_session_recommendations_with_pubmed(
+    user_profile: Dict[str, Any],
+    db = None
+) -> List[Dict[str, Any]]:
+    """
+    Generate exactly 4 session recommendations with REAL PubMed citations.
+    
+    This mirrors the action_plan_generator approach:
+    1. Research phase: Search PubMed for real papers
+    2. Generation phase: GPT creates recommendations based on research
+    
+    Args:
+        user_profile: User's health profile
+        db: Database session for PubMed caching
+        
+    Returns:
+        List of 4 recommendations with real citations
+    """
+    import asyncio
+    from app.services.pubmed_service import execute_pubmed_tool
+    
+    logger.info("=" * 70)
+    logger.info("🔬 UNIFIED SESSION RECOMMENDATIONS (PubMed-Backed)")
+    logger.info("=" * 70)
+    
+    # Extract user info
+    primary_hormone = user_profile.get('primaryImbalance', 'insulin')
+    secondary_hormones = user_profile.get('secondaryImbalances', [])
+    secondary_hormone = secondary_hormones[0] if secondary_hormones else 'cortisol'
+    diagnosed_conditions = user_profile.get('conditions', ['PCOS'])
+    lifestyle_focus = user_profile.get('lifestyle_focus', [])
+    
+    condition_str = ', '.join(diagnosed_conditions) if diagnosed_conditions else 'PCOS'
+    
+    # Determine category distribution based on lifestyle_focus
+    # Default: 2 food, 1 movement, 1 mindfulness
+    # Eat focus: 3 food, 1 movement or mindfulness
+    # Move focus: 1 food, 2 movement, 1 mindfulness
+    # Pause focus: 1 food, 1 movement, 2 mindfulness
+    
+    if 'eat' in [lf.lower() for lf in lifestyle_focus]:
+        categories = ['food', 'food', 'food', 'movement']
+    elif 'move' in [lf.lower() for lf in lifestyle_focus]:
+        categories = ['food', 'movement', 'movement', 'mindfulness']
+    elif 'pause' in [lf.lower() for lf in lifestyle_focus]:
+        categories = ['food', 'movement', 'mindfulness', 'mindfulness']
+    else:
+        # Default balanced
+        categories = ['food', 'food', 'movement', 'mindfulness']
+    
+    # Hormone assignment: 2 for primary, 2 for secondary
+    hormones = [primary_hormone, primary_hormone, secondary_hormone, secondary_hormone]
+    
+    logger.info(f"📋 User Profile:")
+    logger.info(f"   Primary: {primary_hormone}")
+    logger.info(f"   Secondary: {secondary_hormone}")
+    logger.info(f"   Lifestyle Focus: {lifestyle_focus}")
+    logger.info(f"   Categories: {categories}")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 1: RESEARCH PHASE - Search PubMed for REAL papers
+    # ═══════════════════════════════════════════════════════════════════════
+    logger.info("🔬 STEP 1: Research Discovery Phase - Finding real papers...")
+    
+    # Build research queries
+    research_queries = []
+    for i, (cat, hormone) in enumerate(zip(categories, hormones)):
+        if cat == 'food':
+            query = f"{hormone} food nutrition {condition_str} women intervention"
+        elif cat == 'movement':
+            query = f"exercise physical activity {hormone} {condition_str} women"
+        else:  # mindfulness
+            query = f"mindfulness stress reduction {hormone} {condition_str} women"
+        research_queries.append({
+            'query': query,
+            'category': cat,
+            'hormone': hormone,
+            'index': i
+        })
+    
+    # Parallel PubMed searches
+    async def fetch_paper(q: Dict) -> Dict:
+        try:
+            paper = await execute_pubmed_tool({
+                'query': q['query'],
+                'action_title': f"Research {q['index'] + 1}",
+                'category': q['category'],
+                'target_hormone': q['hormone']
+            }, db=db)
+            
+            if paper and paper.get('title'):
+                return {
+                    'category': q['category'],
+                    'hormone': q['hormone'],
+                    'paper': paper
+                }
+            return {'category': q['category'], 'hormone': q['hormone'], 'paper': None}
+        except Exception as e:
+            logger.warning(f"PubMed search failed: {e}")
+            return {'category': q['category'], 'hormone': q['hormone'], 'paper': None}
+    
+    results = await asyncio.gather(*[fetch_paper(q) for q in research_queries])
+    
+    # Count successful papers
+    papers_found = sum(1 for r in results if r.get('paper'))
+    logger.info(f"🔬 Research complete: Found {papers_found}/4 relevant papers")
+    
+    # Build research context for GPT
+    research_context = []
+    for r in results:
+        if r.get('paper'):
+            p = r['paper']
+            research_context.append(f"""
+📚 Research for {r['hormone'].upper()} ({r['category']}):
+   Title: {p.get('title', 'Unknown')}
+   Journal: {p.get('journal', 'Unknown')} ({p.get('year', 'N/A')})
+   Finding: {p.get('finding', 'No finding extracted')}
+   PMID: {p.get('pmid', 'N/A')}
+   Verification: {p.get('verification_link', 'N/A')}
+""")
+    
+    research_summary = '\n'.join(research_context) if research_context else "No papers found - use your medical knowledge."
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 2: GENERATION PHASE - GPT creates recommendations based on research
+    # ═══════════════════════════════════════════════════════════════════════
+    logger.info("🤖 STEP 2: Generating recommendations based on research...")
+    
+    prompt = f"""You are AUVRA, a women's hormone health AI. Generate EXACTLY 4 personalized recommendations.
+
+═══════════════════════════════════════════════════════════════════════════════
+USER PROFILE
+═══════════════════════════════════════════════════════════════════════════════
+- Primary Hormone: {primary_hormone.upper()}
+- Secondary Hormone: {secondary_hormone.upper()}
+- Conditions: {condition_str}
+- Age: {user_profile.get('age', 30)}
+- Lifestyle Focus: {', '.join(lifestyle_focus) if lifestyle_focus else 'Balanced'}
+
+═══════════════════════════════════════════════════════════════════════════════
+RESEARCH FINDINGS (USE THESE FOR CITATIONS!)
+═══════════════════════════════════════════════════════════════════════════════
+{research_summary}
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK: Generate exactly 4 recommendations
+═══════════════════════════════════════════════════════════════════════════════
+Requirements:
+1. Rec 1: {categories[0].upper()} for {hormones[0].upper()} - based on research above
+2. Rec 2: {categories[1].upper()} for {hormones[1].upper()} - based on research above
+3. Rec 3: {categories[2].upper()} for {hormones[2].upper()} - based on research above
+4. Rec 4: {categories[3].upper()} for {hormones[3].upper()} - based on research above
+
+Each recommendation MUST include:
+- title: Simple name (e.g., "Cinnamon", "Morning Yoga", "Deep Breathing")
+- category: "{categories[0]}" or "{categories[1]}" or "{categories[2]}" or "{categories[3]}"
+- purpose: 1-2 sentences
+- specificAction: EXACT instructions with amounts/durations
+- frequency: "Daily" or "Weekly"
+- intensity: "Low", "Moderate", "High"
+- expectedTimeline: When to expect results
+- priority: "high"
+- hormones: Array with the target hormone
+- research_studies: Array with paper details from research findings (title, journal, year, pmid, finding, verification_link)
+
+CRITICAL: Use the ACTUAL paper details from the research findings above. 
+Include the real PMID and verification_link for each citation.
+
+Return ONLY a valid JSON array with exactly 4 recommendations.
+"""
+
+    # Call GPT
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        body = {
+            "model": MODEL,
+            "messages": [
+                {"role": "system", "content": "You are AUVRA. Return only valid JSON array."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 4000,
+            "response_format": {"type": "json_object"}
+        }
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=body
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"OpenAI error: {response.text[:200]}")
+                raise Exception(f"OpenAI returned {response.status_code}")
+            
+            data = response.json()
+            content = data['choices'][0]['message']['content']
+            
+            # Parse response
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                # Try to find array in dict
+                for key in ['recommendations', 'items', 'results']:
+                    if key in parsed and isinstance(parsed[key], list):
+                        recommendations = parsed[key]
+                        break
+                else:
+                    recommendations = []
+            else:
+                recommendations = parsed if isinstance(parsed, list) else []
+            
+            # Post-process: add missing fields, inject real paper data
+            final_recs = []
+            for i, rec in enumerate(recommendations[:4]):
+                # Ensure category
+                rec['category'] = categories[i] if i < len(categories) else 'food'
+                rec['hormones'] = [hormones[i] if i < len(hormones) else primary_hormone]
+                
+                # Inject real paper if available
+                research_result = results[i] if i < len(results) else None
+                if research_result and research_result.get('paper'):
+                    paper = research_result['paper']
+                    rec['research_studies'] = [{
+                        'title': paper.get('title', ''),
+                        'journal': paper.get('journal', ''),
+                        'year': paper.get('year', ''),
+                        'pmid': paper.get('pmid', ''),
+                        'finding': paper.get('finding', ''),
+                        'verification_link': paper.get('verification_link', '')
+                    }]
+                    rec['citation_verified'] = True
+                else:
+                    rec['citation_verified'] = False
+                
+                # Standard fields
+                rec.setdefault('priority', 'high')
+                rec.setdefault('frequency', 'Daily')
+                rec.setdefault('intensity', 'Moderate')
+                rec.setdefault('expectedTimeline', '4-8 weeks')
+                rec.setdefault('conditions', diagnosed_conditions)
+                rec.setdefault('frequency_detail', 'daily:1')
+                rec.setdefault('duration_weeks', 12)
+                rec.setdefault('optimal_times', ['morning'])
+                rec.setdefault('contraindications', [])
+                
+                # Category-specific fields
+                if rec['category'] == 'food':
+                    rec.setdefault('food_amounts', [])
+                    rec.setdefault('food_items', [])
+                elif rec['category'] == 'movement':
+                    rec.setdefault('exercise_durations', ['20 min'])
+                    rec.setdefault('exercise_types', ['general'])
+                    rec.setdefault('exercise_intensities', ['moderate'])
+                else:
+                    rec.setdefault('mindfulness_durations', ['10 min'])
+                    rec.setdefault('mindfulness_techniques', ['breathing'])
+                
+                rec['rag_version'] = 'pubmed_backed_v1'
+                
+                final_recs.append(rec)
+                logger.info(f"   ✅ Rec {i+1}: {rec.get('title', 'N/A')[:30]} | {rec['category']} | {'📚' if rec['citation_verified'] else '❌'}")
+            
+            logger.info("=" * 70)
+            logger.info(f"✅ SESSION RECOMMENDATIONS COMPLETE: {len(final_recs)} recommendations")
+            logger.info(f"   Papers found: {papers_found}/4")
+            logger.info("=" * 70)
+            
+            return final_recs
+            
+    except Exception as e:
+        logger.error(f"❌ Session recommendation generation failed: {e}")
+        # Return empty - caller should handle fallback
+        return []
