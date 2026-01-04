@@ -1015,45 +1015,55 @@ async def generate_session_recommendations_with_pubmed(
     condition_str = ', '.join(diagnosed_conditions) if diagnosed_conditions else 'PCOS'
     
     # Determine category distribution based on lifestyle_focus
-    if 'eat' in [lf.lower() for lf in lifestyle_focus]:
-        categories = ['food', 'food', 'food', 'movement']
-    elif 'move' in [lf.lower() for lf in lifestyle_focus]:
-        categories = ['food', 'movement', 'movement', 'mindfulness']
-    elif 'pause' in [lf.lower() for lf in lifestyle_focus]:
-        categories = ['food', 'movement', 'mindfulness', 'mindfulness']
-    else:
-        # Default balanced
-        categories = ['food', 'food', 'movement', 'mindfulness']
+    # SIMPLIFIED: We don't force categories anymore. We let the LLM decide.
+    # But for research purposes, we need to search for relevant topics.
     
-    # Hormone assignment: 2 for primary, 2 for secondary
+    # Research Strategy: Cover all bases so LLM has options
+    # 1. Primary Hormone + Food
+    # 2. Primary Hormone + Movement
+    # 3. Primary Hormone + Mindfulness
+    # 4. Secondary Hormone + (User Preference or General)
+    
+    # Hormone assignment: 2 for primary, 2 for secondary (Guideline for LLM)
     hormones = [primary_hormone, primary_hormone, secondary_hormone, secondary_hormone]
     
     logger.info(f"📋 User Profile:")
     logger.info(f"   Primary: {primary_hormone}")
     logger.info(f"   Secondary: {secondary_hormone}")
     logger.info(f"   Lifestyle Focus: {lifestyle_focus}")
-    logger.info(f"   Categories: {categories}")
     
     # ═══════════════════════════════════════════════════════════════════════
     # STEP 1: RESEARCH PHASE - Search PubMed for REAL papers
     # ═══════════════════════════════════════════════════════════════════════
     logger.info("🔬 STEP 1: Research Discovery Phase - Finding real papers...")
     
-    # Build research queries
-    research_queries = []
-    for i, (cat, hormone) in enumerate(zip(categories, hormones)):
-        if cat == 'food':
-            query = f"{hormone} food nutrition {condition_str} women intervention"
-        elif cat == 'movement':
-            query = f"exercise physical activity {hormone} {condition_str} women"
-        else:  # mindfulness
-            query = f"mindfulness stress reduction {hormone} {condition_str} women"
-        research_queries.append({
-            'query': query,
-            'category': cat,
-            'hormone': hormone,
-            'index': i
-        })
+    # Build research queries - Broad coverage
+    research_queries = [
+        {
+            'query': f"{primary_hormone} nutrition food {condition_str} women intervention",
+            'category': 'food',
+            'hormone': primary_hormone,
+            'index': 0
+        },
+        {
+            'query': f"{primary_hormone} exercise physical activity {condition_str} women",
+            'category': 'movement',
+            'hormone': primary_hormone,
+            'index': 1
+        },
+        {
+            'query': f"{primary_hormone} mindfulness stress reduction {condition_str} women",
+            'category': 'mindfulness',
+            'hormone': primary_hormone,
+            'index': 2
+        },
+        {
+            'query': f"{secondary_hormone} management {condition_str} women",
+            'category': 'general',
+            'hormone': secondary_hormone,
+            'index': 3
+        }
+    ]
     
     # Parallel PubMed searches
     async def fetch_paper(q: Dict) -> Dict:
@@ -1125,15 +1135,20 @@ RESEARCH FINDINGS (USE THESE FOR CITATIONS!)
 ═══════════════════════════════════════════════════════════════════════════════
 TASK: Generate exactly 4 recommendations
 ═══════════════════════════════════════════════════════════════════════════════
-Requirements:
-1. Rec 1: {categories[0].upper()} for {hormones[0].upper()} - based on research above
-2. Rec 2: {categories[1].upper()} for {hormones[1].upper()} - based on research above
-3. Rec 3: {categories[2].upper()} for {hormones[2].upper()} - based on research above
-4. Rec 4: {categories[3].upper()} for {hormones[3].upper()} - based on research above
+Instructions:
+1. Create a balanced plan totaling exactly 4 actions.
+2. You MUST prioritize the user's Lifestyle Focus ({', '.join(lifestyle_focus) if lifestyle_focus else 'Balanced'}).
+   - If they prefer "Eat", include more Food actions.
+   - If they prefer "Move", include more Movement actions.
+   - If they prefer "Pause", include more Mindfulness actions.
+   - If Balanced/None, provide a mix.
+3. Ensure at least 2 actions target the Primary Hormone ({primary_hormone}).
+4. Ensure at least 1 action targets the Secondary Hormone ({secondary_hormone}).
+5. Use the provided research findings to back up your recommendations where possible.
 
 Each recommendation MUST include:
 - title: Simple name (e.g., "Cinnamon", "Morning Yoga", "Deep Breathing")
-- category: "{categories[0]}" or "{categories[1]}" or "{categories[2]}" or "{categories[3]}"
+- category: "food", "movement", or "mindfulness"
 - time_slot: "morning", "afternoon", or "evening"
 - specific_action: EXACT instructions with amounts/durations
 - purpose: 1-2 sentences explaining WHY this helps the specific hormone/condition
