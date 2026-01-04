@@ -498,26 +498,31 @@ OUTPUT FORMAT (for each action)
 12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
 
 ══════════════════════════════════════════════════════════════════════
-🎯 TITLE RULES (VERY IMPORTANT - KEEP IT SIMPLE!)
+🎯 TITLE RULES (CRITICAL - INGREDIENT/ACTIVITY NAME ONLY!)
 ══════════════════════════════════════════════════════════════════════
-Titles should be SHORT, CLEAN, and NAME THE ITEM/ACTIVITY ONLY.
-NO adjectives like "powerful", "amazing", "gentle morning", etc.
+Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
+❌ NO preparation methods (latte, tea, smoothie, etc.)
+❌ NO adjectives (powerful, amazing, gentle, etc.)
 
-✅ GOOD FOOD TITLES (just the food item):
-- "Pumpkin Seeds"
-- "Ashwagandha"
-- "Flaxseeds"
-- "Chia Seeds"
-- "Turmeric Latte"
-- "Salmon"
+✅ GOOD FOOD TITLES (RAW INGREDIENT ONLY):
+- "Pumpkin Seeds" (NOT "Pumpkin Seed Snack")
+- "Ashwagandha" (NOT "Ashwagandha Tea" or "Ashwagandha Latte")
+- "Flaxseeds" (NOT "Flaxseed Smoothie")
+- "Chia Seeds" (NOT "Chia Pudding")
+- "Turmeric" (NOT "Turmeric Latte" or "Golden Milk")
+- "Salmon" (NOT "Grilled Salmon")
 - "Dark Chocolate"
-- "Spearmint Tea"
-- "Maca Powder"
+- "Spearmint" (NOT "Spearmint Tea")
+- "Maca"
+- "Cinnamon" (NOT "Cinnamon Oatmeal")
 
-❌ BAD FOOD TITLES (too wordy):
-- "Pumpkin Seed Power" → should be "Pumpkin Seeds"
-- "Amazing Ashwagandha Boost" → should be "Ashwagandha"
-- "Flaxseed Morning Magic" → should be "Flaxseeds"
+❌ BAD FOOD TITLES (includes preparation - WRONG!):
+- "Turmeric Latte" → should be "Turmeric"
+- "Ashwagandha Tea" → should be "Ashwagandha"
+- "Spearmint Tea" → should be "Spearmint"
+- "Pumpkin Seed Butter" → should be "Pumpkin Seeds"
+- "Golden Milk" → should be "Turmeric"
+- "Flaxseed Smoothie" → should be "Flaxseeds"
 
 ✅ GOOD MOVEMENT TITLES (simple activity name):
 - "Post-Meal Walk"
@@ -3507,10 +3512,11 @@ REQUIRED OUTPUT FIELDS (ALL actions):
 11. symptoms: Pick 1-3 from user's health concerns
 12. conditions: Array of conditions this helps
 
-🎯 TITLE RULES:
-- FOOD: Just the food name (e.g., "Pumpkin Seeds", "Ashwagandha", "Salmon")
+🎯 TITLE RULES (RAW INGREDIENT/ACTIVITY NAME ONLY!):
+- FOOD: Just the ingredient ("Turmeric" NOT "Turmeric Latte", "Ashwagandha" NOT "Ashwagandha Tea")
 - MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Hip Stretches")
 - MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
+- NO preparation methods (latte, tea, smoothie) - those go in specific_action!
 
 ⚠️ BEFORE RESPONDING: Double-check that you included ALL category-specific arrays.
 
@@ -3994,11 +4000,11 @@ OUTPUT FORMAT (for each replacement action)
 13. symptoms: REQUIRED - Pick 1-3 from USER'S HEALTH CONCERNS above that THIS ACTION specifically helps - NEVER EMPTY!
 14. conditions: Array of conditions this helps (e.g., ["PCOS"]) - can be empty []
 
-🎯 TITLE RULES (VERY IMPORTANT - KEEP IT SIMPLE!):
-- FOOD: Just the food name (e.g., "Quinoa", "Salmon", "Flaxseeds", "Chia Seeds")
+🎯 TITLE RULES (CRITICAL - RAW INGREDIENT/ACTIVITY NAME ONLY!):
+- FOOD: Just the ingredient ("Turmeric" NOT "Turmeric Latte", "Spearmint" NOT "Spearmint Tea")
 - MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Swimming")
 - MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
-- NO adjectives like "powerful", "amazing", "savory", etc.
+- NO preparation methods in title (latte, tea, smoothie, toast) - those go in specific_action!
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
 For FOOD actions, MUST include:
