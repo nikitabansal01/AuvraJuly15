@@ -10,15 +10,20 @@ This data powers:
 """
 import logging
 import uuid
+import io
 from datetime import date, datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
+from fastapi import UploadFile
+from openai import AsyncOpenAI
+
 from app.core.database import (
     WeeklyCheckIn, WeeklyCheckInQuestion, UserProfile, 
     SymptomLog, ActionPlan, ActionPlanItem
 )
+from app.core.config import Settings
 from app.utils.timezone_utils import get_user_current_date
 
 logger = logging.getLogger(__name__)
@@ -39,6 +44,39 @@ class WeeklyCheckInService:
     
     def __init__(self, db: Session):
         self.db = db
+
+    async def transcribe_audio(self, uid: str, file: UploadFile) -> str:
+        """Transcribe an uploaded audio recording into text.
+
+        This powers the mobile "Yap" flow:
+        - client records audio (expo-av)
+        - uploads here
+        - we return transcript text so user can edit before sending
+        """
+        settings = Settings()
+        if not settings.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is not configured")
+
+        content = await file.read()
+        if not content:
+            raise ValueError("Empty audio upload")
+
+        # Basic safety limit (15MB) to protect the API.
+        max_bytes = 15 * 1024 * 1024
+        if len(content) > max_bytes:
+            raise ValueError("Audio file too large")
+
+        audio = io.BytesIO(content)
+        audio.name = file.filename or "yap.m4a"
+
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio,
+        )
+
+        text = getattr(transcript, "text", None) or ""
+        return text.strip()
     
     # ═══════════════════════════════════════════════════════════════════════════
     # HELPER METHODS

@@ -8,7 +8,7 @@ Provides endpoints for managing weekly check-in sessions:
 - Completing check-ins
 - Retrieving history for insights
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
@@ -82,6 +82,11 @@ class SubmitResponseResponse(BaseModel):
     """Response after submitting an answer."""
     checkin_id: str
     question: QuestionResponse
+
+
+class TranscribeResponse(BaseModel):
+    """Speech-to-text result for Yap."""
+    text: str
 
 
 class TrendDataPoint(BaseModel):
@@ -259,6 +264,26 @@ async def submit_response(
             slider_labels=question_data.get("slider_labels")
         )
     )
+
+
+@router.post("/transcribe", response_model=TranscribeResponse)
+async def transcribe_yap_audio(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Transcribe an uploaded audio file (Yap) into text."""
+    uid = current_user["uid"]
+    service = WeeklyCheckInService(db)
+
+    try:
+        text = await service.transcribe_audio(uid=uid, file=file)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)[:200]}")
+
+    return TranscribeResponse(text=text)
 
 
 @router.get("/history", response_model=List[CheckInHistoryItem])
