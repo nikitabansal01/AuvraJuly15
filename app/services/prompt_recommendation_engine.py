@@ -23,27 +23,16 @@ Architecture:
 
 SMART PERSONALIZATION (Eat/Move/Pause) - Based on Customer Psychology:
 ═══════════════════════════════════════════════════════════════════════════════
-Distribution: Users get MORE of what they prefer, but stay balanced
+Distribution: STRICTLY 4 Actions Total
 
-┌─────────────────────────┬──────┬──────────┬─────────────┬───────┐
-│ User Preference         │ Food │ Movement │ Mindfulness │ Total │
-├─────────────────────────┼──────┼──────────┼─────────────┼───────┤
-│ None (default)          │  4   │    4     │      4      │  12   │
-│ "Eat" only              │  5   │    3     │      2      │  10   │
-│ "Move" only             │  2   │    5     │      3      │  10   │
-│ "Pause" only            │  2   │    3     │      5      │  10   │
-│ "Eat" + "Move"          │  4   │    4     │      2      │  10   │
-│ "Eat" + "Pause"         │  4   │    2     │      4      │  10   │
-│ "Move" + "Pause"        │  2   │    4     │      4      │  10   │
-│ All three               │  4   │    4     │      4      │  12   │
-└─────────────────────────┴──────┴──────────┴─────────────┴───────┘
+The LLM dynamically determines the mix of Food, Movement, and Mindfulness
+based on the user's "Lifestyle Focus" (Eat/Move/Pause).
 
-Business Logic:
-- Single preference: Preferred=5, Adjacent=3, Opposite=2
-- Dual preference: Both=4, Third=2
-- No preference: Balanced 4-4-4
+- Total Actions: 4
+- Priority: User's preferred category gets more weight
+- Balance: Ensures coverage of Primary and Secondary hormones
 
-This keeps total manageable (10-12) while honoring user choice.
+This keeps total manageable (4) while honoring user choice.
 """
 
 import logging
@@ -145,21 +134,11 @@ LIFESTYLE_TO_CATEGORY = {
 # - Users want MORE of what they prefer (that's why they selected it!)
 # - But they need BALANCED health (can't ignore other areas)
 # - Too many recommendations = overwhelming = poor engagement
-# - Sweet spot: 10-12 total recommendations per session
+# - Sweet spot: 4 total recommendations per session
 #
 # Distribution Strategy:
-# ┌─────────────────────────┬──────┬──────────┬─────────────┬───────┐
-# │ User Preference         │ Food │ Movement │ Mindfulness │ Total │
-# ├─────────────────────────┼──────┼──────────┼─────────────┼───────┤
-# │ None (default)          │  4   │    4     │      4      │  12   │
-# │ "Eat" only              │  5   │    3     │      2      │  10   │
-# │ "Move" only             │  2   │    5     │      3      │  10   │
-# │ "Pause" only            │  2   │    3     │      5      │  10   │
-# │ "Eat" + "Move"          │  4   │    4     │      2      │  10   │
-# │ "Eat" + "Pause"         │  4   │    2     │      4      │  10   │
-# │ "Move" + "Pause"        │  1   │    2     │      1      │   4   │
-# │ All three               │  2   │    1     │      1      │   4   │
-# └─────────────────────────┴──────┴──────────┴─────────────┴───────┘
+# The LLM dynamically determines the mix of Food, Movement, and Mindfulness
+# based on the user's "Lifestyle Focus" (Eat/Move/Pause).
 #
 # Why this distribution:
 # 1. Total is STRICTLY 4 actions per day (User Requirement)
