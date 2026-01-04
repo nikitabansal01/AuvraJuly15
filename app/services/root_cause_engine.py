@@ -4,11 +4,29 @@ import os
 import asyncio
 import logging
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field, ValidationError
 
 # Load environment variables from .env file
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# ============================================
+# PYDANTIC MODELS FOR STRUCTURED OUTPUTS
+# ============================================
+
+class HormoneScoresModel(BaseModel):
+    """Strict validation for hormone analysis scores"""
+    androgens_high: int = Field(ge=0, le=3)
+    insulin_high: int = Field(ge=0, le=3)
+    thyroid_low: int = Field(ge=0, le=3)
+    estrogen_high: int = Field(ge=0, le=3)
+    estrogen_low: int = Field(ge=0, le=3)
+    progesterone_low: int = Field(ge=0, le=3)
+    cortisol_high: int = Field(ge=0, le=3)
+    cortisol_low: int = Field(ge=0, le=3)
+    
+    model_config = {"extra": "ignore"}
 
 # ============================================
 # OPENAI API CONFIGURATION (Migrated from Gemini)
@@ -120,28 +138,43 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
     
     @staticmethod
     def _parse_llm_response(response_text: str) -> Dict[str, int]:
-        """Parse and validate LLM response JSON"""
-        # Clean up markdown formatting
-        if "```json" in response_text:
-            start_marker = "```json"
-            end_marker = "```"
-            start_idx = response_text.find(start_marker) + len(start_marker)
-            end_idx = response_text.find(end_marker, start_idx)
-            if end_idx != -1:
-                response_text = response_text[start_idx:end_idx].strip()
-        elif response_text.startswith("```") and response_text.endswith("```"):
-            lines = response_text.split('\n')
-            response_text = '\n'.join(lines[1:-1]).strip()
-        
-        # Parse JSON
-        scores = json.loads(response_text)
-        
-        # Validate scores are in 0-3 range
-        for hormone, score in scores.items():
-            if not isinstance(score, int) or score < 0 or score > 3:
-                scores[hormone] = 0
-        
-        return scores
+        """Parse and validate LLM response JSON using Pydantic"""
+        try:
+            # Clean up markdown formatting
+            cleaned_text = response_text.strip()
+            if "```json" in cleaned_text:
+                start_marker = "```json"
+                end_marker = "```"
+                start_idx = cleaned_text.find(start_marker) + len(start_marker)
+                end_idx = cleaned_text.find(end_marker, start_idx)
+                if end_idx != -1:
+                    cleaned_text = cleaned_text[start_idx:end_idx].strip()
+            elif cleaned_text.startswith("```") and cleaned_text.endswith("```"):
+                lines = cleaned_text.split('\n')
+                cleaned_text = '\n'.join(lines[1:-1]).strip()
+            
+            # Parse JSON
+            scores_dict = json.loads(cleaned_text)
+            
+            # Validate with Pydantic
+            logger.info("📋 Validating hormone scores with Pydantic...")
+            validated_scores = HormoneScoresModel.model_validate(scores_dict)
+            logger.info("✅ Pydantic validation SUCCESSFUL for hormone scores")
+            
+            return validated_scores.model_dump()
+            
+        except ValidationError as ve:
+            logger.error(f"❌ Pydantic Validation Failed for hormone scores: {ve}")
+            logger.error(f"   Raw content: {response_text[:200]}...")
+            # Return default scores on validation failure
+            return RootCauseEngine._get_default_scores()
+            
+        except json.JSONDecodeError as je:
+            logger.error(f"❌ JSON Decode Failed: {je}")
+            return RootCauseEngine._get_default_scores()
+        except Exception as e:
+            logger.error(f"❌ Unexpected error parsing hormone scores: {e}")
+            return RootCauseEngine._get_default_scores()
     
     @staticmethod
     async def _call_openai_async(prompt: str) -> str:

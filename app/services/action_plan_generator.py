@@ -2751,7 +2751,11 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             # Validate with Pydantic - ensures all required fields are present
             logger.info(f"📋 Validating {len(raw_actions)} raw actions with Pydantic...")
             try:
-                validated_response = ActionPlanResponseModel(actions=raw_actions)
+                # Prepare data for validation - model expects {"actions": [...]}
+                validation_payload = {"actions": raw_actions}
+                
+                # Strict Pydantic Validation
+                validated_response = ActionPlanResponseModel.model_validate(validation_payload)
                 actions = [action.model_dump() for action in validated_response.actions]
                 logger.info(f"📋 Base Pydantic validation passed")
                 
@@ -2813,6 +2817,11 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             except ValidationError as e:
                 logger.error(f"❌ Pydantic validation failed: {e}")
                 logger.error(f"   This usually means GPT returned incomplete data. Will retry.")
+                
+                # Detailed error logging
+                for err in e.errors():
+                    logger.error(f"   -> Field: {err['loc']}, Error: {err['msg']}")
+                
                 # Log what GPT actually returned for debugging
                 for i, action in enumerate(raw_actions):
                     logger.error(f"   Raw Action {i+1}: title={action.get('title')}, category={action.get('category')}, "

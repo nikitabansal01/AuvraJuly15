@@ -27,6 +27,7 @@ from enum import Enum
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field, ValidationError
 
 # Try to import Groq for fallback
 try:
@@ -56,6 +57,28 @@ GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
 # Initialize clients - OpenAI is primary, Groq is fallback
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_AVAILABLE and GROQ_API_KEY else None
+
+
+# ============================================================================
+# PYDANTIC MODELS FOR STRUCTURED OUTPUTS
+# ============================================================================
+
+class CheckInTapOption(BaseModel):
+    id: str
+    text: str
+
+class CheckInInsights(BaseModel):
+    triggers_identified: List[str] = []
+    relief_factors_identified: List[str] = []
+    severity_trend: Optional[str] = None
+    suggested_additions: List[str] = []
+    key_insight: Optional[str] = None
+
+class CheckInResponseModel(BaseModel):
+    messages: List[str]
+    tap_options: List[CheckInTapOption] = []
+    is_complete: bool = False
+    insights: Optional[CheckInInsights] = None
 
 
 class QuestionType(str, Enum):
@@ -515,7 +538,25 @@ OUTPUT JSON:
                 cleaned_content = cleaned_content[:-3]
             cleaned_content = cleaned_content.strip()
             
-            data = json.loads(cleaned_content)
+            try:
+                # Parse JSON first
+                parsed_json = json.loads(cleaned_content)
+                
+                # Validate with Pydantic
+                validated_response = CheckInResponseModel.model_validate(parsed_json)
+                data = validated_response.model_dump()
+                logger.info("✅ Pydantic validation SUCCESSFUL for weekly check-in")
+                
+            except ValidationError as ve:
+                logger.error(f"❌ Pydantic Validation Failed: {ve}")
+                logger.error(f"Content was: {content[:1000]}...")
+                for err in ve.errors():
+                    logger.error(f"   -> Field: {err['loc']}, Error: {err['msg']}")
+                # Fallback to severity question on validation failure
+                return self._generate_post_severity_question(checkin, 5, context)
+            except json.JSONDecodeError as je:
+                logger.error(f"❌ JSON Decode Failed: {je}")
+                return self._generate_post_severity_question(checkin, 5, context)
             
             if data.get("is_complete"):
                 # Store insights in checkin for action plan generation
