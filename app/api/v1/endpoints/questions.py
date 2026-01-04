@@ -344,9 +344,9 @@ async def _generate_recommendations_background(session_id: str, service, process
     """
     Generate session recommendations in background
     
-    FLOW: Frontend saves lifestyle_focus FIRST, THEN calls this API
-    - No waiting needed - lifestyle_focus is already in DB when this runs
-    - Hormone analysis was already done in ResultScreen (cached)
+    NEW APPROACH: ONE API call generates exactly 4 recommendations
+    - Distribution based on lifestyle_focus (Eat/Move/Pause)
+    - Much faster than 3 separate API calls
     """
     try:
         logger.info(f"Background recommendation generation started: {session_id}")
@@ -354,123 +354,107 @@ async def _generate_recommendations_background(session_id: str, service, process
         # Update to processing started status
         processing_service.update_processing_started(session_id)
         
-        recommendation_service = RecommendationService(db)
-        
-        # Read session data (lifestyle_focus already saved by frontend!)
+        # Read session data
         session_data = service.get_session_data(session_id)
-        if session_data:
-            # Create temporary UserProfile (uid is None)
-            temp_user_profile = {
-                "age": session_data.age,
-                "period_description": session_data.period_description,
-                "birth_control": session_data.birth_control,
-                "cycle_length": session_data.cycle_length,
-                "period_concerns": session_data.period_concerns,
-                "body_concerns": session_data.body_concerns,
-                "skin_hair_concerns": session_data.skin_hair_concerns,
-                "mental_health_concerns": session_data.mental_health_concerns,
-                "other_concerns": session_data.other_concerns,
-                "top_concern": session_data.top_concern,
-                "diagnosed_conditions": session_data.diagnosed_conditions,
-                "family_history": session_data.family_history,
-                "workout_intensity": session_data.workout_intensity,
-                "sleep_duration": session_data.sleep_duration,
-                "stress_level": session_data.stress_level,
-                # PERSONALIZATION: Eat/Move/Pause preference
-                "lifestyle_focus": getattr(session_data, 'lifestyle_focus', None) or []
-            }
-            
-            # Use session-level caching - this will be a cache HIT from the main endpoint
-            root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
-            temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
-            temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
-            
-            # Save root cause results to QuestionSession (only if not already saved)
-            session = service.get_session(session_id)
-            if session and not session.primary_hormone:
-                session.primary_hormone = root_cause_analysis["primary_imbalance"]
-                session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
-                db.commit()
-            
-            # Generate recommendations for ALL categories in PARALLEL (3x faster!)
-            categories = ["food", "movement", "mindfulness"]
-            successful_categories = []
-            failed_categories = []
-            
-            # Mark all categories as processing
-            for category in categories:
-                processing_service.update_category_status(session_id, category, "processing", f"{category} recommendation generation in progress")
-            
-            # Helper function for parallel execution
-            async def generate_category(category: str) -> tuple:
-                try:
-                    success = await recommendation_service.generate_and_save_session_recommendations(
-                        session_id=session_id,
-                        user_profile=temp_user_profile,
-                        category=category
-                    )
-                    return (category, success, None)
-                except Exception as e:
-                    return (category, False, str(e))
-            
-            # Run ALL categories in PARALLEL - this is the key optimization!
-            import asyncio
-            results = await asyncio.gather(
-                generate_category("food"),
-                generate_category("movement"),
-                generate_category("mindfulness"),
-                return_exceptions=True
-            )
-            
-            # Process results
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Category generation exception: {result}")
-                    continue
-                    
-                category, success, error = result
-                if success:
-                    successful_categories.append(category)
-                    processing_service.update_category_status(session_id, category, "completed", f"{category} recommendation completed")
-                    logger.info(f"Category recommendation generation successful: {session_id}, {category}")
-                else:
-                    failed_categories.append(category)
-                    processing_service.update_category_status(session_id, category, "failed", f"{category} recommendation failed: {error}")
-                    logger.error(f"Category recommendation generation failed: {session_id}, {category}, error={error}")
-            
-            # Update heartbeat
-            processing_service.update_heartbeat(session_id)
-            
-            # Complete overall processing (regardless of success/failure)
-            result_summary = {
-                "successful_categories": successful_categories,
-                "failed_categories": failed_categories,
-                "total_categories": len(categories)
-            }
-            
-            processing_service.update_processing_completed(session_id, result_summary)
-            
-            logger.info(f"Background session recommendation generation completed: {session_id}")
-            logger.info(f"Successful categories: {successful_categories}")
-            logger.info(f"Failed categories: {failed_categories}")
-            
-            # OPTIMIZATION: Clear session caches AFTER all recommendations are generated
-            # This prevents duplicate LLM calls while still ensuring fresh data for next session
-            try:
-                from app.services.cache_service import clear_session_caches
-                cache_results = clear_session_caches()
-                logger.info(f"🧹 Session caches cleared after completion: {cache_results}")
-            except Exception as cache_err:
-                logger.warning(f"⚠️ Cache clear failed (non-fatal): {cache_err}")
-            
-        else:
+        if not session_data:
             logger.warning(f"Session data not found: {session_id}")
             processing_service.update_processing_failed(session_id, {"error": "Session data not found"})
+            return
+        
+        # Build user profile
+        temp_user_profile = {
+            "age": session_data.age,
+            "period_concerns": session_data.period_concerns,
+            "body_concerns": session_data.body_concerns,
+            "skin_hair_concerns": session_data.skin_hair_concerns,
+            "mental_health_concerns": session_data.mental_health_concerns,
+            "other_concerns": session_data.other_concerns,
+            "top_concern": session_data.top_concern,
+            "diagnosed_conditions": session_data.diagnosed_conditions,
+            "lifestyle_focus": getattr(session_data, 'lifestyle_focus', None) or []
+        }
+        
+        # Get hormone analysis (cache HIT from ResultScreen)
+        root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
+        temp_user_profile["primaryImbalance"] = root_cause_analysis["primary_imbalance"]
+        temp_user_profile["secondaryImbalances"] = root_cause_analysis["secondary_imbalances"]
+        
+        # Build symptoms list
+        symptoms = []
+        for field in ['period_concerns', 'body_concerns', 'skin_hair_concerns', 'mental_health_concerns', 'other_concerns']:
+            val = getattr(session_data, field, None)
+            if val:
+                if isinstance(val, list):
+                    symptoms.extend(val)
+                else:
+                    symptoms.append(val)
+        temp_user_profile["symptoms"] = symptoms or ['hormone imbalance']
+        temp_user_profile["conditions"] = session_data.diagnosed_conditions or ['PCOS']
+        
+        # Save hormone results
+        session = service.get_session(session_id)
+        if session and not session.primary_hormone:
+            session.primary_hormone = root_cause_analysis["primary_imbalance"]
+            session.secondary_hormones = root_cause_analysis["secondary_imbalances"]
+            db.commit()
+        
+        # Mark as processing
+        processing_service.update_category_status(session_id, "all", "processing", "Generating personalized recommendations")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # NEW: ONE API call generates ALL 4 recommendations
+        # ═══════════════════════════════════════════════════════════════════════════
+        from app.services.session_recommendation_engine import generate_session_recommendations_unified
+        
+        recommendations = await generate_session_recommendations_unified(temp_user_profile)
+        
+        if recommendations:
+            # Save recommendations to DB
+            for rec in recommendations:
+                category = rec.get('category', 'food')
+                await _save_session_recommendation(db, session_id, rec, category, temp_user_profile)
+            
+            processing_service.update_category_status(session_id, "all", "completed", f"Generated {len(recommendations)} recommendations")
+            processing_service.update_processing_completed(session_id, {"total": len(recommendations)})
+            logger.info(f"✅ Session recommendations complete: {session_id}, count={len(recommendations)}")
+        else:
+            processing_service.update_processing_failed(session_id, {"error": "No recommendations generated"})
+            logger.error(f"❌ No recommendations generated for {session_id}")
             
     except Exception as e:
         logger.error(f"Background session recommendation generation failed: {str(e)}", exc_info=True)
         processing_service.update_processing_failed(session_id, {"error": str(e)})
-        # Background failure doesn't affect user
+
+
+async def _save_session_recommendation(db, session_id: str, rec: Dict, category: str, user_profile: Dict) -> bool:
+    """Save a single recommendation to the session_recommendations table."""
+    try:
+        from app.core.database import RecommendationRecord
+        
+        db_rec = RecommendationRecord(
+            session_id=session_id,
+            uid=None,  # Session user, not logged in
+            title=rec.get('title', 'Recommendation'),
+            recommendation_type=category,
+            purpose=rec.get('purpose', ''),
+            specific_action=rec.get('specificAction', ''),
+            frequency=rec.get('frequency', 'Daily'),
+            intensity=rec.get('intensity', 'Low'),
+            expected_timeline=rec.get('expectedTimeline', '2-4 weeks'),
+            priority=rec.get('priority', 'medium'),
+            conditions=user_profile.get('conditions', ['PCOS']),
+            symptoms=user_profile.get('symptoms', []),
+            hormones=rec.get('hormones', [user_profile.get('primaryImbalance', 'insulin')]),
+            optimal_times=rec.get('optimal_times', ['morning']),
+            category=category
+        )
+        db.add(db_rec)
+        db.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save recommendation: {e}")
+        db.rollback()
+        return False
 
 @router.post("/sessions/{session_id}/link")
 async def link_session_to_user(
