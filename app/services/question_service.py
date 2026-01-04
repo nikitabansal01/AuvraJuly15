@@ -424,7 +424,9 @@ class QuestionService:
                 family_history=session.family_history,
                 workout_intensity=session.workout_intensity,
                 sleep_duration=session.sleep_duration,
-                stress_level=session.stress_level
+                stress_level=session.stress_level,
+                # CRITICAL: Include lifestyle_focus for personalization!
+                lifestyle_focus=session.lifestyle_focus
             )
         except Exception as e:
             logger.error(f"Session data retrieval failed: {str(e)}")
