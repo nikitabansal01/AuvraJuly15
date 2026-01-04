@@ -55,7 +55,7 @@ class ImageLibraryService:
     
     # RunPod timeout settings - increased for cold start
     RUNPOD_POLL_TIMEOUT = 120  # 120 seconds max wait (cold start can take 60-90s)
-    RUNPOD_POLL_INTERVAL = 1.5  # Poll every 1.5 seconds
+    RUNPOD_POLL_INTERVAL = 1.0  # Poll every 1 second (faster response detection)
     
     def __init__(self):
         """Initialize the image library service."""
