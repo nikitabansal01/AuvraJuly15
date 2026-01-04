@@ -1097,9 +1097,9 @@ class ActionPlanGenerator:
             logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
             logger.info(f"[GENERATE] 📋 GENERATED ACTIONS SUMMARY ({len(actions)} actions):")
             for i, action in enumerate(actions):
-                logger.info(f"[GENERATE]   Action {i+1}: '{action.title}' | Category: {action.category} | Hormone: {action.target_hormone}")
-                logger.info(f"[GENERATE]     Symptoms: {action.symptoms}")
-                logger.info(f"[GENERATE]     Conditions: {action.conditions}")
+                logger.info(f"[GENERATE]   Action {i+1}: '{action['title']}' | Category: {action['category']} | Hormone: {action['target_hormone']}")
+                logger.info(f"[GENERATE]     Symptoms: {action['symptoms']}")
+                logger.info(f"[GENERATE]     Conditions: {action['conditions']}")
             logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
             
             # Step 3: Generate images for all actions (16 total: 4 actions × 4 images)
