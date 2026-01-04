@@ -157,21 +157,20 @@ LIFESTYLE_TO_CATEGORY = {
 # │ "Pause" only            │  2   │    3     │      5      │  10   │
 # │ "Eat" + "Move"          │  4   │    4     │      2      │  10   │
 # │ "Eat" + "Pause"         │  4   │    2     │      4      │  10   │
-# │ "Move" + "Pause"        │  2   │    4     │      4      │  10   │
-# │ All three               │  4   │    4     │      4      │  12   │
+# │ "Move" + "Pause"        │  1   │    2     │      1      │   4   │
+# │ All three               │  2   │    1     │      1      │   4   │
 # └─────────────────────────┴──────┴──────────┴─────────────┴───────┘
 #
 # Why this distribution:
-# 1. Preferred gets 50% boost (5 vs normal 4)
-# 2. Non-preferred still gets 2-3 (health balance)
-# 3. Total stays manageable (10-12)
-# 4. Multiple preferences get equal weight (fair)
+# 1. Total is STRICTLY 4 actions per day (User Requirement)
+# 2. Base of 1 per category ensures breadth
+# 3. Extra 1 goes to primary preference (or Food if balanced)
 
 # Count constants
-PREFERRED_COUNT = 5      # When category is user's ONLY preference
-NORMAL_COUNT = 4         # Default or multiple preferences
-SECONDARY_COUNT = 3      # Adjacent to preference (related wellness)
-MINIMAL_COUNT = 2        # Opposite of preference (still important)
+PREFERRED_COUNT = 2      # Boosted category
+NORMAL_COUNT = 1         # Standard category
+SECONDARY_COUNT = 1      # Standard category
+MINIMAL_COUNT = 1        # Standard category
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -480,28 +479,19 @@ class PromptRecommendationEngine:
     
     def _get_recommendation_count(self, user_profile: Dict[str, Any], category: str) -> int:
         """
-        SMART Recommendation Distribution based on lifestyle_focus.
+        Determine number of recommendations based on lifestyle preference.
+        STRICT LIMIT: Total 4 actions per day across all categories.
         
-        Business Logic (Customer Psychology):
-        - Users want MORE of what they prefer
-        - But need balanced health approach
-        - Total should stay manageable (10-12)
+        Distribution Strategy (Total = 4):
+        - Base: 1 per category (Food, Move, Pause) = 3
+        - Bonus (+1): Goes to primary preference
         
-        Distribution Table:
-        ┌─────────────────────────┬──────┬──────────┬─────────────┬───────┐
-        │ User Preference         │ Food │ Movement │ Mindfulness │ Total │
-        ├─────────────────────────┼──────┼──────────┼─────────────┼───────┤
-        │ None (default)          │  4   │    4     │      4      │  12   │
-        │ "Eat" only              │  5   │    3     │      2      │  10   │
-        │ "Move" only             │  2   │    5     │      3      │  10   │
-        │ "Pause" only            │  2   │    3     │      5      │  10   │
-        │ "Eat" + "Move"          │  4   │    4     │      2      │  10   │
-        │ "Eat" + "Pause"         │  4   │    2     │      4      │  10   │
-        │ "Move" + "Pause"        │  2   │    4     │      4      │  10   │
-        │ All three               │  4   │    4     │      4      │  12   │
-        └─────────────────────────┴──────┴──────────┴─────────────┴───────┘
-        
-        Mapping: eat→food, move→movement, pause→mindfulness
+        Rules:
+        1. If No Preference or All 3 -> Bonus to Food (2, 1, 1)
+        2. If Single Preference -> Bonus to that preference (2, 1, 1)
+        3. If Dual Preference:
+           - If Food is one of them -> Bonus to Food (2, 1, 1)
+           - If Move+Pause -> Bonus to Move (1, 2, 1)
         """
         lifestyle_focus = user_profile.get('lifestyle_focus', [])
         category_lower = category.lower()
@@ -510,52 +500,34 @@ class PromptRecommendationEngine:
         preferred_categories = [LIFESTYLE_TO_CATEGORY.get(lf.lower(), lf.lower()) for lf in lifestyle_focus] if lifestyle_focus else []
         num_preferences = len(preferred_categories)
         
-        # === CASE 1: No preferences OR all three selected → Equal distribution ===
+        # Default count is 1
+        gets_bonus = False
+        
+        # Case 1: No preference or All 3 -> Food gets bonus
         if num_preferences == 0 or num_preferences == 3:
-            logger.info(f"📋 BALANCED: {category} - generating {NORMAL_COUNT} recommendations")
-            print(f"📋 BALANCED: {category} - generating {NORMAL_COUNT} recommendations")
-            return NORMAL_COUNT
-        
-        # === CASE 2: Single preference selected ===
-        # Example: User selects "Move" only → Move:5, Pause:3, Food:2
-        if num_preferences == 1:
-            preferred_cat = preferred_categories[0]
-            
-            if category_lower == preferred_cat:
-                # This IS the user's preference → MAX recommendations
-                logger.info(f"🎯 PREFERRED: {category} - generating {PREFERRED_COUNT} recommendations (user's choice!)")
-                print(f"🎯 PREFERRED: {category} - generating {PREFERRED_COUNT} recommendations")
-                return PREFERRED_COUNT
-            
-            # Determine secondary vs minimal based on wellness adjacency
-            # Wellness adjacency: food↔movement (both physical), movement↔mindfulness (both activity)
-            adjacency_map = {
-                'food': {'movement': SECONDARY_COUNT, 'mindfulness': MINIMAL_COUNT},
-                'movement': {'food': SECONDARY_COUNT, 'mindfulness': SECONDARY_COUNT},
-                'mindfulness': {'movement': SECONDARY_COUNT, 'food': MINIMAL_COUNT}
-            }
-            count = adjacency_map.get(preferred_cat, {}).get(category_lower, MINIMAL_COUNT)
-            
-            logger.info(f"📋 SECONDARY: {category} - generating {count} recommendations")
-            print(f"📋 SECONDARY: {category} - generating {count} recommendations")
-            return count
-        
-        # === CASE 3: Two preferences selected ===
-        # Example: User selects "Move" + "Pause" → Move:4, Pause:4, Food:2
-        if num_preferences == 2:
-            if category_lower in preferred_categories:
-                # This IS one of user's preferences → Normal count
-                logger.info(f"🎯 PREFERRED (dual): {category} - generating {NORMAL_COUNT} recommendations")
-                print(f"🎯 PREFERRED: {category} - generating {NORMAL_COUNT} recommendations")
-                return NORMAL_COUNT
+            if category_lower == 'food':
+                gets_bonus = True
+                
+        # Case 2: Single Preference -> Preference gets bonus
+        elif num_preferences == 1:
+            if category_lower == preferred_categories[0]:
+                gets_bonus = True
+                
+        # Case 3: Dual Preference
+        elif num_preferences == 2:
+            # If Food is preferred, it gets priority
+            if 'food' in preferred_categories:
+                if category_lower == 'food':
+                    gets_bonus = True
+            # If Food is NOT preferred (Move + Pause), Move gets priority
             else:
-                # This is NOT preferred → Minimal count
-                logger.info(f"📋 MINIMAL: {category} - generating {MINIMAL_COUNT} recommendations")
-                print(f"📋 MINIMAL: {category} - generating {MINIMAL_COUNT} recommendations")
-                return MINIMAL_COUNT
+                if category_lower == 'movement':
+                    gets_bonus = True
         
-        # Fallback (should never reach here)
-        return NORMAL_COUNT
+        final_count = 2 if gets_bonus else 1
+        
+        logger.info(f"📋 {category.upper()}: Generating {final_count} recommendations (Bonus: {gets_bonus})")
+        return final_count
     
     async def generate_recommendations(
         self,
