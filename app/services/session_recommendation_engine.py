@@ -126,23 +126,41 @@ Return ONLY valid JSON in this exact format:
 {{
   "recommendations": [
     {{
-      "title": "Simple title (food item / exercise / technique name)",
+      "title": "Simple title (just food item / exercise / technique name)",
       "category": "food" | "movement" | "mindfulness",
       "purpose": "One sentence explaining why this helps their hormone",
       "specificAction": "Exact what to do with amounts/duration",
-      "frequency": "Daily" | "3x per week" | etc,
+      "frequency": "Daily",
       "intensity": "Low" | "Medium" | "High",
+      "priority": "high" | "medium",
       "hormones": ["{primary_hormone}"],
-      "optimal_times": ["morning" | "afternoon" | "evening"]
+      "optimal_times": ["morning"] | ["afternoon"] | ["evening"],
+      "frequency_detail": "daily:1",
+      "duration_weeks": 8,
+      "contraindications": [],
+      "conditions": {json.dumps(conditions)},
+      "symptoms": {json.dumps(symptoms[:3] if symptoms else ['hormone imbalance'])},
+      "food_amounts": ["amount"] (for food only),
+      "food_items": ["item"] (for food only),
+      "exercise_durations": ["20 min"] (for movement only),
+      "exercise_types": ["type"] (for movement only),
+      "exercise_intensities": ["low"] (for movement only),
+      "mindfulness_durations": ["10 min"] (for mindfulness only),
+      "mindfulness_techniques": ["technique"] (for mindfulness only),
+      "researchBacking": {{
+        "summary": "Brief research summary",
+        "studies": []
+      }}
     }}
   ]
 }}
 
 IMPORTANT:
-- Generate EXACTLY 4 recommendations
+- Generate EXACTLY 4 recommendations total
 - Match the category distribution above
 - Keep titles simple (just the item/activity name, no adjectives)
 - Be specific with amounts (e.g., "30g almonds", "20 minutes", "5 deep breaths")
+- Use "{primary_hormone}" as the hormone for ALL recommendations
 """
     
     return prompt
@@ -227,56 +245,99 @@ async def generate_session_recommendations_unified(
 
 
 def get_fallback_recommendations(user_profile: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Fallback recommendations if API fails."""
+    """Fallback recommendations if API fails - with full DB-compatible format."""
     primary = user_profile.get('primaryImbalance', 'insulin')
+    conditions = user_profile.get('conditions', ['PCOS'])
+    symptoms = user_profile.get('symptoms', ['hormone imbalance'])
     
     return [
         {
-            "id": "fallback_1",
             "title": "Cinnamon",
             "category": "food",
-            "purpose": f"Helps improve {primary} sensitivity",
-            "specificAction": "Add 1/2 teaspoon Ceylon cinnamon to your morning oatmeal",
+            "purpose": f"Helps improve {primary} sensitivity and blood sugar balance",
+            "specificAction": "Add 1/2 teaspoon Ceylon cinnamon to your morning oatmeal or smoothie",
             "frequency": "Daily",
             "intensity": "Low",
+            "priority": "high",
             "hormones": [primary],
             "optimal_times": ["morning"],
-            "priority": "high"
+            "frequency_detail": "daily:1",
+            "duration_weeks": 8,
+            "contraindications": [],
+            "conditions": conditions,
+            "symptoms": symptoms[:3],
+            "food_amounts": ["1/2 teaspoon", "1.5g"],
+            "food_items": ["Ceylon cinnamon"],
+            "researchBacking": {
+                "summary": f"Studies show cinnamon improves {primary} sensitivity in women with PCOS",
+                "studies": []
+            }
         },
         {
-            "id": "fallback_2", 
             "title": "Leafy Greens",
             "category": "food",
-            "purpose": f"Supports {primary} balance with fiber and nutrients",
-            "specificAction": "Eat 2 cups of spinach or kale with lunch",
+            "purpose": f"Supports {primary} balance with fiber, magnesium and antioxidants",
+            "specificAction": "Eat 2 cups of spinach or kale with lunch as a salad or side",
             "frequency": "Daily",
             "intensity": "Low",
+            "priority": "medium",
             "hormones": [primary],
             "optimal_times": ["afternoon"],
-            "priority": "medium"
+            "frequency_detail": "daily:1",
+            "duration_weeks": 8,
+            "contraindications": [],
+            "conditions": conditions,
+            "symptoms": symptoms[:3],
+            "food_amounts": ["2 cups"],
+            "food_items": ["spinach", "kale"],
+            "researchBacking": {
+                "summary": f"Leafy greens provide nutrients that support {primary} regulation",
+                "studies": []
+            }
         },
         {
-            "id": "fallback_3",
             "title": "Brisk Walking",
             "category": "movement",
-            "purpose": f"Improves {primary} sensitivity through gentle exercise",
-            "specificAction": "Walk briskly for 20 minutes after dinner",
+            "purpose": f"Improves {primary} sensitivity through gentle cardiovascular exercise",
+            "specificAction": "Walk briskly for 20 minutes after dinner at moderate pace",
             "frequency": "Daily",
             "intensity": "Low",
+            "priority": "medium",
             "hormones": [primary],
             "optimal_times": ["evening"],
-            "priority": "medium"
+            "frequency_detail": "daily:1",
+            "duration_weeks": 8,
+            "contraindications": [],
+            "conditions": conditions,
+            "symptoms": symptoms[:3],
+            "exercise_durations": ["20 minutes"],
+            "exercise_types": ["walking", "cardio"],
+            "exercise_intensities": ["low"],
+            "researchBacking": {
+                "summary": f"Light cardio after meals helps {primary} regulation",
+                "studies": []
+            }
         },
         {
-            "id": "fallback_4",
-            "title": "Deep Breathing",
+            "title": "4-7-8 Breathing",
             "category": "mindfulness",
-            "purpose": f"Reduces stress hormones that affect {primary}",
-            "specificAction": "Practice 5 deep breaths (4s in, 7s hold, 8s out) before bed",
+            "purpose": f"Reduces stress hormones that affect {primary} balance",
+            "specificAction": "Practice 5 cycles of 4-7-8 breathing: inhale 4s, hold 7s, exhale 8s",
             "frequency": "Daily",
             "intensity": "Low",
+            "priority": "medium",
             "hormones": [primary],
             "optimal_times": ["evening"],
-            "priority": "medium"
+            "frequency_detail": "daily:1",
+            "duration_weeks": 8,
+            "contraindications": [],
+            "conditions": conditions,
+            "symptoms": symptoms[:3],
+            "mindfulness_durations": ["5 minutes"],
+            "mindfulness_techniques": ["deep breathing", "4-7-8 technique"],
+            "researchBacking": {
+                "summary": f"Breathing exercises reduce cortisol and support {primary}",
+                "studies": []
+            }
         }
     ]

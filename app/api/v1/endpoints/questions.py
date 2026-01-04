@@ -409,10 +409,22 @@ async def _generate_recommendations_background(session_id: str, service, process
         recommendations = await generate_session_recommendations_unified(temp_user_profile)
         
         if recommendations:
-            # Save recommendations to DB
+            # Save recommendations to DB using existing service
+            recommendation_service = RecommendationService(db)
+            user_hormones = {
+                'primaryImbalance': temp_user_profile.get('primaryImbalance'),
+                'secondaryImbalances': temp_user_profile.get('secondaryImbalances', [])
+            }
+            
             for rec in recommendations:
                 category = rec.get('category', 'food')
-                await _save_session_recommendation(db, session_id, rec, category, temp_user_profile)
+                # Use existing save method that handles all fields properly
+                await recommendation_service._save_single_session_recommendation(
+                    session_id=session_id,
+                    rec=rec,
+                    category=category,
+                    user_hormones=user_hormones
+                )
             
             processing_service.update_category_status(session_id, "all", "completed", f"Generated {len(recommendations)} recommendations")
             processing_service.update_processing_completed(session_id, {"total": len(recommendations)})
@@ -424,37 +436,6 @@ async def _generate_recommendations_background(session_id: str, service, process
     except Exception as e:
         logger.error(f"Background session recommendation generation failed: {str(e)}", exc_info=True)
         processing_service.update_processing_failed(session_id, {"error": str(e)})
-
-
-async def _save_session_recommendation(db, session_id: str, rec: Dict, category: str, user_profile: Dict) -> bool:
-    """Save a single recommendation to the session_recommendations table."""
-    try:
-        from app.core.database import RecommendationRecord
-        
-        db_rec = RecommendationRecord(
-            session_id=session_id,
-            uid=None,  # Session user, not logged in
-            title=rec.get('title', 'Recommendation'),
-            recommendation_type=category,
-            purpose=rec.get('purpose', ''),
-            specific_action=rec.get('specificAction', ''),
-            frequency=rec.get('frequency', 'Daily'),
-            intensity=rec.get('intensity', 'Low'),
-            expected_timeline=rec.get('expectedTimeline', '2-4 weeks'),
-            priority=rec.get('priority', 'medium'),
-            conditions=user_profile.get('conditions', ['PCOS']),
-            symptoms=user_profile.get('symptoms', []),
-            hormones=rec.get('hormones', [user_profile.get('primaryImbalance', 'insulin')]),
-            optimal_times=rec.get('optimal_times', ['morning']),
-            category=category
-        )
-        db.add(db_rec)
-        db.commit()
-        return True
-    except Exception as e:
-        logger.error(f"Failed to save recommendation: {e}")
-        db.rollback()
-        return False
 
 @router.post("/sessions/{session_id}/link")
 async def link_session_to_user(
