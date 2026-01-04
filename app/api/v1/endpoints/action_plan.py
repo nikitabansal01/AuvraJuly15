@@ -1097,7 +1097,21 @@ async def submit_daily_review(
         if streak_maintained:
             # Flush changes to DB so streak service can see them
             db.flush()
-            new_streak = streak_service.calculate_streak_from_actions(uid)
+            
+            # User requested logic: Get streak BEFORE this plan, then add 1
+            # This avoids race conditions with the current plan's status in DB
+            # We calculate streak assuming "today" is the plan date
+            # This gives us the streak count UP TO (but not including) the plan date
+            prior_streak = streak_service.calculate_streak_from_actions(
+                uid, 
+                reference_date=plan.plan_date
+            )
+            
+            # Since we know streak is maintained for THIS plan, we just add 1
+            new_streak = prior_streak + 1
+            
+            logger.info(f"Streak calculation override: Prior streak (up to {plan.plan_date}) = {prior_streak}. New streak = {new_streak}")
+            
             streak_data.current_streak = new_streak
             streak_data.longest_streak = max(streak_data.longest_streak, new_streak)
         

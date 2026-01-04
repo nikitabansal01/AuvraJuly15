@@ -120,7 +120,7 @@ class StreakService:
             self._today_cache[cache_key] = result
             return result
     
-    def calculate_streak_from_actions(self, uid: str, user_timezone: str = None) -> int:
+    def calculate_streak_from_actions(self, uid: str, user_timezone: str = None, reference_date: date = None) -> int:
         """
         Calculate streak based on ActionPlanItem completions.
         
@@ -137,6 +137,8 @@ class StreakService:
         Args:
             uid: User ID
             user_timezone: User's timezone string (e.g., "Asia/Kolkata")
+            reference_date: Optional date to treat as "today". 
+                          If provided, streak is calculated up to reference_date - 1.
             
         Returns:
             Current consecutive day streak count
@@ -144,7 +146,11 @@ class StreakService:
         streak = 0
         
         # Get today in user's timezone, then calculate yesterday
-        today = self._get_user_today(uid, user_timezone)
+        if reference_date:
+            today = reference_date
+        else:
+            today = self._get_user_today(uid, user_timezone)
+            
         check_date = today - timedelta(days=1)
         
         logger.info(f"Streak calc for {uid}: user_timezone={user_timezone}, today={today}, starting from yesterday={check_date}")
