@@ -362,7 +362,7 @@ RESEARCH CITATION FORMAT (from search_research_paper tool):
 
 IMAGE PROMPT STYLE (for consistent semantic matching):
 All prompts should follow this pattern:
-"[Subject/food/activity], professional photography, natural lighting, clean minimalist background, warm inviting tones, wellness aesthetic"
+"[Subject/food/activity], centered composition, subject fills 60-70% of the frame (important for circular crops), natural lighting, clean minimalist background, warm inviting tones, wellness aesthetic, no text, no watermark, no logo"
 
 HORMONE PERSONA INTRO STYLE:
 The hormone speaks in first person, identifying itself and explaining what's happening in the user's current cycle phase (1 sentence). 
@@ -690,6 +690,8 @@ The image MUST be SELF-EXPLANATORY and ILLUSTRATIVE. Think of it like a visual i
 3. Show TEXTURE and DETAIL of the food item so it's instantly recognizable
 4. For exercises, show the FULL POSE clearly from a good angle
 5. Keep backgrounds simple but contextual (kitchen for food, living room for yoga)
+6. IMPORTANT FOR APP UI: Center the subject (these images are often displayed in small circular crops)
+7. STRICT: No text, no captions, no watermarks, no logos/branding
 
 ═══════════════════════════════════════════════════════════════════════
 FOR FOOD - Make the FOOD ITEM the HERO (clearly visible, close-up):

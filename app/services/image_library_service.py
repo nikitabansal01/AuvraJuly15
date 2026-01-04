@@ -476,9 +476,10 @@ class ImageLibraryService:
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 4,       # Flux Schnell is optimized for 4 steps
-                    "guidance_scale": 0.0,          # Flux Schnell uses 0.0 guidance
+                    "num_inference_steps": 8,      # Better detail/legibility for small in-app thumbnails
+                    "guidance": 5,                  # Kept from known-working integration
                     "seed": -1,
+                    "negative_prompt": negative_prompt,
                     "image_format": "png"
                 }
             }
@@ -613,61 +614,62 @@ class ImageLibraryService:
         Returns:
             Tuple of (enhanced_prompt, negative_prompt)
         """
+        # App-specific constraints:
+        # - Images are rendered small and often inside circular crops.
+        # - The subject must be centered and fill most of the frame so it survives cropping.
+        # - These are illustrative/instructional images ("what do I do?" should be obvious at a glance).
+        # - Avoid text, logos, watermarks, and anatomy artifacts.
+
         if category == "food":
-            # Food-specific enhancement: appetizing, overhead photography
+            # Food: the exact ingredient/meal should be instantly recognizable.
             style_suffix = (
-                "professional food photography, overhead 45-degree angle, "
-                "Canon EOS R5 35mm lens f/2.8, soft natural window light, "
-                "rustic wooden table, fresh ingredients visible, "
-                "warm inviting tones, vibrant saturated colors, "
-                "shallow depth of field, photorealistic, high quality"
+                "centered composition, close-up or medium-close shot, subject fills 70% of the frame, "
+                "single clear hero ingredient, minimal props, clean kitchen context, neutral background, "
+                "soft natural window light, realistic texture detail, warm inviting wellness aesthetic"
             )
             negative = (
-                "blurry, out of focus, dark, underexposed, overexposed, "
-                "artificial lighting, plastic food, processed, "
-                "low quality, pixelated, distorted"
+                "text, watermark, logo, label, brand, typography, caption, "
+                "blurry, lowres, pixelated, noisy, oversharpened, "
+                "plastic-looking food, waxy texture, unnatural colors, "
+                "hands, people, faces, utensils blocking the food, cluttered background"
             )
             
         elif category == "movement":
-            # Movement-specific: natural pose, wellness aesthetic
+            # Movement: show the exact pose/exercise clearly (instructional).
             style_suffix = (
-                "lifestyle wellness photography, natural relaxed pose, "
-                "Canon EOS R5 50mm lens f/1.8, soft window backlighting, "
-                "serene peaceful indoor setting, warm earth tones, "
-                "calming aesthetic, atmospheric depth, "
-                "photorealistic, professional quality"
+                "centered full-body or 3/4-body framing, pose clearly readable, subject fills most of the frame, "
+                "simple uncluttered room (yoga mat visible if relevant), soft natural light, calm wellness aesthetic, "
+                "realistic anatomy, no dramatic angles"
             )
             negative = (
-                "stiff pose, gym equipment, aggressive,intense, commercial, "
-                "stock photo, artificial, low quality, blurry, "
-                "crowded background, distorted body"
+                "text, watermark, logo, brand, "
+                "bad anatomy, deformed body, extra limbs, extra fingers, missing fingers, distorted hands, "
+                "uncanny face, disfigured face, blurry, lowres, "
+                "crowded background, gym equipment, aggressive pose"
             )
             
         elif category == "mindfulness":
-            # Mindfulness-specific: zen, minimalist, cozy
+            # Mindfulness: the technique/setup must be visible (hands placement, posture, objects).
             style_suffix = (
-                "lifestyle zen photography, minimalist composition, "
-                "Sony A7III 35mm lens f/2.0, soft diffused natural lighting, "
-                "cozy intimate atmosphere, warm muted tones, "
-                "peaceful calming mood, shallow focus, "
-                "photorealistic, professional quality"
+                "centered composition, clear technique cues (hands placement, posture, object in use), "
+                "minimal calm environment, soft diffused natural light, muted warm tones, peaceful restorative mood"
             )
             negative = (
-                "cluttered, busy, bright neon colors, harsh lighting, "
-                "commercial, artificial, low quality, blurry, "
-                "messy, chaotic"
+                "text, watermark, logo, brand, "
+                "blurry, lowres, noisy, "
+                "messy clutter, chaotic scene, neon colors, harsh lighting, "
+                "uncanny face, deformed hands, extra fingers"
             )
             
         else:
             # Fallback: generic wellness style
             style_suffix = (
-                "professional wellness photography, natural lighting, "
-                "calm peaceful aesthetic, warm tones, "
-                "photorealistic, high quality"
+                "centered composition, subject fills most of the frame, soft natural lighting, calm wellness aesthetic, warm tones"
             )
-            negative = "blurry, low quality, artificial, commercial"
+            negative = "text, watermark, logo, blurry, low quality, artificial, commercial"
         
-        enhanced = f"{prompt}, {style_suffix}"
+        # Keep the caller's prompt first (subject early), then add composition constraints.
+        enhanced = f"{prompt}. {style_suffix}."
         
         return (enhanced, negative)
     
