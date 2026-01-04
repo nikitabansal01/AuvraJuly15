@@ -816,7 +816,29 @@ Respond with valid JSON array only, no markdown formatting."""
 
 # Generate JSON Schema automatically from Pydantic model
 # This ensures schema and model are always in sync
-ACTION_PLAN_SCHEMA = ActionPlanResponseModel.model_json_schema()
+_raw_schema = ActionPlanResponseModel.model_json_schema()
+
+# Fix for OpenAI strict mode: ALL fields MUST be in 'required'
+# Pydantic excludes fields with default_factory from required, but OpenAI strict mode needs them
+def _fix_required_fields(schema: dict) -> dict:
+    """Recursively fix schema to include ALL properties in required (OpenAI strict mode requirement)."""
+    if isinstance(schema, dict):
+        if "properties" in schema:
+            # Add ALL property keys to required
+            schema["required"] = list(schema["properties"].keys())
+            # Recurse into nested properties
+            for prop_value in schema["properties"].values():
+                _fix_required_fields(prop_value)
+        # Handle $defs (nested type definitions)
+        if "$defs" in schema:
+            for def_value in schema["$defs"].values():
+                _fix_required_fields(def_value)
+        # Handle items (for arrays)
+        if "items" in schema:
+            _fix_required_fields(schema["items"])
+    return schema
+
+ACTION_PLAN_SCHEMA = _fix_required_fields(_raw_schema)
 
 VARIANT_PROMPT_TEMPLATE = """For the {category} action "{title}", create 3 variants:
 
