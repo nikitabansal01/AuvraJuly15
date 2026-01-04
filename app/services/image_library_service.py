@@ -474,12 +474,11 @@ class ImageLibraryService:
             payload = {
                 "input": {
                     "prompt": enhanced_prompt,
-                    "width": 512,
-                    "height": 512,
-                    "num_inference_steps": 8,      # Increased from 4 for better quality
-                    "guidance": 5,                  # Lowered from 7 for more natural results
+                    "width": 1024,                  # Increased from 512 for professional quality (Flux native res)
+                    "height": 1024,                 # Increased from 512 for professional quality
+                    "num_inference_steps": 4,       # Flux Schnell is optimized for 4 steps (8 is overkill/slower)
+                    "guidance_scale": 0.0,          # Flux Schnell uses 0.0 guidance (distilled model)
                     "seed": -1,
-                    "negative_prompt": negative_prompt,  # Now category-specific
                     "image_format": "png"
                 }
             }

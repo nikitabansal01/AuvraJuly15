@@ -267,11 +267,47 @@ MINDFULNESS_EXAMPLE = {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 HORMONE_KNOWLEDGE = {
-    'insulin': 'Focus on blood sugar stabilizing foods, low-glycemic options, cinnamon, berberine, chromium, fiber-rich foods, protein-first eating, strength training, HIIT intervals',
-    'cortisol': 'Focus on adaptogenic herbs (ashwagandha, rhodiola), magnesium-rich foods, gentle exercise (yoga, walking), sleep hygiene, stress reduction, no caffeine after noon',
-    'progesterone': 'Focus on vitamin B6 foods, zinc-rich foods, chasteberry, seed cycling, moderate exercise, stress reduction, adequate sleep',
-    'thyroid': 'Focus on selenium (Brazil nuts), iodine, zinc, avoiding goitrogens, gentle cardio, stress management',
-    'estrogen': 'Focus on cruciferous vegetables (DIM), flaxseed, fiber for estrogen metabolism, avoiding xenoestrogens, moderate exercise'
+    'insulin': (
+        "NUTRITION: Berries (blueberries, raspberries), leafy greens (spinach, kale), cruciferous veggies, "
+        "avocado, nuts (walnuts, almonds), seeds (chia, flax), fatty fish (salmon, sardines), "
+        "apple cider vinegar, cinnamon, turmeric, ginger, green tea, olive oil. "
+        "LIFESTYLE: Post-meal walking (10-15 mins), strength training, HIIT (if cortisol permits), "
+        "adequate sleep (7-9 hours), stress management, intermittent fasting (12-14 hour window)."
+    ),
+    'cortisol': (
+        "NUTRITION: Magnesium-rich foods (pumpkin seeds, spinach, dark chocolate), Vitamin C (citrus, peppers), "
+        "Omega-3s (fatty fish, walnuts), prebiotic foods (garlic, onions, asparagus), chamomile tea, "
+        "lemon balm tea, holy basil (tulsi). AVOID: High caffeine, alcohol, processed sugar. "
+        "LIFESTYLE: Gentle movement (yoga, walking, swimming), forest bathing, deep breathing, "
+        "meditation, journaling, laughter, consistent sleep schedule, morning sunlight exposure."
+    ),
+    'progesterone': (
+        "NUTRITION: Vitamin B6 (salmon, chickpeas, bananas), Zinc (oysters, beef, pumpkin seeds), "
+        "Magnesium (dark chocolate, leafy greens), Vitamin C (citrus, strawberries), "
+        "L-Arginine (turkey, pumpkin seeds), chasteberry (vitex). "
+        "LIFESTYLE: Stress reduction (cortisol steals progesterone), adequate sleep, "
+        "moderate exercise (avoid overtraining), seed cycling (sesame/sunflower in luteal phase)."
+    ),
+    'thyroid': (
+        "NUTRITION: Selenium (Brazil nuts - max 2/day, sardines), Iodine (seaweed, cod, yogurt), "
+        "Zinc (oysters, beef, pumpkin seeds), Tyrosine (chicken, turkey, fish), "
+        "Iron (red meat, spinach + Vit C). COOK cruciferous veggies (don't eat raw). "
+        "LIFESTYLE: Stress management, gentle cardio, strength training, infrared sauna, "
+        "filtering tap water (remove fluoride/chlorine)."
+    ),
+    'estrogen': (
+        "NUTRITION: Cruciferous vegetables (broccoli, cauliflower, brussels sprouts - contain DIM), "
+        "Fiber (oats, beans, lentils, berries), Flaxseeds (ground), Fermented foods (sauerkraut, kimchi), "
+        "Sulforaphane (broccoli sprouts). AVOID: Alcohol, plastic containers (xenoestrogens). "
+        "LIFESTYLE: Regular bowel movements (crucial for excretion), sweating (sauna, exercise), "
+        "maintaining healthy body weight, stress reduction."
+    ),
+    'testosterone': (
+        "NUTRITION: Zinc (oysters, beef, pumpkin seeds), Magnesium (spinach, almonds), "
+        "Vitamin D (fatty fish, egg yolks), Healthy fats (avocado, olive oil), Pomegranate. "
+        "LIFESTYLE: Strength training (heavy lifting), adequate sleep, minimizing stress, "
+        "competition/winning mindset, sunlight exposure."
+    )
 }
 
 def _build_hormone_knowledge(hormones: List[str]) -> str:
@@ -353,6 +389,14 @@ def build_master_prompt(user_profile: Dict[str, Any], category: str, rec_count: 
     }
     
     prompt = f"""You are AUVRA, an expert women's hormone health AI specializing in PCOS lifestyle recommendations.
+
+═══════════════════════════════════════════════════════════════════════════════
+DIVERSITY & CREATIVITY REQUIREMENT (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+1. DO NOT simply repeat the examples provided below (e.g., Ashwagandha, Flax seeds, Cinnamon) unless they are the absolute best fit for this specific user.
+2. Use the HORMONE KNOWLEDGE section to find diverse and unique recommendations.
+3. Vary your recommendations. Do not always suggest the same "top hits".
+4. Ensure the recommendation is highly specific to the user's combination of {primary_hormone} and {secondary_hormones[0] if secondary_hormones else 'None'}.
 
 ═══════════════════════════════════════════════════════════════════════════════
 USER PROFILE
