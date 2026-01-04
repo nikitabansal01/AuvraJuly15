@@ -343,6 +343,18 @@ async def start_session_recommendations_generation(
 async def _generate_recommendations_background(session_id: str, service, processing_service, db) -> None:
     """
     Generate session recommendations in background
+    
+    SMART OPTIMIZATION:
+    - Start heavy hormone analysis IMMEDIATELY (uses the 8s animation time)
+    - Wait until user selects lifestyle_focus (Eat/Move/Pause)
+    - Then generate recommendations with user's preference applied
+    
+    Timeline:
+    - 0s: Task starts, hormone analysis begins (cache check + LLM if needed)
+    - 0-8s: Frontend shows animation, hormone analysis completes
+    - 8s: User reaches Step 2 (selection screen)
+    - 9s: User makes selection, frontend updates session (1s debounce)
+    - 10s: This task reads fresh lifestyle_focus and generates recommendations
     """
     try:
         logger.info(f"Background recommendation generation started: {session_id}")
@@ -356,7 +368,49 @@ async def _generate_recommendations_background(session_id: str, service, process
         
         recommendation_service = RecommendationService(db)
         
-        # Create temporary UserProfile from session data
+        # ═══════════════════════════════════════════════════════════════════════════
+        # PHASE 1: Start hormone analysis IMMEDIATELY (heavy computation)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # This is the expensive part - runs during frontend animation
+        # Result is cached, so it's instant if already run
+        session_data_initial = service.get_session_data(session_id)
+        if session_data_initial:
+            temp_profile_for_hormone = {
+                "age": session_data_initial.age,
+                "period_description": session_data_initial.period_description,
+                "birth_control": session_data_initial.birth_control,
+                "cycle_length": session_data_initial.cycle_length,
+                "period_concerns": session_data_initial.period_concerns,
+                "body_concerns": session_data_initial.body_concerns,
+                "skin_hair_concerns": session_data_initial.skin_hair_concerns,
+                "mental_health_concerns": session_data_initial.mental_health_concerns,
+                "other_concerns": session_data_initial.other_concerns,
+                "top_concern": session_data_initial.top_concern,
+                "diagnosed_conditions": session_data_initial.diagnosed_conditions,
+                "family_history": session_data_initial.family_history,
+                "workout_intensity": session_data_initial.workout_intensity,
+                "sleep_duration": session_data_initial.sleep_duration,
+                "stress_level": session_data_initial.stress_level
+            }
+            
+            # Run hormone analysis NOW (uses animation time productively)
+            logger.info(f"🔬 Phase 1: Running hormone analysis during animation...")
+            root_cause_analysis = get_cached_hormone_analysis(session_id, temp_profile_for_hormone)
+            logger.info(f"✅ Hormone analysis complete: {root_cause_analysis.get('primary_imbalance')}")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # PHASE 2: Wait for user to select lifestyle_focus (Eat/Move/Pause)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Timeline: 0-4s (Step 0) + 4-8s (Step 1) + ~1-2s (selection)
+        # Total wait: ~10 seconds to ensure user has made selection
+        import asyncio
+        logger.info(f"⏳ Phase 2: Waiting 10s for user to select lifestyle_focus...")
+        await asyncio.sleep(10)  # Wait for user selection (8s animation + 1s debounce + buffer)
+        logger.info(f"✅ Wait complete, reading fresh session data with lifestyle_focus")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # PHASE 3: Read FRESH session data (now includes lifestyle_focus!)
+        # ═══════════════════════════════════════════════════════════════════════════
         session_data = service.get_session_data(session_id)
         if session_data:
             # Create temporary UserProfile (uid is None)
