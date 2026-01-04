@@ -49,9 +49,13 @@ class ImageLibraryService:
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
-    # Retry settings (Fix #14)
+    # Retry settings (Fix #14 + Cold Start Fix)
     MAX_IMAGE_RETRIES = 3
-    RETRY_DELAYS = [1.0, 2.0, 4.0]  # Exponential backoff
+    RETRY_DELAYS = [2.0, 5.0, 10.0]  # Longer delays for cold start recovery
+    
+    # RunPod timeout settings - increased for cold start
+    RUNPOD_POLL_TIMEOUT = 120  # 120 seconds max wait (cold start can take 60-90s)
+    RUNPOD_POLL_INTERVAL = 1.5  # Poll every 1.5 seconds
     
     def __init__(self):
         """Initialize the image library service."""
@@ -508,12 +512,14 @@ class ImageLibraryService:
                 logger.error(f"No job ID in RunPod response: {result}")
                 return await self._generate_placeholder_image(prompt)
             
-            # Poll for completion
+            # Poll for completion - use longer timeout for cold start
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
-            max_attempts = 60  # 60 seconds max wait
+            max_wait_seconds = self.RUNPOD_POLL_TIMEOUT  # 120 seconds for cold start
+            poll_interval = self.RUNPOD_POLL_INTERVAL
+            max_polls = int(max_wait_seconds / poll_interval)
             
-            for attempt in range(max_attempts):
-                await asyncio.sleep(1)  # Wait 1 second between polls
+            for poll_num in range(max_polls):
+                await asyncio.sleep(poll_interval)
                 
                 status_response = await self.client.get(status_url, headers=headers)
                 if status_response.status_code != 200:
@@ -560,10 +566,16 @@ class ImageLibraryService:
                     return await self._generate_placeholder_image(prompt)
                 
                 elif status in ["IN_QUEUE", "IN_PROGRESS"]:
+                    # Log progress every 30 seconds
+                    elapsed = (poll_num + 1) * poll_interval
+                    if elapsed % 30 < poll_interval:
+                        logger.info(f"⏳ RunPod job {job_id[-8:]} still {status} after {elapsed:.0f}s (cold start possible)")
                     continue
             
-            logger.error("RunPod job timed out")
-            return await self._generate_placeholder_image(prompt)
+            elapsed_total = int((time.time() - start_time) * 1000)
+            logger.error(f"🚨 RunPod job {job_id[-8:]} timed out after {elapsed_total/1000:.1f}s - will retry")
+            # Return None to trigger retry logic instead of placeholder
+            return (None, elapsed_total)
             
         except Exception as e:
             logger.error(f"Error calling RunPod: {e}")
@@ -571,30 +583,41 @@ class ImageLibraryService:
     
     async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod Flux Schnell with retry logic (Fix #14).
+        Call RunPod Flux Schnell with retry logic (Fix #14 + Cold Start Fix).
         
-        Retries on timeout, 5xx errors, or connection failures.
+        Retries on timeout (cold start), 5xx errors, or connection failures.
+        After first attempt, GPUs are usually warm so retries are fast.
         """
+        total_start = time.time()
+        
         for attempt in range(self.MAX_IMAGE_RETRIES):
             try:
+                logger.info(f"🎨 RunPod attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES} for: {prompt[:50]}...")
                 result, gen_time = await self._call_runpod_flux(prompt, category)
+                
                 if result:
+                    total_time = time.time() - total_start
+                    if attempt > 0:
+                        logger.info(f"✅ RunPod succeeded on retry {attempt + 1} (total time: {total_time:.1f}s)")
                     return (result, gen_time)
                 
-                # Returned None - might be transient, retry
+                # Returned None - timeout or transient error, retry
+                # After timeout, GPU should be warm, retry immediately with short delay
                 if attempt < self.MAX_IMAGE_RETRIES - 1:
                     delay = self.RETRY_DELAYS[attempt]
-                    logger.warning(f"Image generation failed, retrying in {delay}s (attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES})")
+                    logger.warning(f"⚠️ Image generation timed out, GPU may be warming up. "
+                                 f"Retrying in {delay}s (attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES})")
                     await asyncio.sleep(delay)
             except Exception as e:
                 if attempt < self.MAX_IMAGE_RETRIES - 1:
                     delay = self.RETRY_DELAYS[attempt]
-                    logger.warning(f"Image generation error: {e}, retrying in {delay}s")
+                    logger.warning(f"⚠️ Image generation error: {e}, retrying in {delay}s")
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"Image generation failed after {self.MAX_IMAGE_RETRIES} retries: {e}")
+                    logger.error(f"❌ Image generation failed after {self.MAX_IMAGE_RETRIES} retries: {e}")
                     return await self._generate_placeholder_image(prompt)
         
+        logger.error(f"❌ All {self.MAX_IMAGE_RETRIES} retry attempts exhausted, using placeholder")
         return await self._generate_placeholder_image(prompt)
     
     def _enhance_prompt(self, prompt: str, category: str = "food") -> Tuple[str, str]:
