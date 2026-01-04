@@ -2119,10 +2119,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             if recent_checkins:
                 latest_checkin = recent_checkins[0]  # Most recent
                 logger.debug(f"[WHITELIST] Checking latest weekly check-in (completed: {latest_checkin.completed_at})")
-                if latest_checkin.symptoms_this_week:
-                    if isinstance(latest_checkin.symptoms_this_week, list):
-                        allowed_symptoms_set.update(latest_checkin.symptoms_this_week)
-                        logger.debug(f"[WHITELIST] Added weekly_checkin symptoms: {latest_checkin.symptoms_this_week}")
+                # Safely access symptoms_this_week as it might not exist on the model
+                symptoms_this_week = getattr(latest_checkin, 'symptoms_this_week', None)
+                if symptoms_this_week:
+                    if isinstance(symptoms_this_week, list):
+                        allowed_symptoms_set.update(symptoms_this_week)
+                        logger.debug(f"[WHITELIST] Added weekly_checkin symptoms: {symptoms_this_week}")
             else:
                 logger.debug(f"[WHITELIST] No recent weekly check-ins found")
             
