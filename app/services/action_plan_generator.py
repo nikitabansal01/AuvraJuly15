@@ -473,7 +473,18 @@ OUTPUT FORMAT (for each action)
 1. title: SIMPLE, CLEAN NAME ONLY (see TITLE RULES below)
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
-4. specific_action: Detailed, actionable description (50-100 words)
+4. specific_action: MUST include 3 DIFFERENT WAYS to consume/do this action! (80-120 words)
+   FORMAT: Start with main benefit, then list 3 methods like:
+   "Try it as: (1) [method 1], (2) [method 2], or (3) [method 3]."
+   
+   ✅ GOOD EXAMPLE for "Ashwagandha":
+   "Ashwagandha is an adaptogenic herb that helps regulate cortisol and reduce stress. Try it as: (1) Ashwagandha tea - steep 1 tsp powder in hot water with honey, (2) Smoothie boost - blend 1/2 tsp into your morning smoothie with banana, or (3) Capsule form - take 300mg standardized extract with breakfast."
+   
+   ✅ GOOD EXAMPLE for "Flaxseeds":
+   "Flaxseeds are rich in lignans that help balance estrogen levels. Try them as: (1) Ground in smoothies - add 2 tbsp ground flaxseed to your morning smoothie, (2) Flax crackers - sprinkle on yogurt or oatmeal, or (3) Flax egg - mix 1 tbsp with 3 tbsp water as an egg substitute in baking."
+   
+   ❌ BAD (no consumption methods): "Ashwagandha helps reduce stress. Take it daily."
+   
 5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the user's specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
 6. target_hormone: CRITICAL - You MUST set this exactly as follows:
    - Action 1 and 2: MUST be "{primary_hormone}" (the PRIMARY hormone)
@@ -569,63 +580,63 @@ For MINDFULNESS actions:
 COMPLETE OUTPUT EXAMPLES (FOLLOW THIS EXACT STRUCTURE)
 ══════════════════════════════════════════════════════════════════════
 
-EXAMPLE FOOD ACTION (notice food_items and food_amounts are REQUIRED):
+EXAMPLE FOOD ACTION (notice specific_action includes 3 ways to consume):
 {{
   "title": "Pumpkin Seeds",
   "category": "food",
   "time_slot": "morning",
-  "specific_action": "Add 2 tablespoons of raw pumpkin seeds to your morning yogurt or smoothie. These zinc-rich seeds support hormone production and reduce inflammation.",
+  "specific_action": "Pumpkin seeds are packed with zinc and magnesium, essential minerals for hormone production and stress reduction. Try them as: (1) Yogurt topper - sprinkle 2 tablespoons on Greek yogurt with honey, (2) Smoothie blend - add a handful to your morning smoothie for extra nutrition, or (3) Trail mix - combine with dark chocolate chips and almonds for an afternoon snack.",
   "purpose": "Zinc in pumpkin seeds is a cofactor for enzymes that synthesize progesterone, while magnesium helps reduce cortisol, creating an optimal hormonal environment for your luteal phase.",
   "target_hormone": "Progesterone",
   "hormone_persona_intro": "Hey there, it's Progesterone. I'm here to help you feel calm and balanced today. Let me start by sharing something delicious that will help boost my levels.",
-  "image_prompt": "Professional food photography of golden pumpkin seeds scattered on creamy Greek yogurt in a ceramic bowl, fresh mint garnish, wooden spoon, overhead view, natural morning light streaming in, rustic wooden table, warm appetizing colors, healthy breakfast aesthetic, 4K quality",
-  "food_items": ["pumpkin seeds", "raw seeds"],
-  "food_amounts": ["2 tablespoons", "a handful"],
+  "image_prompt": "Professional close-up food photography of golden-green raw pumpkin seeds overflowing from a small wooden bowl onto a rustic table, some seeds scattered artistically, morning sunlight highlighting the texture and color of each seed, shallow depth of field, warm appetizing tones, clearly showing the actual pumpkin seeds as the hero, 4K quality",
+  "food_items": ["pumpkin seeds", "raw pumpkin seeds", "pepitas"],
+  "food_amounts": ["2 tablespoons", "a handful", "30g"],
   "research_studies": [{{"title": "Zinc supplementation and hormone levels", "journal": "J Nutr", "year": 2022, "participants": 120, "finding": "Zinc improved progesterone levels in women", "pmid": "12345678"}}],
   "variants": [
-    {{"variant_type": "tasty", "title": "Roasted with Honey", "description": "Roast seeds with honey and cinnamon for a sweet, crunchy snack", "image_prompt": "Professional food photography of roasted pumpkin seeds glistening with honey glaze in a small ceramic dish, cinnamon sticks nearby, golden brown color, rustic kitchen setting, appetizing snack presentation, 4K quality"}},
-    {{"variant_type": "easy", "title": "Sprinkle on Meals", "description": "Simply sprinkle raw seeds on salads, yogurt, or oatmeal", "image_prompt": "Professional food photography of raw pumpkin seeds being sprinkled from a wooden spoon onto a colorful salad bowl, fresh vegetables visible, casual lunch setting, healthy eating moment, 4K quality"}},
-    {{"variant_type": "healthy", "title": "Soaked Overnight", "description": "Soak seeds overnight in water to activate enzymes for better absorption", "image_prompt": "Professional food photography of pumpkin seeds soaking in a glass mason jar filled with water, morning kitchen counter, natural light, preparation for healthy eating, wellness aesthetic, 4K quality"}}
+    {{"variant_type": "tasty", "title": "Honey Roasted Seeds", "description": "Roast seeds at 350°F for 10 min with honey drizzle and sea salt", "image_prompt": "Professional food photography of roasted pumpkin seeds glistening with golden honey glaze in a rustic ceramic dish, visible caramelization, sea salt crystals sparkling, cinnamon stick garnish, warm kitchen lighting, irresistible snack presentation, 4K quality"}},
+    {{"variant_type": "easy", "title": "Seed Butter Spread", "description": "Spread pumpkin seed butter on toast or apple slices for a quick snack", "image_prompt": "Professional food photography of creamy green pumpkin seed butter spread generously on golden toast, raw seeds scattered beside, fresh apple slices on the plate, breakfast table setting, appetizing healthy snack moment, 4K quality"}},
+    {{"variant_type": "healthy", "title": "Soaked & Sprouted", "description": "Soak seeds 8 hours in water, drain, and eat raw for maximum nutrient absorption", "image_prompt": "Professional food photography of soaked pumpkin seeds in a clear glass jar with water, some sprouted seeds in a small bowl beside it, fresh morning light, clean kitchen counter, health-conscious preparation visible, 4K quality"}}
   ],
   "symptoms": ["fatigue", "anxiety"],
   "conditions": ["PCOS"]
 }}
 
-EXAMPLE MOVEMENT ACTION (notice exercise_types, exercise_durations, exercise_intensities are REQUIRED):
+EXAMPLE MOVEMENT ACTION (notice specific_action includes 3 ways to do the exercise):
 {{
   "title": "Morning Yoga",
   "category": "movement",
   "time_slot": "morning",
-  "specific_action": "Start your day with 15 minutes of gentle yoga focusing on hip openers and forward folds. These poses help reduce cortisol and support hormone balance.",
+  "specific_action": "Morning yoga activates your parasympathetic nervous system to reduce cortisol and calm your mind. Try it as: (1) Gentle flow - 15 min of cat-cow, child's pose, and forward folds, (2) Hip openers - focus on pigeon pose and butterfly stretch for 10 min, or (3) Energizing sequence - 5 rounds of sun salutations to wake up your body and boost circulation.",
   "purpose": "Forward folds and hip openers activate the parasympathetic nervous system, directly lowering cortisol release and helping prevent the stress-induced disruption of your reproductive hormones.",
   "target_hormone": "Cortisol",
   "hormone_persona_intro": "Good morning! It's Cortisol here. Instead of spiking your stress, let's channel my energy into something calming that will help you feel centered all day.",
-  "image_prompt": "Serene photograph of woman in child's pose on a purple yoga mat, arms extended forward, wearing comfortable athletic wear, peaceful living room with indoor plants, soft morning sunlight streaming through sheer curtains, wellness aesthetic, warm earth tones, calming atmosphere, 4K quality",
-  "exercise_types": ["yoga", "stretching", "hip openers"],
-  "exercise_durations": ["15 minutes", "10-20 min"],
-  "exercise_intensities": ["low", "gentle"],
+  "image_prompt": "Serene photograph of woman in child's pose on a purple yoga mat in a bright living room, arms stretched forward, forehead resting on mat, wearing comfortable grey athletic wear, green indoor plants visible, soft morning sunlight through sheer white curtains, clearly showing the exact yoga pose, peaceful wellness aesthetic, 4K quality",
+  "exercise_types": ["yoga", "gentle stretching", "sun salutations"],
+  "exercise_durations": ["15 minutes", "10 min", "5 min"],
+  "exercise_intensities": ["low", "gentle", "moderate"],
   "research_studies": [{{"title": "Yoga and cortisol reduction in women", "journal": "Psychoneuroendocrinology", "year": 2021, "participants": 80, "finding": "Yoga reduced cortisol levels significantly", "pmid": "98765432"}}],
   "variants": [
-    {{"variant_type": "gentle", "title": "Restorative Poses", "description": "Use props like blankets and bolsters for supported, restful poses", "image_prompt": "Serene photograph of woman in supported bridge pose with yoga bolster under back, cozy blanket nearby, soft candles lit, peaceful bedroom setting, ultimate relaxation, warm dim lighting, 4K quality"}},
-    {{"variant_type": "energizing", "title": "Sun Salutations", "description": "Add 3-5 rounds of sun salutations to boost energy and circulation", "image_prompt": "Serene photograph of woman in upward facing dog pose during sun salutation sequence, arms strong, chest lifted, bright morning light flooding room, energizing yoga flow moment, vibrant wellness aesthetic, 4K quality"}},
-    {{"variant_type": "quick", "title": "5-Minute Flow", "description": "A quick sequence of cat-cow, child's pose, and downward dog for busy mornings", "image_prompt": "Serene photograph of woman transitioning from cat to cow pose on yoga mat, arched back, comfortable clothing, minimalist room, quick morning routine vibe, efficient wellness moment, 4K quality"}}
+    {{"variant_type": "gentle", "title": "Restorative Yoga", "description": "Use blankets and bolsters for fully supported poses, hold each for 3-5 minutes", "image_prompt": "Serene photograph of woman lying in supported bridge pose with a yoga bolster under her lower back, cozy blanket draped over legs, soft candles in background, eyes closed in relaxation, peaceful bedroom setting, restorative yoga clearly shown, 4K quality"}},
+    {{"variant_type": "energizing", "title": "Vinyasa Flow", "description": "Link breath with movement through flowing sun salutations and warrior poses", "image_prompt": "Dynamic photograph of woman in warrior II pose on yoga mat, arms extended strongly, looking over front hand, bright morning light, powerful athletic stance clearly visible, energetic wellness moment, vibrant colors, 4K quality"}},
+    {{"variant_type": "quick", "title": "5-Minute Stretch", "description": "Cat-cow (1 min), child's pose (2 min), forward fold (2 min) - perfect for busy mornings", "image_prompt": "Serene photograph of woman doing cat-cow pose on yoga mat, back arched upward in cat position, comfortable clothing, minimalist bright room, quick morning stretch clearly demonstrated, efficient wellness moment, 4K quality"}}
   ],
   "symptoms": ["stress", "tension"],
   "conditions": []
 }}
 
-EXAMPLE MINDFULNESS ACTION (notice mindfulness_techniques and mindfulness_durations are REQUIRED):
+EXAMPLE MINDFULNESS ACTION (notice specific_action includes 3 ways to practice):
 {{
   "title": "Deep Breathing",
   "category": "mindfulness",
   "time_slot": "evening",
-  "specific_action": "Practice 10 minutes of deep diaphragmatic breathing before bed. Breathe in for 4 counts, hold for 4, exhale for 6. This activates your rest-and-digest response.",
+  "specific_action": "Deep breathing activates your vagus nerve to signal safety and reduce cortisol for better sleep. Try it as: (1) 4-4-6 technique - inhale 4 counts, hold 4 counts, exhale 6 counts for 5 minutes, (2) Box breathing - inhale 4, hold 4, exhale 4, hold 4 for 10 cycles, or (3) Belly breathing - place hands on belly, breathe deeply until hands rise, exhale slowly for 3 minutes.",
   "purpose": "Deep breathing signals safety to your nervous system, helping me (Cortisol) decrease so you can rest and restore.",
   "target_hormone": "Cortisol",
   "hormone_persona_intro": "Hey, it's Cortisol checking in for the evening. Let's work together to wind down so you can get the restorative sleep you deserve.",
-  "image_prompt": "Peaceful photograph of woman sitting cross-legged on cushion with both hands resting on belly practicing deep diaphragmatic breathing, eyes gently closed, serene expression, soft candles glowing nearby, cozy bedroom with fairy lights, dim warm lighting, ultimate relaxation moment, 4K quality",
-  "mindfulness_techniques": ["deep breathing", "diaphragmatic breathing", "4-4-6 breathing"],
-  "mindfulness_durations": ["10 minutes", "5-15 min"],
+  "image_prompt": "Peaceful close-up photograph of woman sitting cross-legged on a meditation cushion with both hands placed on her belly, practicing deep diaphragmatic breathing, eyes gently closed, serene peaceful expression, soft candlelight glowing nearby, cozy bedroom with string lights in background, clearly showing the belly breathing technique, calming atmosphere, 4K quality",
+  "mindfulness_techniques": ["4-4-6 breathing", "box breathing", "belly breathing"],
+  "mindfulness_durations": ["5 minutes", "10 cycles", "3 minutes"],
   "research_studies": [{{"title": "Breathing exercises and stress reduction", "journal": "Frontiers Psychol", "year": 2023, "participants": 95, "finding": "Deep breathing reduced perceived stress in women", "pmid": "11223344"}}],
   "variants": [
     {{"variant_type": "guided", "title": "App-Guided", "description": "Follow along with a breathing app like Calm or Headspace for guided sessions", "image_prompt": "Peaceful photograph of woman wearing headphones practicing guided breathing meditation, eyes closed, phone showing meditation app on cushion beside her, soft ambient lighting, cozy corner setup, relaxation moment, 4K quality"}},
@@ -639,24 +650,37 @@ EXAMPLE MINDFULNESS ACTION (notice mindfulness_techniques and mindfulness_durati
 CRITICAL: Every action MUST include ALL of its category-specific fields (food_items/food_amounts for food, exercise_types/exercise_durations/exercise_intensities for movement, mindfulness_techniques/mindfulness_durations for mindfulness).
 
 IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
-Generate HIGHLY ILLUSTRATIVE visuals that clearly show WHAT THE ACTION IS. User should understand the action just by looking at the image!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖼️ GOAL: User should INSTANTLY UNDERSTAND what the action is just by seeing the image!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🎯 KEY PRINCIPLE: The image must SHOW the actual food item, exercise pose, or mindfulness setup so users instantly know what to do.
+The image MUST be SELF-EXPLANATORY and ILLUSTRATIVE. Think of it like a visual instruction:
+- For FOOD: Show the EXACT food item as the HERO of the image, clearly visible and recognizable
+- For MOVEMENT: Show a WOMAN doing the EXACT pose/exercise so user knows what to do
+- For MINDFULNESS: Show the TECHNIQUE being practiced (hands position, posture, setup)
+
+📐 COMPOSITION RULES:
+1. Make the subject (food/pose/technique) the CLEAR FOCAL POINT - fill 60-70% of the frame
+2. Use CLOSE-UP or MEDIUM shots - don't zoom out too much
+3. Show TEXTURE and DETAIL of the food item so it's instantly recognizable
+4. For exercises, show the FULL POSE clearly from a good angle
+5. Keep backgrounds simple but contextual (kitchen for food, living room for yoga)
 
 ═══════════════════════════════════════════════════════════════════════
-FOR FOOD - Show the ACTUAL FOOD being consumed/prepared:
+FOR FOOD - Make the FOOD ITEM the HERO (clearly visible, close-up):
 ═══════════════════════════════════════════════════════════════════════
-Template: "Professional food photography of [EXACT FOOD ITEM with preparation style], [serving context], overhead view, natural lighting, rustic wooden table, warm appetizing colors, 4K quality"
+Template: "Professional close-up food photography of [EXACT FOOD ITEM in detail], [texture/color description], [simple serving context], natural lighting, shallow depth of field, the [food item] is clearly the main subject filling most of the frame, 4K quality"
 
-✅ GOOD EXAMPLES (specific and illustrative):
-- "Professional food photography of golden pumpkin seeds scattered on Greek yogurt in a ceramic bowl, fresh mint garnish, overhead view, natural morning light, rustic wooden table, warm appetizing colors, 4K quality"
-- "Professional food photography of Ceylon cinnamon sticks and ground cinnamon in a wooden spoon next to a warm oatmeal bowl, honey drizzle visible, cozy breakfast setting, 4K quality"
-- "Professional food photography of raw flaxseeds in a small glass jar with a smoothie glass nearby, fresh berries scattered, bright kitchen counter, healthy breakfast vibe, 4K quality"
-- "Professional food photography of fresh salmon fillet with lemon slices and herbs on a white plate, grilled marks visible, dinner table setting, appetizing presentation, 4K quality"
+✅ GOOD EXAMPLES (food is the clear hero, instantly recognizable):
+- "Professional close-up food photography of raw pumpkin seeds in a small ceramic bowl, showing their greenish color and oval shape, some seeds scattered on wooden surface, natural morning light highlighting texture, the seeds are clearly the main subject, 4K quality"
+- "Professional close-up food photography of ashwagandha root powder in a wooden spoon with whole dried roots beside it, earthy brown color visible, simple kitchen background, the ashwagandha is clearly recognizable and fills most of the frame, 4K quality"
+- "Professional close-up food photography of golden flaxseeds spilling from a glass jar, tiny seeds clearly visible showing their shiny brown texture, white background for contrast, the flaxseeds are the unmistakable hero of the image, 4K quality"
+- "Professional close-up food photography of fresh salmon fillet showing pink-orange flesh with visible fat marbling, lemon wedge beside it, the fish texture and color are clear and appetizing, 4K quality"
 
-❌ BAD EXAMPLES (too generic):
+❌ BAD EXAMPLES (food not clear, too generic, or too zoomed out):
 - "Professional food photography of healthy food" (What food?!)
-- "Food on a table" (Useless)
+- "Bowl of food on a table" (Can't tell what's in it!)
+- "Overhead shot of breakfast spread" (Too much, can't focus on any item)
 
 ═══════════════════════════════════════════════════════════════════════
 FOR MOVEMENT - Show a WOMAN DOING the exact exercise/pose:
@@ -3957,7 +3981,10 @@ OUTPUT FORMAT (for each replacement action)
    - MINDFULNESS: mindfulness_durations, mindfulness_techniques (both arrays)
 4. title: Simple, clean name (see TITLE RULES below - just the food/activity/technique name!)
 5. time_slot: "morning", "afternoon", or "evening"
-6. specific_action: Detailed, actionable description (50-100 words)
+6. specific_action: MUST include 3 DIFFERENT WAYS to consume/do this action! (80-120 words)
+   FORMAT: Start with main benefit, then list 3 methods like:
+   "Try it as: (1) [method 1], (2) [method 2], or (3) [method 3]."
+   Example: "Quinoa provides slow-release carbs that help maintain steady blood sugar. Try it as: (1) Breakfast bowl - top with berries and a drizzle of honey, (2) Salad base - mix with roasted vegetables and olive oil dressing, or (3) Stuffed peppers - fill bell peppers with quinoa and black beans."
 7. purpose: One clear sentence explaining how this helps the target hormone
 8. target_hormone: MUST match original (e.g., "insulin", "estrogen")
 9. hormone_persona_intro: Natural first-person intro (see examples in system prompt)
@@ -3988,16 +4015,18 @@ For MINDFULNESS actions, MUST include:
 - mindfulness_techniques: Array like ["deep breathing", "meditation"]
 
 IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
-Generate HIGHLY ILLUSTRATIVE visuals - user should understand the action just by looking at the image!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖼️ GOAL: User should INSTANTLY UNDERSTAND what the action is just by seeing the image!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- For FOOD: "Professional food photography of [EXACT FOOD with preparation], [context like bowl, plate], overhead view, natural lighting, rustic wooden table, warm appetizing colors, 4K quality"
-  Example: "Professional food photography of golden quinoa in ceramic bowl with fresh herbs and lemon wedge, steam rising, overhead view, natural lighting, rustic table, warm appetizing colors, 4K quality"
+- For FOOD: "Professional close-up food photography of [EXACT FOOD ITEM in detail], [texture/color description], [simple serving context], natural lighting, shallow depth of field, the [food item] is clearly the main subject filling most of the frame, 4K quality"
+  Example: "Professional close-up food photography of golden quinoa grains in a ceramic bowl, showing fluffy texture and spiral shape of each grain, fresh parsley garnish, natural lighting, shallow depth of field, quinoa is clearly the hero filling most of the frame, 4K quality"
 
-- For MOVEMENT: "Serene photograph of woman [EXACT POSE/MOVEMENT], [clothing], [setting], soft natural lighting, wellness aesthetic, 4K quality"  
-  Example: "Serene photograph of woman in downward dog pose on yoga mat, comfortable athletic wear, peaceful living room with plants, soft morning light, wellness aesthetic, 4K quality"
+- For MOVEMENT: "Serene photograph of woman [EXACT POSE/MOVEMENT shown clearly], [clothing], [setting], soft natural lighting, full pose visible, wellness aesthetic, 4K quality"  
+  Example: "Serene photograph of woman in downward dog pose on yoga mat, arms and legs straight forming inverted V shape, comfortable grey athletic wear, peaceful living room with plants, soft morning light, full pose clearly visible, 4K quality"
 
-- For MINDFULNESS: "Peaceful photograph of woman [EXACT TECHNIQUE visualization], [setup], soft diffused lighting, calming atmosphere, 4K quality"
-  Example: "Peaceful photograph of woman sitting cross-legged with hands on belly practicing deep breathing, eyes closed, serene expression, candles nearby, cozy room, calming atmosphere, 4K quality"
+- For MINDFULNESS: "Peaceful close-up photograph of [EXACT TECHNIQUE visualization - hands position, posture, setup], [calming elements], soft diffused lighting, the technique is clearly demonstrated, 4K quality"
+  Example: "Peaceful close-up photograph of woman sitting cross-legged with both hands placed on belly practicing diaphragmatic breathing, eyes gently closed, serene expression, soft candles nearby, the belly breathing technique is clearly shown, calming atmosphere, 4K quality"
 
 VARIANT FORMAT (REQUIRED structure):
 Each variant MUST be an object with these exact fields:
@@ -4023,11 +4052,11 @@ EXAMPLE OUTPUT for FOOD replacement:
   "food_amounts": ["1 cup", "1/2 cup", "1 tbsp"],
   "food_items": ["cooked quinoa", "cooked lentils", "olive oil"],
   "time_slot": "morning",
-  "specific_action": "Cook 1 cup of quinoa and 1/2 cup of lentils together with vegetable broth. Season with turmeric, cumin, and black pepper. Drizzle with 1 tbsp olive oil. This creates a filling, insulin-friendly meal.",
+  "specific_action": "Quinoa provides slow-release carbs with complete protein to help stabilize insulin levels throughout the morning. Try it as: (1) Breakfast bowl - top with berries, honey, and toasted almonds for a sweet start, (2) Savory pilaf - cook with vegetable broth, turmeric, and cumin, add 1 tbsp olive oil, or (3) Stuffed peppers - fill bell peppers with quinoa, black beans, and fresh herbs for lunch prep.",
   "purpose": "This meal combines complex carbs with fiber and protein to help stabilize insulin levels throughout the morning.",
   "target_hormone": "insulin",
   "hormone_persona_intro": "I'm Insulin — in your menstrual phase, I can be sensitive to diet changes, so keeping my levels steady is key.",
-  "image_prompt": "Professional food photography of quinoa and lentil bowl, overhead view, natural lighting, rustic wooden table, fresh herbs garnish, warm color tones, appetizing presentation, 4K quality",
+  "image_prompt": "Professional close-up food photography of fluffy golden quinoa in a ceramic bowl, showing the small spiral-shaped grains clearly visible, fresh parsley garnish, natural morning light, shallow depth of field, quinoa is clearly the hero filling most of the frame, 4K quality",
   "research_studies": [{{
     "title": "Effect of Quinoa on Insulin Response in Women",  
     "journal": "Nutrients",
@@ -4040,21 +4069,21 @@ EXAMPLE OUTPUT for FOOD replacement:
   "variants": [
     {{
       "variant_type": "tasty",
-      "title": "With Maple and Pecans",
-      "description": "Add maple syrup and toasted pecans for a sweet, nutty twist.",
-      "image_prompt": "Professional food photography of quinoa with maple syrup and pecans..."
+      "title": "Maple Pecan Bowl",
+      "description": "Add maple syrup and toasted pecans for a sweet, nutty breakfast treat.",
+      "image_prompt": "Professional close-up food photography of quinoa breakfast bowl with golden maple syrup drizzle and toasted pecans on top, cinnamon stick garnish, the quinoa and toppings clearly visible as the hero, warm cozy breakfast lighting, 4K quality"
     }},
     {{
       "variant_type": "easy",
-      "title": "One-Pot Method",
-      "description": "Cook everything in one pot for quick, easy cleanup.",
-      "image_prompt": "Professional food photography of one-pot quinoa..."
+      "title": "Quick Microwave Bowl",
+      "description": "Use pre-cooked quinoa from a pouch, microwave 90 seconds with milk and cinnamon.",
+      "image_prompt": "Professional close-up food photography of quick quinoa bowl in a simple white bowl, pre-cooked quinoa clearly visible with cinnamon dusting, easy breakfast setup, the fluffy quinoa is the clear focal point, 4K quality"
     }},
     {{
       "variant_type": "healthy",
-      "title": "With Leafy Greens",
-      "description": "Add spinach and kale for extra nutrients and fiber.",
-      "image_prompt": "Professional food photography of quinoa with leafy greens..."
+      "title": "Green Power Quinoa",
+      "description": "Mix with fresh spinach, kale, and lemon juice for extra nutrients and fiber.",
+      "image_prompt": "Professional close-up food photography of quinoa mixed with vibrant green spinach and kale, lemon wedge beside, the healthy combination clearly visible, bright natural lighting, nutritious meal clearly shown, 4K quality"
     }}
   ]
 }}]
