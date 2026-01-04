@@ -818,14 +818,17 @@ Respond with valid JSON array only, no markdown formatting."""
 # This ensures schema and model are always in sync
 _raw_schema = ActionPlanResponseModel.model_json_schema()
 
-# Fix for OpenAI strict mode: ALL fields MUST be in 'required'
-# Pydantic excludes fields with default_factory from required, but OpenAI strict mode needs them
+# Fix for OpenAI strict mode: 
+# 1. ALL fields MUST be in 'required' (Pydantic excludes default_factory fields)
+# 2. 'additionalProperties' MUST be false at every object level
 def _fix_required_fields(schema: dict) -> dict:
-    """Recursively fix schema to include ALL properties in required (OpenAI strict mode requirement)."""
+    """Recursively fix schema for OpenAI strict mode compliance."""
     if isinstance(schema, dict):
         if "properties" in schema:
             # Add ALL property keys to required
             schema["required"] = list(schema["properties"].keys())
+            # OpenAI strict mode requires additionalProperties: false
+            schema["additionalProperties"] = False
             # Recurse into nested properties
             for prop_value in schema["properties"].values():
                 _fix_required_fields(prop_value)
