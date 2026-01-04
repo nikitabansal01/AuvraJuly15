@@ -54,7 +54,7 @@ class ResearchStudyModel(BaseModel):
     title: str
     journal: str
     year: int
-    participants: int
+    participants: int = 0
     finding: str
     pmid: str
     verification_link: str
@@ -88,26 +88,26 @@ class ActionItemModel(BaseModel):
     image_prompt: str
     
     # Research studies - required, can be empty []
-    research_studies: List[ResearchStudyModel]
+    research_studies: List[ResearchStudyModel] = Field(default_factory=list)
     
     # Variants - exactly 3 required
     variants: List[ActionVariantModel]
     
     # Category-specific fields - ALL required, use [] for non-matching categories
     # Food fields
-    food_items: List[str]
-    food_amounts: List[str]
+    food_items: List[str] = Field(default_factory=list)
+    food_amounts: List[str] = Field(default_factory=list)
     # Movement fields  
-    exercise_types: List[str]
-    exercise_durations: List[str]
-    exercise_intensities: List[str]
+    exercise_types: List[str] = Field(default_factory=list)
+    exercise_durations: List[str] = Field(default_factory=list)
+    exercise_intensities: List[str] = Field(default_factory=list)
     # Mindfulness fields
-    mindfulness_techniques: List[str]
-    mindfulness_durations: List[str]
+    mindfulness_techniques: List[str] = Field(default_factory=list)
+    mindfulness_durations: List[str] = Field(default_factory=list)
     
     # Metadata - required, can be empty []
-    symptoms: List[str]
-    conditions: List[str]
+    symptoms: List[str] = Field(default_factory=list)
+    conditions: List[str] = Field(default_factory=list)
     
     model_config = {"extra": "forbid"}
 
@@ -410,6 +410,8 @@ PERSONALIZATION FACTORS
 - Sleep Duration: {sleep_duration}
 - Workout Intensity: {workout_intensity}
 - Birth Control: {birth_control}
+- Current Streak: {current_streak} days
+- Longest Streak: {longest_streak} days
 
 ══════════════════════════════════════════════════════════════════════
 HORMONE CONTEXT FOR {cycle_phase} PHASE
@@ -440,6 +442,15 @@ Use these insights to:
 - Build on what helped the user feel better
 
 ══════════════════════════════════════════════════════════════════════
+DAILY REVIEW INSIGHTS (Feedback from yesterday's plan)
+══════════════════════════════════════════════════════════════════════
+{daily_review_insights}
+Use these insights to:
+- If user skipped items, understand why and suggest easier alternatives
+- If user replaced items, learn from their substitutions
+- If user completed items, reinforce those habits
+
+══════════════════════════════════════════════════════════════════════
 REQUIREMENTS (READ CAREFULLY)
 ══════════════════════════════════════════════════════════════════════
 1. Generate exactly {num_actions} actions total
@@ -468,6 +479,25 @@ REQUIREMENTS (READ CAREFULLY)
 17. Recommend longer mindfulness for high stress users, shorter for low stress
 
 ══════════════════════════════════════════════════════════════════════
+🚨 ANTI-REPETITION & HALLUCINATION RULES (CRITICAL)
+══════════════════════════════════════════════════════════════════════
+1. DO NOT COPY EXAMPLES: The examples in this prompt are for FORMATTING ONLY. You MUST select the BEST action for THIS specific user from your medical knowledge - NOT from the examples.
+2. AVOID RECENTLY RECOMMENDED: Check the "RECENTLY RECOMMENDED" section below. Do NOT suggest any item from that list.
+3. VARIETY IS KEY: Each day's plan should feel fresh and different. Draw from the FULL spectrum of evidence-based interventions.
+4. STRICT SYMPTOM WHITELIST: In the 'symptoms' output array, you may ONLY use symptoms from this exact list:
+   {allowed_symptoms}
+   If a symptom is not in this list, DO NOT include it.
+5. STRICT CONDITION WHITELIST: In the 'conditions' output array, you may ONLY use conditions from this exact list:
+   {allowed_conditions}
+   If no conditions are listed, this array MUST be empty [].
+
+══════════════════════════════════════════════════════════════════════
+⏮️ RECENTLY RECOMMENDED (DO NOT REPEAT THESE)
+══════════════════════════════════════════════════════════════════════
+{recently_recommended}
+Choose DIFFERENT items that are equally or more beneficial for this user.
+
+══════════════════════════════════════════════════════════════════════
 🎯 CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION
 ══════════════════════════════════════════════════════════════════════
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -476,8 +506,8 @@ REQUIREMENTS (READ CAREFULLY)
 └─────────────────────────────────────────────────────────────────────┘
 
 FOOD:
-  • Title: Raw ingredient → "Turmeric", "Ashwagandha", "Flaxseeds"
-  • specific_action: 3 consumption methods → latte, tea, smoothie, capsule, etc.
+  • Title: Raw ingredient → "Salmon", "Quinoa", "Blueberries"
+  • specific_action: 3 consumption methods → grilled, baked, in smoothie, etc.
 
 MOVEMENT:
   • Title: Activity type → "Yoga", "Walking", "Stretching"
@@ -497,13 +527,13 @@ OUTPUT FORMAT (for each action)
    FORMAT: Start with main benefit, then list 3 methods like:
    "Try it as: (1) [method 1], (2) [method 2], or (3) [method 3]."
    
-   ✅ GOOD EXAMPLE for "Ashwagandha":
-   "Ashwagandha is an adaptogenic herb that helps regulate cortisol and reduce stress. Try it as: (1) Ashwagandha tea - steep 1 tsp powder in hot water with honey, (2) Smoothie boost - blend 1/2 tsp into your morning smoothie with banana, or (3) Capsule form - take 300mg standardized extract with breakfast."
+   ✅ GOOD EXAMPLE for "Walnuts":
+   "Walnuts are rich in omega-3s and melatonin precursors that support hormonal balance and sleep. Try them as: (1) Raw handful - eat 7-10 walnuts as a morning snack, (2) Salad topper - add chopped walnuts to your lunch salad with olive oil, or (3) Walnut butter - spread 1 tbsp on apple slices or whole grain toast."
    
-   ✅ GOOD EXAMPLE for "Flaxseeds":
-   "Flaxseeds are rich in lignans that help balance estrogen levels. Try them as: (1) Ground in smoothies - add 2 tbsp ground flaxseed to your morning smoothie, (2) Flax crackers - sprinkle on yogurt or oatmeal, or (3) Flax egg - mix 1 tbsp with 3 tbsp water as an egg substitute in baking."
+   ✅ GOOD EXAMPLE for "Spinach":
+   "Spinach is packed with magnesium and folate that support progesterone production. Try it as: (1) Green smoothie - blend 2 cups with banana and almond milk, (2) Sautéed side - quickly sauté with garlic and olive oil, or (3) Raw salad - use as a base for lunch topped with avocado."
    
-   ❌ BAD (no consumption methods): "Ashwagandha helps reduce stress. Take it daily."
+   ❌ BAD (no consumption methods): "Ginger helps reduce stress. Consume it daily."
    
 5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the user's specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
 6. target_hormone: CRITICAL - You MUST set this exactly as follows:
@@ -512,37 +542,39 @@ OUTPUT FORMAT (for each action)
    DO NOT deviate from this. The mascot image shown depends on this field matching correctly.
 7. hormone_persona_intro: Write naturally following the example style in system prompt
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
-9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES (see format below)
-10. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action (see VARIANT FORMAT below)
+9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES. Fields: title, journal, year, participants (int), finding, pmid, verification_link.
+10. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action. CRITICAL: Do NOT include 'specific_action' in variants. Only: variant_type, title, description, image_prompt.
 11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., ["acne", "fatigue", "bloating"])
 12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
 
 ══════════════════════════════════════════════════════════════════════
 🎯 TITLE RULES (CRITICAL - INGREDIENT/ACTIVITY NAME ONLY!)
 ══════════════════════════════════════════════════════════════════════
+REMINDER: The items below are EXAMPLES of formatting. Do NOT just pick from this list. Choose what is best for the user.
+
 Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
 ❌ NO preparation methods (latte, tea, smoothie, etc.)
 ❌ NO adjectives (powerful, amazing, gentle, etc.)
 
-✅ GOOD FOOD TITLES (RAW INGREDIENT ONLY):
-- "Pumpkin Seeds" (NOT "Pumpkin Seed Snack")
-- "Ashwagandha" (NOT "Ashwagandha Tea" or "Ashwagandha Latte")
-- "Flaxseeds" (NOT "Flaxseed Smoothie")
-- "Chia Seeds" (NOT "Chia Pudding")
-- "Turmeric" (NOT "Turmeric Latte" or "Golden Milk")
+✅ GOOD FOOD TITLES (RAW INGREDIENT ONLY - these are FORMAT examples, choose what's best for user):
+- "Walnuts" (NOT "Walnut Butter")
+- "Spinach" (NOT "Spinach Smoothie")
+- "Ginger" (NOT "Ginger Tea")
 - "Salmon" (NOT "Grilled Salmon")
-- "Dark Chocolate"
-- "Spearmint" (NOT "Spearmint Tea")
-- "Maca"
-- "Cinnamon" (NOT "Cinnamon Oatmeal")
+- "Avocado" (NOT "Avocado Toast")
+- "Quinoa" (NOT "Quinoa Salad")
+- "Berries" (NOT "Berry Smoothie")
+- "Eggs" (NOT "Scrambled Eggs")
+- "Almonds" (NOT "Almond Butter")
+- "Sweet Potato" (NOT "Baked Sweet Potato")
 
-❌ BAD FOOD TITLES (includes preparation - WRONG!):
-- "Turmeric Latte" → should be "Turmeric"
-- "Ashwagandha Tea" → should be "Ashwagandha"
-- "Spearmint Tea" → should be "Spearmint"
-- "Pumpkin Seed Butter" → should be "Pumpkin Seeds"
-- "Golden Milk" → should be "Turmeric"
-- "Flaxseed Smoothie" → should be "Flaxseeds"
+❌ BAD FOOD TITLES (includes preparation method - WRONG!):
+- "Ginger Tea" → should be "Ginger"
+- "Walnut Butter" → should be "Walnuts"
+- "Spinach Smoothie" → should be "Spinach"
+- "Grilled Salmon" → should be "Salmon"
+- "Avocado Toast" → should be "Avocado"
+- "Quinoa Bowl" → should be "Quinoa"
 
 ✅ GOOD MOVEMENT TITLES (simple activity name):
 - "Post-Meal Walk"
@@ -575,8 +607,8 @@ CATEGORY-SPECIFIC REQUIRED FIELDS:
 **ALL category fields are REQUIRED in every action.** Fill with actual values for matching category, use empty array [] for non-matching categories.
 
 For FOOD actions:
-- food_items: Array like ["pumpkin seeds", "flaxseeds"] (REQUIRED)
-- food_amounts: Array like ["1 tbsp", "2 tablespoons"] (REQUIRED)
+- food_items: Array like ["salmon", "quinoa"] (REQUIRED)
+- food_amounts: Array like ["4 oz", "1 cup cooked"] (REQUIRED)
 - exercise_types: [] (empty array - not a food action)
 - exercise_durations: [] (empty array)
 - exercise_intensities: [] (empty array)
@@ -607,24 +639,24 @@ COMPLETE OUTPUT EXAMPLES (FOLLOW THIS EXACT STRUCTURE)
 
 EXAMPLE FOOD ACTION (notice specific_action includes 3 ways to consume):
 {{
-  "title": "Pumpkin Seeds",
+  "title": "Walnuts",
   "category": "food",
   "time_slot": "morning",
-  "specific_action": "Pumpkin seeds are packed with zinc and magnesium, essential minerals for hormone production and stress reduction. Try them as: (1) Yogurt topper - sprinkle 2 tablespoons on Greek yogurt with honey, (2) Smoothie blend - add a handful to your morning smoothie for extra nutrition, or (3) Trail mix - combine with dark chocolate chips and almonds for an afternoon snack.",
-  "purpose": "Zinc in pumpkin seeds is a cofactor for enzymes that synthesize progesterone, while magnesium helps reduce cortisol, creating an optimal hormonal environment for your luteal phase.",
-  "target_hormone": "Progesterone",
-  "hormone_persona_intro": "Hey there, it's Progesterone. I'm here to help you feel calm and balanced today. Let me start by sharing something delicious that will help boost my levels.",
-  "image_prompt": "Professional close-up food photography of golden-green raw pumpkin seeds overflowing from a small wooden bowl onto a rustic table, some seeds scattered artistically, morning sunlight highlighting the texture and color of each seed, shallow depth of field, warm appetizing tones, clearly showing the actual pumpkin seeds as the hero, 4K quality",
-  "food_items": ["pumpkin seeds", "raw pumpkin seeds", "pepitas"],
-  "food_amounts": ["2 tablespoons", "a handful", "30g"],
-  "research_studies": [{{"title": "Zinc supplementation and hormone levels", "journal": "J Nutr", "year": 2022, "participants": 120, "finding": "Zinc improved progesterone levels in women", "pmid": "12345678"}}],
+  "specific_action": "Walnuts are rich in omega-3 fatty acids and melatonin precursors that support hormonal balance. Try them as: (1) Raw handful - eat 7-10 walnuts as a quick morning snack with your coffee, (2) Smoothie boost - blend a handful into your morning smoothie with banana and spinach, or (3) Oatmeal topper - add crushed walnuts to your oatmeal with a drizzle of honey.",
+  "purpose": "Walnuts contain alpha-linolenic acid (ALA) which converts to DHA, supporting brain-ovary communication and reducing inflammation that disrupts hormone signaling in your follicular phase.",
+  "target_hormone": "Estrogen",
+  "hormone_persona_intro": "Good morning! It's Estrogen here. I'm rising in your follicular phase, and I need some healthy fats to help me do my job properly.",
+  "image_prompt": "Professional close-up food photography of whole walnuts and walnut halves in a small white ceramic bowl, showing the brain-like texture of the walnut meat clearly visible, warm wooden table surface, soft morning window light creating gentle shadows, some cracked shells beside the bowl, the distinctive brown wrinkled walnut texture is the unmistakable hero filling 70% of frame, appetizing natural food styling, 4K quality",
+  "food_items": ["walnuts", "raw walnuts", "walnut halves"],
+  "food_amounts": ["7-10 pieces", "a handful (30g)", "1/4 cup"],
+  "research_studies": [{{"title": "Walnut consumption and hormonal health", "journal": "J Nutr Biochem", "year": 2023, "participants": 90, "finding": "Walnut consumption improved estrogen metabolism in premenopausal women", "pmid": "36789012"}}],
   "variants": [
-    {{"variant_type": "tasty", "title": "Honey Roasted Seeds", "description": "Roast seeds at 350°F for 10 min with honey drizzle and sea salt", "image_prompt": "Professional food photography of roasted pumpkin seeds glistening with golden honey glaze in a rustic ceramic dish, visible caramelization, sea salt crystals sparkling, cinnamon stick garnish, warm kitchen lighting, irresistible snack presentation, 4K quality"}},
-    {{"variant_type": "easy", "title": "Seed Butter Spread", "description": "Spread pumpkin seed butter on toast or apple slices for a quick snack", "image_prompt": "Professional food photography of creamy green pumpkin seed butter spread generously on golden toast, raw seeds scattered beside, fresh apple slices on the plate, breakfast table setting, appetizing healthy snack moment, 4K quality"}},
-    {{"variant_type": "healthy", "title": "Soaked & Sprouted", "description": "Soak seeds 8 hours in water, drain, and eat raw for maximum nutrient absorption", "image_prompt": "Professional food photography of soaked pumpkin seeds in a clear glass jar with water, some sprouted seeds in a small bowl beside it, fresh morning light, clean kitchen counter, health-conscious preparation visible, 4K quality"}}
+    {{"variant_type": "tasty", "title": "Maple Candied Walnuts", "description": "Toast walnuts in a pan with maple syrup and a pinch of sea salt until caramelized", "image_prompt": "Professional food photography of golden-brown candied walnuts glistening with maple glaze in a rustic ceramic dish, caramelized coating clearly visible, sea salt crystals sparkling on top, warm kitchen lighting, irresistible sweet snack presentation with maple syrup bottle blurred in background, 4K quality"}},
+    {{"variant_type": "easy", "title": "Grab-and-Go Portion", "description": "Pre-portion walnuts into small containers for easy daily snacking", "image_prompt": "Professional food photography of raw walnut halves in a small clear glass jar with cork lid, portable snack container on a clean white desk surface, office-friendly healthy snack setup, natural daylight, convenient wellness moment clearly shown, 4K quality"}},
+    {{"variant_type": "healthy", "title": "Soaked Walnuts", "description": "Soak walnuts overnight in water to reduce phytic acid and improve nutrient absorption", "image_prompt": "Professional food photography of plump soaked walnuts in a clear glass bowl filled with water, some drained walnuts on a white plate beside it, fresh morning light through window, clean kitchen counter, health-conscious preparation with visible softened texture, 4K quality"}}
   ],
-  "symptoms": ["fatigue", "anxiety"],
-  "conditions": ["PCOS"]
+  "symptoms": ["fatigue", "low mood"],
+  "conditions": []
 }}
 
 EXAMPLE MOVEMENT ACTION (notice specific_action includes 3 ways to do the exercise):
@@ -698,11 +730,11 @@ FOR FOOD - Make the FOOD ITEM the HERO (clearly visible, close-up):
 ═══════════════════════════════════════════════════════════════════════
 Template: "Professional close-up food photography of [EXACT FOOD ITEM in detail], [texture/color description], [simple serving context], natural lighting, shallow depth of field, the [food item] is clearly the main subject filling most of the frame, 4K quality"
 
-✅ GOOD EXAMPLES (food is the clear hero, instantly recognizable):
-- "Professional close-up food photography of raw pumpkin seeds in a small ceramic bowl, showing their greenish color and oval shape, some seeds scattered on wooden surface, natural morning light highlighting texture, the seeds are clearly the main subject, 4K quality"
-- "Professional close-up food photography of ashwagandha root powder in a wooden spoon with whole dried roots beside it, earthy brown color visible, simple kitchen background, the ashwagandha is clearly recognizable and fills most of the frame, 4K quality"
-- "Professional close-up food photography of golden flaxseeds spilling from a glass jar, tiny seeds clearly visible showing their shiny brown texture, white background for contrast, the flaxseeds are the unmistakable hero of the image, 4K quality"
-- "Professional close-up food photography of fresh salmon fillet showing pink-orange flesh with visible fat marbling, lemon wedge beside it, the fish texture and color are clear and appetizing, 4K quality"
+✅ GOOD EXAMPLES (food is the clear hero, instantly recognizable - USE SIMILAR STRUCTURE):
+- "Professional close-up food photography of whole walnuts and walnut halves showing their distinctive brain-like wrinkled texture, in a small wooden bowl on marble surface, warm morning light highlighting the brown ridges, the walnuts fill 70% of the frame and are unmistakably identifiable, shallow depth of field, 4K quality"
+- "Professional close-up food photography of fresh vibrant green spinach leaves piled in a white ceramic colander, water droplets visible on leaves showing freshness, bright kitchen lighting, the spinach is clearly recognizable with its distinctive leaf shape filling most of frame, healthy green color prominent, 4K quality"
+- "Professional close-up food photography of fresh ginger root with one piece sliced to show the fibrous yellow interior, on a light wooden cutting board, the distinctive knobby tan skin texture is clearly visible, natural kitchen lighting, ginger fills 65% of frame making it instantly identifiable, 4K quality"
+- "Professional close-up food photography of fresh salmon fillet showing vibrant pink-orange flesh with distinctive white fat marbling lines, on a slate serving board with lemon wedge, the fish texture and color are appetizing and unmistakable, 4K quality"
 
 ❌ BAD EXAMPLES (food not clear, too generic, or too zoomed out):
 - "Professional food photography of healthy food" (What food?!)
@@ -742,7 +774,7 @@ Template: "Peaceful photograph of [EXACT MINDFULNESS SETUP/TECHNIQUE visualizati
 VARIANT FORMAT (REQUIRED structure):
 Each variant MUST be an object with these exact fields:
 - variant_type: MUST be one of the allowed types (see below)
-- title: Specific name of this variant (e.g., "Roasted Pumpkin Seeds with Sea Salt", "Avocado Toast with Pumpkin Topping")
+- title: Specific name of this variant (e.g., "Teriyaki Glazed Salmon", "Grilled Salmon with Lemon")
 - description: How to prepare or do this variant (1-2 sentences)
 - image_prompt: FLUX.1 Schnell optimized prompt for this specific variant
 
@@ -906,6 +938,11 @@ class ActionPlanGenerator:
         6. Store in database
         7. Release lock
         """
+        logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[GENERATE] 🚀 STARTING NEW PLAN GENERATION for user: {user_id}, date: {plan_date}")
+        logger.info(f"[GENERATE] Timezone: {user_timezone}")
+        logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+        
         start_time = time.time()
         total_cost = 0.0
         lock_key = hash(f"{user_id}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
@@ -914,6 +951,7 @@ class ActionPlanGenerator:
         try:
             # Step 0: Acquire advisory lock to prevent race conditions
             # Two requests for the same user+date will serialize here
+            logger.info(f"[GENERATE] Step 0: Acquiring advisory lock (key: {lock_key})")
             lock_result = await db.execute(
                 text("SELECT pg_try_advisory_lock(:key)"),
                 {"key": lock_key}
@@ -923,7 +961,7 @@ class ActionPlanGenerator:
             if not got_lock:
                 # Another request is already generating - wait and poll for result
                 # Generation can take 30-60+ seconds due to image generation
-                logger.info(f"🔒 Another request is generating plan for {user_id}, polling for result...")
+                logger.info(f"[GENERATE] 🔒 Another request is generating plan for {user_id}, polling for result...")
                 
                 # Poll for existing plan with exponential backoff (3s, 6s, 12s, 24s = ~45s total)
                 wait_times = [3, 6, 12, 24]
@@ -933,13 +971,13 @@ class ActionPlanGenerator:
                     # Check if plan was created by the other request
                     existing_plan = await self._get_existing_plan(user_id, plan_date, db)
                     if existing_plan:
-                        logger.info(f"✅ Found plan created by concurrent request after {wait_time}s wait")
+                        logger.info(f"[GENERATE] ✅ Found plan created by concurrent request after {wait_time}s wait")
                         return await self._format_plan_response(existing_plan, db)
                     
-                    logger.info(f"🔒 Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
+                    logger.info(f"[GENERATE] 🔒 Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
                 
                 # After ~45s of waiting, try to acquire blocking lock
-                logger.info(f"🔒 Timed out waiting for concurrent request, acquiring blocking lock for {user_id}...")
+                logger.info(f"[GENERATE] 🔒 Timed out waiting for concurrent request, acquiring blocking lock for {user_id}...")
                 await db.execute(
                     text("SELECT pg_advisory_lock(:key)"),
                     {"key": lock_key}
@@ -949,20 +987,23 @@ class ActionPlanGenerator:
             # Double-check for existing plan after acquiring lock
             existing_plan = await self._get_existing_plan(user_id, plan_date, db)
             if existing_plan:
-                logger.info(f"Plan already exists for {user_id} on {plan_date}")
+                logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
                 return await self._format_plan_response(existing_plan, db)
             
-            logger.info(f"🔓 Lock acquired, generating plan for {user_id} on {plan_date}")
+            logger.info(f"[GENERATE] 🔓 Lock acquired, proceeding with plan generation")
             
             # Step 1: Load user context
+            logger.info(f"[GENERATE] Step 1: Loading user context...")
             user_context = await self._load_user_context(user_id, db)
             
             if not user_context:
-                logger.error(f"Could not load user context for {user_id}")
+                logger.error(f"[GENERATE] ❌ Could not load user context for {user_id}")
                 return {"success": False, "error": "User profile not found"}
+            logger.info(f"[GENERATE] ✅ User context loaded successfully")
             
             # Step 2: Generate actions via GPT-4o-mini with retry logic
             # Pydantic validation ensures complete data - no fallbacks
+            logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
             actions = None
             gpt_cost = 0.0
             used_model = self.GPT_MODEL
@@ -1049,16 +1090,28 @@ class ActionPlanGenerator:
             total_cost += gpt_cost
             
             if not actions:
-                logger.error("Failed to generate valid actions via GPT after all retries")
+                logger.error("[GENERATE] ❌ Failed to generate valid actions via GPT after all retries")
                 return {"success": False, "error": "Failed to generate actions. Please try again."}
             
+            # Log the generated actions for debugging
+            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+            logger.info(f"[GENERATE] 📋 GENERATED ACTIONS SUMMARY ({len(actions)} actions):")
+            for i, action in enumerate(actions):
+                logger.info(f"[GENERATE]   Action {i+1}: '{action.title}' | Category: {action.category} | Hormone: {action.target_hormone}")
+                logger.info(f"[GENERATE]     Symptoms: {action.symptoms}")
+                logger.info(f"[GENERATE]     Conditions: {action.conditions}")
+            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+            
             # Step 3: Generate images for all actions (16 total: 4 actions × 4 images)
+            logger.info(f"[GENERATE] Step 3: Generating images for {len(actions)} actions...")
             actions_with_images, image_cost = await self._generate_all_images(
                 actions, user_id, db
             )
             total_cost += image_cost
+            logger.info(f"[GENERATE] ✅ Images generated. Cost: ${image_cost:.4f}")
             
             # Step 4: Store plan in database
+            logger.info(f"[GENERATE] Step 4: Storing plan in database...")
             plan = await self._store_plan(
                 user_id=user_id,
                 plan_date=plan_date,
@@ -1068,6 +1121,7 @@ class ActionPlanGenerator:
                 generation_time_ms=int((time.time() - start_time) * 1000),
                 db=db
             )
+            logger.info(f"[GENERATE] ✅ Plan stored with ID: {plan.id}")
             
             # Step 4.5: Log AI Model Usage (Admin Tracking)
             try:
@@ -1112,13 +1166,22 @@ class ActionPlanGenerator:
                 logger.warning(f"Failed to queue evaluation: {eval_err}")
             
             elapsed = time.time() - start_time
-            logger.info(f"✅ Plan generated in {elapsed:.2f}s, cost: ${total_cost:.4f}")
+            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+            logger.info(f"[GENERATE] 🎉 PLAN GENERATION COMPLETE!")
+            logger.info(f"[GENERATE]   Plan ID: {plan.id}")
+            logger.info(f"[GENERATE]   User: {user_id}")
+            logger.info(f"[GENERATE]   Date: {plan_date}")
+            logger.info(f"[GENERATE]   Actions: {len(actions_with_images)}")
+            logger.info(f"[GENERATE]   Time: {elapsed:.2f}s")
+            logger.info(f"[GENERATE]   Cost: ${total_cost:.4f}")
+            logger.info(f"[GENERATE]   Model: {used_model}")
+            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
             
             return await self._format_plan_response(plan, db)
             
         except Exception as e:
-            logger.error(f"Error generating plan: {e}")
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"[GENERATE] ❌ Error generating plan: {e}")
+            logger.error(f"[GENERATE] Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": "Failed to generate plan. Please try again."}
         finally:
             # Release advisory lock if we acquired it
@@ -1128,9 +1191,9 @@ class ActionPlanGenerator:
                         text("SELECT pg_advisory_unlock(:key)"),
                         {"key": lock_key}
                     )
-                    logger.info(f"🔓 Released advisory lock for {user_id}")
+                    logger.info(f"[GENERATE] 🔓 Released advisory lock for {user_id}")
                 except Exception as unlock_err:
-                    logger.warning(f"Failed to release advisory lock: {unlock_err}")
+                    logger.warning(f"[GENERATE] Failed to release advisory lock: {unlock_err}")
     
     def _get_user_today(self, timezone_str: str) -> date:
         """Get today's date in user's timezone."""
@@ -1569,6 +1632,17 @@ USER PROFILE
 - Secondary Hormone: {secondary_hormone}
 - Top Concern: {user_context.get('top_concern', 'general wellness')}
 - Conditions: {', '.join(user_context.get('diagnosed_conditions', [])) or 'none'}
+- Current Streak: {user_context.get('current_streak', 0)} days
+- Longest Streak: {user_context.get('longest_streak', 0)} days
+
+══════════════════════════════════════════════════════════════════════
+RECENT INSIGHTS
+══════════════════════════════════════════════════════════════════════
+Weekly Check-ins:
+{user_context.get('weekly_checkin_insights', 'None')}
+
+Daily Reviews:
+{user_context.get('daily_review_insights', 'None')}
 
 ══════════════════════════════════════════════════════════════════════
 {hormone_instruction}
@@ -1697,7 +1771,11 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         db: AsyncSession
     ) -> Optional[Dict[str, Any]]:
         """Load all user context needed for action generation."""
-        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback
+        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem
+        
+        logger.info(f"[CONTEXT] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[CONTEXT] Starting _load_user_context for user: {user_id}")
+        logger.info(f"[CONTEXT] ══════════════════════════════════════════════════════════════════════════")
         
         try:
             # Get user profile
@@ -1707,7 +1785,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             profile = profile_result.scalar_one_or_none()
             
             if not profile:
+                logger.warning(f"[CONTEXT] No UserProfile found for user {user_id}")
                 return None
+            logger.info(f"[CONTEXT] Found UserProfile for user {user_id}")
             
             # Get user responses (assessment data)
             response_result = await db.execute(
@@ -1716,6 +1796,76 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 ).limit(1)
             )
             user_response = response_result.scalar_one_or_none()
+            logger.info(f"[CONTEXT] UserResponse found: {user_response is not None}")
+
+            # Get streak data
+            streak_result = await db.execute(
+                select(UserStreakData).where(UserStreakData.uid == user_id)
+            )
+            streak_data = streak_result.scalar_one_or_none()
+            current_streak = streak_data.current_streak if streak_data else 0
+            longest_streak = streak_data.longest_streak if streak_data else 0
+            logger.info(f"[CONTEXT] Streak data: current={current_streak}, longest={longest_streak}")
+            
+            # Get recent weekly check-ins
+            logger.info(f"[CONTEXT] Fetching weekly check-ins for user {user_id}")
+            checkin_result = await db.execute(
+                select(WeeklyCheckIn).where(
+                    WeeklyCheckIn.uid == user_id,
+                    WeeklyCheckIn.is_complete == True
+                ).order_by(WeeklyCheckIn.completed_at.desc()).limit(4)
+            )
+            recent_checkins = checkin_result.scalars().all()
+            logger.info(f"[CONTEXT] Found {len(recent_checkins)} completed weekly check-ins")
+            weekly_checkin_insights = self._format_weekly_checkin_insights(recent_checkins)
+            logger.debug(f"[CONTEXT] Weekly checkin insights: {weekly_checkin_insights[:200]}..." if weekly_checkin_insights else "[CONTEXT] No weekly checkin insights")
+            
+            # Get recent daily reviews
+            logger.info(f"[CONTEXT] Fetching daily reviews for user {user_id}")
+            review_result = await db.execute(
+                select(ActionPlanDailyReview).where(
+                    ActionPlanDailyReview.uid == user_id
+                ).order_by(ActionPlanDailyReview.review_date.desc()).limit(7)
+            )
+            recent_reviews = review_result.scalars().all()
+            logger.info(f"[CONTEXT] Found {len(recent_reviews)} daily reviews")
+            daily_review_insights = self._format_daily_reviews(recent_reviews)
+            logger.debug(f"[CONTEXT] Daily review insights: {daily_review_insights[:200]}..." if daily_review_insights else "[CONTEXT] No daily review insights")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # GET RECENTLY RECOMMENDED ITEMS (last 14 days) TO AVOID REPETITION
+            # ═══════════════════════════════════════════════════════════════════
+            logger.info(f"[ANTI-REPETITION] Starting recently recommended fetch for user {user_id}")
+            fourteen_days_ago = date.today() - timedelta(days=14)
+            logger.debug(f"[ANTI-REPETITION] Looking back from {fourteen_days_ago} to {date.today()}")
+            
+            recent_plans_result = await db.execute(
+                select(ActionPlan).where(
+                    and_(
+                        ActionPlan.uid == user_id,
+                        ActionPlan.plan_date >= fourteen_days_ago
+                    )
+                ).order_by(ActionPlan.plan_date.desc())
+            )
+            recent_plans = recent_plans_result.scalars().all()
+            logger.info(f"[ANTI-REPETITION] Found {len(recent_plans)} action plans in last 14 days")
+            
+            recently_recommended = []
+            for plan in recent_plans:
+                items_result = await db.execute(
+                    select(ActionPlanItem).where(ActionPlanItem.plan_id == plan.id)
+                )
+                items = items_result.scalars().all()
+                logger.debug(f"[ANTI-REPETITION] Plan {plan.id} (date: {plan.plan_date}) has {len(items)} items")
+                for item in items:
+                    if item.title and item.title not in recently_recommended:
+                        recently_recommended.append(item.title)
+                        logger.debug(f"[ANTI-REPETITION] Added to blacklist: '{item.title}'")
+            
+            # Format as string for prompt
+            recently_recommended_str = ", ".join(recently_recommended[:30]) if recently_recommended else "None (this is the user's first plan)"
+            logger.info(f"[ANTI-REPETITION] Total unique items to avoid: {len(recently_recommended)}")
+            logger.info(f"[ANTI-REPETITION] Blacklist preview (first 10): {recently_recommended[:10]}")
             
             # Load base context with defaults
             context = {
@@ -1743,7 +1893,13 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "feedback_memory": "No previous feedback",
                 "chatbot_memory": {},
                 "chatbot_context": "No additional context",
-                "weekly_checkin_insights": "No weekly check-in data yet"
+                "weekly_checkin_insights": weekly_checkin_insights,
+                "daily_review_insights": daily_review_insights,
+                "current_streak": current_streak,
+                "longest_streak": longest_streak,
+                "recently_recommended": recently_recommended_str,
+                "allowed_symptoms": "general wellness support",
+                "allowed_conditions": "None diagnosed"
             }
 
             if not user_response:
@@ -1760,22 +1916,6 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 ).order_by(ActionPlanFeedback.created_at.desc()).limit(50)
             )
             recent_feedback = feedback_result.scalars().all()
-            
-            # ═══════════════════════════════════════════════════════════════════
-            # GET RECENT WEEKLY CHECK-IN DATA FOR PERSONALIZATION
-            # ═══════════════════════════════════════════════════════════════════
-            from app.core.database import WeeklyCheckIn
-            
-            checkin_result = await db.execute(
-                select(WeeklyCheckIn).where(
-                    WeeklyCheckIn.uid == user_id,
-                    WeeklyCheckIn.is_complete == True
-                ).order_by(WeeklyCheckIn.completed_at.desc()).limit(4)  # Last 4 weeks
-            )
-            recent_checkins = checkin_result.scalars().all()
-            
-            # Format weekly check-in insights for action plan
-            weekly_checkin_insights = self._format_weekly_checkin_insights(recent_checkins)
             
             # Calculate cycle day and phase
             cycle_day, cycle_phase = self._calculate_cycle_info(
@@ -1875,8 +2015,102 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "chatbot_memory": chatbot_memory,
                 "chatbot_context": chatbot_context,
                 # Weekly check-in insights for personalization
-                "weekly_checkin_insights": weekly_checkin_insights
+                "weekly_checkin_insights": weekly_checkin_insights,
+                # Streak data
+                "current_streak": current_streak,
+                "longest_streak": longest_streak,
+                # Anti-repetition: Recently recommended items (last 14 days)
+                "recently_recommended": recently_recommended_str
             })
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # BUILD ALLOWED SYMPTOMS/CONDITIONS WHITELIST (Anti-hallucination)
+            # ═══════════════════════════════════════════════════════════════════
+            logger.info(f"[WHITELIST] Building allowed symptoms/conditions whitelist for user {user_id}")
+            # Extract all symptoms user actually has from their health profile
+            allowed_symptoms_set = set()
+            
+            # Add top concern
+            if user_response.top_concern and user_response.top_concern != "general wellness":
+                allowed_symptoms_set.add(user_response.top_concern)
+                logger.debug(f"[WHITELIST] Added top_concern: '{user_response.top_concern}'")
+            
+            # Extract from period concerns
+            if user_response.period_concerns:
+                if isinstance(user_response.period_concerns, dict):
+                    period_symptoms = [k for k, v in user_response.period_concerns.items() if v]
+                    allowed_symptoms_set.update(period_symptoms)
+                    logger.debug(f"[WHITELIST] Added period_concerns (dict): {period_symptoms}")
+                elif isinstance(user_response.period_concerns, list):
+                    allowed_symptoms_set.update(user_response.period_concerns)
+                    logger.debug(f"[WHITELIST] Added period_concerns (list): {user_response.period_concerns}")
+            
+            # Extract from body concerns
+            if user_response.body_concerns:
+                if isinstance(user_response.body_concerns, dict):
+                    body_symptoms = [k for k, v in user_response.body_concerns.items() if v]
+                    allowed_symptoms_set.update(body_symptoms)
+                    logger.debug(f"[WHITELIST] Added body_concerns (dict): {body_symptoms}")
+                elif isinstance(user_response.body_concerns, list):
+                    allowed_symptoms_set.update(user_response.body_concerns)
+                    logger.debug(f"[WHITELIST] Added body_concerns (list): {user_response.body_concerns}")
+            
+            # Extract from skin/hair concerns
+            if user_response.skin_hair_concerns:
+                if isinstance(user_response.skin_hair_concerns, dict):
+                    skin_symptoms = [k for k, v in user_response.skin_hair_concerns.items() if v]
+                    allowed_symptoms_set.update(skin_symptoms)
+                    logger.debug(f"[WHITELIST] Added skin_hair_concerns (dict): {skin_symptoms}")
+                elif isinstance(user_response.skin_hair_concerns, list):
+                    allowed_symptoms_set.update(user_response.skin_hair_concerns)
+                    logger.debug(f"[WHITELIST] Added skin_hair_concerns (list): {user_response.skin_hair_concerns}")
+            
+            # Extract from mental health concerns
+            if user_response.mental_health_concerns:
+                if isinstance(user_response.mental_health_concerns, dict):
+                    mental_symptoms = [k for k, v in user_response.mental_health_concerns.items() if v]
+                    allowed_symptoms_set.update(mental_symptoms)
+                    logger.debug(f"[WHITELIST] Added mental_health_concerns (dict): {mental_symptoms}")
+                elif isinstance(user_response.mental_health_concerns, list):
+                    allowed_symptoms_set.update(user_response.mental_health_concerns)
+                    logger.debug(f"[WHITELIST] Added mental_health_concerns (list): {user_response.mental_health_concerns}")
+            
+            # Extract from weekly check-in symptoms (most recent actual symptoms)
+            if recent_checkins:
+                latest_checkin = recent_checkins[0]  # Most recent
+                logger.debug(f"[WHITELIST] Checking latest weekly check-in (completed: {latest_checkin.completed_at})")
+                if latest_checkin.symptoms_this_week:
+                    if isinstance(latest_checkin.symptoms_this_week, list):
+                        allowed_symptoms_set.update(latest_checkin.symptoms_this_week)
+                        logger.debug(f"[WHITELIST] Added weekly_checkin symptoms: {latest_checkin.symptoms_this_week}")
+            else:
+                logger.debug(f"[WHITELIST] No recent weekly check-ins found")
+            
+            # Build allowed conditions list
+            allowed_conditions_list = []
+            if user_response.diagnosed_conditions:
+                if isinstance(user_response.diagnosed_conditions, list):
+                    allowed_conditions_list = user_response.diagnosed_conditions
+                    logger.debug(f"[WHITELIST] Added diagnosed_conditions (list): {allowed_conditions_list}")
+                elif isinstance(user_response.diagnosed_conditions, str):
+                    allowed_conditions_list = [user_response.diagnosed_conditions]
+                    logger.debug(f"[WHITELIST] Added diagnosed_conditions (str): {allowed_conditions_list}")
+            else:
+                logger.debug(f"[WHITELIST] No diagnosed conditions found")
+            
+            # Format for prompt
+            allowed_symptoms_str = ", ".join(sorted(allowed_symptoms_set)) if allowed_symptoms_set else "general wellness support"
+            allowed_conditions_str = ", ".join(allowed_conditions_list) if allowed_conditions_list else "None diagnosed"
+            
+            # Add to context
+            context["allowed_symptoms"] = allowed_symptoms_str
+            context["allowed_conditions"] = allowed_conditions_str
+            
+            # Final summary log
+            logger.info(f"[WHITELIST] ═══════════════════════════════════════════════════════════")
+            logger.info(f"[WHITELIST] FINAL ALLOWED SYMPTOMS ({len(allowed_symptoms_set)} total): {allowed_symptoms_str}")
+            logger.info(f"[WHITELIST] FINAL ALLOWED CONDITIONS ({len(allowed_conditions_list)} total): {allowed_conditions_str}")
+            logger.info(f"[WHITELIST] ═══════════════════════════════════════════════════════════")
             
             return context
             
@@ -1976,6 +2210,49 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 insights.append(f"[{week_label}] " + " | ".join(parts))
         
         return "\n".join(insights) if insights else "No weekly check-in data yet"
+
+    def _format_daily_reviews(self, recent_reviews: List[Any]) -> str:
+        """Format daily review data for action plan personalization."""
+        if not recent_reviews:
+            return "No daily review data yet"
+        
+        insights = []
+        for review in recent_reviews:
+            date_str = review.review_date.strftime("%Y-%m-%d")
+            parts = []
+            
+            # Check items review data
+            if review.items_review_data:
+                skipped_count = 0
+                replaced_items = []
+                completed_count = 0
+                
+                for item in review.items_review_data:
+                    status = item.get("status")
+                    if status == "skipped":
+                        skipped_count += 1
+                    elif status == "replaced":
+                        replacement = item.get("replacement_text")
+                        if replacement:
+                            replaced_items.append(replacement)
+                    elif status == "was_completed":
+                        completed_count += 1
+                
+                if skipped_count > 0:
+                    parts.append(f"Skipped {skipped_count} items")
+                if replaced_items:
+                    parts.append(f"Replaced items with: {', '.join(replaced_items)}")
+                if completed_count > 0:
+                    parts.append(f"Completed {completed_count} items")
+            
+            # Check streak action
+            if review.streak_action:
+                parts.append(f"Streak: {review.streak_action}")
+                
+            if parts:
+                insights.append(f"[{date_str}] " + " | ".join(parts))
+                
+        return "\n".join(insights) if insights else "No daily review data yet"
     
     def _calculate_cycle_info(
         self,
@@ -2324,8 +2601,14 @@ Format as bullet points."""
         
         Returns (actions, cost)
         """
+        logger.info(f"[GPT] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[GPT] Starting _generate_actions_via_gpt")
+        logger.info(f"[GPT]   model_override: {model_override or 'None (using default)'}")
+        logger.info(f"[GPT]   user_id: {user_context.get('user_id')}")
+        logger.info(f"[GPT] ══════════════════════════════════════════════════════════════════════════")
+        
         if not self.openai_api_key and not GROQ_API_KEY:
-            logger.error("No API keys configured")
+            logger.error("[GPT] ❌ No API keys configured")
             return (None, 0.0)
         
         # Track if we're using Groq fallback
@@ -2335,6 +2618,7 @@ Format as bullet points."""
         cycle_phase = user_context.get("cycle_phase", "follicular").lower()
         primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
         secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
+        logger.info(f"[GPT] Hormone context: primary={primary_hormone}, secondary={secondary_hormone}, phase={cycle_phase}")
         
         # Get hormone personas
         primary_persona = HORMONE_PERSONAS.get(primary_hormone, DEFAULT_PERSONA)
@@ -2357,6 +2641,7 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
 """
         
         # Build the prompt with ALL user context
+        logger.info(f"[GPT] Building prompt with user context...")
         prompt = ACTION_GENERATION_PROMPT.format(
             num_actions=4,
             # Cycle info
@@ -2387,17 +2672,39 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             stress_level=user_context.get("stress_level", "moderate"),
             sleep_duration=user_context.get("sleep_duration", "7-8 hours"),
             workout_intensity=user_context.get("workout_intensity", "moderate"),
+            current_streak=user_context.get("current_streak", 0),
+            longest_streak=user_context.get("longest_streak", 0),
             # Feedback and context
             feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
             chatbot_context=user_context.get("chatbot_context", "No additional context"),
             feedback_summary=user_context.get("feedback_summary", "No summary yet"),
             weekly_checkin_insights=user_context.get("weekly_checkin_insights", "No weekly check-in data yet"),
+            daily_review_insights=user_context.get("daily_review_insights", "No daily review data yet"),
+            # Anti-repetition and hallucination prevention
+            recently_recommended=user_context.get("recently_recommended", "None (this is the user's first plan)"),
+            allowed_symptoms=user_context.get("allowed_symptoms", "general wellness support"),
+            allowed_conditions=user_context.get("allowed_conditions", "None diagnosed"),
             # Generation params
             primary_count=2,
             secondary_count=2,
             category_guidance=self._get_category_guidance(user_context.get("lifestyle_focus", [])),
             hormone_phase_context=hormone_phase_context
         )
+        
+        # Log the anti-repetition and whitelist values being sent to GPT
+        logger.info(f"[PROMPT] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[PROMPT] ANTI-REPETITION DATA SENT TO GPT:")
+        logger.info(f"[PROMPT]   recently_recommended: {user_context.get('recently_recommended', 'None')[:200]}...")
+        logger.info(f"[PROMPT] WHITELIST DATA SENT TO GPT:")
+        logger.info(f"[PROMPT]   allowed_symptoms: {user_context.get('allowed_symptoms', 'None')}")
+        logger.info(f"[PROMPT]   allowed_conditions: {user_context.get('allowed_conditions', 'None')}")
+        logger.info(f"[PROMPT] PERSONALIZATION DATA:")
+        logger.info(f"[PROMPT]   primary_hormone: {primary_hormone}, secondary_hormone: {secondary_hormone}")
+        logger.info(f"[PROMPT]   cycle_phase: {cycle_phase}, cycle_day: {user_context.get('cycle_day')}")
+        logger.info(f"[PROMPT]   diet_preference: {user_context.get('diet_preference')}")
+        logger.info(f"[PROMPT]   food_allergies: {user_context.get('food_allergies')}")
+        logger.info(f"[PROMPT]   current_streak: {user_context.get('current_streak')}, longest_streak: {user_context.get('longest_streak')}")
+        logger.info(f"[PROMPT] ══════════════════════════════════════════════════════════════════════════")
         
         # Enhanced system prompt with tool calling instructions
         enhanced_system = SYSTEM_PROMPT + f"""
@@ -3506,6 +3813,8 @@ PERSONALIZATION FACTORS
 - Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
 - Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
 - Birth Control: {user_context.get('birth_control', 'none')}
+- Current Streak: {user_context.get('current_streak', 0)} days
+- Longest Streak: {user_context.get('longest_streak', 0)} days
 
 ══════════════════════════════════════════════════════════════════════
 FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
@@ -3521,11 +3830,16 @@ CHATBOT CONVERSATION CONTEXT
 ══════════════════════════════════════════════════════════════════════
 {user_context.get('chatbot_context', 'No recent chatbot conversations')}
 
+══════════════════════════════════════════════════════════════════════
+WEEKLY CHECK-IN INSIGHTS (Recent symptom reports)
+══════════════════════════════════════════════════════════════════════
+{user_context.get('weekly_checkin_insights', 'No weekly check-in data yet')}
+
 🔴 MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
 
 IF category="food":
-  ✅ MUST have: "food_items": ["chia seeds", "flaxseeds", "pumpkin seeds"]
-  ✅ MUST have: "food_amounts": ["1 tbsp", "2 tablespoons", "handful"]
+  ✅ MUST have: "food_items": ["salmon", "avocado", "blueberries"]
+  ✅ MUST have: "food_amounts": ["4 oz", "half avocado", "1 cup"]
 
 IF category="movement":
   ✅ MUST have: "exercise_types": ["yoga", "walking", "stretching"]  
@@ -3551,7 +3865,7 @@ REQUIRED OUTPUT FIELDS (ALL actions):
 12. conditions: Array of conditions this helps
 
 🎯 TITLE RULES (RAW INGREDIENT/ACTIVITY NAME ONLY!):
-- FOOD: Just the ingredient ("Turmeric" NOT "Turmeric Latte", "Ashwagandha" NOT "Ashwagandha Tea")
+- FOOD: Just the ingredient ("Salmon" NOT "Grilled Salmon", "Quinoa" NOT "Quinoa Bowl")
 - MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Hip Stretches")
 - MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
 - NO preparation methods (latte, tea, smoothie) - those go in specific_action!
@@ -3989,6 +4303,8 @@ PERSONALIZATION FACTORS
 - Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
 - Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
 - Birth Control: {user_context.get('birth_control', 'none')}
+- Current Streak: {user_context.get('current_streak', 0)} days
+- Longest Streak: {user_context.get('longest_streak', 0)} days
 
 ══════════════════════════════════════════════════════════════════════
 FEEDBACK MEMORY (Critical - avoid disliked patterns)
@@ -4003,6 +4319,11 @@ RECENT FEEDBACK (last 20-50 actions):
 CHATBOT CONVERSATION CONTEXT
 ══════════════════════════════════════════════════════════════════════
 {user_context.get('chatbot_context', 'No recent chatbot conversations')}
+
+══════════════════════════════════════════════════════════════════════
+WEEKLY CHECK-IN INSIGHTS (Recent symptom reports)
+══════════════════════════════════════════════════════════════════════
+{user_context.get('weekly_checkin_insights', 'No weekly check-in data yet')}
 
 ══════════════════════════════════════════════════════════════════════
 REQUIREMENTS FOR EACH REPLACEMENT
@@ -4039,15 +4360,15 @@ OUTPUT FORMAT (for each replacement action)
 14. conditions: Array of conditions this helps (e.g., ["PCOS"]) - can be empty []
 
 🎯 TITLE RULES (CRITICAL - RAW INGREDIENT/ACTIVITY NAME ONLY!):
-- FOOD: Just the ingredient ("Turmeric" NOT "Turmeric Latte", "Spearmint" NOT "Spearmint Tea")
+- FOOD: Just the ingredient ("Salmon" NOT "Grilled Salmon", "Quinoa" NOT "Quinoa Bowl")
 - MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Swimming")
 - MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
 - NO preparation methods in title (latte, tea, smoothie, toast) - those go in specific_action!
 
 CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
 For FOOD actions, MUST include:
-- food_amounts: Array like ["1 tbsp", "2 tablespoons", "handful"]
-- food_items: Array like ["pumpkin seeds", "flaxseeds"]
+- food_amounts: Array like ["4 oz", "1 cup", "half avocado"]
+- food_items: Array like ["salmon", "avocado", "berries"]
 
 For MOVEMENT actions, MUST include:
 - exercise_durations: Array like ["15 min", "20 minutes"]
