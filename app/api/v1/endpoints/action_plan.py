@@ -1279,6 +1279,11 @@ async def _carry_forward_items_to_today(
     source_items = source_items[:TARGET_ITEMS]
     num_carried = len(source_items)
     
+    # CRITICAL FIX: Only carry forward from YESTERDAY (or the plan being reviewed)
+    # We should not carry forward items from older plans if they were already carried forward before
+    # But here source_plan is the plan being reviewed, so we are safe.
+    # The issue is likely that we are appending to today's plan which might already have items.
+    
     # Get user's primary and secondary hormones for balance from UserResponse (not UserProfile)
     user_response = db.query(UserResponse).filter(UserResponse.uid == uid).first()
     primary_hormone = (user_response.primary_hormone or "cortisol").lower() if user_response else "cortisol"
@@ -1301,10 +1306,29 @@ async def _carry_forward_items_to_today(
     ).order_by(ActionPlanItem.slot).all()
     
     # Calculate how many items to KEEP from today (not delete)
+    # We want exactly 4 items total.
+    # If we carry 2, we keep 2. If we carry 4, we keep 0.
     items_to_keep_count = TARGET_ITEMS - num_carried
     
     if items_to_keep_count < 0:
+        # If somehow we are carrying more than 4 (should be capped above), cap it
         items_to_keep_count = 0
+        
+    # If today's plan already has items, we need to make space
+    # But we must be careful not to duplicate items if this runs multiple times
+    
+    # Check if we already have carried items in today's plan from the SAME source items
+    # This prevents "8 items" bug if the function is called twice
+    existing_carried = db.query(ActionPlanItem).filter(
+        and_(
+            ActionPlanItem.plan_id == today_plan.id,
+            ActionPlanItem.carried_forward_from.in_(skipped_item_ids)
+        )
+    ).count()
+    
+    if existing_carried > 0:
+        logger.info(f"Items already carried forward to today's plan. Skipping to avoid duplicates.")
+        return True
     
     # Calculate needed hormone balance for remaining items
     needed_primary = max(0, TARGET_PER_HORMONE - carried_primary)
@@ -1369,7 +1393,7 @@ async def _carry_forward_items_to_today(
             time_slot=source_item.time_slot,
             category=source_item.category,
             target_hormone=source_item.target_hormone,
-            title=f"[Carried Forward] {source_item.title}",
+            title=source_item.title,  # REMOVED [Carried Forward] prefix per user request
             specific_action=source_item.specific_action,
             purpose=source_item.purpose,
             hormone_persona_intro=source_item.hormone_persona_intro,

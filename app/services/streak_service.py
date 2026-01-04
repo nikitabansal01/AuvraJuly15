@@ -170,6 +170,7 @@ class StreakService:
         # This replaces 90+ individual queries with just 1 query
         plans_with_counts = self.db.query(
             ActionPlan.plan_date,
+            ActionPlan.review_completed,
             func.count(ActionPlanItem.id).label('total_items'),
             func.sum(
                 case(
@@ -187,11 +188,11 @@ class StreakService:
             ActionPlan.uid == uid,
             ActionPlan.plan_date >= first_plan_date,
             ActionPlan.plan_date <= check_date
-        ).group_by(ActionPlan.plan_date).all()
+        ).group_by(ActionPlan.plan_date, ActionPlan.review_completed).all()
         
-        # Convert to dict for O(1) lookup: {date: (total, completed)}
+        # Convert to dict for O(1) lookup: {date: (total, completed, reviewed)}
         plan_data = {
-            row.plan_date: (row.total_items or 0, row.completed_count or 0)
+            row.plan_date: (row.total_items or 0, row.completed_count or 0, row.review_completed or False)
             for row in plans_with_counts
         }
         
@@ -207,9 +208,9 @@ class StreakService:
             
             # Get plan data from pre-loaded dict (O(1) lookup)
             if check_date in plan_data:
-                total_items, completed_count = plan_data[check_date]
+                total_items, completed_count, review_completed = plan_data[check_date]
                 
-                logger.info(f"Streak calc: {check_date} - {completed_count}/{total_items} completed, frozen={is_frozen}")
+                logger.info(f"Streak calc: {check_date} - {completed_count}/{total_items} completed, reviewed={review_completed}, frozen={is_frozen}")
                 
                 # Case 0: Empty plan (0 items) = streak day (nothing to complete)
                 if total_items == 0:
@@ -221,6 +222,12 @@ class StreakService:
                 elif completed_count == total_items:
                     streak += 1
                     logger.info(f"  → FULL COMPLETE: streak={streak}")
+                    check_date -= timedelta(days=1)
+                
+                # Case 1.5: Review Completed = streak day (user engaged and made choices)
+                elif review_completed:
+                    streak += 1
+                    logger.info(f"  → REVIEW COMPLETED: streak={streak}")
                     check_date -= timedelta(days=1)
                 
                 # Case 2: FROZEN = streak day (freeze protects regardless of completion)
