@@ -468,6 +468,26 @@ REQUIREMENTS (READ CAREFULLY)
 17. Recommend longer mindfulness for high stress users, shorter for low stress
 
 ══════════════════════════════════════════════════════════════════════
+🎯 CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION
+══════════════════════════════════════════════════════════════════════
+┌─────────────────────────────────────────────────────────────────────┐
+│  TITLE = WHAT it is (the thing itself - noun)                       │
+│  SPECIFIC_ACTION = HOW to use it (3 different methods - verbs)      │
+└─────────────────────────────────────────────────────────────────────┘
+
+FOOD:
+  • Title: Raw ingredient → "Turmeric", "Ashwagandha", "Flaxseeds"
+  • specific_action: 3 consumption methods → latte, tea, smoothie, capsule, etc.
+
+MOVEMENT:
+  • Title: Activity type → "Yoga", "Walking", "Stretching"
+  • specific_action: 3 ways to do it → gentle flow, hip openers, sun salutations, etc.
+
+MINDFULNESS:
+  • Title: Technique name → "Deep Breathing", "Meditation", "Body Scan"
+  • specific_action: 3 practice methods → 4-7-8 technique, box breathing, belly breathing, etc.
+
+══════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (for each action)
 ══════════════════════════════════════════════════════════════════════
 1. title: SIMPLE, CLEAN NAME ONLY (see TITLE RULES below)
