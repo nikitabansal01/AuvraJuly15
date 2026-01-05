@@ -255,11 +255,13 @@ async def respond_symptom_checkin(
         history = service.format_history_for_mobile(thread)
 
         # Use AI-generated tap options directly (Dr. Auvra style)
-        # Only fall back to baseline if AI didn't provide any
-        if ai_response.tap_options:
+        # Only fall back to baseline if AI didn't provide any AND we're not complete.
+        # If the AI marks the flow complete, the UI should not show unrelated taps.
+        if getattr(ai_response, "is_complete", False):
+            tap_options = []
+        elif ai_response.tap_options:
             tap_options = [{"id": t.id, "text": t.text} for t in ai_response.tap_options]
         else:
-            # Fallback to baseline options
             tap_options = _baseline_symptom_tap_options()
 
         return {

@@ -201,6 +201,38 @@ class SymptomCheckInAI:
             "luteal": "PMS territory - mood swings, bloating, and cravings may appear. Self-care and magnesium-rich foods help.",
         }
         return insights.get(cycle_phase, "")
+
+    def _default_followup_tap_options(self, *, user_message: str, ctx: Dict[str, Any]) -> List[SymptomTapOption]:
+        """Deterministic tap options that match the *current question*.
+
+        Used when the model forgets to include tap options.
+        """
+
+        msg = (user_message or "").strip().lower()
+
+        # If user is expressing progress, ask about what helped / what triggered.
+        if "better" in msg or msg in {"improving", "feeling better"}:
+            return [
+                SymptomTapOption(id="sleep", text="😴 Slept better"),
+                SymptomTapOption(id="stress", text="🧘 Less stress"),
+                SymptomTapOption(id="food", text="🥗 Food choices"),
+                SymptomTapOption(id="not_sure", text="🤷 Not sure"),
+            ]
+
+        if "worse" in msg or msg in {"worsening", "feeling worse"}:
+            return [
+                SymptomTapOption(id="poor_sleep", text="😴 Poor sleep"),
+                SymptomTapOption(id="stress", text="😰 Stress"),
+                SymptomTapOption(id="food", text="🍔 Food"),
+                SymptomTapOption(id="cycle", text="🌙 Cycle timing"),
+            ]
+
+        # Otherwise we assume they selected/typed a symptom; ask severity.
+        return [
+            SymptomTapOption(id="mild", text="😊 Mild, manageable"),
+            SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
+            SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
+        ]
     
     async def _generate_doctor_response(
         self,
@@ -255,8 +287,10 @@ Most Severe: {top_symptom['symptom_type']} at {top_symptom['severity']}/9
         summary_block = (rolling_summary or "").strip()
         recent_block = json.dumps(recent_messages[-8:], ensure_ascii=False)
         
-        # Different prompts for different conversation stages
-        if user_turns == 0:
+        # IMPORTANT: `user_turns` counts USER messages in the thread *including the current one*.
+        # So the first real user reply is `user_turns == 1`.
+        # We must treat that as the FIRST FOLLOW-UP stage (question + matching taps).
+        if user_turns <= 1:
             stage_instruction = f'''
 ═══ CONVERSATION STAGE: FIRST RESPONSE ═══
 
@@ -344,7 +378,7 @@ Return EXACTLY this format:
         {{"id": "option2", "text": "emoji + specific option"}},
         {{"id": "option3", "text": "emoji + specific option"}}
     ],
-    "is_complete": {'true' if user_turns >= 1 else 'false'},
+    "is_complete": {'false' if user_turns <= 1 else 'true'},
     "insights": {{
         "progress": "better"|"same"|"worse"|null,
         "symptoms_mentioned": ["list symptoms user mentioned"],
@@ -440,6 +474,14 @@ USER'S CURRENT MESSAGE:
             
             if not parsed.messages:
                 return self._get_fallback_response(ctx, user_turns), model_used
+
+            # Guardrails for the follow-up stage:
+            # - Do NOT complete on the first user reply
+            # - Ensure tap options exist and match the question
+            if user_turns <= 1:
+                parsed.is_complete = False
+                if not parsed.tap_options:
+                    parsed.tap_options = self._default_followup_tap_options(user_message=user_message, ctx=ctx)
             
             return parsed, model_used
             
