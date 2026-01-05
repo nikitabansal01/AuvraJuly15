@@ -181,6 +181,18 @@ async def start_checkin(
     messages = question_data.get("messages", [])
     if not messages and question_data.get("message"):
         messages = [question_data.get("message")]
+
+    # Format history for response (so resuming shows prior messages immediately)
+    history: List[ChatMessage] = []
+    for msg in question_data.get("history", []):
+        if isinstance(msg, dict):
+            history.append(
+                ChatMessage(
+                    id=msg.get("id", ""),
+                    text=msg.get("text", ""),
+                    isBot=msg.get("isBot", False),
+                )
+            )
     
     return StartCheckInResponse(
         checkin_id=checkin.id,
@@ -196,6 +208,7 @@ async def start_checkin(
             is_required=question_data.get("is_required", False),
             current_index=question_data.get("current_index", 0),
             total_questions=question_data.get("total_questions", 0),
+            history=history,
             slider_labels=question_data.get("slider_labels")
         )
     )
