@@ -199,17 +199,8 @@ async def start_symptom_checkin(
         thread = service.get_or_create_today_thread(uid)
         history = service.format_history_for_mobile(thread)
 
-        # Best-effort: add quick-log buttons for the user's top recent symptoms.
-        top_symptoms: List[str] = []
-        try:
-            overview = service.get_symptom_overview(uid=uid, period_days=14)
-            top_symptoms = list(overview.get("top_symptoms") or [])
-        except Exception:
-            top_symptoms = []
-
-        tap_options = [
-            # populated below
-        ]
+        # Keep Symptom Check-in chat-first.
+        # The user can still open the Symptom Manager via tap options.
         tap_options = _baseline_symptom_tap_options()
 
         return {
@@ -217,7 +208,7 @@ async def start_symptom_checkin(
             "local_date": thread.local_date.isoformat(),
             "history": history,
             "tap_options": tap_options,
-            "ui_blocks": _default_ui_blocks_for_start(top_symptoms),
+            "ui_blocks": [],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
