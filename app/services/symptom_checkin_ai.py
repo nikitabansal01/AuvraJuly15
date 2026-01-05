@@ -1,26 +1,18 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-DAILY SYMPTOM CHECK-IN AI ENGINE
+DAILY SYMPTOM CHECK-IN AI ENGINE - DR. AUVRA
 ═══════════════════════════════════════════════════════════════════════════════
-Dr. Auvra persona for DAILY symptom progress conversations.
+A personalized, doctor-like daily conversation about symptoms.
 
-KEY DIFFERENCES FROM WEEKLY CHECK-IN:
-- Daily = QUICK (2 doctor turns max, not 3)
-- Focus on TODAY vs YESTERDAY (not whole week)
-- Specific reference to yesterday's symptom logs
-- Quick pulse check, not deep analysis
+NOT a generic "better/worse/same" quiz - this is a REAL conversation that:
+- Knows your specific symptoms and concerns (bloating, cramps, etc.)
+- References your cycle phase and how it affects you
+- Remembers what helped/triggered symptoms before
+- Feels like talking to a doctor who KNOWS you
 
-Conversation Flow:
-1. Turn 1: "Hey! Your [symptom] was X/9 yesterday. How's it today?"
-   → User picks: Better / Same / Worse
-2. Turn 2: Based on response:
-   - Better → "What helped?" → Done
-   - Worse → "What triggered it?" → Done
-   - Same → Quick encouragement → Done
-
-Outputs actionable insights that feed into:
-- Today's/tomorrow's action plan personalization
-- Weekly check-in context
+Conversation Flow (2 user turns max):
+Turn 1: User responds to personalized opening → Dr. Auvra follows up
+Turn 2: User responds → Dr. Auvra wraps up with practical advice
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -50,73 +42,29 @@ class SymptomInsights(BaseModel):
     """Actionable signals extracted from conversation."""
     progress: Optional[str] = None  # better|same|worse
     symptoms_mentioned: List[str] = Field(default_factory=list)
-    severity_today: Optional[int] = None  # 1-9 if user gives it
+    severity_today: Optional[int] = None
     
-    # What affected symptoms today
-    triggers_today: List[str] = Field(default_factory=list)  # what made it worse
-    relief_today: List[str] = Field(default_factory=list)    # what helped
+    triggers_today: List[str] = Field(default_factory=list)
+    relief_today: List[str] = Field(default_factory=list)
     
-    # Legacy fields for compatibility
+    # Legacy compatibility
     wins: List[str] = Field(default_factory=list)
     difficulties: List[str] = Field(default_factory=list)
     triggers_identified: List[str] = Field(default_factory=list)
     relief_factors_identified: List[str] = Field(default_factory=list)
-    severity_rating: Optional[int] = None  # alias for severity_today
+    severity_rating: Optional[int] = None
     
     key_takeaway: Optional[str] = None
 
 
 class SymptomAIResponse(BaseModel):
-    messages: List[str]  # Multi-bubble: 2 short messages
+    messages: List[str]
     tap_options: List[SymptomTapOption] = Field(default_factory=list)
     insights: Optional[SymptomInsights] = None
-    is_complete: bool = False  # True after 2 turns
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAP OPTION TEMPLATES
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# Progress options (Turn 1 response)
-PROGRESS_TAP_OPTIONS = [
-    {"id": "better", "text": "😊 Better than yesterday"},
-    {"id": "same", "text": "😐 About the same"},
-    {"id": "worse", "text": "😟 Worse than yesterday"},
-]
-
-# Relief factors (when user says "better")
-RELIEF_TAP_OPTIONS = [
-    {"id": "good_sleep", "text": "😴 Slept well"},
-    {"id": "less_stress", "text": "🧘 Less stressed"},
-    {"id": "healthy_food", "text": "🥗 Ate healthier"},
-    {"id": "exercise", "text": "🏃 Exercised"},
-    {"id": "hydration", "text": "💧 Drank more water"},
-    {"id": "not_sure", "text": "🤷 Not sure"},
-]
-
-# Trigger factors (when user says "worse")
-TRIGGER_TAP_OPTIONS = [
-    {"id": "poor_sleep", "text": "😴 Poor sleep"},
-    {"id": "more_stress", "text": "😰 More stressed"},
-    {"id": "ate_out", "text": "🍔 Ate out/junk food"},
-    {"id": "skipped_actions", "text": "⏭️ Skipped my actions"},
-    {"id": "cycle_timing", "text": "🌙 Cycle timing"},
-    {"id": "not_sure", "text": "🤷 Not sure"},
-]
-
-# First-time user (no symptom history)
-FIRST_TIME_TAP_OPTIONS = [
-    {"id": "bloating", "text": "🫄 Bloating"},
-    {"id": "cramps", "text": "😣 Cramps"},
-    {"id": "fatigue", "text": "😴 Fatigue"},
-    {"id": "headache", "text": "🤕 Headache"},
-    {"id": "mood", "text": "😔 Mood changes"},
-    {"id": "other", "text": "✍️ Something else"},
-]
+    is_complete: bool = False
 
 
 def _extract_json_object(text: str) -> Optional[str]:
-    """Extract JSON object from model response."""
     if not text:
         return None
     start = text.find("{")
@@ -126,14 +74,13 @@ def _extract_json_object(text: str) -> Optional[str]:
     return text[start : end + 1]
 
 
-def _parse_yesterday_symptom(recent_symptom_logs_context: str) -> Optional[Dict[str, Any]]:
-    """Extract yesterday's most recent symptom log for reference."""
+def _parse_symptom_logs(recent_symptom_logs_context: str) -> List[Dict[str, Any]]:
+    """Parse all recent symptom logs."""
+    symptoms = []
     if not recent_symptom_logs_context or recent_symptom_logs_context == "No recent symptom logs.":
-        return None
+        return symptoms
     
-    # Parse format: "- bloating severity 6/9 2026-01-05T10:30:00"
-    lines = recent_symptom_logs_context.strip().split("\n")
-    for line in lines:
+    for line in recent_symptom_logs_context.strip().split("\n"):
         line = line.strip()
         if line.startswith("- "):
             parts = line[2:].split(" severity ")
@@ -142,23 +89,22 @@ def _parse_yesterday_symptom(recent_symptom_logs_context: str) -> Optional[Dict[
                 severity_part = parts[1].split("/")[0].strip()
                 try:
                     severity = int(severity_part)
-                    return {"symptom_type": symptom_type, "severity": severity}
+                    symptoms.append({"symptom_type": symptom_type, "severity": severity})
                 except ValueError:
                     continue
-    return None
+    return symptoms
 
 
 class SymptomCheckInAI:
     """
-    Dr. Auvra Daily Symptom Check-in AI.
+    Dr. Auvra - Your personalized women's health companion.
     
-    CRITICAL: Max 2 doctor turns (quick daily pulse check).
-    Uses multi-bubble messages (empathize first, then question).
+    This is NOT a generic questionnaire. This is a doctor who:
+    - Knows your specific symptoms (bloating, cramps, fatigue, etc.)
+    - Understands your cycle phase and how it affects you
+    - Remembers what worked and what didn't
+    - Gives practical, personalized advice
     """
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # MAIN ENTRY POINT
-    # ═══════════════════════════════════════════════════════════════════════════
     
     async def generate_reply(
         self,
@@ -172,184 +118,282 @@ class SymptomCheckInAI:
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
     ) -> Tuple[SymptomAIResponse, str]:
-        """Generate Dr. Auvra's response with 2-turn limit."""
+        """Generate Dr. Auvra's personalized response."""
         
-        # Count conversation turns by USER messages (not bot messages)
-        # Because we use multi-bubble (2 bot messages per turn), counting bot messages is wrong
-        # Turn 0: Opening (2 bot bubbles) → User responds → Turn 1
-        # Turn 1: Follow-up (2 bot bubbles) → User responds → Turn 2 (complete)
+        # Count user turns (not bot messages - we use multi-bubble)
         user_turns = sum(1 for msg in recent_messages if msg.get("role") == "user")
         
-        # HARD LIMIT: Force completion after 2 user responses
-        # This means: Opening → User1 → Follow-up → User2 → Complete
+        # After 2 user responses, wrap up
         if user_turns >= 2:
-            logger.info(f"[SymptomCheckInAI] Forcing completion after {user_turns} user turns")
-            return await self._generate_completion_message(
+            logger.info(f"[SymptomCheckInAI] Completing after {user_turns} user turns")
+            return await self._generate_completion(
                 user_message=user_message,
                 user_profile_context=user_profile_context,
+                recent_weekly_checkin_context=recent_weekly_checkin_context,
+                recent_symptom_logs_context=recent_symptom_logs_context,
                 recent_messages=recent_messages,
             )
         
-        # Parse yesterday's symptom for context
-        yesterday_symptom = _parse_yesterday_symptom(recent_symptom_logs_context)
-        
-        # Build the Dr. Auvra prompt
-        return await self._generate_dr_auvra_response(
+        # Generate personalized doctor response
+        return await self._generate_doctor_response(
             user_message=user_message,
             user_profile_context=user_profile_context,
             action_plan_context=action_plan_context,
+            recent_weekly_checkin_context=recent_weekly_checkin_context,
             recent_symptom_logs_context=recent_symptom_logs_context,
             rolling_summary=rolling_summary,
             recent_messages=recent_messages,
-            yesterday_symptom=yesterday_symptom,
             user_turns=user_turns,
         )
     
-    # ═══════════════════════════════════════════════════════════════════════════
-    # DR. AUVRA RESPONSE GENERATION
-    # ═══════════════════════════════════════════════════════════════════════════
+    def _extract_user_context(
+        self,
+        user_profile_context: str,
+        recent_weekly_checkin_context: str,
+        recent_symptom_logs_context: str,
+    ) -> Dict[str, Any]:
+        """Extract all relevant user info for personalization."""
+        
+        context = {
+            "user_name": "there",
+            "top_concern": None,
+            "cycle_phase": None,
+            "recent_symptoms": [],
+            "highest_severity_symptom": None,
+        }
+        
+        # Parse user profile
+        if user_profile_context:
+            for line in user_profile_context.split("\n"):
+                if line.startswith("name="):
+                    context["user_name"] = line.split("=", 1)[1].strip() or "there"
+                elif line.startswith("top_concern="):
+                    context["top_concern"] = line.split("=", 1)[1].strip()
+        
+        # Try to detect cycle phase from weekly checkin
+        if recent_weekly_checkin_context and recent_weekly_checkin_context != "None":
+            text_lower = recent_weekly_checkin_context.lower()
+            if "menstrual" in text_lower or "period" in text_lower or "menses" in text_lower:
+                context["cycle_phase"] = "menstrual"
+            elif "follicular" in text_lower:
+                context["cycle_phase"] = "follicular"
+            elif "ovulation" in text_lower or "ovulat" in text_lower:
+                context["cycle_phase"] = "ovulation"
+            elif "luteal" in text_lower or "pms" in text_lower:
+                context["cycle_phase"] = "luteal"
+        
+        # Parse recent symptoms
+        symptoms = _parse_symptom_logs(recent_symptom_logs_context)
+        if symptoms:
+            context["recent_symptoms"] = symptoms
+            # Find highest severity symptom
+            highest = max(symptoms, key=lambda x: x.get("severity", 0))
+            context["highest_severity_symptom"] = highest
+        
+        return context
     
-    async def _generate_dr_auvra_response(
+    def _get_cycle_insight(self, cycle_phase: Optional[str]) -> str:
+        """Get cycle-specific health insight."""
+        insights = {
+            "menstrual": "During your period, cramps and fatigue are common. Heat therapy, gentle movement, and iron-rich foods can help.",
+            "follicular": "Energy typically increases now. Good time for activity, but watch for any lingering symptoms from your period.",
+            "ovulation": "Mid-cycle - energy peaks but some experience bloating or mild discomfort. Stay hydrated!",
+            "luteal": "PMS territory - mood swings, bloating, and cravings may appear. Self-care and magnesium-rich foods help.",
+        }
+        return insights.get(cycle_phase, "")
+    
+    async def _generate_doctor_response(
         self,
         *,
         user_message: str,
         user_profile_context: str,
         action_plan_context: str,
+        recent_weekly_checkin_context: str,
         recent_symptom_logs_context: str,
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
-        yesterday_symptom: Optional[Dict[str, Any]],
         user_turns: int,
     ) -> Tuple[SymptomAIResponse, str]:
-        """Generate contextual Dr. Auvra response."""
+        """Generate a personalized, doctor-like response."""
         
-        # Extract user name
-        user_name = "there"
-        if user_profile_context:
-            for line in user_profile_context.split("\n"):
-                if line.startswith("name="):
-                    user_name = line.split("=", 1)[1].strip() or "there"
-                    break
+        # Extract all user context
+        ctx = self._extract_user_context(
+            user_profile_context,
+            recent_weekly_checkin_context,
+            recent_symptom_logs_context,
+        )
         
-        # Build context for prompt
-        yesterday_context = ""
-        if yesterday_symptom:
-            yesterday_context = f"""
-YESTERDAY'S SYMPTOM LOG:
-- Symptom: {yesterday_symptom['symptom_type']}
-- Severity: {yesterday_symptom['severity']}/9
+        user_name = ctx["user_name"]
+        cycle_phase = ctx["cycle_phase"]
+        recent_symptoms = ctx["recent_symptoms"]
+        top_symptom = ctx["highest_severity_symptom"]
+        top_concern = ctx["top_concern"]
+        
+        # Build rich context blocks
+        cycle_block = ""
+        if cycle_phase:
+            cycle_block = f"""
+═══ CYCLE CONTEXT ═══
+Phase: {cycle_phase.upper()}
+Medical Insight: {self._get_cycle_insight(cycle_phase)}
 """
-        else:
-            yesterday_context = "YESTERDAY'S SYMPTOM LOG: None (first time user)"
+        
+        symptom_block = ""
+        if recent_symptoms:
+            symptom_list = ", ".join([f"{s['symptom_type']} ({s['severity']}/9)" for s in recent_symptoms[:5]])
+            symptom_block = f"""
+═══ RECENT SYMPTOMS ═══
+{symptom_list}
+Most Severe: {top_symptom['symptom_type']} at {top_symptom['severity']}/9
+"""
+        elif top_concern:
+            symptom_block = f"""
+═══ USER'S MAIN CONCERN ═══
+{top_concern}
+"""
         
         summary_block = (rolling_summary or "").strip()
-        recent_block = json.dumps(recent_messages[-10:], ensure_ascii=False)
+        recent_block = json.dumps(recent_messages[-8:], ensure_ascii=False)
         
-        system_prompt = f"""
-You are Dr. Auvra, an empathetic women's health specialist doing a QUICK daily check-in.
+        # Different prompts for different conversation stages
+        if user_turns == 0:
+            stage_instruction = f'''
+═══ CONVERSATION STAGE: FIRST RESPONSE ═══
 
-PATIENT: {user_name}
-{yesterday_context}
+The user just responded to your opening. They said: "{user_message}"
 
-TODAY'S ACTION PLAN:
-{action_plan_context or "None"}
+YOUR TASK:
+1. ACKNOWLEDGE what they shared with empathy (not generic "got it")
+2. DIG DEEPER based on their response:
+   - If BETTER: "That's great! What do you think helped? Sleep, less stress, or something else?"
+   - If WORSE: "I'm sorry to hear that. Any idea what triggered it? Poor sleep, stress, cycle timing?"
+   - If SPECIFIC SYMPTOM: Relate it to their history/cycle - "Bloating tends to increase in luteal phase..."
+   - If VAGUE: Ask about their most recent logged symptom specifically
 
-RECENT SYMPTOM LOGS:
-{recent_symptom_logs_context or "None"}
+3. Include a brief MEDICAL INSIGHT related to their cycle phase or symptom
+4. Provide 3-4 contextual tap options
+
+PERSONALIZATION REQUIREMENTS:
+- Reference their actual symptoms: {', '.join([s['symptom_type'] for s in recent_symptoms]) if recent_symptoms else 'none logged yet'}
+- Reference their cycle phase: {cycle_phase or 'unknown'}
+- Sound like a doctor who KNOWS them, not a generic chatbot
+'''
+        else:
+            stage_instruction = f'''
+═══ CONVERSATION STAGE: WRAPPING UP ═══
+
+User's response: "{user_message}"
+
+YOUR TASK:
+1. Thank them warmly for sharing
+2. Acknowledge the SPECIFIC thing they told you (trigger, relief factor, symptom)
+3. Give ONE actionable, personalized tip based on:
+   - What they shared
+   - Their cycle phase: {cycle_phase or 'unknown'}
+   - Their symptoms: {', '.join([s['symptom_type'] for s in recent_symptoms]) if recent_symptoms else 'general'}
+4. End on an encouraging note
+
+Set is_complete: true and provide EMPTY tap_options.
+'''
+
+        system_prompt = f"""You are Dr. Auvra, a warm and knowledgeable women's health specialist.
 
 ═══════════════════════════════════════════════════════════════════════════════
-YOUR TASK (USER HAS RESPONDED {user_turns} TIME(S)):
+PATIENT PROFILE
 ═══════════════════════════════════════════════════════════════════════════════
+Name: {user_name}
+{cycle_block}
+{symptom_block}
 
-{f'''THIS IS USER'S FIRST RESPONSE.
-They said: "{user_message}"
+Today's Action Plan:
+{action_plan_context or "Not set"}
 
-Based on what they said:
-- If they chose BETTER/improving: Celebrate briefly, then ask what helped
-- If they chose WORSE/worsening: Show empathy, then ask what triggered it  
-- If they chose SAME/stable: Acknowledge, then offer brief encouragement
-- If they mentioned a specific symptom: Acknowledge it and ask how severe (1-9)
-
-RESPOND WITH EXACTLY 2 SHORT MESSAGES + 3-4 TAP OPTIONS.''' if user_turns == 0 else f'''THIS IS USER'S SECOND RESPONSE - TIME TO WRAP UP.
-They said: "{user_message}"
-
-Thank them briefly and acknowledge what they shared.
-Set is_complete: true
-
-RESPOND WITH EXACTLY 2 SHORT MESSAGES + EMPTY TAP OPTIONS.'''}
+Previous Conversation Summary:
+{summary_block or "First conversation"}
 
 ═══════════════════════════════════════════════════════════════════════════════
-RESPONSE FORMAT RULES:
+YOUR IDENTITY - YOU ARE A REAL DOCTOR
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. ALWAYS return exactly 2 messages (multi-bubble style)
-   - Message 1: Short acknowledgment (max 8 words, include emoji)
-   - Message 2: One question OR brief closing (max 12 words)
-2. Keep tap_options to 3-4 maximum
-3. Use emojis in tap option text
+You are NOT:
+❌ A generic chatbot asking "how do you feel?"
+❌ A robotic questionnaire
+❌ Just checking boxes
+
+You ARE:
+✅ A caring doctor who remembers {user_name}'s history
+✅ Someone who asks about SPECIFIC symptoms they've logged
+✅ A professional who connects symptoms to cycle phases
+✅ Warm, knowledgeable, and gives practical medical insights
+
+{stage_instruction}
 
 ═══════════════════════════════════════════════════════════════════════════════
-EXAMPLES:
+RESPONSE FORMAT (STRICT JSON)
 ═══════════════════════════════════════════════════════════════════════════════
 
-User said "better":
+Return EXACTLY this format:
 {{
-    "messages": ["That's wonderful! 🎉", "What do you think helped?"],
-    "tap_options": [
-        {{"id": "good_sleep", "text": "😴 Slept well"}},
-        {{"id": "less_stress", "text": "🧘 Less stressed"}},
-        {{"id": "healthy_food", "text": "🥗 Ate healthier"}},
-        {{"id": "not_sure", "text": "🤷 Not sure"}}
+    "messages": [
+        "First message - empathetic, personalized (max 15 words)",
+        "Second message - follow-up question or insight (max 20 words)"
     ],
-    "is_complete": false,
-    "insights": {{"progress": "better"}}
+    "tap_options": [
+        {{"id": "option1", "text": "emoji + specific option"}},
+        {{"id": "option2", "text": "emoji + specific option"}},
+        {{"id": "option3", "text": "emoji + specific option"}}
+    ],
+    "is_complete": {'true' if user_turns >= 1 else 'false'},
+    "insights": {{
+        "progress": "better"|"same"|"worse"|null,
+        "symptoms_mentioned": ["list symptoms user mentioned"],
+        "triggers_today": ["any triggers user mentioned"],
+        "relief_today": ["any relief factors user mentioned"],
+        "key_takeaway": "one sentence medical summary"
+    }}
 }}
 
-User said "worse":
+═══════════════════════════════════════════════════════════════════════════════
+GOOD EXAMPLES:
+═══════════════════════════════════════════════════════════════════════════════
+
+If user has bloating history and says "worse":
 {{
-    "messages": ["I'm sorry to hear that. 💜", "Any idea what triggered it?"],
-    "tap_options": [
-        {{"id": "poor_sleep", "text": "😴 Poor sleep"}},
-        {{"id": "more_stress", "text": "😰 More stressed"}},
-        {{"id": "ate_out", "text": "🍔 Ate out/junk food"}},
-        {{"id": "not_sure", "text": "🤷 Not sure"}}
+    "messages": [
+        "I'm sorry the bloating is acting up, {user_name}. 💜",
+        "Since you're in your luteal phase, this can happen. Did you have any salty foods or stress today?"
     ],
-    "is_complete": false,
-    "insights": {{"progress": "worse"}}
+    "tap_options": [
+        {{"id": "salty_food", "text": "🧂 Had salty/processed food"}},
+        {{"id": "stressed", "text": "😰 More stressed than usual"}},
+        {{"id": "poor_sleep", "text": "😴 Didn't sleep well"}},
+        {{"id": "cycle_related", "text": "🌙 Think it's cycle-related"}}
+    ],
+    "is_complete": false
 }}
 
-User said "same":
+If user said "better sleep helped":
 {{
-    "messages": ["Got it, hanging in there. 💜", "Anything feel different today?"],
-    "tap_options": [
-        {{"id": "slightly_better", "text": "📈 Slightly better"}},
-        {{"id": "slightly_worse", "text": "📉 Slightly worse"}},
-        {{"id": "exactly_same", "text": "➡️ Exactly the same"}}
+    "messages": [
+        "Sleep makes such a difference! 🎉",
+        "I'll note this - try to keep the same bedtime tonight. You're doing great!"
     ],
-    "is_complete": false,
-    "insights": {{"progress": "same"}}
-}}
-
-Final response (after user's 2nd reply):
-{{
-    "messages": ["Thanks for sharing, {user_name}! 💜", "I'll use this for your plan."],
     "tap_options": [],
     "is_complete": true,
-    "insights": {{"key_takeaway": "User shared their progress"}}
+    "insights": {{
+        "progress": "better",
+        "relief_today": ["good sleep"],
+        "key_takeaway": "Sleep improvement helped reduce symptoms"
+    }}
 }}
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT (STRICT JSON ONLY):
-═══════════════════════════════════════════════════════════════════════════════
-
-ROLLING SUMMARY:
-{summary_block or "None"}
-
-RECENT MESSAGES:
+CONVERSATION HISTORY:
 {recent_block}
 
-USER MESSAGE:
+USER'S CURRENT MESSAGE:
 {user_message}
+═══════════════════════════════════════════════════════════════════════════════
 """.strip()
 
         # Call AI
@@ -359,81 +403,74 @@ USER MESSAGE:
         extracted = _extract_json_object(raw)
         if not extracted:
             logger.warning("[SymptomCheckInAI] Non-JSON response; using fallback")
-            return self._fallback_response(yesterday_symptom, user_name), model_used
+            return self._get_fallback_response(ctx, user_turns), model_used
         
         try:
             data = json.loads(extracted)
             parsed = SymptomAIResponse.model_validate(data)
             
-            # Ensure we have messages
             if not parsed.messages:
-                return self._fallback_response(yesterday_symptom, user_name), model_used
-            
-            # Ensure tap options exist
-            if not parsed.tap_options:
-                if yesterday_symptom:
-                    parsed.tap_options = [SymptomTapOption(**o) for o in PROGRESS_TAP_OPTIONS]
-                else:
-                    parsed.tap_options = [SymptomTapOption(**o) for o in FIRST_TIME_TAP_OPTIONS]
+                return self._get_fallback_response(ctx, user_turns), model_used
             
             return parsed, model_used
             
         except (json.JSONDecodeError, ValidationError) as e:
             logger.warning(f"[SymptomCheckInAI] Parse error: {e}")
-            return self._fallback_response(yesterday_symptom, user_name), model_used
+            return self._get_fallback_response(ctx, user_turns), model_used
     
-    # ═══════════════════════════════════════════════════════════════════════════
-    # COMPLETION MESSAGE (After 2 turns)
-    # ═══════════════════════════════════════════════════════════════════════════
-    
-    async def _generate_completion_message(
+    async def _generate_completion(
         self,
         *,
         user_message: str,
         user_profile_context: str,
+        recent_weekly_checkin_context: str,
+        recent_symptom_logs_context: str,
         recent_messages: List[Dict[str, Any]],
     ) -> Tuple[SymptomAIResponse, str]:
-        """Generate final completion message after 2 turns."""
+        """Generate warm, personalized completion with practical tip."""
         
-        # Extract user name
-        user_name = "there"
-        if user_profile_context:
-            for line in user_profile_context.split("\n"):
-                if line.startswith("name="):
-                    user_name = line.split("=", 1)[1].strip() or "there"
-                    break
+        ctx = self._extract_user_context(
+            user_profile_context,
+            recent_weekly_checkin_context,
+            recent_symptom_logs_context,
+        )
+        user_name = ctx["user_name"]
+        cycle_phase = ctx["cycle_phase"]
         
-        # Analyze the conversation to extract insights
         conversation_text = " ".join([
-            msg.get("content", "") for msg in recent_messages[-6:]
+            msg.get("content", "") for msg in recent_messages[-8:]
         ])
         
-        prompt = f"""
-Analyze this daily symptom check-in conversation and generate a SHORT completion message.
+        prompt = f"""Generate a warm, personalized closing for {user_name}'s daily symptom check-in.
 
 CONVERSATION:
 {conversation_text}
 
-USER'S FINAL MESSAGE:
-{user_message}
+USER'S FINAL MESSAGE: {user_message}
 
-Generate:
-1. A brief acknowledgment (1 sentence, max 12 words)
-2. A personalized tip based on what they shared (1 sentence, max 15 words)
+CYCLE PHASE: {cycle_phase or 'unknown'}
+CYCLE INSIGHT: {self._get_cycle_insight(cycle_phase) if cycle_phase else 'General health tip'}
 
-Also extract insights from the conversation.
+Create a supportive closing that:
+1. Thanks them for sharing
+2. Acknowledges the SPECIFIC thing they mentioned (symptom, trigger, relief factor)
+3. Gives ONE practical, actionable tip based on their cycle phase and symptoms
+4. Ends encouragingly
 
 Return STRICT JSON:
 {{
-    "messages": ["Thanks for sharing, {user_name}! 💜", "I'll factor [what they said] into your plan."],
+    "messages": [
+        "Thanks for checking in, {user_name}! 💜",
+        "[Specific, personalized tip based on what they shared and their cycle phase]"
+    ],
     "tap_options": [],
     "is_complete": true,
     "insights": {{
         "progress": "better"|"same"|"worse"|null,
-        "symptoms_mentioned": ["string"],
-        "triggers_today": ["what made symptoms worse"],
-        "relief_today": ["what helped symptoms"],
-        "key_takeaway": "one sentence summary"
+        "symptoms_mentioned": [],
+        "triggers_today": [],
+        "relief_today": [],
+        "key_takeaway": "Summary of what user shared and actionable insight"
     }}
 }}
 """.strip()
@@ -447,54 +484,75 @@ Return STRICT JSON:
                 data = json.loads(extracted)
                 parsed = SymptomAIResponse.model_validate(data)
                 parsed.is_complete = True
-                if not parsed.messages:
-                    parsed.messages = [
-                        f"Thanks for sharing, {user_name}! 💜",
-                        "I'll use this to personalize your plan."
-                    ]
-                return parsed, model_used
+                if parsed.messages:
+                    return parsed, model_used
             except (json.JSONDecodeError, ValidationError):
                 pass
         
-        # Fallback completion
+        # Personalized fallback
+        tip = self._get_cycle_insight(cycle_phase) if cycle_phase else "Stay hydrated and get good rest tonight."
         return SymptomAIResponse(
             messages=[
-                f"Thanks for checking in, {user_name}! 💜",
-                "I'll use this to personalize your plan."
+                f"Thanks for sharing today, {user_name}! 💜",
+                f"Quick tip: {tip[:60]}... Take care!"
             ],
             tap_options=[],
             is_complete=True,
-            insights=SymptomInsights(key_takeaway="Daily check-in completed"),
+            insights=SymptomInsights(key_takeaway="Daily symptom check-in completed"),
         ), "fallback"
     
-    # ═══════════════════════════════════════════════════════════════════════════
-    # FALLBACK RESPONSES
-    # ═══════════════════════════════════════════════════════════════════════════
-    
-    def _fallback_response(
+    def _get_fallback_response(
         self,
-        yesterday_symptom: Optional[Dict[str, Any]],
-        user_name: str,
+        ctx: Dict[str, Any],
+        user_turns: int,
     ) -> SymptomAIResponse:
-        """Generate fallback response when AI fails."""
+        """Context-aware fallback response."""
         
-        if yesterday_symptom:
-            symptom = yesterday_symptom["symptom_type"]
-            severity = yesterday_symptom["severity"]
-            return SymptomAIResponse(
-                messages=[
-                    f"Hey {user_name}! Your {symptom} was {severity}/9 yesterday. 💜",
-                    "How's it feeling today?"
-                ],
-                tap_options=[SymptomTapOption(**o) for o in PROGRESS_TAP_OPTIONS],
-                is_complete=False,
-            )
+        user_name = ctx.get("user_name", "there")
+        recent_symptoms = ctx.get("recent_symptoms", [])
+        top_symptom = ctx.get("highest_severity_symptom")
+        cycle_phase = ctx.get("cycle_phase")
+        
+        if user_turns == 0:
+            # First response - dig deeper
+            if top_symptom:
+                symptom = top_symptom["symptom_type"]
+                return SymptomAIResponse(
+                    messages=[
+                        f"Thanks for sharing, {user_name}! 💜",
+                        f"Tell me more about your {symptom} - any idea what might be affecting it?"
+                    ],
+                    tap_options=[
+                        SymptomTapOption(id="sleep", text="😴 Sleep quality"),
+                        SymptomTapOption(id="stress", text="😰 Stress levels"),
+                        SymptomTapOption(id="food", text="🍽️ Food choices"),
+                        SymptomTapOption(id="cycle", text="🌙 Cycle timing"),
+                    ],
+                    is_complete=False,
+                )
+            else:
+                return SymptomAIResponse(
+                    messages=[
+                        f"Got it, {user_name}! 💜",
+                        "What's the main symptom on your mind today?"
+                    ],
+                    tap_options=[
+                        SymptomTapOption(id="bloating", text="🫄 Bloating"),
+                        SymptomTapOption(id="cramps", text="😣 Cramps/pain"),
+                        SymptomTapOption(id="fatigue", text="😴 Fatigue"),
+                        SymptomTapOption(id="mood", text="😔 Mood changes"),
+                    ],
+                    is_complete=False,
+                )
         else:
+            # Wrap up
+            tip = self._get_cycle_insight(cycle_phase) if cycle_phase else "Stay hydrated and rest well tonight."
             return SymptomAIResponse(
                 messages=[
-                    f"Hey {user_name}! 👋",
-                    "What's bothering you most today?"
+                    f"Thanks for sharing, {user_name}! 💜",
+                    f"I'll factor this into your plan. {tip[:40]}..."
                 ],
-                tap_options=[SymptomTapOption(**o) for o in FIRST_TIME_TAP_OPTIONS],
-                is_complete=False,
+                tap_options=[],
+                is_complete=True,
+                insights=SymptomInsights(key_takeaway="User shared symptom update"),
             )
