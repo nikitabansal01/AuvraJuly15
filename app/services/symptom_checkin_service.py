@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.database import ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, SymptomLog, UserProfile, WeeklyCheckIn
 from app.services.symptom_checkin_ai import SymptomCheckInAI, SymptomAIResponse
+from app.services.cycle_service import CycleService
 from app.utils.timezone_utils import get_user_current_date
 
 logger = logging.getLogger(__name__)
@@ -513,7 +514,19 @@ class SymptomCheckInService:
             return "None"
 
     def _build_recent_weekly_checkin_context(self, uid: str) -> str:
+        """Build context including cycle phase info."""
         try:
+            # Get current cycle phase
+            cycle_service = CycleService(self.db)
+            cycle_info = cycle_service.get_cycle_phase_info(uid)
+            
+            cycle_context = ""
+            if cycle_info:
+                phase = cycle_info.phase or "unknown"
+                cycle_day = cycle_info.cycle_day
+                cycle_context = f"CURRENT_CYCLE_PHASE={phase} (day {cycle_day})\n"
+            
+            # Get recent weekly checkin
             checkin = (
                 self.db.query(WeeklyCheckIn)
                 .filter(and_(WeeklyCheckIn.uid == uid, WeeklyCheckIn.is_complete == True))
@@ -521,11 +534,11 @@ class SymptomCheckInService:
                 .first()
             )
             if not checkin:
-                return "None"
+                return cycle_context + "No recent weekly check-in."
 
             summary = (checkin.conversation_summary or "").strip()
             if summary:
-                return summary
+                return cycle_context + summary
 
             # Fallback: minimal signals
             parts: List[str] = []
@@ -537,8 +550,9 @@ class SymptomCheckInService:
                 parts.append("triggers=" + ", ".join((checkin.factors_negative or [])[:3]))
             if getattr(checkin, "factors_positive", None):
                 parts.append("helped=" + ", ".join((checkin.factors_positive or [])[:3]))
-            return " | ".join(parts) if parts else "None"
-        except Exception:
+            return cycle_context + (" | ".join(parts) if parts else "None")
+        except Exception as e:
+            logger.warning(f"[SymptomCheckInService] Error building weekly context: {e}")
             return "None"
 
     async def _update_rolling_summary_if_needed(self, thread: SymptomCheckInThread) -> None:

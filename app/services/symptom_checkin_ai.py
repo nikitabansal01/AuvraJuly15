@@ -260,38 +260,39 @@ Most Severe: {top_symptom['symptom_type']} at {top_symptom['severity']}/9
             stage_instruction = f'''
 ═══ CONVERSATION STAGE: FIRST RESPONSE ═══
 
-The user just responded to your opening. They said: "{user_message}"
+The user just told you: "{user_message}"
 
-YOUR TASK:
-1. ACKNOWLEDGE what they shared with empathy (not generic "got it")
-2. DIG DEEPER based on their response:
-   - If BETTER: "That's great! What do you think helped? Sleep, less stress, or something else?"
-   - If WORSE: "I'm sorry to hear that. Any idea what triggered it? Poor sleep, stress, cycle timing?"
-   - If SPECIFIC SYMPTOM: Relate it to their history/cycle - "Bloating tends to increase in luteal phase..."
-   - If VAGUE: Ask about their most recent logged symptom specifically
+CRITICAL: Your response must have TWO PARTS:
+1. MESSAGE 1: Short empathetic acknowledgment (NO generic advice!)
+2. MESSAGE 2: A SPECIFIC FOLLOW-UP QUESTION about their symptom
 
-3. Include a brief MEDICAL INSIGHT related to their cycle phase or symptom
-4. Provide 3-4 contextual tap options
+DO NOT give tips or advice yet - ASK A QUESTION FIRST!
 
-PERSONALIZATION REQUIREMENTS:
-- Reference their actual symptoms: {', '.join([s['symptom_type'] for s in recent_symptoms]) if recent_symptoms else 'none logged yet'}
-- Reference their cycle phase: {cycle_phase or 'unknown'}
-- Sound like a doctor who KNOWS them, not a generic chatbot
+For example, if user said "Bloating":
+✅ GOOD: "Bloating during {cycle_phase or 'your cycle'} is common. 💜" + "How severe is it today - mild, moderate, or really uncomfortable?"
+❌ BAD: "Try peppermint tea" (too generic, no question)
+
+If user said "better":
+✅ GOOD: "That's wonderful to hear! 🎉" + "What do you think made the difference - sleep, food, or less stress?"
+
+If user said "worse":
+✅ GOOD: "I'm sorry it's tough today. 💜" + "Any idea what might have triggered it - sleep, stress, or food?"
+
+YOUR TAP OPTIONS should be ANSWERS to your question, not generic options.
+
+PERSONALIZATION:
+- Their cycle phase is: {cycle_phase or 'unknown'} - MENTION THIS if relevant
+- Their logged symptoms: {', '.join([s['symptom_type'] for s in recent_symptoms]) if recent_symptoms else 'none yet'}
 '''
         else:
             stage_instruction = f'''
-═══ CONVERSATION STAGE: WRAPPING UP ═══
+═══ CONVERSATION STAGE: WRAPPING UP (TURN 2) ═══
 
 User's response: "{user_message}"
 
-YOUR TASK:
-1. Thank them warmly for sharing
-2. Acknowledge the SPECIFIC thing they told you (trigger, relief factor, symptom)
-3. Give ONE actionable, personalized tip based on:
-   - What they shared
-   - Their cycle phase: {cycle_phase or 'unknown'}
-   - Their symptoms: {', '.join([s['symptom_type'] for s in recent_symptoms]) if recent_symptoms else 'general'}
-4. End on an encouraging note
+NOW you can give advice! Your response should:
+1. MESSAGE 1: Acknowledge what they shared
+2. MESSAGE 2: ONE specific, actionable tip based on what they said + their cycle phase ({cycle_phase or 'unknown'})
 
 Set is_complete: true and provide EMPTY tap_options.
 '''
@@ -354,37 +355,65 @@ Return EXACTLY this format:
 }}
 
 ═══════════════════════════════════════════════════════════════════════════════
-GOOD EXAMPLES:
+EXAMPLES - FOLLOW THE PATTERN EXACTLY:
 ═══════════════════════════════════════════════════════════════════════════════
 
-If user has bloating history and says "worse":
+EXAMPLE 1: User said "Bloating" (first turn - ASK A QUESTION)
 {{
     "messages": [
-        "I'm sorry the bloating is acting up, {user_name}. 💜",
-        "Since you're in your luteal phase, this can happen. Did you have any salty foods or stress today?"
+        "Bloating during menses is so common, {user_name}. 💜",
+        "How bad is it - mild discomfort or really uncomfortable?"
     ],
     "tap_options": [
-        {{"id": "salty_food", "text": "🧂 Had salty/processed food"}},
-        {{"id": "stressed", "text": "😰 More stressed than usual"}},
-        {{"id": "poor_sleep", "text": "😴 Didn't sleep well"}},
-        {{"id": "cycle_related", "text": "🌙 Think it's cycle-related"}}
+        {{"id": "mild", "text": "😊 Mild, I can manage"}},
+        {{"id": "moderate", "text": "😐 Moderate, it's annoying"}},
+        {{"id": "severe", "text": "😣 Really uncomfortable"}}
     ],
-    "is_complete": false
+    "is_complete": false,
+    "insights": {{"symptoms_mentioned": ["bloating"]}}
 }}
 
-If user said "better sleep helped":
+EXAMPLE 2: User said "Feeling better" (first turn - ASK WHAT HELPED)
 {{
     "messages": [
-        "Sleep makes such a difference! 🎉",
-        "I'll note this - try to keep the same bedtime tonight. You're doing great!"
+        "That's great to hear, {user_name}! 🎉",
+        "What do you think helped - better sleep, less stress, or food choices?"
+    ],
+    "tap_options": [
+        {{"id": "sleep", "text": "😴 Slept better"}},
+        {{"id": "stress", "text": "🧘 Less stressed"}},
+        {{"id": "food", "text": "🥗 Ate well"}},
+        {{"id": "not_sure", "text": "🤷 Not sure"}}
+    ],
+    "is_complete": false,
+    "insights": {{"progress": "better"}}
+}}
+
+EXAMPLE 3: User said "Worse" (first turn - ASK ABOUT TRIGGERS)
+{{
+    "messages": [
+        "I'm sorry you're not feeling well today. 💜",
+        "Any idea what might have triggered it?"
+    ],
+    "tap_options": [
+        {{"id": "poor_sleep", "text": "😴 Poor sleep"}},
+        {{"id": "stress", "text": "😰 Stressed"}},
+        {{"id": "food", "text": "🍔 Food choices"}},
+        {{"id": "cycle", "text": "🌙 Cycle timing"}}
+    ],
+    "is_complete": false,
+    "insights": {{"progress": "worse"}}
+}}
+
+EXAMPLE 4: User answered your question "Stressed" (second turn - NOW GIVE ADVICE)
+{{
+    "messages": [
+        "Stress definitely affects bloating! 💜",
+        "Try some deep breathing today - even 5 minutes can help. You've got this!"
     ],
     "tap_options": [],
     "is_complete": true,
-    "insights": {{
-        "progress": "better",
-        "relief_today": ["good sleep"],
-        "key_takeaway": "Sleep improvement helped reduce symptoms"
-    }}
+    "insights": {{"triggers_today": ["stress"], "key_takeaway": "Stress triggering bloating"}}
 }}
 
 ═══════════════════════════════════════════════════════════════════════════════
