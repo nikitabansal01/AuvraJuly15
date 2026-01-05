@@ -1143,6 +1143,80 @@ class WeeklyCheckInQuestion(Base):
         Index('idx_question_concern', 'concern_type', 'is_active'),
     )
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CARE PLAN CHECK-IN SYSTEM - Daily threaded chat
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class CarePlanCheckInThread(Base):
+    """One per-user daily thread for Care Plan check-ins (keyed by user's local date)."""
+    __tablename__ = "care_plan_checkin_threads"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Thread identity (in user's timezone)
+    local_date = Column(Date, nullable=False, index=True)
+    timezone = Column(String(100), nullable=True)
+
+    # Conversation data (similar to WeeklyCheckIn)
+    raw_messages = Column(JSONB, default=[])  # [{"role": "bot"|"user", "content": "...", "created_at": "..."}]
+
+    # Sliding-window summary: summary of older messages + recent message tail kept verbatim
+    rolling_summary = Column(Text, nullable=True)
+    summarized_message_count = Column(Integer, default=0)  # Number of raw_messages included in rolling_summary
+    last_summarized_at = Column(DateTime, nullable=True)
+
+    # Actionable insights extracted for plan updates/replacements
+    actionable_insights = Column(JSONB, default={})
+
+    # Optional lifecycle flags
+    is_closed = Column(Boolean, default=False)
+    closed_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_care_plan_thread_user_date", "uid", "local_date", unique=True),
+        Index("idx_care_plan_thread_user_closed", "uid", "is_closed"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SYMPTOM CHECK-IN SYSTEM - Daily threaded chat
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SymptomCheckInThread(Base):
+    """One per-user daily thread for symptom progress check-ins (keyed by user's local date)."""
+    __tablename__ = "symptom_checkin_threads"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+
+    local_date = Column(Date, nullable=False, index=True)
+    timezone = Column(String(100), nullable=True)
+
+    raw_messages = Column(JSONB, default=[])  # [{"role": "bot"|"user", "content": "...", "created_at": "..."}]
+
+    rolling_summary = Column(Text, nullable=True)
+    summarized_message_count = Column(Integer, default=0)
+    last_summarized_at = Column(DateTime, nullable=True)
+
+    # Insights for action plan + weekly check-in personalization
+    actionable_insights = Column(JSONB, default={})
+
+    is_closed = Column(Boolean, default=False)
+    closed_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_symptom_thread_user_date", "uid", "local_date", unique=True),
+        Index("idx_symptom_thread_user_closed", "uid", "is_closed"),
+    )
+
 class AIModelUsageLog(Base):
     """
     Tracks which AI model was used for generation and any switching events.

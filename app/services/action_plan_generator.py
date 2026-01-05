@@ -466,6 +466,24 @@ Use these insights to:
 - If user completed items, reinforce those habits
 
 ══════════════════════════════════════════════════════════════════════
+CARE PLAN CHECK-IN INSIGHTS (Daily chat about today's plan)
+══════════════════════════════════════════════════════════════════════
+{care_plan_checkin_insights}
+Use these insights to:
+- Respect explicit requests to change/skip/replace actions
+- Make alternatives easier if user reports barriers (time, cravings, fatigue)
+- Reinforce what the user said is working well
+
+══════════════════════════════════════════════════════════════════════
+SYMPTOM CHECK-IN INSIGHTS (Daily symptom progress)
+══════════════════════════════════════════════════════════════════════
+{symptom_checkin_insights}
+Use these insights to:
+- Reduce triggers and double-down on what helped today
+- Keep actions realistic if user reports low energy / high symptoms
+- Reinforce wins and remove friction from difficult items
+
+══════════════════════════════════════════════════════════════════════
 REQUIREMENTS (READ CAREFULLY)
 ══════════════════════════════════════════════════════════════════════
 1. Generate exactly {num_actions} actions total
@@ -1811,7 +1829,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         db: AsyncSession
     ) -> Optional[Dict[str, Any]]:
         """Load all user context needed for action generation."""
-        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem
+        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread
         
         logger.info(f"[CONTEXT] ══════════════════════════════════════════════════════════════════════════")
         logger.info(f"[CONTEXT] Starting _load_user_context for user: {user_id}")
@@ -1871,6 +1889,38 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             logger.info(f"[CONTEXT] Found {len(recent_reviews)} daily reviews")
             daily_review_insights = self._format_daily_reviews(recent_reviews)
             logger.debug(f"[CONTEXT] Daily review insights: {daily_review_insights[:200]}..." if daily_review_insights else "[CONTEXT] No daily review insights")
+
+            # Get recent care plan check-ins (daily threads)
+            logger.info(f"[CONTEXT] Fetching care plan check-ins for user {user_id}")
+            care_plan_result = await db.execute(
+                select(CarePlanCheckInThread).where(
+                    CarePlanCheckInThread.uid == user_id
+                ).order_by(CarePlanCheckInThread.local_date.desc(), CarePlanCheckInThread.updated_at.desc()).limit(7)
+            )
+            recent_care_plan_threads = care_plan_result.scalars().all()
+            logger.info(f"[CONTEXT] Found {len(recent_care_plan_threads)} care plan check-in threads")
+            care_plan_checkin_insights = self._format_care_plan_checkin_insights(recent_care_plan_threads)
+            logger.debug(
+                f"[CONTEXT] Care plan checkin insights: {care_plan_checkin_insights[:200]}..."
+                if care_plan_checkin_insights
+                else "[CONTEXT] No care plan checkin insights"
+            )
+
+            # Get recent symptom check-ins
+            logger.info(f"[CONTEXT] Fetching symptom check-ins for user {user_id}")
+            symptom_checkin_result = await db.execute(
+                select(SymptomCheckInThread).where(
+                    SymptomCheckInThread.uid == user_id
+                ).order_by(SymptomCheckInThread.local_date.desc(), SymptomCheckInThread.updated_at.desc()).limit(7)
+            )
+            recent_symptom_threads = symptom_checkin_result.scalars().all()
+            logger.info(f"[CONTEXT] Found {len(recent_symptom_threads)} symptom check-in threads")
+            symptom_checkin_insights = self._format_symptom_checkin_insights(recent_symptom_threads)
+            logger.debug(
+                f"[CONTEXT] Symptom checkin insights: {symptom_checkin_insights[:200]}..."
+                if symptom_checkin_insights
+                else "[CONTEXT] No symptom checkin insights"
+            )
             
             # ═══════════════════════════════════════════════════════════════════
             # GET RECENTLY RECOMMENDED ITEMS (last 14 days) TO AVOID REPETITION
@@ -1935,6 +1985,8 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "chatbot_context": "No additional context",
                 "weekly_checkin_insights": weekly_checkin_insights,
                 "daily_review_insights": daily_review_insights,
+                "care_plan_checkin_insights": care_plan_checkin_insights,
+                "symptom_checkin_insights": symptom_checkin_insights,
                 "current_streak": current_streak,
                 "longest_streak": longest_streak,
                 "recently_recommended": recently_recommended_str,
@@ -2252,6 +2304,90 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 insights.append(f"[{week_label}] " + " | ".join(parts))
         
         return "\n".join(insights) if insights else "No weekly check-in data yet"
+
+    def _format_care_plan_checkin_insights(self, threads: List[Any]) -> str:
+        """Format daily care plan check-in threads into a compact prompt block."""
+        if not threads:
+            return "No care plan check-in data yet"
+
+        lines: List[str] = []
+        for thread in threads:
+            try:
+                day = thread.local_date.strftime("%Y-%m-%d") if getattr(thread, "local_date", None) else "unknown-date"
+                parts: List[str] = []
+
+                if getattr(thread, "actionable_insights", None):
+                    ai = thread.actionable_insights or {}
+                    if ai.get("wins"):
+                        parts.append(f"Wins: {', '.join(ai['wins'][:3])}")
+                    if ai.get("blockers"):
+                        parts.append(f"Blockers: {', '.join(ai['blockers'][:3])}")
+                    if ai.get("actions_to_skip"):
+                        parts.append(f"Skip: {', '.join(ai['actions_to_skip'][:3])}")
+                    if ai.get("plan_changes_requested"):
+                        parts.append(f"Change: {', '.join(ai['plan_changes_requested'][:2])}")
+                    if ai.get("alternate_suggestions_requested") is True:
+                        parts.append("Asked for alternates")
+                    if ai.get("key_takeaway"):
+                        parts.append(f"Key: {ai['key_takeaway']}")
+
+                # If we have a rolling summary, prefer it as the main signal.
+                summary = (getattr(thread, "rolling_summary", None) or "").strip()
+                if summary:
+                    parts.append(f"Summary: {summary}")
+                else:
+                    # Fallback: include a couple recent user messages
+                    raw = getattr(thread, "raw_messages", None) or []
+                    recent_user = [m.get("content") for m in raw[::-1] if m.get("role") == "user" and m.get("content")][:2]
+                    if recent_user:
+                        parts.append("Recent: " + " | ".join(recent_user[::-1]))
+
+                if parts:
+                    lines.append(f"[{day}] " + " | ".join(parts))
+            except Exception:
+                continue
+
+        return "\n".join(lines) if lines else "No care plan check-in data yet"
+
+    def _format_symptom_checkin_insights(self, threads: List[Any]) -> str:
+        """Format daily symptom check-in threads into a compact prompt block."""
+        if not threads:
+            return "No symptom check-in data yet"
+
+        lines: List[str] = []
+        for thread in threads:
+            try:
+                day = thread.local_date.strftime("%Y-%m-%d") if getattr(thread, "local_date", None) else "unknown-date"
+                parts: List[str] = []
+
+                ai = getattr(thread, "actionable_insights", None) or {}
+                if ai.get("progress"):
+                    parts.append(f"Progress: {ai['progress']}")
+                if ai.get("symptoms_mentioned"):
+                    parts.append(f"Symptoms: {', '.join(ai['symptoms_mentioned'][:3])}")
+                if ai.get("severity_rating"):
+                    parts.append(f"Severity: {ai['severity_rating']}/9")
+                if ai.get("wins"):
+                    parts.append(f"Wins: {', '.join(ai['wins'][:3])}")
+                if ai.get("difficulties"):
+                    parts.append(f"Difficulties: {', '.join(ai['difficulties'][:3])}")
+                if ai.get("triggers_identified"):
+                    parts.append(f"Triggers: {', '.join(ai['triggers_identified'][:3])}")
+                if ai.get("relief_factors_identified"):
+                    parts.append(f"Helped: {', '.join(ai['relief_factors_identified'][:3])}")
+                if ai.get("key_takeaway"):
+                    parts.append(f"Key: {ai['key_takeaway']}")
+
+                summary = (getattr(thread, "rolling_summary", None) or "").strip()
+                if summary:
+                    parts.append(f"Summary: {summary}")
+
+                if parts:
+                    lines.append(f"[{day}] " + " | ".join(parts))
+            except Exception:
+                continue
+
+        return "\n".join(lines) if lines else "No symptom check-in data yet"
 
     def _format_daily_reviews(self, recent_reviews: List[Any]) -> str:
         """Format daily review data for action plan personalization."""
@@ -2636,21 +2772,21 @@ Format as bullet points."""
         
         if num_selected == 1:
             if has_eat:
-                return "STRICT: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
+                return "Food focus (STRICT): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
             elif has_move:
-                return "STRICT: Generate 1 Food + 2 Movement + 1 Mindfulness = 4 total"
+                return "Movement focus (STRICT): Generate 1 Food + 2 Movement + 1 Mindfulness = 4 total"
             elif has_pause:
-                return "STRICT: Generate 1 Food + 1 Movement + 2 Mindfulness = 4 total"
+                return "Mindfulness focus (STRICT): Generate 1 Food + 1 Movement + 2 Mindfulness = 4 total"
         elif num_selected == 2:
             if has_eat and has_move:
-                return "STRICT: Generate 2 Food + 2 Movement + 0 Mindfulness = 4 total (NO mindfulness!)"
+                return "Food and movement focus (STRICT): Generate 2 Food + 2 Movement + 0 Mindfulness = 4 total (NO mindfulness!)"
             elif has_eat and has_pause:
-                return "STRICT: Generate 2 Food + 0 Movement + 2 Mindfulness = 4 total (NO movement!)"
+                return "Food and mindfulness focus (STRICT): Generate 2 Food + 0 Movement + 2 Mindfulness = 4 total (NO movement!)"
             elif has_move and has_pause:
-                return "STRICT: Generate 0 Food + 2 Movement + 2 Mindfulness = 4 total (NO food!)"
+                return "Movement and mindfulness focus (STRICT): Generate 0 Food + 2 Movement + 2 Mindfulness = 4 total (NO food!)"
         
         # Default: All three or none selected
-        return "STRICT: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
+        return "Balanced (STRICT): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
     
     async def _generate_actions_via_gpt(
         self,
@@ -2745,6 +2881,8 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             feedback_summary=user_context.get("feedback_summary", "No summary yet"),
             weekly_checkin_insights=user_context.get("weekly_checkin_insights", "No weekly check-in data yet"),
             daily_review_insights=user_context.get("daily_review_insights", "No daily review data yet"),
+            care_plan_checkin_insights=user_context.get("care_plan_checkin_insights", "No care plan check-in data yet"),
+            symptom_checkin_insights=user_context.get("symptom_checkin_insights", "No symptom check-in data yet"),
             # Anti-repetition and hallucination prevention
             recently_recommended=user_context.get("recently_recommended", "None (this is the user's first plan)"),
             allowed_symptoms=user_context.get("allowed_symptoms", "general wellness support"),

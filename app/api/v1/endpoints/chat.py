@@ -18,8 +18,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 import json
@@ -136,7 +135,6 @@ async def send_message(
     Send a text message to the chatbot.
     
     This is the main endpoint for chat interactions (non-streaming).
-    For streaming responses, use /message/stream
     
     Args:
         request: The message request containing user_id, message, context, etc.
@@ -184,59 +182,28 @@ async def send_message_streaming(
     db: Session = Depends(get_db)
 ):
     """
-    Send a text message to the chatbot with STREAMING response.
-    
-    This endpoint returns Server-Sent Events (SSE) for real-time token streaming.
-    Makes the chatbot feel ALIVE and responsive!
+    Deprecated: streaming has been removed.
+
+    For backwards compatibility this endpoint now behaves like /message and returns a
+    standard JSON response (no SSE / token streaming).
     
     Args:
         request: The message request containing user_id, message, context, etc.
         
     Returns:
-        StreamingResponse with SSE format
+        ChatMessageResponse JSON (non-streaming)
     """
     try:
-        # Validate user
-        if not validate_user(request.user_id, db):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        # Build internal request
-        chat_request = ChatMessageRequest(
-            user_id=request.user_id,
-            message=request.message,
-            conversation_context=parse_conversation_context(request.conversation_context),
-            input_mode=parse_input_mode(request.input_mode),
-            session_id=request.session_id,
-            metadata=request.metadata
-        )
-        
-        # Create streaming generator
-        async def generate():
-            chat_service = ChatService(db)
-            async for chunk in chat_service.process_message_streaming(chat_request):
-                # Format as SSE (Server-Sent Events)
-                yield f"data: {json.dumps(chunk)}\n\n"
-        
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"  # Disable nginx buffering
-            }
-        )
+        # Delegate to the standard non-streaming implementation.
+        return await send_message(request, db)
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in send_message_streaming: {str(e)}")
+        logger.error(f"Error in send_message_streaming (deprecated): {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing streaming message: {str(e)}"
+            detail=f"Error processing message: {str(e)}"
         )
 
 
@@ -400,20 +367,16 @@ async def generate_voice_response(
                 detail=f"TTS generation failed: {result.get('error')}"
             )
         
-        # Return audio as streaming response
-        from io import BytesIO
-        audio_stream = BytesIO(result["audio_bytes"])
-        
-        return StreamingResponse(
-            audio_stream,
+        return Response(
+            content=result["audio_bytes"],
             media_type="audio/mpeg",
             headers={
                 "Content-Disposition": "attachment; filename=auvra_response.mp3",
                 "X-Voice": voice,
                 "X-Model": model,
                 "X-Text-Length": str(result["text_length"]),
-                "X-Audio-Size-KB": str(result["audio_size_kb"])
-            }
+                "X-Audio-Size-KB": str(result["audio_size_kb"]),
+            },
         )
         
     except HTTPException:

@@ -188,6 +188,9 @@ class WeeklyCheckInAI:
             "effective_factors": [],
             "trigger_factors": [],
             "last_checkin_summary": None,
+            "recent_symptom_checkin": None,
+            "recent_symptom_logs": None,
+            "recent_care_plan_checkin": None,
             "weeks_using_app": 0,
             "checkin_streak": 0,
         }
@@ -262,6 +265,103 @@ class WeeklyCheckInAI:
             # Last check-in summary
             if recent_checkins[0].conversation_summary:
                 context["last_checkin_summary"] = recent_checkins[0].conversation_summary
+
+            # Recent symptom check-ins (daily)
+            try:
+                from app.core.database import SymptomCheckInThread
+
+                recent_symptom_threads = (
+                    self.db.query(SymptomCheckInThread)
+                    .filter(SymptomCheckInThread.uid == uid)
+                    .order_by(desc(SymptomCheckInThread.local_date), desc(SymptomCheckInThread.updated_at))
+                    .limit(3)
+                    .all()
+                )
+
+                if recent_symptom_threads:
+                    lines = []
+                    for t in recent_symptom_threads:
+                        day = t.local_date.isoformat() if t.local_date else ""
+                        ai = t.actionable_insights or {}
+                        parts = []
+                        if ai.get("progress"):
+                            parts.append(f"progress={ai['progress']}")
+                        if ai.get("severity_rating"):
+                            parts.append(f"severity={ai['severity_rating']}/9")
+                        if ai.get("triggers_identified"):
+                            parts.append(f"triggers={', '.join(ai['triggers_identified'][:3])}")
+                        if ai.get("relief_factors_identified"):
+                            parts.append(f"helped={', '.join(ai['relief_factors_identified'][:3])}")
+
+                        summary = (t.rolling_summary or "").strip()
+                        if summary:
+                            parts.append(f"summary={summary}")
+
+                        if parts:
+                            lines.append(f"[{day}] " + " | ".join(parts))
+
+                    context["recent_symptom_checkin"] = "\n".join(lines) if lines else None
+            except Exception:
+                # Non-fatal: weekly check-in should still run if symptom check-in isn't available
+                context["recent_symptom_checkin"] = None
+
+            # Recent structured symptom logs (14 days; compact)
+            try:
+                from app.core.database import SymptomLog
+
+                start_dt = datetime.utcnow() - timedelta(days=14)
+                logs = (
+                    self.db.query(SymptomLog)
+                    .filter(and_(SymptomLog.user_id == uid, SymptomLog.logged_at >= start_dt))
+                    .order_by(desc(SymptomLog.logged_at))
+                    .limit(30)
+                    .all()
+                )
+
+                if logs:
+                    lines = []
+                    for log in logs[:12]:
+                        d = log.logged_date.isoformat() if getattr(log, "logged_date", None) else ""
+                        st = (log.symptom_type or "").strip()
+                        sev = getattr(log, "severity", None)
+                        if st and sev:
+                            lines.append(f"[{d}] {st}={sev}/9")
+                    context["recent_symptom_logs"] = "\n".join(lines) if lines else None
+            except Exception:
+                context["recent_symptom_logs"] = None
+
+            # Recent care plan check-ins (daily)
+            try:
+                from app.core.database import CarePlanCheckInThread
+
+                care_threads = (
+                    self.db.query(CarePlanCheckInThread)
+                    .filter(CarePlanCheckInThread.uid == uid)
+                    .order_by(desc(CarePlanCheckInThread.local_date), desc(CarePlanCheckInThread.updated_at))
+                    .limit(2)
+                    .all()
+                )
+
+                if care_threads:
+                    lines = []
+                    for t in care_threads:
+                        day = t.local_date.isoformat() if getattr(t, "local_date", None) else ""
+                        ai = t.actionable_insights or {}
+                        parts = []
+                        if ai.get("wins"):
+                            parts.append("wins=" + ", ".join(ai["wins"][:3]))
+                        if ai.get("blockers"):
+                            parts.append("blockers=" + ", ".join(ai["blockers"][:3]))
+                        if ai.get("actions_to_skip"):
+                            parts.append("skip=" + ", ".join(ai["actions_to_skip"][:3]))
+                        summary = (t.rolling_summary or "").strip()
+                        if summary:
+                            parts.append(f"summary={summary}")
+                        if parts:
+                            lines.append(f"[{day}] " + " | ".join(parts))
+                    context["recent_care_plan_checkin"] = "\n".join(lines) if lines else None
+            except Exception:
+                context["recent_care_plan_checkin"] = None
         
         return context
     
@@ -406,6 +506,15 @@ CYCLE: {context.get('cycle_phase', 'Unknown')} (Day {context.get('cycle_day', 'U
 MEDICAL KNOWLEDGE ({symptom.upper()}):
 - Triggers: {', '.join(medical_context.get('common_triggers', [])[:5])}
 - Relief: {', '.join(medical_context.get('relief_factors', [])[:5])}
+
+RECENT DAILY SYMPTOM CHECK-INS (if available):
+{context.get('recent_symptom_checkin', 'None')}
+
+RECENT SYMPTOM LOGS (structured; if available):
+{context.get('recent_symptom_logs', 'None')}
+
+RECENT CARE PLAN CHECK-INS (daily; if available):
+{context.get('recent_care_plan_checkin', 'None')}
 
 YOUR GOAL: Quickly identify what caused symptoms to improve/worsen this week.
 - If better → What helped? (to reinforce in action plan)

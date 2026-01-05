@@ -88,7 +88,17 @@ def test_prompt_templates():
         "feedback_memory": "No previous feedback",
         "primary_count": 2,
         "secondary_count": 2,
-        "category_guidance": "Balanced mix"
+        "category_guidance": "Balanced mix",
+        # Newer prompt placeholders (keep these lightweight so this stays a pure formatting test)
+        "current_streak": 0,
+        "longest_streak": 0,
+        "weekly_checkin_insights": "No weekly check-in data yet",
+        "daily_review_insights": "No daily review data yet",
+        "care_plan_checkin_insights": "No care plan check-in data yet",
+        "symptom_checkin_insights": "No symptom check-in data yet",
+        "allowed_symptoms": "[]",
+        "allowed_conditions": "[]",
+        "recently_recommended": "(none)"
     }
     
     try:

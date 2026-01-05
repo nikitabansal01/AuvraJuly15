@@ -646,9 +646,9 @@ class ImageLibraryService:
         if category == "food":
             # Food: the exact ingredient/meal should be instantly recognizable.
             style_suffix = (
-                "centered composition, close-up or medium-close shot, subject fills 70% of the frame, "
+                "professional food photography, centered composition, close-up or medium-close shot, subject fills 70% of the frame, "
                 "single clear hero ingredient, minimal props, clean kitchen context, neutral background, "
-                "soft natural window light, realistic texture detail, warm inviting wellness aesthetic"
+                "soft natural window light, realistic texture detail, warm inviting tones, warm inviting wellness aesthetic"
             )
             negative = (
                 "text, watermark, logo, label, brand, typography, caption, "
@@ -660,7 +660,7 @@ class ImageLibraryService:
         elif category == "movement":
             # Movement: show the exact pose/exercise clearly (instructional).
             style_suffix = (
-                "centered full-body or 3/4-body framing, pose clearly readable, subject fills most of the frame, "
+                "professional photography, centered full-body or 3/4-body framing, pose clearly readable, subject fills most of the frame, "
                 "simple uncluttered room (yoga mat visible if relevant), soft natural light, calm wellness aesthetic, "
                 "realistic anatomy, no dramatic angles"
             )
@@ -674,7 +674,7 @@ class ImageLibraryService:
         elif category == "mindfulness":
             # Mindfulness: the technique/setup must be visible (hands placement, posture, objects).
             style_suffix = (
-                "centered composition, clear technique cues (hands placement, posture, object in use), "
+                "professional photography, centered composition, clear technique cues (hands placement, posture, object in use), "
                 "minimal calm environment, soft diffused natural light, muted warm tones, peaceful restorative mood"
             )
             negative = (
@@ -687,7 +687,7 @@ class ImageLibraryService:
         else:
             # Fallback: generic wellness style
             style_suffix = (
-                "centered composition, subject fills most of the frame, soft natural lighting, calm wellness aesthetic, warm tones"
+                "professional photography, centered composition, subject fills most of the frame, soft natural lighting, calm wellness aesthetic, warm tones"
             )
             negative = "text, watermark, logo, blurry, low quality, artificial, commercial"
         

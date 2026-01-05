@@ -19,7 +19,7 @@ from app.models.chat_models import (
 from app.services.chat.user_context_service import UserContextService
 from app.services.chat.chat_memory_service import ChatMemoryService
 from app.services.chat.voice_service import VoiceService
-from app.services.chat.langgraph_agent import run_chat_agent, run_chat_agent_streaming
+from app.services.chat.langgraph_agent import run_chat_agent
 
 logger = logging.getLogger(__name__)
 
@@ -178,103 +178,6 @@ class ChatService:
                     logger.exception("Failed saving error fallback assistant message")
 
             return response
-    
-    async def process_message_streaming(
-        self,
-        request: ChatMessageRequest
-    ):
-        """
-        Process a chat message with STREAMING response.
-        
-        Yields chunks in real-time for immediate display.
-        This makes the chatbot feel ALIVE!
-        """
-        session = None
-        try:
-            logger.info(f"Processing STREAMING message for user {request.user_id}")
-            
-            # 1. Get or create session
-            session = await self.memory_service.get_or_create_session(
-                user_id=request.user_id,
-                conversation_context=request.conversation_context,
-                metadata=request.metadata
-            )
-            
-            # 2. Save user message
-            await self.memory_service.save_message(
-                session_id=session.id,
-                role="user",
-                content=request.message,
-                input_mode=request.input_mode.value if request.input_mode else "type"
-            )
-
-            if not settings.OPENAI_API_KEY:
-                yield {
-                    "type": "error",
-                    "content": "I'm not fully connected right now. Please check server configuration.",
-                    "session_id": str(session.id)
-                }
-                return
-            
-            # 3. Load full context
-            patient_profile = await self.user_context_service.get_patient_profile(request.user_id)
-            todays_plan = await self.user_context_service.get_todays_plan(request.user_id)
-            recent_summary = await self.user_context_service.get_recent_summary(request.user_id)
-            memory_context = await self.memory_service.get_full_memory_context(
-                user_id=request.user_id,
-                session_id=session.id
-            )
-            
-            # 4. Stream through LangGraph agent
-            full_content = ""
-            final_metadata = None
-            
-            async for chunk in run_chat_agent_streaming(
-                user_id=request.user_id,
-                session_id=str(session.id),
-                message=request.message,
-                conversation_context=request.conversation_context.value,
-                input_mode=request.input_mode.value if request.input_mode else "type",
-                patient_profile=patient_profile.model_dump(),
-                todays_plan=todays_plan.model_dump(),
-                recent_summary=recent_summary.model_dump(),
-                memory_context=memory_context,
-                db_session=self.db
-            ):
-                # Add session_id to all chunks
-                chunk["session_id"] = str(session.id)
-                
-                if chunk["type"] == "token":
-                    full_content += chunk["content"]
-                    yield chunk
-                elif chunk["type"] == "final":
-                    full_content = chunk["content"]
-                    final_metadata = chunk
-                    yield chunk
-                elif chunk["type"] == "error":
-                    yield chunk
-                    return
-            
-            # 5. Save assistant message after streaming completes
-            if final_metadata:
-                await self.memory_service.save_message(
-                    session_id=session.id,
-                    role="assistant",
-                    content=full_content,
-                    response_type=final_metadata.get("response_type", "text"),
-                    choices=final_metadata.get("choices"),
-                    slider_config=final_metadata.get("slider_config"),
-                    actions=final_metadata.get("actions")
-                )
-            
-        except Exception as e:
-            logger.exception("Error in streaming message processing")
-            yield {
-                "type": "error",
-                "content": "I'm having trouble right now. Please try again in a moment. 💜",
-                "session_id": str(session.id) if session else "error",
-                "error": str(e)
-            }
     
     async def process_voice_message(
         self,

@@ -12,6 +12,8 @@ from app.api.v1.endpoints import preferences
 from app.api.v1.endpoints import insights
 from app.api.v1.endpoints import timezone  # Timezone management
 from app.api.v1.endpoints import weekly_checkin  # Weekly check-in system
+from app.api.v1.endpoints import care_plan_checkin  # Daily care plan check-in
+from app.api.v1.endpoints import symptom_checkin  # Daily symptom check-in
 
 api_router = APIRouter()
 
@@ -60,3 +62,9 @@ api_router.include_router(timezone.router, prefix="/timezone", tags=["timezone"]
 
 # Weekly Check-in router (structured symptom check-ins)
 api_router.include_router(weekly_checkin.router, prefix="/weekly-checkin", tags=["weekly-checkin"]) 
+
+# Care Plan Check-in router (daily threaded chat)
+api_router.include_router(care_plan_checkin.router, prefix="/care-plan-checkin", tags=["care-plan-checkin"])
+
+# Symptom Check-in router (daily threaded chat)
+api_router.include_router(symptom_checkin.router, prefix="/symptom-checkin", tags=["symptom-checkin"])
