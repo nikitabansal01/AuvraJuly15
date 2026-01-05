@@ -82,13 +82,33 @@ class SymptomCheckInService:
         # Get yesterday's symptom for personalized opening
         yesterday_symptom = self._get_yesterday_symptom(uid)
         
-        # Dr. Auvra opening - multi-bubble style
+        # Get current cycle phase for context
+        cycle_phase = None
+        try:
+            cycle_service = CycleService(self.db)
+            cycle_info = cycle_service.get_cycle_phase_info(uid)
+            if cycle_info and cycle_info.phase:
+                # Normalize phase name
+                phase_lower = cycle_info.phase.lower()
+                if "menses" in phase_lower or "menstrual" in phase_lower:
+                    cycle_phase = "your period"
+                elif "follicular" in phase_lower:
+                    cycle_phase = "follicular phase"
+                elif "ovul" in phase_lower:
+                    cycle_phase = "ovulation"
+                elif "luteal" in phase_lower:
+                    cycle_phase = "luteal phase"
+        except Exception as e:
+            logger.warning(f"[SymptomCheckInService] Error getting cycle phase: {e}")
+        
+        greeting = user_name or "there"
+        
+        # Dr. Auvra opening - multi-bubble style with cycle awareness
         if yesterday_symptom:
             symptom_type = yesterday_symptom.get("symptom_type", "symptoms")
             severity = yesterday_symptom.get("severity", "?")
-            greeting = user_name or "there"
             
-            # Two-bubble opening referencing yesterday
+            # Personalized opening referencing yesterday
             opening1 = {
                 "id": self._new_message_id(),
                 "role": "bot",
@@ -98,25 +118,38 @@ class SymptomCheckInService:
             opening2 = {
                 "id": self._new_message_id(),
                 "role": "bot",
-                "content": "How's it feeling today?",
+                "content": "How's it feeling today - better, same, or worse?",
                 "created_at": datetime.utcnow().isoformat(),
             }
             thread.raw_messages = [opening1, opening2]
         else:
-            # First-time user - ask what's bothering them
-            greeting = user_name or "there"
-            opening1 = {
-                "id": self._new_message_id(),
-                "role": "bot",
-                "content": f"Hey {greeting}! 👋",
-                "created_at": datetime.utcnow().isoformat(),
-            }
-            opening2 = {
-                "id": self._new_message_id(),
-                "role": "bot",
-                "content": "What's bothering you most today?",
-                "created_at": datetime.utcnow().isoformat(),
-            }
+            # First-time or no recent data - ask about symptoms with cycle context
+            if cycle_phase:
+                opening1 = {
+                    "id": self._new_message_id(),
+                    "role": "bot",
+                    "content": f"Hey {greeting}! You're in {cycle_phase} right now. 💜",
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+                opening2 = {
+                    "id": self._new_message_id(),
+                    "role": "bot",
+                    "content": "What's bothering you most today?",
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+            else:
+                opening1 = {
+                    "id": self._new_message_id(),
+                    "role": "bot",
+                    "content": f"Hey {greeting}! 👋",
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+                opening2 = {
+                    "id": self._new_message_id(),
+                    "role": "bot",
+                    "content": "What's bothering you most today?",
+                    "created_at": datetime.utcnow().isoformat(),
+                }
             thread.raw_messages = [opening1, opening2]
 
         self.db.add(thread)

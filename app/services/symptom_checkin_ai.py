@@ -535,35 +535,59 @@ Return STRICT JSON:
         ctx: Dict[str, Any],
         user_turns: int,
     ) -> SymptomAIResponse:
-        """Context-aware fallback response."""
+        """Context-aware fallback response - always ASK QUESTIONS on turn 1."""
         
         user_name = ctx.get("user_name", "there")
         recent_symptoms = ctx.get("recent_symptoms", [])
         top_symptom = ctx.get("highest_severity_symptom")
         cycle_phase = ctx.get("cycle_phase")
         
+        # Human-friendly cycle phase
+        cycle_text = ""
+        if cycle_phase:
+            phase_map = {
+                "menstrual": "during your period",
+                "follicular": "in follicular phase",
+                "ovulation": "around ovulation",
+                "luteal": "in luteal phase"
+            }
+            cycle_text = phase_map.get(cycle_phase, f"in {cycle_phase}")
+        
         if user_turns == 0:
-            # First response - dig deeper
+            # First response - ALWAYS ask a follow-up question
             if top_symptom:
                 symptom = top_symptom["symptom_type"]
-                return SymptomAIResponse(
-                    messages=[
-                        f"Thanks for sharing, {user_name}! 💜",
-                        f"Tell me more about your {symptom} - any idea what might be affecting it?"
-                    ],
-                    tap_options=[
-                        SymptomTapOption(id="sleep", text="😴 Sleep quality"),
-                        SymptomTapOption(id="stress", text="😰 Stress levels"),
-                        SymptomTapOption(id="food", text="🍽️ Food choices"),
-                        SymptomTapOption(id="cycle", text="🌙 Cycle timing"),
-                    ],
-                    is_complete=False,
-                )
+                if cycle_text:
+                    return SymptomAIResponse(
+                        messages=[
+                            f"{symptom.title()} {cycle_text} is common, {user_name}. 💜",
+                            "How bad is it today - mild, moderate, or really uncomfortable?"
+                        ],
+                        tap_options=[
+                            SymptomTapOption(id="mild", text="😊 Mild, manageable"),
+                            SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
+                            SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
+                        ],
+                        is_complete=False,
+                    )
+                else:
+                    return SymptomAIResponse(
+                        messages=[
+                            f"Thanks for sharing about {symptom}, {user_name}! 💜",
+                            "How bad is it - mild, moderate, or really uncomfortable?"
+                        ],
+                        tap_options=[
+                            SymptomTapOption(id="mild", text="😊 Mild, manageable"),
+                            SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
+                            SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
+                        ],
+                        is_complete=False,
+                    )
             else:
                 return SymptomAIResponse(
                     messages=[
                         f"Got it, {user_name}! 💜",
-                        "What's the main symptom on your mind today?"
+                        "Which symptom is bothering you most today?"
                     ],
                     tap_options=[
                         SymptomTapOption(id="bloating", text="🫄 Bloating"),
@@ -574,12 +598,12 @@ Return STRICT JSON:
                     is_complete=False,
                 )
         else:
-            # Wrap up
+            # Turn 2 - wrap up with advice
             tip = self._get_cycle_insight(cycle_phase) if cycle_phase else "Stay hydrated and rest well tonight."
             return SymptomAIResponse(
                 messages=[
                     f"Thanks for sharing, {user_name}! 💜",
-                    f"I'll factor this into your plan. {tip[:40]}..."
+                    f"I'll note this for your plan. {tip[:50]}..."
                 ],
                 tap_options=[],
                 is_complete=True,
