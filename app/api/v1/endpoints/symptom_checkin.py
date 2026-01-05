@@ -91,11 +91,12 @@ def _dr_auvra_progress_tap_options() -> List[Dict[str, str]]:
 def _dr_auvra_first_time_tap_options() -> List[Dict[str, str]]:
     """Dr. Auvra style: Common symptoms (for first-time users)."""
     return [
-        {"id": "bloating", "text": "🫄 Bloating"},
-        {"id": "cramps", "text": "😣 Cramps"},
-        {"id": "fatigue", "text": "😴 Fatigue"},
-        {"id": "headache", "text": "🤕 Headache"},
-        {"id": "mood", "text": "😔 Mood changes"},
+        {"id": "choose_symptom::bloating", "text": "🫄 Bloating"},
+        {"id": "choose_symptom::cramps", "text": "😣 Cramps"},
+        {"id": "choose_symptom::fatigue", "text": "😴 Fatigue"},
+        {"id": "choose_symptom::headache", "text": "🤕 Headache"},
+        {"id": "choose_symptom::mood", "text": "😔 Mood changes"},
+        # Free-form path: user can type what they're feeling.
         {"id": "other", "text": "✍️ Something else"},
     ]
 
@@ -373,6 +374,7 @@ async def symptom_ui_event(
                         "id": str(uuid4()),
                         "role": "user",
                         "content": display_text,
+                        "meta": {"kind": "ui_symptom_pick", "symptom": st},
                         "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                     }
                 )

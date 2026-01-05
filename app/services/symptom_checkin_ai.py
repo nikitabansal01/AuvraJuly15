@@ -120,8 +120,18 @@ class SymptomCheckInAI:
     ) -> Tuple[SymptomAIResponse, str]:
         """Generate Dr. Auvra's personalized response."""
         
-        # Count user turns (not bot messages - we use multi-bubble)
-        user_turns = sum(1 for msg in recent_messages if msg.get("role") == "user")
+        # Count user turns (not bot messages - we use multi-bubble).
+        # IMPORTANT: ignore UI-only messages like "Log bloating" that are just a picker step.
+        def _is_counted_user_turn(m: Dict[str, Any]) -> bool:
+            if (m or {}).get("role") != "user":
+                return False
+            meta = (m or {}).get("meta") or {}
+            kind = (meta.get("kind") or "").strip().lower()
+            if kind in {"ui_symptom_pick", "symptom_select"}:
+                return False
+            return True
+
+        user_turns = sum(1 for msg in recent_messages if _is_counted_user_turn(msg))
         
         # After 2 user responses, wrap up
         if user_turns >= 2:
@@ -210,29 +220,41 @@ class SymptomCheckInAI:
 
         msg = (user_message or "").strip().lower()
 
-        # If user is expressing progress, ask about what helped / what triggered.
-        if "better" in msg or msg in {"improving", "feeling better"}:
+        def _symptom_choices_from_ctx() -> List[str]:
+            # Prefer recent symptom types if available.
+            recent = []
+            for s in (ctx or {}).get("recent_symptoms") or []:
+                st = (s or {}).get("symptom_type")
+                if st and st not in recent:
+                    recent.append(st)
+            if recent:
+                return recent[:5]
+            return ["bloating", "cramps", "fatigue", "headache", "mood"]
+
+        # If user is expressing overall progress, we need to know *which symptom* to rate.
+        if (
+            "better" in msg
+            or "same" in msg
+            or "worse" in msg
+            or msg in {"improving", "feeling better", "stable", "about the same", "worsening", "feeling worse"}
+        ):
+            opts: List[SymptomTapOption] = []
+            for st in _symptom_choices_from_ctx():
+                opts.append(SymptomTapOption(id=f"choose_symptom::{st}", text=f"Log {st}"))
+            opts.append(SymptomTapOption(id="other", text="✍️ Something else"))
+            return opts
+
+        # Otherwise, we assume they selected/typed a symptom.
+        # Offer a structured "choose_symptom" action so the UI can show the 1–9 slider.
+        typed = (user_message or "").strip()
+        if typed and len(typed) <= 40:
+            normalized = typed.strip().lower()
             return [
-                SymptomTapOption(id="sleep", text="😴 Slept better"),
-                SymptomTapOption(id="stress", text="🧘 Less stress"),
-                SymptomTapOption(id="food", text="🥗 Food choices"),
-                SymptomTapOption(id="not_sure", text="🤷 Not sure"),
+                SymptomTapOption(id=f"choose_symptom::{normalized}", text=f"Log {typed}"),
+                SymptomTapOption(id="other", text="✍️ Something else"),
             ]
 
-        if "worse" in msg or msg in {"worsening", "feeling worse"}:
-            return [
-                SymptomTapOption(id="poor_sleep", text="😴 Poor sleep"),
-                SymptomTapOption(id="stress", text="😰 Stress"),
-                SymptomTapOption(id="food", text="🍔 Food"),
-                SymptomTapOption(id="cycle", text="🌙 Cycle timing"),
-            ]
-
-        # Otherwise we assume they selected/typed a symptom; ask severity.
-        return [
-            SymptomTapOption(id="mild", text="😊 Mild, manageable"),
-            SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
-            SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
-        ]
+        return []
     
     async def _generate_doctor_response(
         self,
