@@ -94,9 +94,19 @@ def _default_ui_blocks_for_start() -> List[UIBlock]:
 def _default_tap_options() -> List[Dict[str, str]]:
     return [
         {"id": "want-to-change", "text": "👎 I want to change it"},
-        {"id": "skip-actions", "text": "⏩ I want to skip some actions for today"},
         {"id": "alternate-suggestions", "text": "🔁 I want alternate suggestions"},
     ]
+
+
+def _should_exclude_tap_option(option_id: str, text: str) -> bool:
+    oid = (option_id or "").strip().lower()
+    t = (text or "").strip().lower()
+    # Product decision: do not show "skip actions" in care plan check-in.
+    if oid == "skip-actions":
+        return True
+    if "skip" in t and "action" in t:
+        return True
+    return False
 
 
 def _looks_like_confirmation(text: str) -> bool:
@@ -308,6 +318,8 @@ async def respond_care_plan_checkin(
 
         tap_options = _default_tap_options()
         for t in (ai_response.tap_options or []):
+            if _should_exclude_tap_option(t.id, t.text):
+                continue
             tap_options = _ensure_tap_option(tap_options, t.id, t.text)
         tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
 
@@ -464,6 +476,8 @@ async def care_plan_ui_event(
             history = service.format_history_for_mobile(thread)
             tap_options = _default_tap_options()
             for t in (ai_response.tap_options or []):
+                if _should_exclude_tap_option(t.id, t.text):
+                    continue
                 tap_options = _ensure_tap_option(tap_options, t.id, t.text)
             tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
             return {
