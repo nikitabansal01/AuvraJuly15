@@ -174,12 +174,16 @@ class SymptomCheckInAI:
     ) -> Tuple[SymptomAIResponse, str]:
         """Generate Dr. Auvra's response with 2-turn limit."""
         
-        # Count doctor turns
-        doctor_turns = sum(1 for msg in recent_messages if msg.get("role") == "bot")
+        # Count conversation turns by USER messages (not bot messages)
+        # Because we use multi-bubble (2 bot messages per turn), counting bot messages is wrong
+        # Turn 0: Opening (2 bot bubbles) → User responds → Turn 1
+        # Turn 1: Follow-up (2 bot bubbles) → User responds → Turn 2 (complete)
+        user_turns = sum(1 for msg in recent_messages if msg.get("role") == "user")
         
-        # HARD LIMIT: Force completion after 2 doctor turns
-        if doctor_turns >= 2:
-            logger.info(f"[SymptomCheckInAI] Forcing completion after {doctor_turns} doctor turns")
+        # HARD LIMIT: Force completion after 2 user responses
+        # This means: Opening → User1 → Follow-up → User2 → Complete
+        if user_turns >= 2:
+            logger.info(f"[SymptomCheckInAI] Forcing completion after {user_turns} user turns")
             return await self._generate_completion_message(
                 user_message=user_message,
                 user_profile_context=user_profile_context,
@@ -198,7 +202,7 @@ class SymptomCheckInAI:
             rolling_summary=rolling_summary,
             recent_messages=recent_messages,
             yesterday_symptom=yesterday_symptom,
-            doctor_turns=doctor_turns,
+            user_turns=user_turns,
         )
     
     # ═══════════════════════════════════════════════════════════════════════════
@@ -215,7 +219,7 @@ class SymptomCheckInAI:
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
         yesterday_symptom: Optional[Dict[str, Any]],
-        doctor_turns: int,
+        user_turns: int,
     ) -> Tuple[SymptomAIResponse, str]:
         """Generate contextual Dr. Auvra response."""
         
@@ -254,107 +258,91 @@ RECENT SYMPTOM LOGS:
 {recent_symptom_logs_context or "None"}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CRITICAL RULES (DAILY check-in - FASTER than weekly):
+YOUR TASK (USER HAS RESPONDED {user_turns} TIME(S)):
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. MAX 2 DOCTOR TURNS (you've done {doctor_turns} so far)
-2. MULTI-BUBBLE: Return 2 SHORT messages (not 1 long one)
-   - First message: Empathize/acknowledge (1 sentence, max 10 words)
-   - Second message: Ask ONE question (1 sentence, max 15 words)
-3. FOCUS ON TODAY vs YESTERDAY (not the whole week)
-4. BE QUICK - this is a daily pulse check, not deep analysis
+{f'''THIS IS USER'S FIRST RESPONSE.
+They said: "{user_message}"
+
+Based on what they said:
+- If they chose BETTER/improving: Celebrate briefly, then ask what helped
+- If they chose WORSE/worsening: Show empathy, then ask what triggered it  
+- If they chose SAME/stable: Acknowledge, then offer brief encouragement
+- If they mentioned a specific symptom: Acknowledge it and ask how severe (1-9)
+
+RESPOND WITH EXACTLY 2 SHORT MESSAGES + 3-4 TAP OPTIONS.''' if user_turns == 0 else f'''THIS IS USER'S SECOND RESPONSE - TIME TO WRAP UP.
+They said: "{user_message}"
+
+Thank them briefly and acknowledge what they shared.
+Set is_complete: true
+
+RESPOND WITH EXACTLY 2 SHORT MESSAGES + EMPTY TAP OPTIONS.'''}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONVERSATION FLOW:
+RESPONSE FORMAT RULES:
 ═══════════════════════════════════════════════════════════════════════════════
 
-TURN 1 (if no history):
-- Ask which symptom is bothering them most today
-- Tap options: common symptoms (bloating, cramps, fatigue, etc.)
-
-TURN 1 (if yesterday's symptom exists):
-- Reference yesterday's specific symptom + severity
-- Ask: "How's it feeling today?"
-- Tap options: Better / Same / Worse
-
-TURN 2 (based on user response):
-- If BETTER: "That's wonderful! 🎉" + "What do you think helped?"
-- If WORSE: "I'm sorry to hear that. 💜" + "Any idea what triggered it?"
-- If SAME: "Okay, let's keep monitoring. 💜" + Brief encouragement
-- Then mark is_complete: true
+1. ALWAYS return exactly 2 messages (multi-bubble style)
+   - Message 1: Short acknowledgment (max 8 words, include emoji)
+   - Message 2: One question OR brief closing (max 12 words)
+2. Keep tap_options to 3-4 maximum
+3. Use emojis in tap option text
 
 ═══════════════════════════════════════════════════════════════════════════════
-EXAMPLE RESPONSES:
+EXAMPLES:
 ═══════════════════════════════════════════════════════════════════════════════
 
-GOOD (Turn 1, has yesterday data):
+User said "better":
 {{
-    "messages": [
-        "Hey {user_name}! Your bloating was 6/9 yesterday. 💜",
-        "How's it feeling today?"
-    ],
-    "tap_options": [
-        {{"id": "better", "text": "😊 Better than yesterday"}},
-        {{"id": "same", "text": "😐 About the same"}},
-        {{"id": "worse", "text": "😟 Worse than yesterday"}}
-    ],
-    "is_complete": false
-}}
-
-GOOD (Turn 2, user said "better"):
-{{
-    "messages": [
-        "That's wonderful! 🎉",
-        "What do you think helped the most?"
-    ],
+    "messages": ["That's wonderful! 🎉", "What do you think helped?"],
     "tap_options": [
         {{"id": "good_sleep", "text": "😴 Slept well"}},
         {{"id": "less_stress", "text": "🧘 Less stressed"}},
         {{"id": "healthy_food", "text": "🥗 Ate healthier"}},
         {{"id": "not_sure", "text": "🤷 Not sure"}}
     ],
-    "is_complete": false
+    "is_complete": false,
+    "insights": {{"progress": "better"}}
 }}
 
-GOOD (Turn 2, user said "worse"):
+User said "worse":
 {{
-    "messages": [
-        "I'm sorry to hear that. 💜",
-        "Any idea what might have triggered it?"
-    ],
+    "messages": ["I'm sorry to hear that. 💜", "Any idea what triggered it?"],
     "tap_options": [
         {{"id": "poor_sleep", "text": "😴 Poor sleep"}},
         {{"id": "more_stress", "text": "😰 More stressed"}},
-        {{"id": "ate_out", "text": "🍔 Ate out"}},
+        {{"id": "ate_out", "text": "🍔 Ate out/junk food"}},
         {{"id": "not_sure", "text": "🤷 Not sure"}}
     ],
-    "is_complete": false
-}}
-
-BAD (too long):
-{{
-    "messages": ["Hey {user_name}! I see your bloating was 6/9 yesterday. I hope you're feeling a bit better today. How would you say your symptoms are compared to yesterday? Are they improving, staying the same, or getting worse?"],
-    ...
-}}
-
-═══════════════════════════════════════════════════════════════════════════════
-OUTPUT FORMAT (STRICT JSON):
-═══════════════════════════════════════════════════════════════════════════════
-{{
-    "messages": ["short msg 1 (max 10 words)", "short msg 2 (max 15 words)"],
-    "tap_options": [{{"id": "string", "text": "emoji + short text"}}],
     "is_complete": false,
-    "insights": {{
-        "progress": "better"|"same"|"worse"|null,
-        "symptoms_mentioned": ["string"],
-        "severity_today": 1-9|null,
-        "triggers_today": ["string"],
-        "relief_today": ["string"],
-        "key_takeaway": "string"|null
-    }}
+    "insights": {{"progress": "worse"}}
 }}
 
-ROLLING SUMMARY (older messages):
+User said "same":
+{{
+    "messages": ["Got it, hanging in there. 💜", "Anything feel different today?"],
+    "tap_options": [
+        {{"id": "slightly_better", "text": "📈 Slightly better"}},
+        {{"id": "slightly_worse", "text": "📉 Slightly worse"}},
+        {{"id": "exactly_same", "text": "➡️ Exactly the same"}}
+    ],
+    "is_complete": false,
+    "insights": {{"progress": "same"}}
+}}
+
+Final response (after user's 2nd reply):
+{{
+    "messages": ["Thanks for sharing, {user_name}! 💜", "I'll use this for your plan."],
+    "tap_options": [],
+    "is_complete": true,
+    "insights": {{"key_takeaway": "User shared their progress"}}
+}}
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT (STRICT JSON ONLY):
+═══════════════════════════════════════════════════════════════════════════════
+
+ROLLING SUMMARY:
 {summary_block or "None"}
 
 RECENT MESSAGES:
