@@ -604,11 +604,22 @@ async def search_health_knowledge(
     Returns:
         Relevant health information from knowledge base
     """
-    from pinecone import Pinecone
-    from openai import OpenAI
+    import importlib
     import os
     
     try:
+        # Optional deps (avoid hard import failure when Pinecone isn't installed)
+        pinecone_module = importlib.import_module("pinecone")
+        Pinecone = getattr(pinecone_module, "Pinecone")
+
+        openai_module = importlib.import_module("openai")
+        OpenAI = getattr(openai_module, "OpenAI")
+
+        if not os.getenv("PINECONE_API_KEY"):
+            return {"success": False, "error": "Missing PINECONE_API_KEY"}
+        if not os.getenv("OPENAI_API_KEY"):
+            return {"success": False, "error": "Missing OPENAI_API_KEY"}
+
         # Initialize clients
         pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -1204,11 +1215,20 @@ async def update_user_preference(
         Confirmation of preference update
     """
     from app.core.database import UserProfile, UserResponse
+    from sqlalchemy.orm.attributes import flag_modified
+
+    # Preferences API (streak-gated) is the source of truth for which
+    # personalisation factors are editable.
+    # NOTE: Imported lazily to avoid import-time cycles.
+    from app.api.v1.endpoints.preferences import PREFERENCE_REWARD_MAP
+    from app.services.reward_service import RewardService
     
     # Map preference types to database fields
     profile_fields = {
         "name": "name",
-        "timezone": "timezone",
+        # UserProfile stores timezone as `current_timezone`.
+        "timezone": "current_timezone",
+        "current_timezone": "current_timezone",
     }
     
     response_fields = {
@@ -1237,8 +1257,64 @@ async def update_user_preference(
     ]
     
     preference_key = preference_type.lower().replace(" ", "_")
+
+    # Canonicalize common preference aliases to the Preferences API keys.
+    # These keys are stored in UserProfile.chatbot_memory and used across the app.
+    canonical_map = {
+        "diet": "diet_preference",
+        "dietary_restrictions": "diet_preference",
+        "allergies": "food_allergies",
+        "food_allergies": "food_allergies",
+        "cuisine": "cuisine_preference",
+        "cuisine_preference": "cuisine_preference",
+        "dine_out": "dine_out_frequency",
+        "dine_out_frequency": "dine_out_frequency",
+        "ethnicity": "cultural_background",
+        "cultural_background": "cultural_background",
+        "body_metrics": "body_metrics",
+        "cravings": "cravings",
+    }
+
+    canonical_key = canonical_map.get(preference_key, preference_key)
     
     try:
+        # If this is a streak-gated personalisation field, enforce unlock gating
+        # and store to UserProfile.chatbot_memory using the canonical key.
+        if canonical_key in PREFERENCE_REWARD_MAP:
+            required_reward = PREFERENCE_REWARD_MAP[canonical_key]
+            reward_service = RewardService(db_session)
+
+            if not reward_service.is_reward_unlocked(user_id, required_reward):
+                return {
+                    "success": False,
+                    "message": (
+                        f"That personalisation is locked right now. "
+                        f"Unlock it by claiming the '{required_reward}' reward first."
+                    ),
+                    "updated_field": canonical_key,
+                    "required_reward": required_reward,
+                    "action_taken": "blocked_locked_preference",
+                }
+
+            profile = db_session.query(UserProfile).filter(UserProfile.uid == user_id).first()
+            if not profile:
+                profile = UserProfile(uid=user_id, chatbot_memory={})
+                db_session.add(profile)
+
+            memory = profile.chatbot_memory or {}
+            memory[canonical_key] = preference_value
+            memory[f"{canonical_key}_updated_at"] = datetime.utcnow().isoformat()
+            profile.chatbot_memory = memory
+            flag_modified(profile, "chatbot_memory")
+            db_session.commit()
+
+            return {
+                "success": True,
+                "message": f"Got it — I've updated your {canonical_key.replace('_', ' ')} 💜",
+                "updated_field": canonical_key,
+                "action_taken": "chatbot_memory_updated",
+            }
+
         if preference_key in profile_fields:
             # Update UserProfile
             profile = db_session.query(UserProfile).filter(
@@ -1281,17 +1357,17 @@ async def update_user_preference(
             
             if profile:
                 memory = profile.chatbot_memory or {}
-                memory[preference_key] = {
-                    "value": preference_value,
-                    "updated_at": datetime.utcnow().isoformat()
-                }
+                # Store a direct value for consistency with other chatbot memory keys.
+                memory[canonical_key] = preference_value
+                memory[f"{canonical_key}_updated_at"] = datetime.utcnow().isoformat()
                 profile.chatbot_memory = memory
+                flag_modified(profile, "chatbot_memory")
                 db_session.commit()
                 
                 return {
                     "success": True,
                     "message": f"Thanks for sharing! I'll remember that 💜",
-                    "updated_field": preference_type,
+                    "updated_field": canonical_key,
                     "action_taken": "memory_updated"
                 }
         

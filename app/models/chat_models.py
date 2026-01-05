@@ -10,6 +10,8 @@ from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, date
 from enum import Enum
 
+from app.models.ui_blocks import UIBlock
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENUMS
@@ -114,6 +116,9 @@ class ChatMessageResponse(BaseModel):
     # UI elements (optional based on response_type)
     choices: Optional[List[str]] = None
     slider_config: Optional[SliderConfig] = None
+
+    # Dynamic UI (Gemini-like inline cards)
+    ui_blocks: Optional[List[UIBlock]] = None
     
     # Actions for frontend
     actions: Optional[List[ChatAction]] = None

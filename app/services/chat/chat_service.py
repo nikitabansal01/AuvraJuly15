@@ -132,6 +132,7 @@ class ChatService:
                 response_type=ResponseType(agent_response.get("response_type", "text")),
                 choices=agent_response.get("choices"),
                 slider_config=SliderConfig(**agent_response["slider_config"]) if agent_response.get("slider_config") else None,
+                ui_blocks=agent_response.get("ui_blocks"),
                 actions=[ChatAction(**a) for a in agent_response.get("actions", [])] if agent_response.get("actions") else None,
                 timestamp=datetime.utcnow()
             )
@@ -145,6 +146,10 @@ class ChatService:
                 choices=response.choices,
                 slider_config=response.slider_config.model_dump() if response.slider_config else None,
                 actions=[a.model_dump() for a in response.actions] if response.actions else None,
+                metadata={
+                    **(agent_response.get("metadata") or {}),
+                    "ui_blocks": [b.model_dump() for b in response.ui_blocks] if response.ui_blocks else None,
+                },
                 tools_called=agent_response.get("tool_calls")
             )
             

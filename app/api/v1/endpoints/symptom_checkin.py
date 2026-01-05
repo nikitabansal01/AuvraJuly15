@@ -11,8 +11,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Optional
 
+from uuid import uuid4
+
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
+from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.symptom_checkin_service import SymptomCheckInService
 
 router = APIRouter()
@@ -34,6 +37,7 @@ class StartSymptomCheckInResponse(BaseModel):
     local_date: str
     history: List[ChatMessage]
     tap_options: List[TapOption] = []
+    ui_blocks: List[UIBlock] = []
 
 
 class RespondSymptomCheckInRequest(BaseModel):
@@ -47,10 +51,92 @@ class RespondSymptomCheckInResponse(BaseModel):
     history: List[ChatMessage]
     tap_options: List[TapOption] = []
     actionable_insights: Dict[str, Any] = {}
+    ui_blocks: List[UIBlock] = []
+
+
+def _ensure_tap_option(tap_options: List[Dict[str, str]], option_id: str, text: str) -> List[Dict[str, str]]:
+    existing_ids = {t.get("id") for t in (tap_options or [])}
+    if option_id in existing_ids:
+        return tap_options
+    return list(tap_options or []) + [{"id": option_id, "text": text}]
+
+
+def _default_ui_blocks_for_start(top_symptoms: Optional[List[str]] = None) -> List[UIBlock]:
+    top = [s for s in (top_symptoms or []) if (s or "").strip()][:3]
+
+    actions: List[UIBlockAction] = [
+        UIBlockAction(
+            id="open_symptom_manager",
+            title="Manage symptoms",
+            action_type="open_modal",
+            payload={"modal": "SymptomManagerModal"},
+            style="primary",
+        )
+    ]
+
+    # Add quick-log shortcuts for the user's most common recent symptoms.
+    for s in top:
+        actions.append(
+            UIBlockAction(
+                id=f"choose_symptom::{s}",
+                title=f"Log {s}",
+                action_type="submit_event",
+                payload={"symptom_type": s},
+                style="secondary",
+            )
+        )
+
+    return [
+        UIBlock(
+            id=str(uuid4()),
+            type="quick_actions",
+            title="Symptoms",
+            subtitle="Quick log a symptom or open manager",
+            actions=actions,
+            dismissible=True,
+            priority="low",
+            analytics={"surface": "symptom_checkin", "reason": "entry_point"},
+        )
+    ]
+
+
+def _symptom_slider_block(symptom_type: str) -> UIBlock:
+    st = (symptom_type or "").strip()
+    label = st[:1].upper() + st[1:] if st else "Symptom"
+    return UIBlock(
+        id=str(uuid4()),
+        type="slider_1_9",
+        title=f"How intense was {label} today?",
+        subtitle="Tap 1 (none) to 9 (very strong)",
+        payload={"symptom_type": st},
+        dismissible=True,
+        priority="normal",
+        analytics={"surface": "symptom_checkin", "reason": "quick_log"},
+    )
 
 
 class TranscribeResponse(BaseModel):
     text: str
+
+
+def _open_symptom_manager_block() -> UIBlock:
+    return UIBlock(
+        id=str(uuid4()),
+        type="open_modal",
+        title="Manage symptoms",
+        payload={"modal": "SymptomManagerModal"},
+        actions=[
+            UIBlockAction(
+                id="confirm_open",
+                title="Open",
+                action_type="open_modal",
+                payload={"modal": "SymptomManagerModal"},
+            )
+        ],
+        dismissible=True,
+        priority="normal",
+        analytics={"surface": "symptom_checkin", "reason": "ui_event"},
+    )
 
 
 class SymptomLogCreateRequest(BaseModel):
@@ -95,18 +181,30 @@ async def start_symptom_checkin(
         thread = service.get_or_create_today_thread(uid)
         history = service.format_history_for_mobile(thread)
 
+        # Best-effort: add quick-log buttons for the user's top recent symptoms.
+        top_symptoms: List[str] = []
+        try:
+            overview = service.get_symptom_overview(uid=uid, period_days=14)
+            top_symptoms = list(overview.get("top_symptoms") or [])
+        except Exception:
+            top_symptoms = []
+
         tap_options = [
             {"id": "improving", "text": "😊 Feeling better"},
             {"id": "stable", "text": "😕 About the same"},
             {"id": "worsening", "text": "😣 Feeling worse"},
             {"id": "wins", "text": "🏆 Share a win"},
         ]
+        tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
+        tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+        tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
 
         return {
             "thread_id": thread.id,
             "local_date": thread.local_date.isoformat(),
             "history": history,
             "tap_options": tap_options,
+            "ui_blocks": _default_ui_blocks_for_start(top_symptoms),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -124,12 +222,18 @@ async def respond_symptom_checkin(
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
+        tap_options = [t.model_dump() for t in (ai_response.tap_options or [])]
+        tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
+        tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+        tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+
         return {
             "thread_id": thread.id,
             "local_date": thread.local_date.isoformat(),
             "history": history,
-            "tap_options": [t.model_dump() for t in (ai_response.tap_options or [])],
+            "tap_options": tap_options,
             "actionable_insights": thread.actionable_insights or {},
+            "ui_blocks": [],
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -193,5 +297,117 @@ async def get_overview(
         uid = current_user["uid"]
         service = SymptomCheckInService(db)
         return service.get_symptom_overview(uid=uid, period_days=period_days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/event", response_model=RespondSymptomCheckInResponse)
+async def symptom_ui_event(
+    payload: UIEventRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Handle structured UI events.
+
+    MVP routing:
+    - open modal actions return a UI block instructing the client to open a modal.
+    - slider submissions can be converted into a conservative "log X N/9" message.
+    - any explicit send_text in metadata is routed through the existing `/respond` flow.
+    """
+    try:
+        uid = current_user["uid"]
+        if not payload.thread_id:
+            raise HTTPException(status_code=400, detail="thread_id is required")
+
+        service = SymptomCheckInService(db)
+
+        action_id = (payload.action_id or "").strip()
+        meta = payload.metadata or {}
+
+        # Quick symptom picker -> ask for severity via an inline slider block.
+        if action_id.startswith("choose_symptom::"):
+            st = (meta.get("symptom_type") or "").strip() or action_id.split("::", 1)[1].strip()
+            thread = service.get_thread_by_id(uid, payload.thread_id)
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option([], "track_symptom", "📊 Track a symptom")
+            tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+            tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [_symptom_slider_block(st)],
+            }
+
+        if action_id in {"open_symptom_manager", "manage_symptoms"}:
+            thread = service.get_thread_by_id(uid, payload.thread_id)
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option([], "manage_symptoms", "🧩 Manage symptoms")
+            tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
+            tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [_open_symptom_manager_block()],
+            }
+
+        if payload.event_type == "slider_submit":
+            symptom_type = (meta.get("symptom_type") or "").strip()
+            sev = payload.value
+            if symptom_type and isinstance(sev, int) and 1 <= sev <= 9:
+                message_text = f"log {symptom_type} {sev}/9"
+                thread, ai_response = await service.respond(uid, payload.thread_id, message_text)
+                history = service.format_history_for_mobile(thread)
+                tap_options = [t.model_dump() for t in (ai_response.tap_options or [])]
+                tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
+                tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+                tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+                return {
+                    "thread_id": thread.id,
+                    "local_date": thread.local_date.isoformat(),
+                    "history": history,
+                    "tap_options": tap_options,
+                    "actionable_insights": thread.actionable_insights or {},
+                    "ui_blocks": [],
+                }
+
+        send_text = (meta.get("send_text") or "").strip()
+        if send_text:
+            thread, ai_response = await service.respond(uid, payload.thread_id, send_text)
+            history = service.format_history_for_mobile(thread)
+            tap_options = [t.model_dump() for t in (ai_response.tap_options or [])]
+            tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
+            tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+            tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [],
+            }
+
+        # Default: no-op
+        thread = service.get_thread_by_id(uid, payload.thread_id)
+        history = service.format_history_for_mobile(thread)
+        tap_options = _ensure_tap_option([], "track_symptom", "📊 Track a symptom")
+        tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+        tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+        return {
+            "thread_id": thread.id,
+            "local_date": thread.local_date.isoformat(),
+            "history": history,
+            "tap_options": tap_options,
+            "actionable_insights": thread.actionable_insights or {},
+            "ui_blocks": [],
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

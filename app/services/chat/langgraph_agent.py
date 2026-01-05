@@ -42,6 +42,254 @@ logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PERSONLISE UI BLOCK HELPERS (UNLOCK-GATED)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _get_unlocked_preference_types(user_id: str, db_session: Any) -> List[str]:
+    """Return preference keys (Preferences API) that the user has unlocked via rewards."""
+    try:
+        from app.api.v1.endpoints.preferences import PREFERENCE_REWARD_MAP
+        from app.services.reward_service import RewardService
+
+        unlocked_ids = RewardService(db_session).get_unlocked_reward_ids(user_id)
+        unlocked_prefs: List[str] = []
+        for pref_type, reward_id in PREFERENCE_REWARD_MAP.items():
+            if reward_id in unlocked_ids:
+                unlocked_prefs.append(pref_type)
+        return unlocked_prefs
+    except Exception:
+        return []
+
+
+def _get_personalise_unlock_info(user_id: str, db_session: Any, user_timezone: Optional[str] = None) -> Dict[str, Any]:
+    """Compute unlocked + locked personalisation factors, including days remaining to unlock.
+
+    Source of truth:
+    - Preferences gating: PREFERENCE_REWARD_MAP
+    - Streak progress / days remaining: RewardService.get_all_rewards_status
+    """
+    try:
+        from app.api.v1.endpoints.preferences import PREFERENCE_REWARD_MAP
+        from app.services.reward_service import RewardService
+
+        reward_status = RewardService(db_session).get_all_rewards_status(user_id, user_timezone)
+        current_streak = int(reward_status.get("current_streak") or 0)
+        rewards = reward_status.get("rewards") or []
+        reward_by_id = {r.get("id"): r for r in rewards if r.get("id")}
+        unlocked_reward_ids = set(RewardService(db_session).get_unlocked_reward_ids(user_id))
+
+        unlocked_prefs: List[str] = []
+        locked_prefs: List[Dict[str, Any]] = []
+
+        for pref_type, reward_id in PREFERENCE_REWARD_MAP.items():
+            if reward_id in unlocked_reward_ids:
+                unlocked_prefs.append(pref_type)
+                continue
+
+            r = reward_by_id.get(reward_id) or {}
+            locked_prefs.append(
+                {
+                    "preference_type": pref_type,
+                    "reward_id": reward_id,
+                    "required_streak": int(r.get("required_streak") or 0),
+                    "days_remaining": int(r.get("days_remaining") or 0),
+                }
+            )
+
+        # Stable ordering: most-immediate unlocks first
+        locked_prefs.sort(key=lambda x: (x.get("days_remaining", 9999), x.get("required_streak", 9999)))
+
+        return {
+            "current_streak": current_streak,
+            "unlocked_preference_types": unlocked_prefs,
+            "locked_preferences": locked_prefs,
+        }
+    except Exception:
+        return {
+            "current_streak": 0,
+            "unlocked_preference_types": [],
+            "locked_preferences": [],
+        }
+
+
+def _personalise_label(pref_type: str) -> str:
+    labels = {
+        "diet_preference": "🥗 Diet preference",
+        "food_allergies": "🚫 Food allergies",
+        "cuisine_preference": "🍜 Cuisine preference",
+        "dine_out_frequency": "🍽️ Dine out frequency",
+        "cultural_background": "🌍 Cultural background",
+        "body_metrics": "📏 Body metrics",
+        "cravings": "🍫 Cravings",
+    }
+    return labels.get(pref_type, pref_type.replace("_", " ").title())
+
+
+def _personalise_prompt(pref_type: str) -> str:
+    prompts = {
+        "diet_preference": "I want to update my diet preference",
+        "food_allergies": "I want to update my food allergies",
+        "cuisine_preference": "I want to update my cuisine preference",
+        "dine_out_frequency": "I want to update my dine out frequency",
+        "cultural_background": "I want to update my cultural background",
+        "body_metrics": "I want to update my body metrics",
+        "cravings": "I want to update my cravings",
+    }
+    return prompts.get(pref_type, f"I want to update my {pref_type.replace('_', ' ')}")
+
+
+def _personalise_overview_blocks(unlock_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Overview cards:
+    - Unlocked factors: actionable
+    - Locked factors: show days remaining to unlock
+    """
+    unlocked_prefs: List[str] = list(unlock_info.get("unlocked_preference_types") or [])
+    locked: List[Dict[str, Any]] = list(unlock_info.get("locked_preferences") or [])
+    current_streak = int(unlock_info.get("current_streak") or 0)
+
+    blocks: List[Dict[str, Any]] = []
+
+    if unlocked_prefs:
+        actions: List[Dict[str, Any]] = []
+        for idx, pref in enumerate(unlocked_prefs[:8]):
+            actions.append(
+                {
+                    "id": f"personalise_pick_{pref}",
+                    "title": _personalise_label(pref),
+                    "action_type": "send_text",
+                    "payload": {"text": _personalise_prompt(pref)},
+                    "style": "primary" if idx == 0 else "secondary",
+                }
+            )
+
+        # Pro-only blood report upload (not implemented in backend yet).
+        actions.append(
+            {
+                "id": "personalise_blood_report_paywall",
+                "title": "🧪 Upload blood report (Pro)",
+                "action_type": "open_modal",
+                "payload": {"modal": "PaywallScreen"},
+                "style": "ghost",
+            }
+        )
+
+        blocks.append(
+            {
+                "id": "personalise_overview_unlocked",
+                "type": "quick_actions",
+                "title": "Personalize (unlocked)",
+                "subtitle": "Edit unlocked factors (matches your Personalize page unlocks).",
+                "actions": actions,
+            }
+        )
+
+    if locked:
+        lines: List[str] = []
+        for lp in locked[:5]:
+            pt = lp.get("preference_type")
+            dr = lp.get("days_remaining")
+            if pt:
+                lines.append(f"{_personalise_label(pt)} — unlock in {dr} day(s)")
+        subtitle = "Locked factors (keep your streak going):\n" + "\n".join(lines)
+
+        blocks.append(
+            {
+                "id": "personalise_overview_locked",
+                "type": "quick_actions",
+                "title": "Personalize (locked)",
+                "subtitle": subtitle,
+                "actions": [
+                    {
+                        "id": "personalise_how_to_unlock",
+                        "title": f"How to unlock (streak: {current_streak} days)",
+                        "action_type": "send_text",
+                        "payload": {"text": "How many days left to unlock each personalisation factor?"},
+                        "style": "secondary",
+                    }
+                ],
+            }
+        )
+
+    if not blocks:
+        blocks.append(
+            {
+                "id": "personalise_locked_overview",
+                "type": "quick_actions",
+                "title": "Personalize",
+                "subtitle": "You haven't unlocked any personalisation factors yet. Keep your streak going to unlock them.",
+                "actions": [
+                    {
+                        "id": "personalise_tell_me_how_to_unlock",
+                        "title": "How do I unlock?",
+                        "action_type": "send_text",
+                        "payload": {"text": "How do I unlock personalisation features?"},
+                        "style": "primary",
+                    }
+                ],
+            }
+        )
+
+    return blocks
+
+
+def _detect_preference_focus(message_lower: str) -> Optional[str]:
+    """Detect which preference the user is trying to edit."""
+    # Keep this intentionally simple and deterministic.
+    if any(k in message_lower for k in ["diet", "vegan", "vegetarian", "keto", "paleo", "gluten"]):
+        return "diet_preference"
+    if any(k in message_lower for k in ["allergy", "allergies", "lactose", "nuts", "shellfish"]):
+        return "food_allergies"
+    if "cuisine" in message_lower or "indian" in message_lower or "mediterranean" in message_lower:
+        return "cuisine_preference"
+    if any(k in message_lower for k in ["dine out", "eat out", "restaurant", "takeout"]):
+        return "dine_out_frequency"
+    if any(k in message_lower for k in ["cultural", "culture", "ethnicity", "background"]):
+        return "cultural_background"
+    if any(k in message_lower for k in ["body metrics", "height", "weight", "waist", "bmi"]):
+        return "body_metrics"
+    if "craving" in message_lower or "cravings" in message_lower:
+        return "cravings"
+    return None
+
+
+def _parse_set_preference_command(message: str) -> Optional[Dict[str, str]]:
+    """Parse a deterministic command sent by UI buttons.
+
+    Format:
+      set_preference <preference_type> <value>
+    Example:
+      set_preference diet_preference vegan
+    """
+    t = message.strip()
+    if not t:
+        return None
+    parts = t.split()
+    if len(parts) < 3:
+        return None
+    if parts[0].lower() != "set_preference":
+        return None
+    pref_type = parts[1].strip()
+    value_raw = " ".join(parts[2:]).strip()
+    if not pref_type or not value_raw:
+        return None
+
+    # Allow multi-select/body-metrics via JSON literals.
+    # Examples:
+    #   set_preference food_allergies ["nuts","dairy"]
+    #   set_preference body_metrics {"height_cm":170,"weight_kg":65}
+    value: Any = value_raw
+    if value_raw[:1] in {"[", "{"}:
+        try:
+            import json
+
+            value = json.loads(value_raw)
+        except Exception:
+            value = value_raw
+
+    return {"preference_type": pref_type, "value": value}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ERROR HANDLING & RETRY LOGIC
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -539,9 +787,71 @@ async def run_chat_agent(
                 "choices": ["I'm safe now", "Connect me to support"],
                 "slider_config": None,
                 "actions": None,
+                "ui_blocks": None,
                 "tool_calls": [],
                 "safety_check": safety_check
             }
+
+        # Deterministic preference updates for button-driven personalisation.
+        if conversation_context == "personalise" and db_session:
+            parsed = _parse_set_preference_command(message)
+            if parsed:
+                try:
+                    from app.services.chat.tools import update_user_preference
+                    tool_result = await update_user_preference.ainvoke(
+                        {
+                            "user_id": user_id,
+                            "preference_type": parsed["preference_type"],
+                            "preference_value": parsed["value"],
+                            "db_session": db_session,
+                        }
+                    )
+                    tz = patient_profile.get("timezone", "UTC") if isinstance(patient_profile, dict) else "UTC"
+                    unlock_info = _get_personalise_unlock_info(user_id, db_session, tz)
+                    content = tool_result.get("message") or (
+                        "Saved." if tool_result.get("success") else "I couldn't save that yet."
+                    )
+                    if not tool_result.get("success") and tool_result.get("error_code") == "PREFERENCE_LOCKED":
+                        pref_type = parsed.get("preference_type")
+                        locked = next(
+                            (
+                                lp
+                                for lp in (unlock_info.get("locked_preferences") or [])
+                                if lp.get("preference_type") == pref_type
+                            ),
+                            None,
+                        )
+                        if locked is not None:
+                            dr = int(locked.get("days_remaining") or 0)
+                            req = int(locked.get("required_streak") or 0)
+                            cur = int(unlock_info.get("current_streak") or 0)
+                            content = (
+                                f"{content}\n\nThat factor is locked for now — unlock in {dr} day(s). "
+                                f"(Need a {req}-day streak; you’re at {cur}.)"
+                            )
+
+                    return {
+                        "content": content,
+                        "response_type": "text",
+                        "choices": None,
+                        "slider_config": None,
+                        "actions": None,
+                        "ui_blocks": _personalise_overview_blocks(unlock_info),
+                        "tool_calls": [
+                            {
+                                "tool": "update_user_preference",
+                                "args": {
+                                    "preference_type": parsed["preference_type"],
+                                    "preference_value": parsed["value"],
+                                },
+                                "result": tool_result,
+                            }
+                        ],
+                        "safety_check": safety_check,
+                        "metadata": {"deterministic": True},
+                    }
+                except Exception as e:
+                    logger.warning(f"Failed deterministic set_preference: {e}")
         
         # ═══════════════════════════════════════════════════════════════════
         # STEP 2: INITIALIZE INTELLIGENCE (IF AVAILABLE)
@@ -764,6 +1074,7 @@ NEVER just acknowledge preferences without saving them. The user expects their i
         response_type = "text"
         choices = None
         slider_config = None
+        ui_blocks: Optional[List[Dict[str, Any]]] = None
         
         if INTELLIGENCE_AVAILABLE and emotional_reading:
             try:
@@ -798,6 +1109,139 @@ NEVER just acknowledge preferences without saving them. The user expects their i
         # Add urgent disclaimer if needed
         if safety_check.get("is_urgent"):
             final_content = f"{safety_check['message']}\n\n{final_content}"
+
+        # Personalise UI blocks (unlocked-only).
+        if conversation_context == "personalise" and db_session:
+            try:
+                tz = patient_profile.get("timezone", "UTC") if isinstance(patient_profile, dict) else "UTC"
+                unlock_info = _get_personalise_unlock_info(user_id, db_session, tz)
+                unlocked_prefs = list(unlock_info.get("unlocked_preference_types") or [])
+                focus = _detect_preference_focus(message.lower())
+
+                # If the user is focusing a specific preference, show a focused picker when possible.
+                if focus and focus in unlocked_prefs:
+                    from app.api.v1.endpoints.preferences import PREFERENCE_OPTIONS
+
+                    options = PREFERENCE_OPTIONS.get(focus)
+                    # Single-select preferences: direct picker UI.
+                    single_select = {"diet_preference", "dine_out_frequency", "cultural_background"}
+                    multi_select = {"food_allergies", "cuisine_preference", "cravings"}
+
+                    if options and focus in single_select:
+                        ui_blocks = [
+                            {
+                                "id": f"personalise_pick_{focus}",
+                                "type": "single_select",
+                                "title": _personalise_label(focus),
+                                "subtitle": "Pick one:",
+                                "actions": [
+                                    {
+                                        "id": f"set_{focus}_{opt['id']}",
+                                        "title": f"{opt.get('icon', '')} {opt.get('label', opt['id'])}".strip(),
+                                        "action_type": "send_text",
+                                        "payload": {"text": f"set_preference {focus} {opt['id']}"},
+                                        "style": "primary" if i == 0 else "secondary",
+                                    }
+                                    for i, opt in enumerate(options[:10])
+                                ],
+                            }
+                        ]
+                    elif options and focus in multi_select:
+                        # For multi-select, offer a few quick single-item setters plus a hint for lists.
+                        hint = (
+                            f"To set multiple, reply like: set_preference {focus} "
+                            f"[\"{options[0]['id']}\", \"{options[1]['id']}\"]"
+                            if len(options) >= 2
+                            else f"To set multiple, reply like: set_preference {focus} [\"{options[0]['id']}\"]"
+                        )
+                        ui_blocks = [
+                            {
+                                "id": f"personalise_multi_{focus}",
+                                "type": "multi_select_quick",
+                                "title": _personalise_label(focus),
+                                "subtitle": hint,
+                                "actions": [
+                                    {
+                                        "id": f"set_{focus}_only_{opt['id']}",
+                                        "title": f"{opt.get('icon', '')} {opt.get('label', opt['id'])}".strip(),
+                                        "action_type": "send_text",
+                                        "payload": {"text": f"set_preference {focus} [\"{opt['id']}\"]"},
+                                        "style": "secondary",
+                                    }
+                                    for opt in options[:8]
+                                ],
+                            }
+                        ]
+                    elif focus == "body_metrics":
+                        ui_blocks = [
+                            {
+                                "id": "personalise_body_metrics_hint",
+                                "type": "form_hint",
+                                "title": _personalise_label(focus),
+                                "subtitle": "Reply with JSON, e.g. set_preference body_metrics {\"height_cm\":170,\"weight_kg\":65}",
+                                "actions": [],
+                            }
+                        ]
+                    else:
+                        ui_blocks = _personalise_overview_blocks(unlock_info)
+                elif focus:
+                    # The user asked about a preference that isn't unlocked.
+                    try:
+                        from app.api.v1.endpoints.preferences import PREFERENCE_REWARD_MAP
+
+                        if focus in PREFERENCE_REWARD_MAP:
+                            locked = next(
+                                (
+                                    lp
+                                    for lp in (unlock_info.get("locked_preferences") or [])
+                                    if lp.get("preference_type") == focus
+                                ),
+                                None,
+                            )
+                            if locked is not None:
+                                dr = int(locked.get("days_remaining") or 0)
+                                req = int(locked.get("required_streak") or 0)
+                                cur = int(unlock_info.get("current_streak") or 0)
+                                ui_blocks = [
+                                    {
+                                        "id": f"personalise_locked_{focus}",
+                                        "type": "quick_actions",
+                                        "title": f"{_personalise_label(focus)} (locked)",
+                                        "subtitle": (
+                                            f"Unlock in {dr} day(s). Need a {req}-day streak; you’re at {cur}.\n"
+                                            "Once it’s unlocked, I’ll let you edit it here (and on your Personalize page)."
+                                        ),
+                                        "actions": [
+                                            {
+                                                "id": "personalise_show_unlocked",
+                                                "title": "Show unlocked options",
+                                                "action_type": "send_text",
+                                                "payload": {"text": "What personalisation options are unlocked for me?"},
+                                                "style": "secondary",
+                                            },
+                                            {
+                                                "id": "personalise_how_unlock_specific",
+                                                "title": "How do I unlock faster?",
+                                                "action_type": "send_text",
+                                                "payload": {
+                                                    "text": "How can I keep my streak and unlock more personalisation features?"
+                                                },
+                                                "style": "secondary",
+                                            },
+                                        ],
+                                    }
+                                ]
+                            else:
+                                ui_blocks = _personalise_overview_blocks(unlock_info)
+                        else:
+                            ui_blocks = _personalise_overview_blocks(unlock_info)
+                    except Exception:
+                        ui_blocks = _personalise_overview_blocks(unlock_info)
+                else:
+                    # Default overview block.
+                    ui_blocks = _personalise_overview_blocks(unlock_info)
+            except Exception as e:
+                logger.warning(f"Failed to build personalise ui_blocks: {e}")
         
         # ═══════════════════════════════════════════════════════════════════
         # STEP 8: RETURN FINAL RESPONSE
@@ -818,6 +1262,7 @@ NEVER just acknowledge preferences without saving them. The user expects their i
             "choices": choices,
             "slider_config": slider_config,
             "actions": None,
+            "ui_blocks": ui_blocks,
             "tool_calls": tool_calls_made,  # Include actual tool calls
             "safety_check": safety_check,
             "metadata": metadata
@@ -831,6 +1276,7 @@ NEVER just acknowledge preferences without saving them. The user expects their i
             "choices": ["Try again", "Start fresh"],
             "slider_config": None,
             "actions": None,
+            "ui_blocks": None,
             "tool_calls": [],
             "error": str(e)
         }
