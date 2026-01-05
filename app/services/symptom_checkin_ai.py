@@ -33,10 +33,6 @@ class SymptomInsights(BaseModel):
     symptoms_mentioned: List[str] = Field(default_factory=list)
     severity_rating: Optional[int] = None  # 1-9 if the user gives it
 
-    # Clinical-style deltas (what changed)
-    improved: List[str] = Field(default_factory=list)  # what decreased / got better
-    worsened: List[str] = Field(default_factory=list)  # what increased / got worse
-
     wins: List[str] = Field(default_factory=list)
     difficulties: List[str] = Field(default_factory=list)
 
@@ -72,7 +68,6 @@ class SymptomCheckInAI:
         recent_care_plan_checkin_context: str,
         recent_weekly_checkin_context: str,
         recent_symptom_logs_context: str,
-        recent_symptom_checkin_context: str,
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
     ) -> Tuple[SymptomAIResponse, str]:
@@ -80,30 +75,16 @@ class SymptomCheckInAI:
         recent_block = json.dumps(recent_messages[-20:], ensure_ascii=False)
 
         prompt = f"""
-    You are Auvra — warm, calm, and clinically-minded (think: a kind doctor who asks great questions).
+You are Auvra, a warm, practical coach.
 
-    Task: Continue a DAILY Symptom Check-in chat.
+Task: Continue a DAILY Symptom Check-in.
 
-    This is inside the existing app chat (not a separate page).
-    The experience must feel like:
-    - We ask about PROGRESS.
-    - We remember what the user said earlier (use ROLLING SUMMARY + RECENT MESSAGES).
-    - We ask about what's HARD today (difficulties) and what has DECREASED / improved.
-    - We help the user notice patterns gently, without charts/plotting language.
-
-    Write in the app's tone:
-    - empathetic, concise, practical
-    - no lecture, no medical diagnosis
-
-    Conversation goals for every reply:
-    1) Reflect the user's status in 1 sentence (better/same/worse + what changed).
-    2) Ask ONE good follow-up question like a doctor:
-       - "What feels most different today — what improved or decreased?"
-       - "Any specific difficulty or trigger you noticed?"
-       - "What helped even a little?"
-    3) Offer ONE small, actionable suggestion (habit-level), ideally tied to TODAY'S ACTION PLAN.
-
-    Important: Do NOT frame this as analytics, plotting, or dashboards. Keep it human.
+This is a chat inside the existing app screen (not a separate page).
+Write like the in-app symptom check-in:
+- Focus on: progress (better/same/worse), one win, one difficulty.
+- Be brief and encouraging.
+- Ask at most ONE follow-up question.
+- Offer at most ONE small, practical suggestion tied to the user's action plan context.
 
 Tap replies:
 - Provide 3-5 tap replies.
@@ -127,8 +108,6 @@ Return STRICT JSON only with this schema:
     "progress": "improving"|"stable"|"worsening"|null,
     "symptoms_mentioned": ["string"],
     "severity_rating": 1-9|null,
-        "improved": ["string"],
-        "worsened": ["string"],
     "wins": ["string"],
     "difficulties": ["string"],
     "triggers_identified": ["string"],
@@ -151,9 +130,6 @@ RECENT WEEKLY CHECK-IN SUMMARY (if available):
 
 RECENT SYMPTOM LOGS CONTEXT (if any):
 {recent_symptom_logs_context}
-
-RECENT DAILY SYMPTOM CHECK-IN NOTES (previous days; compact memory):
-{recent_symptom_checkin_context}
 
 ROLLING SUMMARY (older messages; may be empty):
 {summary_block}

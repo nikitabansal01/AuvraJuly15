@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 class SymptomCheckInService:
     TAIL_SIZE = 20
-    SUMMARY_MIN_MESSAGES = 10
 
     def __init__(self, db: Session):
         self.db = db
@@ -156,7 +155,6 @@ class SymptomCheckInService:
         recent_care_plan_checkin_context = self._build_recent_care_plan_checkin_context(uid)
         recent_weekly_checkin_context = self._build_recent_weekly_checkin_context(uid)
         recent_symptom_logs_context = self._build_recent_symptom_logs_context(uid)
-        recent_symptom_checkin_context = self._build_recent_symptom_checkin_context(uid, exclude_thread_id=thread.id, limit=3)
         recent_messages = list(thread.raw_messages or [])[-self.TAIL_SIZE :]
 
         ai_response, _model_used = await self.ai.generate_reply(
@@ -166,7 +164,6 @@ class SymptomCheckInService:
             recent_care_plan_checkin_context=recent_care_plan_checkin_context,
             recent_weekly_checkin_context=recent_weekly_checkin_context,
             recent_symptom_logs_context=recent_symptom_logs_context,
-            recent_symptom_checkin_context=recent_symptom_checkin_context,
             rolling_summary=thread.rolling_summary,
             recent_messages=recent_messages,
         )
@@ -479,9 +476,7 @@ class SymptomCheckInService:
 
     async def _update_rolling_summary_if_needed(self, thread: SymptomCheckInThread) -> None:
         raw = list(thread.raw_messages or [])
-        # For daily symptom check-in, chats can be short. Start building a rolling summary
-        # earlier so the model can "remember" within the same day.
-        if len(raw) < max(self.SUMMARY_MIN_MESSAGES, self.TAIL_SIZE):
+        if len(raw) <= self.TAIL_SIZE + 10:
             return
 
         summarize_upto = len(raw) - self.TAIL_SIZE
@@ -523,70 +518,6 @@ NEW MESSAGES (JSON list in order):
             self.db.add(thread)
             self.db.commit()
             self.db.refresh(thread)
-
-    def _build_recent_symptom_checkin_context(self, uid: str, *, exclude_thread_id: Optional[str] = None, limit: int = 3) -> str:
-        """Compact memory from recent daily symptom check-ins.
-
-        This gives the LLM longitudinal context (what the user said in recent days),
-        so it can ask doctor-like follow-ups (what improved/decreased, what worsened, what helped).
-        """
-        try:
-            q = (
-                self.db.query(SymptomCheckInThread)
-                .filter(SymptomCheckInThread.uid == uid)
-                .order_by(desc(SymptomCheckInThread.local_date))
-                .limit(max(1, limit) + 1)
-            )
-            threads = q.all() or []
-        except Exception:
-            threads = []
-
-        lines: List[str] = []
-        for t in threads:
-            if exclude_thread_id and str(getattr(t, "id", "")) == str(exclude_thread_id):
-                continue
-
-            date_str = getattr(t, "local_date", None)
-            date_label = date_str.isoformat() if date_str else ""
-
-            ai = t.actionable_insights or {}
-            progress = ai.get("progress")
-            improved = ai.get("improved") or []
-            worsened = ai.get("worsened") or []
-            wins = ai.get("wins") or []
-            difficulties = ai.get("difficulties") or []
-            triggers = ai.get("triggers_identified") or []
-            relief = ai.get("relief_factors_identified") or []
-            takeaway = ai.get("key_takeaway")
-            summary = (t.rolling_summary or "").strip()
-
-            bits: List[str] = []
-            if progress:
-                bits.append(f"progress={progress}")
-            if improved:
-                bits.append("improved=" + ", ".join([str(x) for x in improved][:3]))
-            if worsened:
-                bits.append("worsened=" + ", ".join([str(x) for x in worsened][:3]))
-            if wins:
-                bits.append("wins=" + ", ".join([str(x) for x in wins][:2]))
-            if difficulties:
-                bits.append("difficulties=" + ", ".join([str(x) for x in difficulties][:2]))
-            if triggers:
-                bits.append("triggers=" + ", ".join([str(x) for x in triggers][:2]))
-            if relief:
-                bits.append("helped=" + ", ".join([str(x) for x in relief][:2]))
-            if takeaway:
-                bits.append(f"takeaway={takeaway}")
-            if not bits and summary:
-                bits.append(summary[:220])
-
-            if bits:
-                lines.append(f"- {date_label}: " + " | ".join(bits))
-
-            if len(lines) >= limit:
-                break
-
-        return "\n".join(lines) if lines else "None"
 
     def _build_user_profile_context(self, uid: str) -> str:
         profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
