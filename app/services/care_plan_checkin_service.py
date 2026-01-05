@@ -373,15 +373,124 @@ NEW MESSAGES (JSON list in order):
         if not items:
             return "Action plan exists, but has no items."
 
-        lines = [f"Plan date: {plan.plan_date}"]
+        lines = [f"Plan date: {plan.plan_date} (plan_id={plan.id})"]
         for it in items[:12]:
             title = (it.title or "").strip()
             if not title:
                 continue
-            lines.append(f"- {title}")
+            # Include stable identifiers so downstream tools/UI can target items.
+            slot = getattr(it, "slot", None)
+            time_slot = getattr(it, "time_slot", None)
+            parts = [f"id={it.id}"]
+            if slot is not None:
+                parts.append(f"slot={slot}")
+            if time_slot:
+                parts.append(f"time_slot={time_slot}")
+            lines.append(f"- [{', '.join(parts)}] {title}")
         if len(items) > 12:
             lines.append(f"(+{len(items) - 12} more)")
         return "\n".join(lines)
+
+    def get_plan_items_for_ui(self, uid: str, limit: int = 8) -> List[Dict[str, Any]]:
+        """Return a compact list of plan items to drive UI pickers."""
+        user_today = get_user_current_date(uid, self.db)
+        plan = (
+            self.db.query(ActionPlan)
+            .filter(and_(ActionPlan.uid == uid, ActionPlan.plan_date == user_today))
+            .order_by(desc(ActionPlan.created_at))
+            .first()
+        )
+        if not plan:
+            plan = (
+                self.db.query(ActionPlan)
+                .filter(ActionPlan.uid == uid)
+                .order_by(desc(ActionPlan.plan_date), desc(ActionPlan.created_at))
+                .first()
+            )
+        if not plan:
+            return []
+
+        q = self.db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id)
+        items = q.order_by(ActionPlanItem.slot).all()
+        out: List[Dict[str, Any]] = []
+        for it in items:
+            title = (it.title or "").strip()
+            if not title:
+                continue
+            out.append(
+                {
+                    "item_id": int(it.id),
+                    "title": title,
+                    "slot": getattr(it, "slot", None),
+                    "time_slot": getattr(it, "time_slot", None),
+                }
+            )
+            if len(out) >= max(1, min(limit, 20)):
+                break
+        return out
+
+    async def replace_action_item(self, uid: str, item_id: int, reason: str) -> Dict[str, Any]:
+        """Replace a plan item with refresh-token gating (same policy as action_plan.replace)."""
+        from app.services.reward_service import RewardService
+        from app.services.action_plan_generator import get_action_plan_generator
+
+        reward_service = RewardService(self.db)
+        refresh_status = reward_service.get_refresh_status(uid)
+        if not refresh_status.get("can_refresh"):
+            return {
+                "success": False,
+                "error_code": "REFRESH_LIMIT",
+                "error": f"Daily refresh limit reached ({refresh_status.get('limit')}/day). Try again tomorrow!",
+            }
+
+        async_db = await self._get_async_db_session()
+        try:
+            generator = get_action_plan_generator()
+            result = await generator.replace_action(user_id=uid, item_id=item_id, reason=reason, db=async_db)
+        finally:
+            try:
+                await async_db.close()
+            except Exception:
+                pass
+
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error_code": "REPLACE_FAILED",
+                "error": result.get("error", "Failed to replace action"),
+                "details": result,
+            }
+
+        # Consume refresh token only on success
+        try:
+            reward_service.use_refresh(uid)
+        except Exception:
+            # Don't fail the user experience if token bookkeeping hiccups.
+            pass
+
+        return {
+            "success": True,
+            "original_id": result.get("original_id"),
+            "replacement_id": result.get("replacement_id"),
+            "replacement_action": result.get("replacement_action"),
+        }
+
+    @staticmethod
+    async def _get_async_db_session():
+        """Create an async DB session (mirrors action_plan endpoint helper)."""
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.orm import sessionmaker
+        import os
+
+        db_url = os.getenv("DATABASE_URL", "")
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        engine = create_async_engine(db_url, echo=False)
+        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        return async_session()
 
     @staticmethod
     def _new_message_id() -> str:
