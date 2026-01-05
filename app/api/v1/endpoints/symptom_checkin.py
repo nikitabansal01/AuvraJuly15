@@ -61,6 +61,24 @@ def _ensure_tap_option(tap_options: List[Dict[str, str]], option_id: str, text: 
     return list(tap_options or []) + [{"id": option_id, "text": text}]
 
 
+def _baseline_symptom_tap_options() -> List[Dict[str, str]]:
+    """Stable, app-consistent taps for Symptom Check-in.
+
+    The LLM can add additional taps, but these should always be present.
+    """
+    tap_options = [
+        {"id": "improving", "text": "😊 Feeling better"},
+        {"id": "stable", "text": "😕 About the same"},
+        {"id": "worsening", "text": "😣 Feeling worse"},
+        {"id": "wins", "text": "🏆 Share a win"},
+        {"id": "difficulties", "text": "😮‍💨 Share a difficulty"},
+    ]
+    tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
+    tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+    tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+    return tap_options
+
+
 def _default_ui_blocks_for_start(top_symptoms: Optional[List[str]] = None) -> List[UIBlock]:
     top = [s for s in (top_symptoms or []) if (s or "").strip()][:3]
 
@@ -190,14 +208,9 @@ async def start_symptom_checkin(
             top_symptoms = []
 
         tap_options = [
-            {"id": "improving", "text": "😊 Feeling better"},
-            {"id": "stable", "text": "😕 About the same"},
-            {"id": "worsening", "text": "😣 Feeling worse"},
-            {"id": "wins", "text": "🏆 Share a win"},
+            # populated below
         ]
-        tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
-        tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
-        tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+        tap_options = _baseline_symptom_tap_options()
 
         return {
             "thread_id": thread.id,
@@ -222,10 +235,10 @@ async def respond_symptom_checkin(
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
-        tap_options = [t.model_dump() for t in (ai_response.tap_options or [])]
-        tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
-        tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
-        tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+        # Start from stable, app-consistent options and then let the model add extras.
+        tap_options = _baseline_symptom_tap_options()
+        for t in (ai_response.tap_options or []):
+            tap_options = _ensure_tap_option(tap_options, t.id, t.text)
 
         return {
             "thread_id": thread.id,

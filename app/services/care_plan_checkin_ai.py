@@ -86,7 +86,7 @@ Task: Continue a DAILY Care Plan Check-in chat.
 - Reference the user's current action plan.
 - Be brief and chatty.
 - Ask at most ONE follow-up question.
-- Provide 0-3 suggested tap replies when helpful (e.g., skip, change, alternate).
+- Provide 0-3 suggested tap replies when helpful (e.g., change, alternate).
 - Extract actionable insights for plan updates.
 
 Safety:
