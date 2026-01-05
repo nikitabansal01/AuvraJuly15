@@ -385,13 +385,25 @@ async def care_plan_ui_event(
             except Exception:
                 item_id = 0
             thread = service.get_thread_by_id(uid, payload.thread_id)
+            display_text = (meta.get("display_text") or "").strip() or "Replace this action"
+            if display_text:
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": display_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
             if item_id:
                 ai = dict(thread.actionable_insights or {})
                 ai["pending_replace"] = {"item_id": item_id, "reason": "User requested change via UI"}
                 thread.actionable_insights = ai
-                db.add(thread)
-                db.commit()
-                db.refresh(thread)
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
             history = service.format_history_for_mobile(thread)
             tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
             return {
@@ -405,6 +417,18 @@ async def care_plan_ui_event(
 
         if action_id == "care_plan_replace_cancel":
             thread = service.get_thread_by_id(uid, payload.thread_id)
+            display_text = (meta.get("display_text") or "").strip() or "Cancel"
+            if display_text:
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": display_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
             ai = dict(thread.actionable_insights or {})
             ai.pop("pending_replace", None)
             thread.actionable_insights = ai
@@ -429,6 +453,16 @@ async def care_plan_ui_event(
             result = await service.replace_action_item(uid, item_id, reason) if item_id else {"success": False, "error": "Invalid item"}
 
             raw = list(thread.raw_messages or [])
+            display_text = (meta.get("display_text") or "").strip() or "Yes"
+            if display_text:
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": display_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
             if result.get("success"):
                 repl = result.get("replacement_action") or {}
                 repl_title = (repl.get("title") or repl.get("specific_action") or "a fresh alternative").strip()

@@ -341,6 +341,21 @@ async def symptom_ui_event(
         if action_id.startswith("choose_symptom::"):
             st = (meta.get("symptom_type") or "").strip() or action_id.split("::", 1)[1].strip()
             thread = service.get_thread_by_id(uid, payload.thread_id)
+            display_text = (meta.get("display_text") or "").strip() or (f"Log {st}" if st else "Track a symptom")
+            if display_text:
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": display_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
             history = service.format_history_for_mobile(thread)
             tap_options = _ensure_tap_option([], "track_symptom", "📊 Track a symptom")
             tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
@@ -375,6 +390,24 @@ async def symptom_ui_event(
             if symptom_type and isinstance(sev, int) and 1 <= sev <= 9:
                 message_text = f"log {symptom_type} {sev}/9"
                 thread, ai_response = await service.respond(uid, payload.thread_id, message_text)
+
+                # Replace the internal command-style user text with a friendly UI display text
+                # so the user sees what they tapped (not the parser-friendly command).
+                display_text = (meta.get("display_text") or "").strip() or f"{symptom_type} {sev}/9"
+                if display_text:
+                    raw = list(thread.raw_messages or [])
+                    for i in range(len(raw) - 1, -1, -1):
+                        m = raw[i] or {}
+                        if m.get("role") == "user" and (m.get("content") or "").strip() == message_text:
+                            m2 = dict(m)
+                            m2["content"] = display_text
+                            raw[i] = m2
+                            thread.raw_messages = raw
+                            db.add(thread)
+                            db.commit()
+                            db.refresh(thread)
+                            break
+
                 history = service.format_history_for_mobile(thread)
                 tap_options = [t.model_dump() for t in (ai_response.tap_options or [])]
                 tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
