@@ -33,6 +33,10 @@ class SymptomInsights(BaseModel):
     symptoms_mentioned: List[str] = Field(default_factory=list)
     severity_rating: Optional[int] = None  # 1-9 if the user gives it
 
+    # Clinical-style deltas (what changed)
+    improved: List[str] = Field(default_factory=list)  # what decreased / got better
+    worsened: List[str] = Field(default_factory=list)  # what increased / got worse
+
     wins: List[str] = Field(default_factory=list)
     difficulties: List[str] = Field(default_factory=list)
 
@@ -68,6 +72,7 @@ class SymptomCheckInAI:
         recent_care_plan_checkin_context: str,
         recent_weekly_checkin_context: str,
         recent_symptom_logs_context: str,
+        recent_symptom_checkin_context: str,
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
     ) -> Tuple[SymptomAIResponse, str]:
@@ -122,6 +127,8 @@ Return STRICT JSON only with this schema:
     "progress": "improving"|"stable"|"worsening"|null,
     "symptoms_mentioned": ["string"],
     "severity_rating": 1-9|null,
+        "improved": ["string"],
+        "worsened": ["string"],
     "wins": ["string"],
     "difficulties": ["string"],
     "triggers_identified": ["string"],
@@ -144,6 +151,9 @@ RECENT WEEKLY CHECK-IN SUMMARY (if available):
 
 RECENT SYMPTOM LOGS CONTEXT (if any):
 {recent_symptom_logs_context}
+
+RECENT DAILY SYMPTOM CHECK-IN NOTES (previous days; compact memory):
+{recent_symptom_checkin_context}
 
 ROLLING SUMMARY (older messages; may be empty):
 {summary_block}
