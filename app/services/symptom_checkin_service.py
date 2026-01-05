@@ -66,6 +66,7 @@ class SymptomCheckInService:
         user_today = get_user_current_date(uid, self.db)
         profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
         tz = getattr(profile, "timezone", None) if profile else None
+        user_name = getattr(profile, "name", None) if profile else None
 
         thread = (
             self.db.query(SymptomCheckInThread)
@@ -76,18 +77,84 @@ class SymptomCheckInService:
             return thread
 
         thread = SymptomCheckInThread(uid=uid, local_date=user_today, timezone=tz)
-        opening = {
-            "id": self._new_message_id(),
-            "role": "bot",
-            "content": "See any progress with your symptoms today? Track progress, wins, and difficulties.",
-            "created_at": datetime.utcnow().isoformat(),
-        }
-        thread.raw_messages = [opening]
+        
+        # Get yesterday's symptom for personalized opening
+        yesterday_symptom = self._get_yesterday_symptom(uid)
+        
+        # Dr. Auvra opening - multi-bubble style
+        if yesterday_symptom:
+            symptom_type = yesterday_symptom.get("symptom_type", "symptoms")
+            severity = yesterday_symptom.get("severity", "?")
+            greeting = user_name or "there"
+            
+            # Two-bubble opening referencing yesterday
+            opening1 = {
+                "id": self._new_message_id(),
+                "role": "bot",
+                "content": f"Hey {greeting}! Your {symptom_type} was {severity}/9 yesterday. 💜",
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            opening2 = {
+                "id": self._new_message_id(),
+                "role": "bot",
+                "content": "How's it feeling today?",
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            thread.raw_messages = [opening1, opening2]
+        else:
+            # First-time user - ask what's bothering them
+            greeting = user_name or "there"
+            opening1 = {
+                "id": self._new_message_id(),
+                "role": "bot",
+                "content": f"Hey {greeting}! 👋",
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            opening2 = {
+                "id": self._new_message_id(),
+                "role": "bot",
+                "content": "What's bothering you most today?",
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            thread.raw_messages = [opening1, opening2]
 
         self.db.add(thread)
         self.db.commit()
         self.db.refresh(thread)
         return thread
+    
+    def _get_yesterday_symptom(self, uid: str) -> Optional[Dict[str, Any]]:
+        """Get the most recent symptom log from yesterday or recent days."""
+        try:
+            user_today = get_user_current_date(uid, self.db)
+            yesterday = user_today - timedelta(days=1)
+            
+            # Look for logs from yesterday or up to 3 days ago
+            start_date = user_today - timedelta(days=3)
+            
+            log = (
+                self.db.query(SymptomLog)
+                .filter(
+                    and_(
+                        SymptomLog.user_id == uid,
+                        SymptomLog.logged_date >= start_date,
+                        SymptomLog.logged_date < user_today,
+                    )
+                )
+                .order_by(desc(SymptomLog.logged_at))
+                .first()
+            )
+            
+            if log:
+                return {
+                    "symptom_type": log.symptom_type,
+                    "severity": log.severity,
+                    "logged_date": log.logged_date.isoformat() if log.logged_date else None,
+                }
+            return None
+        except Exception as e:
+            logger.warning(f"[SymptomCheckInService] Error getting yesterday symptom: {e}")
+            return None
 
     def get_thread_by_id(self, uid: str, thread_id: str) -> SymptomCheckInThread:
         thread = (

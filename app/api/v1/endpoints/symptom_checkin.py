@@ -79,6 +79,27 @@ def _baseline_symptom_tap_options() -> List[Dict[str, str]]:
     return tap_options
 
 
+def _dr_auvra_progress_tap_options() -> List[Dict[str, str]]:
+    """Dr. Auvra style: Better/Same/Worse (for users with yesterday's data)."""
+    return [
+        {"id": "better", "text": "😊 Better than yesterday"},
+        {"id": "same", "text": "😐 About the same"},
+        {"id": "worse", "text": "😟 Worse than yesterday"},
+    ]
+
+
+def _dr_auvra_first_time_tap_options() -> List[Dict[str, str]]:
+    """Dr. Auvra style: Common symptoms (for first-time users)."""
+    return [
+        {"id": "bloating", "text": "🫄 Bloating"},
+        {"id": "cramps", "text": "😣 Cramps"},
+        {"id": "fatigue", "text": "😴 Fatigue"},
+        {"id": "headache", "text": "🤕 Headache"},
+        {"id": "mood", "text": "😔 Mood changes"},
+        {"id": "other", "text": "✍️ Something else"},
+    ]
+
+
 def _default_ui_blocks_for_start(top_symptoms: Optional[List[str]] = None) -> List[UIBlock]:
     top = [s for s in (top_symptoms or []) if (s or "").strip()][:3]
 
@@ -199,9 +220,16 @@ async def start_symptom_checkin(
         thread = service.get_or_create_today_thread(uid)
         history = service.format_history_for_mobile(thread)
 
-        # Keep Symptom Check-in chat-first.
-        # The user can still open the Symptom Manager via tap options.
-        tap_options = _baseline_symptom_tap_options()
+        # Dr. Auvra style: Context-aware tap options
+        # Check if user has yesterday's symptom data
+        yesterday_symptom = service._get_yesterday_symptom(uid)
+        
+        if yesterday_symptom:
+            # User has recent data - show Better/Same/Worse
+            tap_options = _dr_auvra_progress_tap_options()
+        else:
+            # First time - show common symptoms to pick from
+            tap_options = _dr_auvra_first_time_tap_options()
 
         return {
             "thread_id": thread.id,
@@ -226,10 +254,13 @@ async def respond_symptom_checkin(
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
-        # Start from stable, app-consistent options and then let the model add extras.
-        tap_options = _baseline_symptom_tap_options()
-        for t in (ai_response.tap_options or []):
-            tap_options = _ensure_tap_option(tap_options, t.id, t.text)
+        # Use AI-generated tap options directly (Dr. Auvra style)
+        # Only fall back to baseline if AI didn't provide any
+        if ai_response.tap_options:
+            tap_options = [{"id": t.id, "text": t.text} for t in ai_response.tap_options]
+        else:
+            # Fallback to baseline options
+            tap_options = _baseline_symptom_tap_options()
 
         return {
             "thread_id": thread.id,
