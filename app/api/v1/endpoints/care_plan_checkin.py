@@ -435,79 +435,6 @@ async def respond_care_plan_checkin(
                     "ui_blocks": [_open_plan_manager_block()],
                 }
 
-        # Explicit alternate-suggestions flow: acknowledge -> ask which item.
-        if _looks_like_alternate_suggestions_request(payload.message_text):
-            thread = service.get_thread_by_id(uid, payload.thread_id)
-
-            raw = list(thread.raw_messages or [])
-            raw.append(
-                {
-                    "id": str(uuid4()),
-                    "role": "user",
-                    "content": payload.message_text,
-                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                }
-            )
-            raw.append(
-                {
-                    "id": str(uuid4()),
-                    "role": "bot",
-                    "content": "Totally — I can suggest a few alternate options.",
-                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                }
-            )
-            raw.append(
-                {
-                    "id": str(uuid4()),
-                    "role": "bot",
-                    "content": "Which action do you want alternates for?",
-                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                }
-            )
-            thread.raw_messages = raw
-
-            ai = dict(thread.actionable_insights or {})
-            ai["pending_alternate"] = {"stage": "pick_item", "reason": "User requested alternate suggestions"}
-            thread.actionable_insights = ai
-
-            db.add(thread)
-            db.commit()
-            db.refresh(thread)
-
-            history = service.format_history_for_mobile(thread)
-            tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
-
-            items = service.get_plan_items_for_ui(uid, limit=8)
-            ui_blocks: List[UIBlock] = []
-            if items:
-                ui_blocks.append(_pick_alternate_item_block(items))
-            else:
-                # If we can't find plan items, keep the UX graceful.
-                raw = list(thread.raw_messages or [])
-                raw.append(
-                    {
-                        "id": str(uuid4()),
-                        "role": "bot",
-                        "content": "I can do that — but I can’t find your current plan items right now. Want to open the plan manager?",
-                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                    }
-                )
-                thread.raw_messages = raw
-                db.add(thread)
-                db.commit()
-                db.refresh(thread)
-                history = service.format_history_for_mobile(thread)
-                ui_blocks.append(_open_plan_manager_block())
-
-            return {
-                "thread_id": thread.id,
-                "local_date": thread.local_date.isoformat(),
-                "history": history,
-                "tap_options": tap_options,
-                "actionable_insights": thread.actionable_insights or {},
-                "ui_blocks": ui_blocks,
-            }
-
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
@@ -519,16 +446,26 @@ async def respond_care_plan_checkin(
         tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
 
         ui_blocks: List[UIBlock] = []
-        if (
-            (not _looks_like_alternate_suggestions_request(payload.message_text))
-            and (
-                _looks_like_change_intent(payload.message_text)
-                or (ai_response.insights and ai_response.insights.plan_changes_requested)
-            )
-        ):
+
+        # Prefer model-selected intent. Keep a light heuristic fallback so UX doesn't break
+        # if the model forgets to set the flag.
+        wants_alternates = bool(getattr(ai_response.insights, "alternate_suggestions_requested", False))
+        if not wants_alternates:
+            wants_alternates = _looks_like_alternate_suggestions_request(payload.message_text)
+
+        if wants_alternates:
             items = service.get_plan_items_for_ui(uid, limit=8)
             if items:
-                ui_blocks.append(_pick_replace_block(items))
+                ui_blocks.append(_pick_alternate_item_block(items))
+            else:
+                ui_blocks.append(_open_plan_manager_block())
+        else:
+            if _looks_like_change_intent(payload.message_text) or (
+                ai_response.insights and ai_response.insights.plan_changes_requested
+            ):
+                items = service.get_plan_items_for_ui(uid, limit=8)
+                if items:
+                    ui_blocks.append(_pick_replace_block(items))
 
         return {
             "thread_id": thread.id,
