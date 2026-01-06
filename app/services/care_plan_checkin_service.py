@@ -475,6 +475,120 @@ NEW MESSAGES (JSON list in order):
             "replacement_action": result.get("replacement_action"),
         }
 
+    async def generate_alternate_candidates(self, uid: str, item_id: int, reason: str, count: int = 3) -> Dict[str, Any]:
+        """Generate a small set of alternate replacement candidates for a single plan item.
+
+        This is a *preview* step: it does not mutate the plan.
+        """
+        from app.services.reward_service import RewardService
+        from app.services.action_plan_generator import get_action_plan_generator
+
+        count = max(2, min(int(count or 3), 6))
+
+        # If the user cannot refresh today, don't waste a generation call.
+        reward_service = RewardService(self.db)
+        refresh_status = reward_service.get_refresh_status(uid)
+        if not refresh_status.get("can_refresh"):
+            return {
+                "success": False,
+                "error_code": "REFRESH_LIMIT",
+                "error": f"Daily refresh limit reached ({refresh_status.get('limit')}/day). Try again tomorrow!",
+            }
+
+        async_db = await self._get_async_db_session()
+        try:
+            generator = get_action_plan_generator()
+            result = await generator.generate_replacement_candidates(
+                user_id=uid,
+                item_id=item_id,
+                reason=reason,
+                n=count,
+                db=async_db,
+            )
+        finally:
+            try:
+                await async_db.close()
+            except Exception:
+                pass
+
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error_code": "CANDIDATES_FAILED",
+                "error": result.get("error") or "Failed to generate alternate suggestions",
+                "details": result,
+            }
+
+        actions = result.get("actions") or []
+        candidates_by_id: Dict[str, Any] = {}
+        candidates_ui: List[Dict[str, Any]] = []
+        for idx, action in enumerate(actions[:count]):
+            cid = f"alt_{idx+1}"
+            candidates_by_id[cid] = action
+            candidates_ui.append(
+                {
+                    "candidate_id": cid,
+                    "title": action.get("title") or action.get("specific_action") or f"Option {idx+1}",
+                }
+            )
+
+        return {
+            "success": True,
+            "candidates_by_id": candidates_by_id,
+            "candidates_ui": candidates_ui,
+        }
+
+    async def replace_action_item_with_candidate(self, uid: str, item_id: int, candidate_action: Dict[str, Any], reason: str) -> Dict[str, Any]:
+        """Replace a plan item using a pre-generated candidate action dict."""
+        from app.services.reward_service import RewardService
+        from app.services.action_plan_generator import get_action_plan_generator
+
+        reward_service = RewardService(self.db)
+        refresh_status = reward_service.get_refresh_status(uid)
+        if not refresh_status.get("can_refresh"):
+            return {
+                "success": False,
+                "error_code": "REFRESH_LIMIT",
+                "error": f"Daily refresh limit reached ({refresh_status.get('limit')}/day). Try again tomorrow!",
+            }
+
+        async_db = await self._get_async_db_session()
+        try:
+            generator = get_action_plan_generator()
+            result = await generator.replace_action_from_action_dict(
+                user_id=uid,
+                item_id=item_id,
+                replacement_action=candidate_action,
+                reason=reason,
+                db=async_db,
+            )
+        finally:
+            try:
+                await async_db.close()
+            except Exception:
+                pass
+
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error_code": "REPLACE_FAILED",
+                "error": result.get("error", "Failed to replace action"),
+                "details": result,
+            }
+
+        # Consume refresh token only on success
+        try:
+            reward_service.use_refresh(uid)
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "original_id": result.get("original_id"),
+            "replacement_id": result.get("replacement_id"),
+            "replacement_action": result.get("replacement_action"),
+        }
+
     @staticmethod
     async def _get_async_db_session():
         """Create an async DB session (mirrors action_plan endpoint helper)."""

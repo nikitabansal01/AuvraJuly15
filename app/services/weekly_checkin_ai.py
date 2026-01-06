@@ -19,6 +19,7 @@ PROVIDER STRATEGY: OpenAI primary, Groq fallback on ANY error
 """
 import logging
 import json
+import re
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
@@ -167,6 +168,150 @@ class WeeklyCheckInAI:
     
     def __init__(self, db: Session):
         self.db = db
+
+    def _slugify_option_id(self, text: str) -> str:
+        """Create a stable, frontend-safe id from a tap option label."""
+        s = (text or "").strip().lower()
+        s = re.sub(r"[^a-z0-9]+", "_", s)
+        s = re.sub(r"_+", "_", s).strip("_")
+        return s or "option"
+
+    def _infer_tap_option_category(self, question_text: str) -> Optional[str]:
+        qt = (question_text or "").lower()
+        if any(k in qt for k in ["diet", "food", "eat", "eating", "meal", "meals", "nutrition", "appetite"]):
+            return "diet"
+        if any(k in qt for k in ["sleep", "insomnia", "rest", "tired", "fatigue"]):
+            return "sleep"
+        if any(k in qt for k in ["stress", "anxious", "anxiety", "overwhelmed", "workload", "pressure"]):
+            return "stress"
+        if any(k in qt for k in ["exercise", "workout", "movement", "activity", "training"]):
+            return "exercise"
+        if any(k in qt for k in ["supplement", "vitamin", "magnesium", "iron", "omega", "probiotic"]):
+            return "supplements"
+        return None
+
+    def _default_tap_options_for_category(self, category: Optional[str]) -> List[Dict[str, str]]:
+        # Defaults are meant to be *direct answers* to the question category.
+        if category == "diet":
+            texts = [
+                "Ate out more / takeout",
+                "More sugar / desserts",
+                "More carbs (bread/pasta)",
+                "More dairy",
+                "Skipped meals / irregular meals",
+                "Started supplements / vitamins",
+            ]
+        elif category == "sleep":
+            texts = [
+                "Went to bed later",
+                "Woke up a lot at night",
+                "Less total sleep",
+                "More screen time at night",
+                "More naps",
+                "Sleep was about the same",
+            ]
+        elif category == "stress":
+            texts = [
+                "Work has been more demanding",
+                "Personal / family stress",
+                "Mental load / overwhelm",
+                "More conflict / tension",
+                "Stress about the same",
+                "Not sure",
+            ]
+        elif category == "exercise":
+            texts = [
+                "Worked out more",
+                "Worked out less",
+                "More walking",
+                "More intense workouts",
+                "No change",
+                "Not sure",
+            ]
+        elif category == "supplements":
+            texts = [
+                "Started a new supplement",
+                "Stopped a supplement",
+                "Took them inconsistently",
+                "Changed the dose",
+                "No supplements",
+                "Not sure",
+            ]
+        else:
+            texts = [
+                "Not sure",
+                "Nothing changed",
+                "A few small changes",
+                "A big change",
+                "I'd rather type",
+            ]
+
+        opts: List[Dict[str, str]] = []
+        for t in texts:
+            opts.append({"id": self._slugify_option_id(t), "text": t})
+        return opts
+
+    def _postprocess_tap_options(
+        self,
+        *,
+        question_text: str,
+        tap_options: List[Dict[str, Any]],
+    ) -> List[Dict[str, str]]:
+        """Ensure tap options are usable and match the question as best as possible."""
+        category = self._infer_tap_option_category(question_text)
+
+        cleaned: List[Dict[str, str]] = []
+        for opt in tap_options or []:
+            if not isinstance(opt, dict):
+                continue
+            text = (opt.get("text") or "").strip()
+            if not text:
+                continue
+            cleaned.append({
+                "id": (opt.get("id") or self._slugify_option_id(text)),
+                "text": text,
+            })
+
+        # If empty, provide category-specific defaults
+        if not cleaned:
+            return self._default_tap_options_for_category(category)
+
+        # If we can infer a category, make sure options actually relate to it.
+        # This prevents cases like a diet question getting sleep/stress options.
+        if category:
+            qt = (question_text or "").lower()
+            # Keyword sets for quick relevance checks
+            keywords = {
+                "diet": [
+                    "diet", "food", "eat", "eating", "meal", "meals", "carb", "sugar", "dessert",
+                    "dairy", "gluten", "fiber", "protein", "takeout", "restaurant", "snack", "portion",
+                ],
+                "sleep": ["sleep", "bed", "insomnia", "awake", "woke", "tired", "fatigue", "nap"],
+                "stress": ["stress", "anx", "overwhelm", "work", "pressure", "conflict", "tension"],
+                "exercise": ["exercise", "workout", "walk", "running", "gym", "activity", "training"],
+                "supplements": ["supplement", "vitamin", "magnesium", "iron", "omega", "probiotic"],
+            }.get(category, [])
+
+            def _is_relevant(text: str) -> bool:
+                tl = text.lower()
+                return any(k in tl for k in keywords) or any(k in qt for k in keywords)
+
+            relevant = [o for o in cleaned if _is_relevant(o["text"])]
+            # If fewer than half are relevant, fall back to strong defaults
+            if len(relevant) < max(2, len(cleaned) // 2):
+                cleaned = self._default_tap_options_for_category(category)
+
+        # De-duplicate (case-insensitive) and cap count
+        seen = set()
+        deduped: List[Dict[str, str]] = []
+        for o in cleaned:
+            key = o["text"].strip().lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            o["id"] = o.get("id") or self._slugify_option_id(o["text"])
+            deduped.append(o)
+        return deduped[:6]
     
     # ═══════════════════════════════════════════════════════════════════════════
     # CONTEXT GATHERING
@@ -525,7 +670,10 @@ CRITICAL RESPONSE RULES:
 2. SPLIT INTO MULTIPLE MESSAGES - Return an array of 2 short messages, not 1 long one
 3. First message: Acknowledge/empathize (1 sentence)
 4. Second message: Ask ONE specific question (1 sentence)
-5. Generate 4-5 tap options
+5. Generate 4-6 tap options
+6. Tap options MUST be plausible *patient answers* to the question you asked (message 2).
+    - They must be direct responses, not advice.
+    - They must match the topic of your question (e.g., if you ask about diet changes, all options should be diet changes).
 
 EXAMPLE GOOD RESPONSE:
 {{
@@ -705,10 +853,10 @@ OUTPUT JSON:
             combined_message = " ".join(messages) if messages else data.get("message", "")
             
             # Map to AIQuestion with messages array for frontend
-            tap_options = data.get("tap_options", [])
-            for i, opt in enumerate(tap_options):
-                if "id" not in opt:
-                    opt["id"] = f"opt_{i}"
+            tap_options = self._postprocess_tap_options(
+                question_text=(messages[-1] if messages else combined_message),
+                tap_options=data.get("tap_options", []),
+            )
             
             # Create AIQuestion with additional messages field
             question = AIQuestion(

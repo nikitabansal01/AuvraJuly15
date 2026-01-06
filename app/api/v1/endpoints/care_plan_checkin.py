@@ -121,6 +121,29 @@ def _looks_like_change_intent(text: str) -> bool:
     return any(k in t for k in ["change", "replace", "swap", "skip", "alternate", "another option", "not for me"])
 
 
+def _looks_like_alternate_suggestions_request(text: str) -> bool:
+    """True when the user explicitly asks for alternate suggestions (vs generic change intent)."""
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+
+    # When sent as option id (rare in current mobile), still handle.
+    if t in {"alternate-suggestions", "alternate_suggestions", "alternates"}:
+        return True
+
+    # When sent as option text (current mobile sends text).
+    if "alternate suggestion" in t or "alternate suggestions" in t:
+        return True
+    if "want alternate" in t or "want alternates" in t:
+        return True
+
+    # Emoji label in default chip.
+    if "🔁" in text:
+        return True
+
+    return False
+
+
 def _pick_replace_block(items: List[Dict[str, Any]]) -> UIBlock:
     actions: List[UIBlockAction] = []
     for it in items[:8]:
@@ -157,6 +180,89 @@ def _pick_replace_block(items: List[Dict[str, Any]]) -> UIBlock:
         dismissible=True,
         priority="normal",
         analytics={"surface": "care_plan_checkin", "reason": "change_intent"},
+    )
+
+
+def _pick_alternate_item_block(items: List[Dict[str, Any]]) -> UIBlock:
+    """Picker for 'alternate suggestions' flow.
+
+    This intentionally differs from the generic replace picker wording so the UX
+    is: acknowledge alternates -> ask which item -> show alternates -> replace.
+    """
+    actions: List[UIBlockAction] = []
+    for it in items[:8]:
+        item_id = it.get("item_id")
+        title = (it.get("title") or "").strip()
+        if not item_id or not title:
+            continue
+        actions.append(
+            UIBlockAction(
+                id=f"care_plan_alternate_pick_{item_id}",
+                title=title,
+                action_type="submit_event",
+                payload={"item_id": int(item_id)},
+                style="secondary",
+            )
+        )
+
+    actions.append(
+        UIBlockAction(
+            id="open_plan_manager",
+            title="Open full plan manager",
+            action_type="open_modal",
+            payload={"modal": "PlanManagerModal"},
+            style="ghost",
+        )
+    )
+
+    return UIBlock(
+        id=str(uuid4()),
+        type="quick_actions",
+        title="Which action do you want alternates for?",
+        subtitle="Pick one — I’ll show a few swap-in options.",
+        actions=actions,
+        dismissible=True,
+        priority="normal",
+        analytics={"surface": "care_plan_checkin", "reason": "alternate_suggestions"},
+    )
+
+
+def _pick_alternate_candidate_block(item_id: int, candidates: List[Dict[str, Any]]) -> UIBlock:
+    actions: List[UIBlockAction] = []
+    for c in (candidates or [])[:6]:
+        cid = (c.get("candidate_id") or "").strip()
+        title = (c.get("title") or "").strip()
+        if not cid or not title:
+            continue
+        actions.append(
+            UIBlockAction(
+                id=f"care_plan_alternate_choose_{cid}",
+                title=title,
+                action_type="submit_event",
+                payload={"item_id": int(item_id), "candidate_id": cid},
+                style="primary" if len(actions) == 0 else "secondary",
+            )
+        )
+
+    actions.append(
+        UIBlockAction(
+            id="care_plan_alternate_cancel",
+            title="Never mind",
+            action_type="submit_event",
+            payload={},
+            style="ghost",
+        )
+    )
+
+    return UIBlock(
+        id=str(uuid4()),
+        type="quick_actions",
+        title="Here are a few alternatives",
+        subtitle="Pick one and I’ll swap it into your plan.",
+        actions=actions,
+        dismissible=True,
+        priority="high",
+        analytics={"surface": "care_plan_checkin", "reason": "alternate_candidates"},
     )
 
 
@@ -313,6 +419,79 @@ async def respond_care_plan_checkin(
                     "ui_blocks": [_open_plan_manager_block()],
                 }
 
+        # Explicit alternate-suggestions flow: acknowledge -> ask which item.
+        if _looks_like_alternate_suggestions_request(payload.message_text):
+            thread = service.get_thread_by_id(uid, payload.thread_id)
+
+            raw = list(thread.raw_messages or [])
+            raw.append(
+                {
+                    "id": str(uuid4()),
+                    "role": "user",
+                    "content": payload.message_text,
+                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                }
+            )
+            raw.append(
+                {
+                    "id": str(uuid4()),
+                    "role": "bot",
+                    "content": "Totally — I can suggest a few alternate options.",
+                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                }
+            )
+            raw.append(
+                {
+                    "id": str(uuid4()),
+                    "role": "bot",
+                    "content": "Which action do you want alternates for?",
+                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                }
+            )
+            thread.raw_messages = raw
+
+            ai = dict(thread.actionable_insights or {})
+            ai["pending_alternate"] = {"stage": "pick_item", "reason": "User requested alternate suggestions"}
+            thread.actionable_insights = ai
+
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+
+            items = service.get_plan_items_for_ui(uid, limit=8)
+            ui_blocks: List[UIBlock] = []
+            if items:
+                ui_blocks.append(_pick_alternate_item_block(items))
+            else:
+                # If we can't find plan items, keep the UX graceful.
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": "I can do that — but I can’t find your current plan items right now. Want to open the plan manager?",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
+                history = service.format_history_for_mobile(thread)
+                ui_blocks.append(_open_plan_manager_block())
+
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": ui_blocks,
+            }
+
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
@@ -324,7 +503,13 @@ async def respond_care_plan_checkin(
         tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
 
         ui_blocks: List[UIBlock] = []
-        if _looks_like_change_intent(payload.message_text) or (ai_response.insights and ai_response.insights.plan_changes_requested):
+        if (
+            (not _looks_like_alternate_suggestions_request(payload.message_text))
+            and (
+                _looks_like_change_intent(payload.message_text)
+                or (ai_response.insights and ai_response.insights.plan_changes_requested)
+            )
+        ):
             items = service.get_plan_items_for_ui(uid, limit=8)
             if items:
                 ui_blocks.append(_pick_replace_block(items))
@@ -502,6 +687,216 @@ async def care_plan_ui_event(
                 "tap_options": tap_options,
                 "actionable_insights": thread.actionable_insights or {},
                 "ui_blocks": [_open_plan_manager_block()],
+            }
+
+        # Alternate suggestions flow (pick item -> show candidates -> choose -> execute)
+        if action_id.startswith("care_plan_alternate_pick_"):
+            try:
+                item_id = int(action_id.split("care_plan_alternate_pick_", 1)[1])
+            except Exception:
+                item_id = 0
+
+            thread = service.get_thread_by_id(uid, payload.thread_id)
+            display_text = (meta.get("display_text") or "").strip() or "Show alternates"
+            if display_text:
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": display_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
+
+            if not item_id:
+                history = service.format_history_for_mobile(thread)
+                tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                return {
+                    "thread_id": thread.id,
+                    "local_date": thread.local_date.isoformat(),
+                    "history": history,
+                    "tap_options": tap_options,
+                    "actionable_insights": thread.actionable_insights or {},
+                    "ui_blocks": [],
+                }
+
+            # Generate candidate alternatives (store in actionable_insights)
+            candidates_result = await service.generate_alternate_candidates(uid, item_id=item_id, reason="User requested alternate suggestions")
+            if not candidates_result.get("success"):
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": candidates_result.get("error") or "Sorry — I couldn't generate alternates right now.",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
+                history = service.format_history_for_mobile(thread)
+                tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                return {
+                    "thread_id": thread.id,
+                    "local_date": thread.local_date.isoformat(),
+                    "history": history,
+                    "tap_options": tap_options,
+                    "actionable_insights": thread.actionable_insights or {},
+                    "ui_blocks": [_open_plan_manager_block()],
+                }
+
+            # Persist pending alternate + candidates
+            ai = dict(thread.actionable_insights or {})
+            ai["pending_alternate"] = {"stage": "choose_candidate", "item_id": item_id, "reason": "User requested alternate suggestions"}
+            ai["alternate_candidates"] = candidates_result.get("candidates_by_id") or {}
+            thread.actionable_insights = ai
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [_pick_alternate_candidate_block(item_id, candidates_result.get("candidates_ui") or [])],
+            }
+
+        if action_id == "care_plan_alternate_cancel":
+            thread = service.get_thread_by_id(uid, payload.thread_id)
+            display_text = (meta.get("display_text") or "").strip() or "Never mind"
+            if display_text:
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": display_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
+
+            ai = dict(thread.actionable_insights or {})
+            ai.pop("pending_alternate", None)
+            ai.pop("alternate_candidates", None)
+            thread.actionable_insights = ai
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [],
+            }
+
+        if action_id.startswith("care_plan_alternate_choose_"):
+            candidate_id = action_id.split("care_plan_alternate_choose_", 1)[1].strip()
+            thread = service.get_thread_by_id(uid, payload.thread_id)
+            item_id = int((meta.get("item_id") or 0) or 0)
+            display_text = (meta.get("display_text") or "").strip() or "Choose this"
+
+            # Echo user's selection
+            if display_text:
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": display_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
+
+            candidates_by_id = (thread.actionable_insights or {}).get("alternate_candidates") or {}
+            chosen = candidates_by_id.get(candidate_id)
+            if not chosen or not item_id:
+                raw = list(thread.raw_messages or [])
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": "Sorry — I lost those options. Want to try again?",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+                thread.raw_messages = raw
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
+                history = service.format_history_for_mobile(thread)
+                tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                return {
+                    "thread_id": thread.id,
+                    "local_date": thread.local_date.isoformat(),
+                    "history": history,
+                    "tap_options": tap_options,
+                    "actionable_insights": thread.actionable_insights or {},
+                    "ui_blocks": [],
+                }
+
+            result = await service.replace_action_item_with_candidate(
+                uid,
+                item_id=item_id,
+                candidate_action=chosen,
+                reason="User selected an alternate suggestion",
+            )
+
+            raw = list(thread.raw_messages or [])
+            if result.get("success"):
+                repl = result.get("replacement_action") or {}
+                repl_title = (repl.get("title") or repl.get("specific_action") or "a fresh alternative").strip()
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": f"Done — I swapped it with: {repl_title}.",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+            else:
+                raw.append(
+                    {
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": result.get("error") or "Sorry — I couldn't swap that in right now.",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                )
+
+            # Clear pending/candidates
+            ai = dict(thread.actionable_insights or {})
+            ai.pop("pending_alternate", None)
+            ai.pop("alternate_candidates", None)
+            thread.actionable_insights = ai
+            thread.raw_messages = raw
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [_open_plan_manager_block()] if result.get("success") else [],
             }
 
         send_text = (meta.get("send_text") or "").strip()
