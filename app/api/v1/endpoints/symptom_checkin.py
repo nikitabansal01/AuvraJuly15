@@ -79,6 +79,20 @@ def _baseline_symptom_tap_options() -> List[Dict[str, str]]:
     return tap_options
 
 
+def _conversational_tap_options() -> List[Dict[str, str]]:
+    """Good conversational tap options that keep the chat flowing.
+    
+    These are NEVER just UI-triggering actions - they're real conversation continuers.
+    """
+    return [
+        {"id": "feeling_better", "text": "😊 Feeling better today"},
+        {"id": "about_same", "text": "😐 About the same"},
+        {"id": "feeling_worse", "text": "😟 Feeling worse"},
+        {"id": "share_something", "text": "💬 I want to share something"},
+        {"id": "get_tips", "text": "💡 Give me some tips"},
+    ]
+
+
 def _dr_auvra_progress_tap_options() -> List[Dict[str, str]]:
     """Dr. Auvra style: Better/Same/Worse (for users with yesterday's data)."""
     return [
@@ -255,15 +269,15 @@ async def respond_symptom_checkin(
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
-        # Use AI-generated tap options directly (Dr. Auvra style)
-        # Only fall back to baseline if AI didn't provide any AND we're not complete.
-        # If the AI marks the flow complete, the UI should not show unrelated taps.
+        # Use AI-generated tap options - the LLM decides when to complete naturally
+        # CRITICAL: Only show empty tap options if the LLM explicitly set is_complete=true
         if getattr(ai_response, "is_complete", False):
             tap_options = []
         elif ai_response.tap_options:
             tap_options = [{"id": t.id, "text": t.text} for t in ai_response.tap_options]
         else:
-            tap_options = _baseline_symptom_tap_options()
+            # Fallback: always provide good conversational options to keep the chat flowing
+            tap_options = _conversational_tap_options()
 
         return {
             "thread_id": thread.id,
@@ -435,10 +449,15 @@ async def symptom_ui_event(
                             break
 
                 history = service.format_history_for_mobile(thread)
-                tap_options = [t.model_dump() for t in (ai_response.tap_options or [])]
-                tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
-                tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
-                tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+                
+                # Use AI tap options if is_complete=false, else empty
+                if getattr(ai_response, "is_complete", False):
+                    tap_options = []
+                elif ai_response.tap_options:
+                    tap_options = [t.model_dump() for t in ai_response.tap_options]
+                else:
+                    tap_options = _conversational_tap_options()
+                    
                 return {
                     "thread_id": thread.id,
                     "local_date": thread.local_date.isoformat(),
@@ -452,10 +471,15 @@ async def symptom_ui_event(
         if send_text:
             thread, ai_response = await service.respond(uid, payload.thread_id, send_text)
             history = service.format_history_for_mobile(thread)
-            tap_options = [t.model_dump() for t in (ai_response.tap_options or [])]
-            tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
-            tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
-            tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+            
+            # Use AI tap options if is_complete=false, else empty
+            if getattr(ai_response, "is_complete", False):
+                tap_options = []
+            elif ai_response.tap_options:
+                tap_options = [t.model_dump() for t in ai_response.tap_options]
+            else:
+                tap_options = _conversational_tap_options()
+                
             return {
                 "thread_id": thread.id,
                 "local_date": thread.local_date.isoformat(),

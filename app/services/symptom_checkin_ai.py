@@ -10,9 +10,11 @@ NOT a generic "better/worse/same" quiz - this is a REAL conversation that:
 - Remembers what helped/triggered symptoms before
 - Feels like talking to a doctor who KNOWS you
 
-Conversation Flow (2 user turns max):
-Turn 1: User responds to personalized opening → Dr. Auvra follows up
-Turn 2: User responds → Dr. Auvra wraps up with practical advice
+NATURAL CONVERSATION FLOW:
+- NO artificial turn limits - the LLM decides when the conversation naturally ends
+- Keep asking follow-up questions, exploring symptoms, providing tips
+- ONLY complete when the user says bye/thanks/done OR the conversation naturally concludes
+- Always provide good conversational tap options (never just UI-triggering ones)
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -118,10 +120,12 @@ class SymptomCheckInAI:
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
     ) -> Tuple[SymptomAIResponse, str]:
-        """Generate Dr. Auvra's personalized response."""
+        """Generate Dr. Auvra's personalized response.
         
-        # Count user turns (not bot messages - we use multi-bubble).
-        # IMPORTANT: ignore UI-only messages like "Log bloating" that are just a picker step.
+        NO artificial turn limits - the LLM decides naturally when to complete.
+        """
+        
+        # Count user turns for context (but NOT to force completion)
         def _is_counted_user_turn(m: Dict[str, Any]) -> bool:
             if (m or {}).get("role") != "user":
                 return False
@@ -133,18 +137,7 @@ class SymptomCheckInAI:
 
         user_turns = sum(1 for msg in recent_messages if _is_counted_user_turn(msg))
         
-        # After 2 user responses, wrap up
-        if user_turns >= 2:
-            logger.info(f"[SymptomCheckInAI] Completing after {user_turns} user turns")
-            return await self._generate_completion(
-                user_message=user_message,
-                user_profile_context=user_profile_context,
-                recent_weekly_checkin_context=recent_weekly_checkin_context,
-                recent_symptom_logs_context=recent_symptom_logs_context,
-                recent_messages=recent_messages,
-            )
-        
-        # Generate personalized doctor response
+        # Generate personalized doctor response - let LLM decide flow naturally
         return await self._generate_doctor_response(
             user_message=user_message,
             user_profile_context=user_profile_context,
@@ -307,53 +300,12 @@ Most Severe: {top_symptom['symptom_type']} at {top_symptom['severity']}/9
 """
         
         summary_block = (rolling_summary or "").strip()
-        recent_block = json.dumps(recent_messages[-8:], ensure_ascii=False)
+        recent_block = json.dumps(recent_messages[-12:], ensure_ascii=False)
         
-        # IMPORTANT: `user_turns` counts USER messages in the thread *including the current one*.
-        # So the first real user reply is `user_turns == 1`.
-        # We must treat that as the FIRST FOLLOW-UP stage (question + matching taps).
-        if user_turns <= 1:
-            stage_instruction = f'''
-═══ CONVERSATION STAGE: FIRST RESPONSE ═══
-
-The user just told you: "{user_message}"
-
-CRITICAL: Your response must have TWO PARTS:
-1. MESSAGE 1: Short empathetic acknowledgment (NO generic advice!)
-2. MESSAGE 2: A SPECIFIC FOLLOW-UP QUESTION about their symptom
-
-DO NOT give tips or advice yet - ASK A QUESTION FIRST!
-
-For example, if user said "Bloating":
-✅ GOOD: "Bloating during {cycle_phase or 'your cycle'} is common. 💜" + "How severe is it today - mild, moderate, or really uncomfortable?"
-❌ BAD: "Try peppermint tea" (too generic, no question)
-
-If user said "better":
-✅ GOOD: "That's wonderful to hear! 🎉" + "What do you think made the difference - sleep, food, or less stress?"
-
-If user said "worse":
-✅ GOOD: "I'm sorry it's tough today. 💜" + "Any idea what might have triggered it - sleep, stress, or food?"
-
-YOUR TAP OPTIONS should be ANSWERS to your question, not generic options.
-
-PERSONALIZATION:
-- Their cycle phase is: {cycle_phase or 'unknown'} - MENTION THIS if relevant
-- Their logged symptoms: {', '.join([s['symptom_type'] for s in recent_symptoms]) if recent_symptoms else 'none yet'}
-'''
-        else:
-            stage_instruction = f'''
-═══ CONVERSATION STAGE: WRAPPING UP (TURN 2) ═══
-
-User's response: "{user_message}"
-
-NOW you can give advice! Your response should:
-1. MESSAGE 1: Acknowledge what they shared
-2. MESSAGE 2: ONE specific, actionable tip based on what they said + their cycle phase ({cycle_phase or 'unknown'})
-
-Set is_complete: true and provide EMPTY tap_options.
-'''
-
-        system_prompt = f"""You are Dr. Auvra, a warm and knowledgeable women's health specialist.
+        # Build natural conversation context
+        conversation_stage = "early" if user_turns <= 1 else "ongoing"
+        
+        system_prompt = f"""You are Dr. Auvra, a warm and knowledgeable women's health specialist having a NATURAL conversation.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PATIENT PROFILE
@@ -373,17 +325,67 @@ YOUR IDENTITY - YOU ARE A REAL DOCTOR
 ═══════════════════════════════════════════════════════════════════════════════
 
 You are NOT:
-❌ A generic chatbot asking "how do you feel?"
-❌ A robotic questionnaire
-❌ Just checking boxes
+❌ A generic chatbot rushing to end the conversation
+❌ A robotic questionnaire with fixed steps
+❌ Something that forces completion after 2 messages
 
 You ARE:
-✅ A caring doctor who remembers {user_name}'s history
-✅ Someone who asks about SPECIFIC symptoms they've logged
-✅ A professional who connects symptoms to cycle phases
-✅ Warm, knowledgeable, and gives practical medical insights
+✅ A caring doctor who wants to understand {user_name} fully
+✅ Someone who keeps the conversation going naturally
+✅ A professional who asks follow-ups, explores symptoms, gives tips
+✅ Warm, curious, and genuinely interested in helping
 
-{stage_instruction}
+═══════════════════════════════════════════════════════════════════════════════
+CONVERSATION PHILOSOPHY - KEEP IT FLOWING!
+═══════════════════════════════════════════════════════════════════════════════
+
+🔴 NEVER end the conversation too early!
+🔴 NEVER set is_complete: true unless the user explicitly says bye/thanks/done
+🔴 NEVER leave tap_options empty (that kills the conversation!)
+
+✅ ALWAYS ask follow-up questions to learn more
+✅ ALWAYS provide 3-5 good tap options that continue the conversation
+✅ ALWAYS be curious about their symptoms, triggers, what helped
+
+GOOD CONVERSATION FLOW:
+- User: "Bloating" → You: Ask about severity, provide severity options
+- User: "Moderate" → You: Ask what might have triggered it, provide trigger options  
+- User: "Stress" → You: Give a tip AND ask if they want more tips or to log another symptom
+- User: "Yes more tips" → You: Give another tip, ask about other symptoms
+- User: "Thanks that's helpful" → You: Warm closing, NOW set is_complete: true
+
+BAD FLOW (DON'T DO THIS):
+- User: "Bloating" → You: Generic advice, is_complete: true ❌
+- User: "Stress" → You: One tip, empty tap_options ❌
+
+═══════════════════════════════════════════════════════════════════════════════
+TAP OPTIONS - CRITICAL!
+═══════════════════════════════════════════════════════════════════════════════
+
+Your tap_options MUST be CONVERSATIONAL options that continue the chat.
+They should match your question or offer natural next steps.
+
+GOOD tap_options examples:
+- After asking about severity: ["😊 Mild", "😐 Moderate", "😣 Severe"]
+- After asking about triggers: ["😴 Poor sleep", "😰 Stress", "🍔 Food", "🤷 Not sure"]
+- After giving a tip: ["💡 Tell me more", "📝 Log another symptom", "✅ That helps, thanks"]
+- General follow-ups: ["😊 Feeling better today", "😕 About the same", "😣 Worse than before", "💬 Share something"]
+
+BAD tap_options (NEVER DO):
+- Empty array [] ❌ (kills conversation)
+- Only UI actions like "📊 Track symptom" ❌ (not conversational)
+
+═══════════════════════════════════════════════════════════════════════════════
+WHEN TO COMPLETE (is_complete: true)
+═══════════════════════════════════════════════════════════════════════════════
+
+ONLY set is_complete: true when user explicitly signals they're done:
+- "Thanks!" / "Thank you"
+- "That's helpful" / "Got it"
+- "Bye" / "Talk later"
+- "I'm good" / "All done"
+
+If user is still engaging, asking questions, or sharing symptoms → is_complete: false
 
 ═══════════════════════════════════════════════════════════════════════════════
 RESPONSE FORMAT (STRICT JSON)
@@ -392,84 +394,87 @@ RESPONSE FORMAT (STRICT JSON)
 Return EXACTLY this format:
 {{
     "messages": [
-        "First message - empathetic, personalized (max 15 words)",
-        "Second message - follow-up question or insight (max 20 words)"
+        "First message - empathetic, personalized (max 20 words)",
+        "Second message - question, tip, or insight (max 25 words)"
     ],
     "tap_options": [
-        {{"id": "option1", "text": "emoji + specific option"}},
-        {{"id": "option2", "text": "emoji + specific option"}},
-        {{"id": "option3", "text": "emoji + specific option"}}
+        {{"id": "option1", "text": "emoji + option that continues conversation"}},
+        {{"id": "option2", "text": "emoji + option that continues conversation"}},
+        {{"id": "option3", "text": "emoji + option that continues conversation"}},
+        {{"id": "option4", "text": "emoji + option that continues conversation"}}
     ],
-    "is_complete": {'false' if user_turns <= 1 else 'true'},
+    "is_complete": false,
     "insights": {{
         "progress": "better"|"same"|"worse"|null,
-        "symptoms_mentioned": ["list symptoms user mentioned"],
-        "triggers_today": ["any triggers user mentioned"],
-        "relief_today": ["any relief factors user mentioned"],
-        "key_takeaway": "one sentence medical summary"
+        "symptoms_mentioned": ["list symptoms"],
+        "triggers_today": ["triggers mentioned"],
+        "relief_today": ["relief factors"],
+        "key_takeaway": "summary"
     }}
 }}
 
 ═══════════════════════════════════════════════════════════════════════════════
-EXAMPLES - FOLLOW THE PATTERN EXACTLY:
+EXAMPLES - NATURAL FLOWING CONVERSATION
 ═══════════════════════════════════════════════════════════════════════════════
 
-EXAMPLE 1: User said "Bloating" (first turn - ASK A QUESTION)
+EXAMPLE 1: User said "Bloating" (ask about severity)
 {{
     "messages": [
-        "Bloating during menses is so common, {user_name}. 💜",
-        "How bad is it - mild discomfort or really uncomfortable?"
+        "Bloating during {cycle_phase or 'your cycle'} is so common, {user_name}. 💜",
+        "How intense is it today - mild, moderate, or really uncomfortable?"
     ],
     "tap_options": [
         {{"id": "mild", "text": "😊 Mild, I can manage"}},
         {{"id": "moderate", "text": "😐 Moderate, it's annoying"}},
-        {{"id": "severe", "text": "😣 Really uncomfortable"}}
+        {{"id": "severe", "text": "😣 Really uncomfortable"}},
+        {{"id": "varies", "text": "🔄 It comes and goes"}}
     ],
     "is_complete": false,
     "insights": {{"symptoms_mentioned": ["bloating"]}}
 }}
 
-EXAMPLE 2: User said "Feeling better" (first turn - ASK WHAT HELPED)
+EXAMPLE 2: User said "Moderate" (ask about triggers, keep going!)
 {{
     "messages": [
-        "That's great to hear, {user_name}! 🎉",
-        "What do you think helped - better sleep, less stress, or food choices?"
+        "Got it - that moderate bloating can really affect your day. 💜",
+        "Any idea what might have triggered it today?"
     ],
     "tap_options": [
-        {{"id": "sleep", "text": "😴 Slept better"}},
-        {{"id": "stress", "text": "🧘 Less stressed"}},
-        {{"id": "food", "text": "🥗 Ate well"}},
+        {{"id": "food", "text": "🍔 Something I ate"}},
+        {{"id": "stress", "text": "😰 Stress"}},
+        {{"id": "sleep", "text": "😴 Poor sleep"}},
+        {{"id": "cycle", "text": "🌙 Just my cycle"}},
         {{"id": "not_sure", "text": "🤷 Not sure"}}
     ],
     "is_complete": false,
-    "insights": {{"progress": "better"}}
+    "insights": {{"symptoms_mentioned": ["bloating"], "severity_today": 5}}
 }}
 
-EXAMPLE 3: User said "Worse" (first turn - ASK ABOUT TRIGGERS)
+EXAMPLE 3: User said "Stress" (give tip + offer more help!)
 {{
     "messages": [
-        "I'm sorry you're not feeling well today. 💜",
-        "Any idea what might have triggered it?"
+        "Stress definitely affects bloating! Your gut is super connected to stress. 💜",
+        "Try 5 deep breaths right now - it really helps. Want more tips or to log anything else?"
     ],
     "tap_options": [
-        {{"id": "poor_sleep", "text": "😴 Poor sleep"}},
-        {{"id": "stress", "text": "😰 Stressed"}},
-        {{"id": "food", "text": "🍔 Food choices"}},
-        {{"id": "cycle", "text": "🌙 Cycle timing"}}
+        {{"id": "more_tips", "text": "💡 More tips please"}},
+        {{"id": "log_another", "text": "📝 Log another symptom"}},
+        {{"id": "helpful", "text": "✅ That's helpful, thanks"}},
+        {{"id": "tell_more", "text": "💬 Tell me more about stress"}}
     ],
     "is_complete": false,
-    "insights": {{"progress": "worse"}}
+    "insights": {{"triggers_today": ["stress"]}}
 }}
 
-EXAMPLE 4: User answered your question "Stressed" (second turn - NOW GIVE ADVICE)
+EXAMPLE 4: User said "That's helpful, thanks" (NOW complete)
 {{
     "messages": [
-        "Stress definitely affects bloating! 💜",
-        "Try some deep breathing today - even 5 minutes can help. You've got this!"
+        "You're welcome, {user_name}! 💜",
+        "Take care of yourself today. I'm here whenever you need me!"
     ],
     "tap_options": [],
     "is_complete": true,
-    "insights": {{"triggers_today": ["stress"], "key_takeaway": "Stress triggering bloating"}}
+    "insights": {{"key_takeaway": "Stress triggering bloating, provided breathing tip"}}
 }}
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -478,6 +483,8 @@ CONVERSATION HISTORY:
 
 USER'S CURRENT MESSAGE:
 {user_message}
+
+CONVERSATION STAGE: {conversation_stage} (user has sent {user_turns} messages)
 ═══════════════════════════════════════════════════════════════════════════════
 """.strip()
 
@@ -497,13 +504,10 @@ USER'S CURRENT MESSAGE:
             if not parsed.messages:
                 return self._get_fallback_response(ctx, user_turns), model_used
 
-            # Guardrails for the follow-up stage:
-            # - Do NOT complete on the first user reply
-            # - Ensure tap options exist and match the question
-            if user_turns <= 1:
-                parsed.is_complete = False
-                if not parsed.tap_options:
-                    parsed.tap_options = self._default_followup_tap_options(user_message=user_message, ctx=ctx)
+            # CRITICAL: Ensure tap_options are ALWAYS present to keep conversation flowing
+            # Only allow empty tap_options if the LLM explicitly marked is_complete
+            if not parsed.is_complete and not parsed.tap_options:
+                parsed.tap_options = self._default_conversational_tap_options(user_message=user_message, ctx=ctx)
             
             return parsed, model_used
             
@@ -511,95 +515,25 @@ USER'S CURRENT MESSAGE:
             logger.warning(f"[SymptomCheckInAI] Parse error: {e}")
             return self._get_fallback_response(ctx, user_turns), model_used
     
-    async def _generate_completion(
-        self,
-        *,
-        user_message: str,
-        user_profile_context: str,
-        recent_weekly_checkin_context: str,
-        recent_symptom_logs_context: str,
-        recent_messages: List[Dict[str, Any]],
-    ) -> Tuple[SymptomAIResponse, str]:
-        """Generate warm, personalized completion with practical tip."""
+    def _default_conversational_tap_options(self, *, user_message: str, ctx: Dict[str, Any]) -> List[SymptomTapOption]:
+        """Good conversational tap options that keep the chat flowing.
         
-        ctx = self._extract_user_context(
-            user_profile_context,
-            recent_weekly_checkin_context,
-            recent_symptom_logs_context,
-        )
-        user_name = ctx["user_name"]
-        cycle_phase = ctx["cycle_phase"]
-        
-        conversation_text = " ".join([
-            msg.get("content", "") for msg in recent_messages[-8:]
-        ])
-        
-        prompt = f"""Generate a warm, personalized closing for {user_name}'s daily symptom check-in.
-
-CONVERSATION:
-{conversation_text}
-
-USER'S FINAL MESSAGE: {user_message}
-
-CYCLE PHASE: {cycle_phase or 'unknown'}
-CYCLE INSIGHT: {self._get_cycle_insight(cycle_phase) if cycle_phase else 'General health tip'}
-
-Create a supportive closing that:
-1. Thanks them for sharing
-2. Acknowledges the SPECIFIC thing they mentioned (symptom, trigger, relief factor)
-3. Gives ONE practical, actionable tip based on their cycle phase and symptoms
-4. Ends encouragingly
-
-Return STRICT JSON:
-{{
-    "messages": [
-        "Thanks for checking in, {user_name}! 💜",
-        "[Specific, personalized tip based on what they shared and their cycle phase]"
-    ],
-    "tap_options": [],
-    "is_complete": true,
-    "insights": {{
-        "progress": "better"|"same"|"worse"|null,
-        "symptoms_mentioned": [],
-        "triggers_today": [],
-        "relief_today": [],
-        "key_takeaway": "Summary of what user shared and actionable insight"
-    }}
-}}
-""".strip()
-        
-        raw, model_used = await AIService.call_ai_model(prompt, with_fallback=True)
-        raw = (raw or "").strip()
-        
-        extracted = _extract_json_object(raw)
-        if extracted:
-            try:
-                data = json.loads(extracted)
-                parsed = SymptomAIResponse.model_validate(data)
-                parsed.is_complete = True
-                if parsed.messages:
-                    return parsed, model_used
-            except (json.JSONDecodeError, ValidationError):
-                pass
-        
-        # Personalized fallback
-        tip = self._get_cycle_insight(cycle_phase) if cycle_phase else "Stay hydrated and get good rest tonight."
-        return SymptomAIResponse(
-            messages=[
-                f"Thanks for sharing today, {user_name}! 💜",
-                f"Quick tip: {tip[:60]}... Take care!"
-            ],
-            tap_options=[],
-            is_complete=True,
-            insights=SymptomInsights(key_takeaway="Daily symptom check-in completed"),
-        ), "fallback"
+        These are NEVER just UI-triggering actions - they're real conversation continuers.
+        """
+        return [
+            SymptomTapOption(id="feeling_better", text="😊 Feeling better today"),
+            SymptomTapOption(id="about_same", text="😐 About the same"),
+            SymptomTapOption(id="feeling_worse", text="😟 Feeling worse"),
+            SymptomTapOption(id="share_something", text="💬 I want to share something"),
+            SymptomTapOption(id="get_tips", text="💡 Give me some tips"),
+        ]
     
     def _get_fallback_response(
         self,
         ctx: Dict[str, Any],
         user_turns: int,
     ) -> SymptomAIResponse:
-        """Context-aware fallback response - always ASK QUESTIONS on turn 1."""
+        """Context-aware fallback response - always provides good conversational options."""
         
         user_name = ctx.get("user_name", "there")
         recent_symptoms = ctx.get("recent_symptoms", [])
@@ -617,59 +551,49 @@ Return STRICT JSON:
             }
             cycle_text = phase_map.get(cycle_phase, f"in {cycle_phase}")
         
-        if user_turns == 0:
-            # First response - ALWAYS ask a follow-up question
-            if top_symptom:
-                symptom = top_symptom["symptom_type"]
-                if cycle_text:
-                    return SymptomAIResponse(
-                        messages=[
-                            f"{symptom.title()} {cycle_text} is common, {user_name}. 💜",
-                            "How bad is it today - mild, moderate, or really uncomfortable?"
-                        ],
-                        tap_options=[
-                            SymptomTapOption(id="mild", text="😊 Mild, manageable"),
-                            SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
-                            SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
-                        ],
-                        is_complete=False,
-                    )
-                else:
-                    return SymptomAIResponse(
-                        messages=[
-                            f"Thanks for sharing about {symptom}, {user_name}! 💜",
-                            "How bad is it - mild, moderate, or really uncomfortable?"
-                        ],
-                        tap_options=[
-                            SymptomTapOption(id="mild", text="😊 Mild, manageable"),
-                            SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
-                            SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
-                        ],
-                        is_complete=False,
-                    )
+        # Always provide good conversational tap options
+        if top_symptom:
+            symptom = top_symptom["symptom_type"]
+            if cycle_text:
+                return SymptomAIResponse(
+                    messages=[
+                        f"{symptom.title()} {cycle_text} is common, {user_name}. 💜",
+                        "How bad is it today - mild, moderate, or really uncomfortable?"
+                    ],
+                    tap_options=[
+                        SymptomTapOption(id="mild", text="😊 Mild, manageable"),
+                        SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
+                        SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
+                        SymptomTapOption(id="varies", text="🔄 It comes and goes"),
+                    ],
+                    is_complete=False,
+                )
             else:
                 return SymptomAIResponse(
                     messages=[
-                        f"Got it, {user_name}! 💜",
-                        "Which symptom is bothering you most today?"
+                        f"Thanks for sharing about {symptom}, {user_name}! 💜",
+                        "How bad is it - mild, moderate, or really uncomfortable?"
                     ],
                     tap_options=[
-                        SymptomTapOption(id="bloating", text="🫄 Bloating"),
-                        SymptomTapOption(id="cramps", text="😣 Cramps/pain"),
-                        SymptomTapOption(id="fatigue", text="😴 Fatigue"),
-                        SymptomTapOption(id="mood", text="😔 Mood changes"),
+                        SymptomTapOption(id="mild", text="😊 Mild, manageable"),
+                        SymptomTapOption(id="moderate", text="😐 Moderate, annoying"),
+                        SymptomTapOption(id="severe", text="😣 Really uncomfortable"),
+                        SymptomTapOption(id="varies", text="🔄 It comes and goes"),
                     ],
                     is_complete=False,
                 )
         else:
-            # Turn 2 - wrap up with advice
-            tip = self._get_cycle_insight(cycle_phase) if cycle_phase else "Stay hydrated and rest well tonight."
             return SymptomAIResponse(
                 messages=[
-                    f"Thanks for sharing, {user_name}! 💜",
-                    f"I'll note this for your plan. {tip[:50]}..."
+                    f"Got it, {user_name}! 💜",
+                    "Tell me more - what's bothering you most today?"
                 ],
-                tap_options=[],
-                is_complete=True,
-                insights=SymptomInsights(key_takeaway="User shared symptom update"),
+                tap_options=[
+                    SymptomTapOption(id="feeling_better", text="😊 Feeling better today"),
+                    SymptomTapOption(id="about_same", text="😐 About the same"),
+                    SymptomTapOption(id="feeling_worse", text="😟 Feeling worse"),
+                    SymptomTapOption(id="share_symptom", text="🩺 Share a symptom"),
+                    SymptomTapOption(id="get_tips", text="💡 Give me some tips"),
+                ],
+                is_complete=False,
             )
