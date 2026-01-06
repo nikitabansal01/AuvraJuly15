@@ -137,6 +137,22 @@ def _looks_like_alternate_suggestions_request(text: str) -> bool:
     if "want alternate" in t or "want alternates" in t:
         return True
 
+    # Common natural-language variants.
+    # We intentionally capture "alternatives" / "another option" phrasing so typed
+    # requests trigger the same staged UI flow as the chip.
+    if "alternative" in t or "alternatives" in t:
+        return True
+    if "another option" in t or "other option" in t or "different option" in t:
+        return True
+    if "something else" in t:
+        return True
+
+    # “Can you suggest…” patterns.
+    if ("suggest" in t or "recommend" in t or "ideas" in t or "options" in t) and (
+        "alternate" in t or "alternative" in t or "swap" in t or "replace" in t
+    ):
+        return True
+
     # Emoji label in default chip.
     if "🔁" in text:
         return True
