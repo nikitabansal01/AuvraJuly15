@@ -234,6 +234,169 @@ class QuestionService:
             current_timezone=current_timezone
         )
 
+    def _create_action_plan_from_session_recs(
+        self, 
+        uid: str, 
+        recommendations: list, 
+        user_response, 
+        current_timezone: str,
+        lifestyle_focus: list
+    ) -> bool:
+        """
+        Create ActionPlan + ActionPlanItems directly from session recommendations.
+        This eliminates the 100+ second GPT regeneration when HomeScreen loads.
+        
+        Args:
+            uid: User ID
+            recommendations: List of RecommendationRecord objects
+            user_response: UserResponse object with hormone data
+            current_timezone: User's timezone
+            lifestyle_focus: User's lifestyle focus (eat, move, pause)
+        
+        Returns:
+            True if ActionPlan was created successfully
+        """
+        try:
+            from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant
+            from app.utils.timezone_utils import ZoneInfo
+            from datetime import date
+            import time
+            
+            start_time = time.time()
+            
+            # Get today's date in user's timezone
+            try:
+                tz = ZoneInfo(current_timezone)
+                today = datetime.now(tz).date()
+            except Exception:
+                today = date.today()
+            
+            # Check if plan already exists for today
+            existing_plan = self.db.query(ActionPlan).filter(
+                ActionPlan.uid == uid,
+                ActionPlan.plan_date == today
+            ).first()
+            
+            if existing_plan:
+                logger.info(f"[SESSION_LINK] ActionPlan already exists for {uid} on {today}, skipping creation")
+                return True
+            
+            # Get hormone data from user_response
+            primary_hormone = getattr(user_response, 'primary_hormone', None) or 'cortisol'
+            secondary_hormones = getattr(user_response, 'secondary_hormones', None) or []
+            
+            # Create ActionPlan
+            action_plan = ActionPlan(
+                uid=uid,
+                plan_date=today,
+                primary_hormone=primary_hormone,
+                secondary_hormones=secondary_hormones if secondary_hormones else None,
+                cycle_day=1,  # Default for new user
+                cycle_phase="menstrual",  # Default
+                lifestyle_focus=lifestyle_focus,
+                generation_cost="$0.00",  # No GPT cost - converted from session
+                generation_time_ms=0,
+                gpt_model_used="session_conversion"  # Mark as converted, not generated
+            )
+            self.db.add(action_plan)
+            self.db.flush()  # Get plan ID
+            
+            logger.info(f"[SESSION_LINK] Created ActionPlan {action_plan.id} for {uid}")
+            
+            # Time slots for distributing actions
+            time_slots = ["morning", "afternoon", "evening", "anytime"]
+            
+            # Select recommendations based on lifestyle_focus and hormone distribution
+            # Goal: 2 primary hormone + 2 secondary hormone (if available)
+            selected_recs = []
+            
+            # Filter by lifestyle focus categories
+            focus_categories = []
+            if lifestyle_focus:
+                if 'eat' in lifestyle_focus:
+                    focus_categories.append('food')
+                if 'move' in lifestyle_focus:
+                    focus_categories.append('movement')
+                if 'pause' in lifestyle_focus:
+                    focus_categories.append('mindfulness')
+            
+            if not focus_categories:
+                focus_categories = ['food', 'movement', 'mindfulness']
+            
+            # Filter recommendations by category
+            filtered_recs = [r for r in recommendations if r.category in focus_categories]
+            if not filtered_recs:
+                filtered_recs = recommendations  # Fallback to all
+            
+            # Select up to 4 recommendations
+            selected_recs = filtered_recs[:4]
+            
+            if len(selected_recs) < 2:
+                logger.warning(f"[SESSION_LINK] Only {len(selected_recs)} recommendations available, need at least 2")
+                return False
+            
+            logger.info(f"[SESSION_LINK] Converting {len(selected_recs)} recommendations to ActionPlanItems")
+            
+            # Create ActionPlanItems from recommendations
+            for idx, rec in enumerate(selected_recs):
+                slot = idx + 1
+                time_slot = time_slots[idx % len(time_slots)]
+                
+                # Determine target hormone (alternate between primary and secondary)
+                if idx < 2:
+                    target_hormone = primary_hormone
+                elif secondary_hormones and len(secondary_hormones) > 0:
+                    target_hormone = secondary_hormones[0]
+                else:
+                    target_hormone = primary_hormone
+                
+                # Get conditions and symptoms from recommendation
+                conditions = rec.conditions if rec.conditions else []
+                symptoms = rec.symptoms if rec.symptoms else []
+                
+                # Create ActionPlanItem
+                item = ActionPlanItem(
+                    plan_id=action_plan.id,
+                    uid=uid,
+                    slot=slot,
+                    time_slot=time_slot,
+                    category=rec.category,
+                    title=rec.title or f"Action {slot}",
+                    specific_action=rec.specific_action or rec.purpose or f"Complete {rec.title}",
+                    purpose=rec.purpose,
+                    target_hormone=target_hormone,
+                    hormone_persona_intro=f"Hi, I'm {target_hormone.title() if target_hormone else 'your hormone helper'}! This action helps balance me.",
+                    food_amounts=rec.food_amounts,
+                    food_items=rec.food_items,
+                    exercise_durations=rec.exercise_durations,
+                    exercise_types=rec.exercise_types,
+                    exercise_intensities=rec.exercise_intensities,
+                    mindfulness_durations=rec.mindfulness_durations,
+                    mindfulness_techniques=rec.mindfulness_techniques,
+                    conditions=conditions,
+                    symptoms=symptoms,
+                    research_studies=rec.research_studies,
+                    hero_image_url=None,  # Will be generated on first view or async
+                    is_completed=False
+                )
+                self.db.add(item)
+                
+                logger.info(f"[SESSION_LINK]   Item {slot}: {rec.title} ({rec.category}) -> {target_hormone}")
+            
+            # Commit all changes
+            self.db.commit()
+            
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"✅ [SESSION_LINK] ActionPlan {action_plan.id} created with {len(selected_recs)} items in {elapsed_ms}ms")
+            logger.info(f"✅ [SESSION_LINK] HomeScreen will now load INSTANTLY for user {uid}!")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"[SESSION_LINK] Failed to create ActionPlan: {e}", exc_info=True)
+            self.db.rollback()
+            return False
+
     def link_session_to_user(self, session_id: str, uid: str, name: str, email: str, current_timezone: str = "Asia/Seoul", lifestyle_focus: list = None) -> bool:
         """
         Link session to user and save permanently
@@ -356,9 +519,27 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # NOTE: Legacy scheduling system removed - Action Plan system now handles daily recommendations
-                # The action_plan_generator.py creates personalized daily plans when users open the app
-                logger.info(f"Session linking completed with {len(successful_recommendations)} recommendations (Action Plan system handles scheduling)")
+                # 🚀 CRITICAL: Create ActionPlan immediately from session recommendations
+                # This eliminates the 100+ second wait when HomeScreen loads
+                if len(successful_recommendations) >= 2:
+                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan from {len(successful_recommendations)} session recommendations...")
+                    try:
+                        action_plan_created = self._create_action_plan_from_session_recs(
+                            uid=uid,
+                            recommendations=successful_recommendations,
+                            user_response=user_response,
+                            current_timezone=current_timezone,
+                            lifestyle_focus=lifestyle_focus
+                        )
+                        if action_plan_created:
+                            logger.info(f"✅ [SESSION_LINK] ActionPlan created successfully for {uid} - HomeScreen will load instantly!")
+                        else:
+                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation failed, will regenerate on HomeScreen")
+                    except Exception as ap_error:
+                        logger.error(f"❌ [SESSION_LINK] ActionPlan creation error: {ap_error}", exc_info=True)
+                        # Don't fail session linking if action plan creation fails
+                else:
+                    logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} recommendations, skipping ActionPlan creation")
                 
                 # Check if generation is still in progress
                 from app.services.processing_status_service import ProcessingStatusService
