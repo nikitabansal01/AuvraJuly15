@@ -107,8 +107,8 @@ class ActionItemModel(BaseModel):
     # Research studies - required, can be empty []
     research_studies: List[ResearchStudyModel] = Field(default_factory=list)
     
-    # Variants - exactly 3 required
-    variants: List[ActionVariantModel]
+    # Variants - OPTIONAL with auto-generation (LLM often omits these)
+    variants: Optional[List[ActionVariantModel]] = Field(default=None)
     
     # Category-specific fields - ALL required, use [] for non-matching categories
     # Food fields
@@ -1407,10 +1407,42 @@ Return ONLY a valid JSON object matching the ActionPlanResponseModel schema.
         # Parse JSON first
         parsed_json = json.loads(content)
         
-        # FIX: Handle common LLM error where it returns {"recommendations": [...]} instead of {"actions": [...]}
+        # FIX 1: Handle common LLM error where it returns {"recommendations": [...]} instead of {"actions": [...]}
         if "actions" not in parsed_json and "recommendations" in parsed_json:
             logger.warning("⚠️ LLM returned 'recommendations' key instead of 'actions'. Fixing structure...")
             parsed_json["actions"] = parsed_json.pop("recommendations")
+        
+        # FIX 2: Auto-generate variants if missing (LLM often omits these)
+        # CRITICAL: This must run BEFORE Pydantic validation
+        if "actions" in parsed_json:
+            for action in parsed_json["actions"]:
+                # Check if variants is missing, None, or empty
+                if "variants" not in action or action.get("variants") is None or not action.get("variants"):
+                    # Generate default variants based on category
+                    title = action.get("title", "Action")
+                    category = action.get("category", "food")
+                    
+                    logger.warning(f"   🔧 Auto-generating variants for '{title}' (category: {category})")
+                    
+                    if category == "food":
+                        action["variants"] = [
+                            {"variant_type": "Easy", "title": f"Quick {title}", "description": f"A simpler way to enjoy {title}", "image_prompt": f"Quick easy {title} food photography"},
+                            {"variant_type": "Healthy", "title": f"Nutrient-rich {title}", "description": f"A healthier preparation of {title}", "image_prompt": f"Healthy {title} food photography"},
+                            {"variant_type": "Tasty", "title": f"Flavorful {title}", "description": f"A delicious version of {title}", "image_prompt": f"Delicious {title} food photography"}
+                        ]
+                    elif category == "movement":
+                        action["variants"] = [
+                            {"variant_type": "Gentle", "title": f"Gentle {title}", "description": f"A lower intensity version", "image_prompt": f"Gentle {title} exercise photography"},
+                            {"variant_type": "Quick", "title": f"Quick {title}", "description": f"A shorter duration option", "image_prompt": f"Quick {title} exercise photography"},
+                            {"variant_type": "Energizing", "title": f"Energizing {title}", "description": f"A more invigorating version", "image_prompt": f"Energizing {title} exercise photography"}
+                        ]
+                    else:  # mindfulness
+                        action["variants"] = [
+                            {"variant_type": "Quick", "title": f"Quick {title}", "description": f"A shorter practice", "image_prompt": f"Quick {title} mindfulness photography"},
+                            {"variant_type": "Deep", "title": f"Deep {title}", "description": f"A more immersive practice", "image_prompt": f"Deep {title} mindfulness photography"},
+                            {"variant_type": "Guided", "title": f"Guided {title}", "description": f"With audio guidance", "image_prompt": f"Guided {title} mindfulness photography"}
+                        ]
+                    logger.info(f"   ✅ Generated 3 variants for '{title}'")
         
         # Validate with Pydantic
         validated_response = ActionPlanResponseModel.model_validate(parsed_json)
