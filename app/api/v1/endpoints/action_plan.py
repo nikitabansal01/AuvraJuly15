@@ -13,6 +13,7 @@ Endpoints:
 """
 
 import logging
+import time
 from datetime import date, datetime, timezone
 from typing import Optional, List
 
@@ -59,7 +60,11 @@ async def get_today_assignments(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
     format: str = Query("legacy", description="Response format: 'legacy' or 'new'"),
-    timezone: Optional[str] = Query(None, description="User's current local timezone (IANA format)")
+    timezone: Optional[str] = Query(None, description="User's current local timezone (IANA format)"),
+    image_mode: str = Query(
+        "auto",
+        description="Image generation mode: auto (default), full, hero_only, none",
+    ),
 ):
     """
     Get today's action plan (or generate if doesn't exist).
@@ -74,6 +79,7 @@ async def get_today_assignments(
         Legacy format (default): Compatible with existing mobile app
         New format: Full action plan with all features
     """
+    t0 = time.perf_counter()
     try:
         uid = current_user.get("uid")
         if not uid:
@@ -91,6 +97,8 @@ async def get_today_assignments(
                 db.commit()
         
         user_timezone = timezone or (user_profile.current_timezone if user_profile else "Asia/Seoul")
+
+        t_profile_ms = int((time.perf_counter() - t0) * 1000)
         
         # CRITICAL: Check for pending daily review BEFORE generating new plan
         # User must complete review of their LAST plan before getting today's plan
@@ -99,6 +107,21 @@ async def get_today_assignments(
         from app.utils.timezone_utils import get_user_current_date
         
         today_date = get_user_current_date(uid, db)
+
+        # Timing metadata (new vs repeat user, and whether a plan already existed)
+        plan_exists_for_today = (
+            db.query(ActionPlan.id)
+            .filter(and_(ActionPlan.uid == uid, ActionPlan.plan_date == today_date))
+            .first()
+            is not None
+        )
+        has_any_plan_ever = (
+            db.query(ActionPlan.id)
+            .filter(ActionPlan.uid == uid)
+            .first()
+            is not None
+        )
+        is_first_plan_for_user = not has_any_plan_ever
         
         # Find the LAST plan that hasn't been reviewed (regardless of how old)
         pending_review = db.query(ActionPlan).filter(
@@ -111,24 +134,51 @@ async def get_today_assignments(
         
         if pending_review:
             logger.info(f"Blocking plan generation for {uid} due to pending review for {pending_review.plan_date}")
+            logger.info(
+                "[TIMING] action_plan_today uid=%s blocked=pending_review total_ms=%s pending_review_date=%s",
+                uid,
+                int((time.perf_counter() - t0) * 1000),
+                pending_review.plan_date,
+            )
             # Return 428 Precondition Required to indicate review is needed
             raise HTTPException(
                 status_code=428, 
                 detail=f"Daily review pending for {pending_review.plan_date}. Please complete review first."
             )
+
+        t_review_ms = int((time.perf_counter() - t0) * 1000)
         
         # Get async session for generator
         async_db = await get_async_db_session()
-        
+
+        # Decide image generation mode.
+        # On signup/first-ever plan, full image generation can add ~30-60s due to external image APIs.
+        # Default behavior: hero_only for first plan to reduce time-to-first-plan.
+        effective_image_mode = image_mode
+        if effective_image_mode == "auto":
+            effective_image_mode = "hero_only" if is_first_plan_for_user else "full"
+
+        if effective_image_mode not in {"full", "hero_only", "none"}:
+            raise HTTPException(status_code=400, detail="Invalid image_mode. Use auto, full, hero_only, or none.")
+
+        # Skip quality check for first-time users (signup flow) to reduce latency by ~10-15s
+        skip_quality_check = is_first_plan_for_user
+
         # Get or generate action plan
         generator = get_action_plan_generator()
-        result = await generator.get_or_generate_today_plan(
-            user_id=uid,
-            user_timezone=user_timezone,
-            db=async_db
-        )
-        
-        await async_db.close()
+        t_gen_start = time.perf_counter()
+        try:
+            result = await generator.get_or_generate_today_plan(
+                user_id=uid,
+                user_timezone=user_timezone,
+                db=async_db,
+                image_mode=effective_image_mode,
+                skip_quality_check=skip_quality_check,
+            )
+        finally:
+            await async_db.close()
+
+        t_generator_ms = int((time.perf_counter() - t_gen_start) * 1000)
         
         if not result.get("success"):
             raise HTTPException(
@@ -146,12 +196,41 @@ async def get_today_assignments(
             weekly_checkin_status = checkin_service.get_checkin_status(uid)
         except Exception as e:
             logger.warning(f"Failed to get weekly check-in status: {e}")
+
+        timings_ms = {
+            "server_total_ms": int((time.perf_counter() - t0) * 1000),
+            "server_profile_ms": t_profile_ms,
+            "server_review_check_ms": max(0, t_review_ms - t_profile_ms),
+            "server_generator_call_ms": t_generator_ms,
+            "plan_generation_time_ms": result.get("generation_time_ms"),
+            "plan_existed_before_call": plan_exists_for_today,
+            "is_first_plan_for_user": is_first_plan_for_user,
+            "plan_source": result.get("plan_source"),
+        }
+
+        logger.info(
+            "[TIMING] action_plan_today uid=%s date=%s total_ms=%s generator_ms=%s plan_existed=%s first_plan=%s plan_generation_time_ms=%s",
+            uid,
+            result.get("plan_date"),
+            timings_ms.get("server_total_ms"),
+            timings_ms.get("server_generator_call_ms"),
+            timings_ms.get("plan_existed_before_call"),
+            timings_ms.get("is_first_plan_for_user"),
+            timings_ms.get("plan_generation_time_ms"),
+        )
         
         # Return in requested format
         if format == "legacy":
-            return _convert_to_legacy_format(result, weekly_checkin_status)
+            legacy = _convert_to_legacy_format(result, weekly_checkin_status)
+            legacy["timings_ms"] = timings_ms
+            # Keep a top-level convenience field for quick inspection (backwards compatible)
+            legacy["plan_generation_time_ms"] = result.get("generation_time_ms")
+            legacy["plan_source"] = result.get("plan_source")
+            return legacy
         else:
             result["weekly_checkin"] = weekly_checkin_status
+            result["timings_ms"] = timings_ms
+            result["plan_source"] = result.get("plan_source")
             return result
         
     except HTTPException:

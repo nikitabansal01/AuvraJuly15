@@ -13,9 +13,10 @@ import asyncio
 import hashlib
 import logging
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -109,20 +110,27 @@ class PubMedService:
     Multi-API research citation service with intelligent fallback.
     
     Priority order:
-    1. Cache lookup (instant)
-    2. PubMed (primary - biomedical focus)
-    3. OpenAlex (secondary - broad coverage)
-    4. Semantic Scholar (tertiary - AI-powered relevance)
+    1. In-memory cache (instant - for common hormone+condition combos)
+    2. Database cache lookup (fast)
+    3. PubMed (primary - biomedical focus)
+    4. OpenAlex (secondary - broad coverage)
+    5. Semantic Scholar (tertiary - AI-powered relevance)
     """
     
-    # Class-level semaphore for rate limiting (Fix #1)
-    _api_semaphore = asyncio.Semaphore(1)  # Serialize API calls to prevent 429
-    _MAX_RETRIES = 3
-    _RETRY_DELAYS = [1.0, 2.0, 4.0]  # Exponential backoff delays
+    # Class-level semaphore for rate limiting - allow 4 concurrent to match our queries
+    _api_semaphore = asyncio.Semaphore(4)  # Allow 4 concurrent API calls for parallel research
+    _MAX_RETRIES = 2  # Reduced from 3 for faster failure
+    _RETRY_DELAYS = [0.5, 1.0]  # Shorter delays
+    
+    # IN-MEMORY CACHE: Research rarely changes, cache common queries for instant results
+    # Key: cache_key, Value: (paper_dict, timestamp)
+    # TTL: 24 hours (research papers don't change)
+    _memory_cache: Dict[str, Tuple[Dict, float]] = {}
+    _CACHE_TTL = 86400  # 24 hours in seconds
     
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=15.0)
-        self._rate_limit_delay = 0.5  # Increased from 0.35 to 0.5 seconds
+        self.client = httpx.AsyncClient(timeout=10.0)  # Reduced from 15s
+        self._rate_limit_delay = 0.2  # Reduced from 0.5 seconds
     
     async def find_citation(
         self,
@@ -155,17 +163,31 @@ class PubMedService:
         
         logger.info(f"🔍 Finding citation for '{action_title}': {query[:60]}...")
         
-        # Step 1: Check cache
+        # Step 0: Check IN-MEMORY cache first (instant - no DB/API calls)
+        if cache_key in self._memory_cache:
+            cached_paper, cached_time = self._memory_cache[cache_key]
+            if time.time() - cached_time < self._CACHE_TTL:
+                logger.info(f"⚡ Memory cache hit for '{action_title}' (instant)")
+                return cached_paper
+            else:
+                # Cache expired, remove it
+                del self._memory_cache[cache_key]
+        
+        # Step 1: Check DB cache
         if db:
             cached = await self._get_cached_citation(cache_key, db)
             if cached:
-                logger.info(f"✅ Cache hit for '{action_title}'")
+                logger.info(f"✅ DB cache hit for '{action_title}'")
+                # Store in memory cache for future instant access
+                self._memory_cache[cache_key] = (cached, time.time())
                 return cached
         
         # Step 2: Try PubMed (primary - best for biomedical)
         paper = await self._search_pubmed(query)
         if paper:
             logger.info(f"✅ PubMed found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid')})")
+            # Cache in both memory and DB
+            self._memory_cache[cache_key] = (paper, time.time())
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper
@@ -175,6 +197,7 @@ class PubMedService:
         paper = await self._search_openalex(query)
         if paper:
             logger.info(f"✅ OpenAlex found: {paper.get('title', '')[:50]}...")
+            self._memory_cache[cache_key] = (paper, time.time())
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper
@@ -184,6 +207,7 @@ class PubMedService:
         paper = await self._search_semantic_scholar(query)
         if paper:
             logger.info(f"✅ Semantic Scholar found: {paper.get('title', '')[:50]}...")
+            self._memory_cache[cache_key] = (paper, time.time())
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper
@@ -195,6 +219,7 @@ class PubMedService:
         paper = await self._search_pubmed(simple_query)
         if paper:
             logger.info(f"✅ PubMed (simplified) found: {paper.get('title', '')[:50]}...")
+            self._memory_cache[cache_key] = (paper, time.time())
             if db:
                 await self._cache_citation(cache_key, paper, db)
             return paper

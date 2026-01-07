@@ -927,8 +927,8 @@ class ActionPlanGenerator:
             expire_on_commit=False
         )
         
-        # Semaphore to limit concurrent DB writes/ops to 5 at a time
-        self.db_semaphore = asyncio.Semaphore(5)
+        # Semaphore to limit concurrent DB writes/ops to 16 at a time (allows all images in parallel)
+        self.db_semaphore = asyncio.Semaphore(16)
         
         logger.info(f"ActionPlanGenerator initialized with shared engine")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
@@ -937,7 +937,9 @@ class ActionPlanGenerator:
         self,
         user_id: str,
         user_timezone: str,
-        db: AsyncSession
+        db: AsyncSession,
+        image_mode: Literal["full", "hero_only", "none"] = "full",
+        skip_quality_check: bool = False,
     ) -> Dict[str, Any]:
         """
         Get today's action plan or generate a new one.
@@ -946,6 +948,9 @@ class ActionPlanGenerator:
         
         NEW: If yesterday was frozen and had incomplete items, those items
         carry forward to today's plan instead of generating new ones.
+        
+        Args:
+            skip_quality_check: If True, skip model quality evaluation (faster for first-time users)
         """
         from app.core.database import ActionPlan
         from datetime import timedelta
@@ -959,7 +964,10 @@ class ActionPlanGenerator:
         # If plan already exists for today, return it (never replace)
         if existing_plan:
             logger.info(f"Found existing plan for user {user_id} on {today}")
-            return await self._format_plan_response(existing_plan, db)
+            resp = await self._format_plan_response(existing_plan, db)
+            if isinstance(resp, dict) and resp.get("success"):
+                resp["plan_source"] = "existing_today"
+            return resp
         
         # No plan for today - check if we should carryforward from frozen day
         # This only runs when generating a NEW plan for today
@@ -969,18 +977,31 @@ class ActionPlanGenerator:
         
         if carryforward_result and carryforward_result.get("success"):
             logger.info(f"Carried forward incomplete items from frozen day for {user_id}")
+            carryforward_result["plan_source"] = "carryforward"
             return carryforward_result
         
         # Generate new plan
         logger.info(f"Generating new plan for user {user_id} on {today}")
-        return await self.generate_new_plan(user_id, today, user_timezone, db)
+        gen_result = await self.generate_new_plan(
+            user_id=user_id,
+            plan_date=today,
+            user_timezone=user_timezone,
+            db=db,
+            image_mode=image_mode,
+            skip_quality_check=skip_quality_check,
+        )
+        if isinstance(gen_result, dict) and gen_result.get("success"):
+            gen_result.setdefault("plan_source", "generated_new")
+        return gen_result
     
     async def generate_new_plan(
         self,
         user_id: str,
         plan_date: date,
         user_timezone: str,
-        db: AsyncSession
+        db: AsyncSession,
+        image_mode: Literal["full", "hero_only", "none"] = "full",
+        skip_quality_check: bool = False,  # Deprecated: quality check now runs async at end
     ) -> Dict[str, Any]:
         """
         Generate a completely new action plan.
@@ -992,9 +1013,13 @@ class ActionPlanGenerator:
         2. Check for existing plan (double-check after lock)
         3. Load user context
         4. Generate actions via GPT
-        5. Generate images for each action
+        5. Generate images for each action (parallel)
         6. Store in database
-        7. Release lock
+        7. Return to user immediately
+        8. Quality evaluation runs async in background (non-blocking)
+        
+        Note: skip_quality_check is deprecated - quality check now always runs
+        asynchronously after plan delivery, so it never blocks the user.
         """
         logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
         logger.info(f"[GENERATE] 🚀 STARTING NEW PLAN GENERATION for user: {user_id}, date: {plan_date}")
@@ -1018,11 +1043,11 @@ class ActionPlanGenerator:
             
             if not got_lock:
                 # Another request is already generating - wait and poll for result
-                # Generation can take 30-60+ seconds due to image generation
+                # OPTIMIZED: Reduced wait times since we're faster now (~15s total instead of 45s)
                 logger.info(f"[GENERATE] 🔒 Another request is generating plan for {user_id}, polling for result...")
                 
-                # Poll for existing plan with exponential backoff (3s, 6s, 12s, 24s = ~45s total)
-                wait_times = [3, 6, 12, 24]
+                # Poll for existing plan with shorter backoff (2s, 4s, 9s = ~15s total)
+                wait_times = [2, 4, 9]
                 for wait_time in wait_times:
                     await asyncio.sleep(wait_time)
                     
@@ -1030,7 +1055,10 @@ class ActionPlanGenerator:
                     existing_plan = await self._get_existing_plan(user_id, plan_date, db)
                     if existing_plan:
                         logger.info(f"[GENERATE] ✅ Found plan created by concurrent request after {wait_time}s wait")
-                        return await self._format_plan_response(existing_plan, db)
+                        resp = await self._format_plan_response(existing_plan, db)
+                        if isinstance(resp, dict) and resp.get("success"):
+                            resp["plan_source"] = "concurrent_wait_existing"
+                        return resp
                     
                     logger.info(f"[GENERATE] 🔒 Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
                 
@@ -1046,7 +1074,10 @@ class ActionPlanGenerator:
             existing_plan = await self._get_existing_plan(user_id, plan_date, db)
             if existing_plan:
                 logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
-                return await self._format_plan_response(existing_plan, db)
+                resp = await self._format_plan_response(existing_plan, db)
+                if isinstance(resp, dict) and resp.get("success"):
+                    resp["plan_source"] = "existing_after_lock"
+                return resp
             
             logger.info(f"[GENERATE] 🔓 Lock acquired, proceeding with plan generation")
             
@@ -1083,27 +1114,22 @@ class ActionPlanGenerator:
                     logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} actions validated by Pydantic")
                     
                     # ---------------------------------------------------------
-                    # QUALITY CHECK & MODEL SWITCHING
+                    # FAST QUALITY CHECK & MODEL SWITCHING
+                    # Only checks condition_appropriateness (safety-critical)
+                    # Full evaluation runs async after plan delivery
                     # ---------------------------------------------------------
                     try:
-                        # Get recent feedback for context (needed for scoring)
-                        feedback_history = await evaluator._get_recent_feedback(user_id, db)
-                        
-                        # Calculate scores without saving to DB yet
-                        scores, eval_cost, _ = await evaluator.calculate_scores(
-                            attempt_actions, user_context, feedback_history
+                        # Fast check: only evaluate condition safety (not full 5 metrics)
+                        condition_score = await self._fast_condition_check(
+                            attempt_actions, user_context
                         )
-                        gpt_cost += eval_cost
                         
-                        condition_score = scores.get("condition_appropriateness")
-                        personalization_score = scores.get("personalization_score")
-                        
-                        # If medical accuracy/appropriateness is low, switch to fallback model
+                        # If medical safety is low, switch to fallback model
                         if condition_score is not None and condition_score < 70:
                             model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
                             logger.warning(f"⚠️ {model_switch_reason}. Switching to fallback model for better quality.")
                             
-                            # Use openai/gpt-oss-120b - high quality reasoning model
+                            # Use Groq fallback model for better medical accuracy
                             fallback_model = GROQ_FALLBACK_MODEL
                             
                             try:
@@ -1117,16 +1143,16 @@ class ActionPlanGenerator:
                                     attempt_actions = fallback_actions
                                     used_model = fallback_model
                                 else:
-                                    logger.error("❌ Fallback generation failed (returned None). Using original OpenAI results.")
+                                    logger.error("❌ Fallback generation failed. Using original OpenAI results.")
                                     model_switch_reason += " | Fallback returned None, using original"
                             except Exception as fallback_err:
                                 logger.error(f"❌ Fallback API error: {fallback_err}. Using original OpenAI results.")
                                 model_switch_reason += f" | Fallback error: {str(fallback_err)[:100]}"
                         else:
-                            logger.info(f"✅ Quality check passed (Condition: {condition_score}, Personalization: {personalization_score})")
+                            logger.info(f"✅ Fast quality check passed (Condition: {condition_score})")
                             
                     except Exception as e:
-                        logger.error(f"⚠️ Quality check failed: {e}. Proceeding with OpenAI results.")
+                        logger.warning(f"⚠️ Fast quality check failed: {e}. Proceeding with OpenAI results.")
                         model_switch_reason = f"Quality check error: {str(e)[:100]}"
                     
                     actions = attempt_actions
@@ -1134,11 +1160,10 @@ class ActionPlanGenerator:
                 else:
                     logger.warning(f"❌ Attempt {attempt}: Generation or validation failed")
                     if attempt < self.MAX_RETRIES:
-                        # Exponential backoff with jitter: 2^attempt + random(0-1)
-                        # Attempt 1: ~2-3s
-                        # Attempt 2: ~4-5s
-                        # Attempt 3: ~8-9s
-                        delay = (2 ** attempt) + random.uniform(0, 1)
+                        # OPTIMIZED: Shorter delays (1-3s) instead of exponential (2-9s)
+                        # Attempt 1: ~1-2s
+                        # Attempt 2: ~2-3s
+                        delay = attempt + random.uniform(0, 1)
                         logger.info(f"🔄 Retrying generation in {delay:.2f}s...")
                         await asyncio.sleep(delay)
                     else:
@@ -1160,13 +1185,25 @@ class ActionPlanGenerator:
                 logger.info(f"[GENERATE]     Conditions: {action['conditions']}")
             logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
             
-            # Step 3: Generate images for all actions (16 total: 4 actions × 4 images)
-            logger.info(f"[GENERATE] Step 3: Generating images for {len(actions)} actions...")
-            actions_with_images, image_cost = await self._generate_all_images(
-                actions, user_id, db
-            )
-            total_cost += image_cost
-            logger.info(f"[GENERATE] ✅ Images generated. Cost: ${image_cost:.4f}")
+            # Step 3: Generate images
+            # - full: hero + 3 variants per action (16 total)
+            # - hero_only: only 1 hero image per action (4 total)
+            # - none: skip image generation entirely
+            if image_mode == "none":
+                logger.info("[GENERATE] Step 3: Skipping image generation (image_mode=none)")
+                actions_with_images, image_cost = actions, 0.0
+            else:
+                logger.info(
+                    f"[GENERATE] Step 3: Generating images for {len(actions)} actions (image_mode={image_mode})..."
+                )
+                actions_with_images, image_cost = await self._generate_all_images(
+                    actions=actions,
+                    user_id=user_id,
+                    db=db,
+                    image_mode=image_mode,
+                )
+                total_cost += image_cost
+                logger.info(f"[GENERATE] ✅ Images generated. Cost: ${image_cost:.4f}")
             
             # Step 4: Store plan in database
             logger.info(f"[GENERATE] Step 4: Storing plan in database...")
@@ -1326,14 +1363,20 @@ class ActionPlanGenerator:
                 await asyncio.sleep(0.5)
                 existing = await self._get_existing_plan(user_id, today, db)
                 if existing:
-                    return await self._format_plan_response(existing, db)
+                    resp = await self._format_plan_response(existing, db)
+                    if isinstance(resp, dict) and resp.get("success"):
+                        resp["plan_source"] = "carryforward_concurrent_existing"
+                    return resp
                 return None
             
             # Double-check: plan might have been created while we waited for lock
             existing_plan = await self._get_existing_plan(user_id, today, db)
             if existing_plan:
                 logger.info(f"🧊 CARRYFORWARD: Plan already exists after acquiring lock, returning existing")
-                return await self._format_plan_response(existing_plan, db)
+                resp = await self._format_plan_response(existing_plan, db)
+                if isinstance(resp, dict) and resp.get("success"):
+                    resp["plan_source"] = "carryforward_existing_after_lock"
+                return resp
             
             logger.info(f"🧊 CARRYFORWARD CHECK: user={user_id}, today={today}")
             
@@ -1590,7 +1633,10 @@ class ActionPlanGenerator:
             logger.info(f"Created carryforward plan {new_plan.id} with {num_incomplete} carried + {num_to_generate} new items")
             
             # Return formatted response
-            return await self._format_plan_response(new_plan, db)
+            resp = await self._format_plan_response(new_plan, db)
+            if isinstance(resp, dict) and resp.get("success"):
+                resp["plan_source"] = "carryforward"
+            return resp
             
         except Exception as e:
             error_str = str(e)
@@ -1604,7 +1650,10 @@ class ActionPlanGenerator:
                     # Fetch the existing plan that was created by the other request
                     existing = await self._get_existing_plan(user_id, today, db)
                     if existing:
-                        return await self._format_plan_response(existing, db)
+                        resp = await self._format_plan_response(existing, db)
+                        if isinstance(resp, dict) and resp.get("success"):
+                            resp["plan_source"] = "carryforward_race_existing"
+                        return resp
                 except Exception as fetch_err:
                     logger.error(f"Failed to fetch existing plan after race condition: {fetch_err}")
             
@@ -1828,7 +1877,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         user_id: str,
         db: AsyncSession
     ) -> Optional[Dict[str, Any]]:
-        """Load all user context needed for action generation."""
+        """Load all user context needed for action generation.
+
+        NOTE: SQLAlchemy AsyncSession does not allow concurrent use; keep DB I/O
+        sequential on this session. We still optimize the slowest piece
+        (anti-repetition) by using a single JOIN query instead of an N+1 loop.
+        """
         from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread
         
         logger.info(f"[CONTEXT] ══════════════════════════════════════════════════════════════════════════")
@@ -1836,7 +1890,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         logger.info(f"[CONTEXT] ══════════════════════════════════════════════════════════════════════════")
         
         try:
-            # Get user profile
+            # STEP 1: Get user profile FIRST (required to continue)
             profile_result = await db.execute(
                 select(UserProfile).where(UserProfile.uid == user_id)
             )
@@ -1847,115 +1901,111 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 return None
             logger.info(f"[CONTEXT] Found UserProfile for user {user_id}")
             
+            fourteen_days_ago = date.today() - timedelta(days=14)
+
             # Get user responses (assessment data)
             response_result = await db.execute(
-                select(UserResponse).where(UserResponse.uid == user_id).order_by(
-                    UserResponse.created_at.desc()
-                ).limit(1)
+                select(UserResponse)
+                .where(UserResponse.uid == user_id)
+                .order_by(UserResponse.created_at.desc())
+                .limit(1)
             )
             user_response = response_result.scalar_one_or_none()
-            logger.info(f"[CONTEXT] UserResponse found: {user_response is not None}")
 
             # Get streak data
             streak_result = await db.execute(
                 select(UserStreakData).where(UserStreakData.uid == user_id)
             )
             streak_data = streak_result.scalar_one_or_none()
-            current_streak = streak_data.current_streak if streak_data else 0
-            longest_streak = streak_data.longest_streak if streak_data else 0
-            logger.info(f"[CONTEXT] Streak data: current={current_streak}, longest={longest_streak}")
-            
+
             # Get recent weekly check-ins
-            logger.info(f"[CONTEXT] Fetching weekly check-ins for user {user_id}")
             checkin_result = await db.execute(
-                select(WeeklyCheckIn).where(
+                select(WeeklyCheckIn)
+                .where(
                     WeeklyCheckIn.uid == user_id,
-                    WeeklyCheckIn.is_complete == True
-                ).order_by(WeeklyCheckIn.completed_at.desc()).limit(4)
+                    WeeklyCheckIn.is_complete == True,
+                )
+                .order_by(WeeklyCheckIn.completed_at.desc())
+                .limit(4)
             )
             recent_checkins = checkin_result.scalars().all()
-            logger.info(f"[CONTEXT] Found {len(recent_checkins)} completed weekly check-ins")
-            weekly_checkin_insights = self._format_weekly_checkin_insights(recent_checkins)
-            logger.debug(f"[CONTEXT] Weekly checkin insights: {weekly_checkin_insights[:200]}..." if weekly_checkin_insights else "[CONTEXT] No weekly checkin insights")
-            
+
             # Get recent daily reviews
-            logger.info(f"[CONTEXT] Fetching daily reviews for user {user_id}")
             review_result = await db.execute(
-                select(ActionPlanDailyReview).where(
-                    ActionPlanDailyReview.uid == user_id
-                ).order_by(ActionPlanDailyReview.review_date.desc()).limit(7)
+                select(ActionPlanDailyReview)
+                .where(ActionPlanDailyReview.uid == user_id)
+                .order_by(ActionPlanDailyReview.review_date.desc())
+                .limit(7)
             )
             recent_reviews = review_result.scalars().all()
-            logger.info(f"[CONTEXT] Found {len(recent_reviews)} daily reviews")
-            daily_review_insights = self._format_daily_reviews(recent_reviews)
-            logger.debug(f"[CONTEXT] Daily review insights: {daily_review_insights[:200]}..." if daily_review_insights else "[CONTEXT] No daily review insights")
 
             # Get recent care plan check-ins (daily threads)
-            logger.info(f"[CONTEXT] Fetching care plan check-ins for user {user_id}")
             care_plan_result = await db.execute(
-                select(CarePlanCheckInThread).where(
-                    CarePlanCheckInThread.uid == user_id
-                ).order_by(CarePlanCheckInThread.local_date.desc(), CarePlanCheckInThread.updated_at.desc()).limit(7)
+                select(CarePlanCheckInThread)
+                .where(CarePlanCheckInThread.uid == user_id)
+                .order_by(CarePlanCheckInThread.local_date.desc(), CarePlanCheckInThread.updated_at.desc())
+                .limit(7)
             )
             recent_care_plan_threads = care_plan_result.scalars().all()
-            logger.info(f"[CONTEXT] Found {len(recent_care_plan_threads)} care plan check-in threads")
-            care_plan_checkin_insights = self._format_care_plan_checkin_insights(recent_care_plan_threads)
-            logger.debug(
-                f"[CONTEXT] Care plan checkin insights: {care_plan_checkin_insights[:200]}..."
-                if care_plan_checkin_insights
-                else "[CONTEXT] No care plan checkin insights"
-            )
 
             # Get recent symptom check-ins
-            logger.info(f"[CONTEXT] Fetching symptom check-ins for user {user_id}")
             symptom_checkin_result = await db.execute(
-                select(SymptomCheckInThread).where(
-                    SymptomCheckInThread.uid == user_id
-                ).order_by(SymptomCheckInThread.local_date.desc(), SymptomCheckInThread.updated_at.desc()).limit(7)
+                select(SymptomCheckInThread)
+                .where(SymptomCheckInThread.uid == user_id)
+                .order_by(SymptomCheckInThread.local_date.desc(), SymptomCheckInThread.updated_at.desc())
+                .limit(7)
             )
             recent_symptom_threads = symptom_checkin_result.scalars().all()
-            logger.info(f"[CONTEXT] Found {len(recent_symptom_threads)} symptom check-in threads")
-            symptom_checkin_insights = self._format_symptom_checkin_insights(recent_symptom_threads)
-            logger.debug(
-                f"[CONTEXT] Symptom checkin insights: {symptom_checkin_insights[:200]}..."
-                if symptom_checkin_insights
-                else "[CONTEXT] No symptom checkin insights"
-            )
-            
-            # ═══════════════════════════════════════════════════════════════════
-            # GET RECENTLY RECOMMENDED ITEMS (last 14 days) TO AVOID REPETITION
-            # ═══════════════════════════════════════════════════════════════════
-            logger.info(f"[ANTI-REPETITION] Starting recently recommended fetch for user {user_id}")
-            fourteen_days_ago = date.today() - timedelta(days=14)
-            logger.debug(f"[ANTI-REPETITION] Looking back from {fourteen_days_ago} to {date.today()}")
-            
-            recent_plans_result = await db.execute(
-                select(ActionPlan).where(
+
+            # Anti-repetition (FIXED N+1): Fetch plan items with a single JOIN query
+            recent_plan_items_result = await db.execute(
+                select(ActionPlanItem.title)
+                .join(ActionPlan, ActionPlanItem.plan_id == ActionPlan.id)
+                .where(
                     and_(
                         ActionPlan.uid == user_id,
-                        ActionPlan.plan_date >= fourteen_days_ago
+                        ActionPlan.plan_date >= fourteen_days_ago,
                     )
-                ).order_by(ActionPlan.plan_date.desc())
-            )
-            recent_plans = recent_plans_result.scalars().all()
-            logger.info(f"[ANTI-REPETITION] Found {len(recent_plans)} action plans in last 14 days")
-            
-            recently_recommended = []
-            for plan in recent_plans:
-                items_result = await db.execute(
-                    select(ActionPlanItem).where(ActionPlanItem.plan_id == plan.id)
                 )
-                items = items_result.scalars().all()
-                logger.debug(f"[ANTI-REPETITION] Plan {plan.id} (date: {plan.plan_date}) has {len(items)} items")
-                for item in items:
-                    if item.title and item.title not in recently_recommended:
-                        recently_recommended.append(item.title)
-                        logger.debug(f"[ANTI-REPETITION] Added to blacklist: '{item.title}'")
+                .order_by(ActionPlan.plan_date.desc())
+            )
+            titles = [t for (t,) in recent_plan_items_result.all() if t]
+            seen_titles = set()
+            recently_recommended = []
+            for t in titles:
+                if t not in seen_titles:
+                    seen_titles.add(t)
+                    recently_recommended.append(t)
+
+            # Get recent feedback for memory (last 30 days)
+            feedback_result = await db.execute(
+                select(ActionPlanFeedback)
+                .where(ActionPlanFeedback.uid == user_id)
+                .order_by(ActionPlanFeedback.created_at.desc())
+                .limit(50)
+            )
+            recent_feedback = feedback_result.scalars().all()
+            
+            # Extract streak info
+            current_streak = streak_data.current_streak if streak_data else 0
+            longest_streak = streak_data.longest_streak if streak_data else 0
+            
+            logger.info(f"[CONTEXT] UserResponse found: {user_response is not None}")
+            logger.info(f"[CONTEXT] Streak data: current={current_streak}, longest={longest_streak}")
+            logger.info(f"[CONTEXT] Found {len(recent_checkins)} weekly check-ins")
+            logger.info(f"[CONTEXT] Found {len(recent_reviews)} daily reviews")
+            logger.info(f"[CONTEXT] Found {len(recent_care_plan_threads)} care plan threads")
+            logger.info(f"[CONTEXT] Found {len(recent_symptom_threads)} symptom threads")
+            logger.info(f"[ANTI-REPETITION] Found {len(recently_recommended)} items to avoid")
+            
+            # Format insights
+            weekly_checkin_insights = self._format_weekly_checkin_insights(recent_checkins)
+            daily_review_insights = self._format_daily_reviews(recent_reviews)
+            care_plan_checkin_insights = self._format_care_plan_checkin_insights(recent_care_plan_threads)
+            symptom_checkin_insights = self._format_symptom_checkin_insights(recent_symptom_threads)
             
             # Format as string for prompt
             recently_recommended_str = ", ".join(recently_recommended[:30]) if recently_recommended else "None (this is the user's first plan)"
-            logger.info(f"[ANTI-REPETITION] Total unique items to avoid: {len(recently_recommended)}")
-            logger.info(f"[ANTI-REPETITION] Blacklist preview (first 10): {recently_recommended[:10]}")
             
             # Load base context with defaults
             context = {
@@ -2000,14 +2050,6 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 if profile.lifestyle_focus:
                     context["lifestyle_focus"] = profile.lifestyle_focus
                 return context
-            
-            # Get recent feedback for memory (last 30 days)
-            feedback_result = await db.execute(
-                select(ActionPlanFeedback).where(
-                    ActionPlanFeedback.uid == user_id
-                ).order_by(ActionPlanFeedback.created_at.desc()).limit(50)
-            )
-            recent_feedback = feedback_result.scalars().all()
             
             # Calculate cycle day and phase
             cycle_day, cycle_phase = self._calculate_cycle_info(
@@ -3513,11 +3555,141 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
         
         return actions
     
+    async def _fast_condition_check(
+        self,
+        actions: List[Dict],
+        user_context: Dict[str, Any]
+    ) -> Optional[int]:
+        """
+        Fast quality evaluation - ALL 5 factors with compact prompt.
+        
+        Evaluates:
+        1. personalization_score - Actions tailored to user conditions
+        2. condition_appropriateness - Safe for diagnosed conditions  
+        3. feedback_alignment_score - Respects prior likes/dislikes
+        4. preference_compliance_score - Respects diet, allergies, cuisine
+        5. evidence_quality - Research citations support claims
+        
+        Returns condition_appropriateness score (0-100) for model switching decision.
+        Uses average of all scores as quality indicator.
+        
+        Target: ~5-8s (vs ~15s for full detailed evaluation)
+        """
+        if not self.openai_api_key:
+            return None
+        
+        # Build compact action summary
+        actions_summary = []
+        for action in actions:
+            actions_summary.append({
+                "title": action.get("title", ""),
+                "category": action.get("category", ""),
+                "specific_action": action.get("specific_action", "")[:150],
+                "food_items": action.get("food_items", [])[:5],
+                "exercise_types": action.get("exercise_types", [])[:3],
+                "research": [s.get("finding", "")[:80] for s in action.get("research_studies", [])[:2]]
+            })
+        
+        # Extract user context for evaluation
+        diagnosed_conditions = user_context.get("diagnosed_conditions", [])
+        diet_preference = user_context.get("diet_preference", "none")
+        food_allergies = user_context.get("food_allergies", [])
+        cuisine_preferences = user_context.get("cuisine_preferences", [])
+        top_concern = user_context.get("top_concern", "")
+        period_concerns = user_context.get("period_concerns", [])
+        feedback_summary = user_context.get("feedback_summary", "")
+        
+        # Build compact prompt with ALL 5 factors
+        prompt = f"""Rate this health plan quality (0-100 each):
+
+USER:
+- Conditions: {', '.join(diagnosed_conditions) if diagnosed_conditions else 'None'}
+- Diet: {diet_preference}
+- Allergies: {', '.join(food_allergies) if food_allergies else 'None'}
+- Cuisines: {', '.join(cuisine_preferences[:3]) if cuisine_preferences else 'Any'}
+- Top Concern: {top_concern or 'General wellness'}
+- Period Concerns: {', '.join(period_concerns[:3]) if period_concerns else 'None'}
+- Feedback: {feedback_summary[:200] if feedback_summary else 'No prior feedback'}
+
+ACTIONS:
+{json.dumps(actions_summary, indent=1)}
+
+RATE 5 FACTORS (0-100):
+1. personalization: Are actions specific to user's conditions/concerns?
+2. condition_safety: Safe for user's diagnosed conditions?
+3. feedback_alignment: Avoids disliked patterns, repeats liked ones?
+4. preference_compliance: Respects diet/allergies/cuisine?
+5. evidence_quality: Do research findings support the recommendations?
+
+JSON ONLY:
+{{"personalization": <score>, "condition_safety": <score>, "feedback_alignment": <score>, "preference_compliance": <score>, "evidence_quality": <score>}}"""
+
+        try:
+            response = await self.client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": "You are a health plan quality evaluator. Output ONLY JSON, no explanation."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 150,  # Enough for 5 scores
+                },
+                timeout=15.0  # Slightly longer for 5 factors
+            )
+            
+            if response.status_code != 200:
+                logger.warning(f"Fast quality check failed: {response.status_code}")
+                return None
+            
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            
+            # Parse JSON response
+            import re
+            json_match = re.search(r'\{[^}]+\}', content)
+            if json_match:
+                result = json.loads(json_match.group())
+                
+                # Extract all 5 scores
+                personalization = result.get("personalization", 80)
+                condition_safety = result.get("condition_safety", 80)
+                feedback_alignment = result.get("feedback_alignment", 80)
+                preference_compliance = result.get("preference_compliance", 80)
+                evidence_quality = result.get("evidence_quality", 80)
+                
+                # Calculate average
+                avg_score = (personalization + condition_safety + feedback_alignment + preference_compliance + evidence_quality) / 5
+                
+                logger.info(f"⚡ Fast quality check - ALL 5 FACTORS:")
+                logger.info(f"   📊 Personalization: {personalization}/100")
+                logger.info(f"   🛡️ Condition Safety: {condition_safety}/100")
+                logger.info(f"   💬 Feedback Alignment: {feedback_alignment}/100")
+                logger.info(f"   🍽️ Preference Compliance: {preference_compliance}/100")
+                logger.info(f"   📚 Evidence Quality: {evidence_quality}/100")
+                logger.info(f"   ⭐ Average: {avg_score:.1f}/100")
+                
+                # Return condition_safety for model switching decision
+                # (this is the critical safety factor)
+                return condition_safety
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Fast quality check error: {e}")
+            return None
+    
     async def _generate_all_images(
         self,
         actions: List[Dict],
         user_id: str,
-        db: AsyncSession
+        db: AsyncSession,
+        image_mode: Literal["full", "hero_only", "none"] = "full",
     ) -> Tuple[List[Dict], float]:
         """
         Generate all images for all actions (16 total) in PARALLEL.
@@ -3564,6 +3736,10 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                     except Exception as close_err:
                         logger.error(f"[ImageTask] Session close error: {close_err}")
         
+        if image_mode == "none":
+            # Safety: caller should have short-circuited, but keep this defensive.
+            return (actions, 0.0)
+
         # Build list of all image generation tasks
         image_tasks = []
         task_metadata = []  # Track which action/variant each task belongs to
@@ -3585,23 +3761,24 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             task_metadata.append({"action_idx": action_idx, "variant_idx": None})
             
             # Variant image tasks (each with its own session)
-            variants = action.get("variants", [])
-            for variant_idx, variant in enumerate(variants):
-                if not isinstance(variant, dict):
-                    continue
-                variant_prompt = variant.get("image_prompt", variant.get("title", action_title))
-                image_tasks.append(
-                    _generate_single_image(
-                        prompt=variant_prompt,
-                        category=action_category,
-                        variant_type=variant.get("variant_type", f"variant_{variant_idx}"),
-                        user_id=user_id
+            if image_mode == "full":
+                variants = action.get("variants", [])
+                for variant_idx, variant in enumerate(variants):
+                    if not isinstance(variant, dict):
+                        continue
+                    variant_prompt = variant.get("image_prompt", variant.get("title", action_title))
+                    image_tasks.append(
+                        _generate_single_image(
+                            prompt=variant_prompt,
+                            category=action_category,
+                            variant_type=variant.get("variant_type", f"variant_{variant_idx}"),
+                            user_id=user_id
+                        )
                     )
-                )
-                task_metadata.append({"action_idx": action_idx, "variant_idx": variant_idx})
+                    task_metadata.append({"action_idx": action_idx, "variant_idx": variant_idx})
         
         # Execute all image tasks in parallel (each with its own isolated session)
-        logger.info(f"⚡ Generating {len(image_tasks)} images in PARALLEL with isolated sessions...")
+        logger.info(f"⚡ Generating {len(image_tasks)} images in PARALLEL with isolated sessions... (image_mode={image_mode})")
         start_time = time.time()
         
         results = await asyncio.gather(*image_tasks, return_exceptions=True)
@@ -4400,6 +4577,7 @@ Respond with valid JSON object only."""
         reason: Optional[str],
         n: int,
         db: AsyncSession,
+        enforce_same_category: bool = False,
     ) -> Dict[str, Any]:
         """Generate N replacement candidates for a single plan item (preview-only).
 
@@ -4417,6 +4595,8 @@ Respond with valid JSON object only."""
                 return {"success": False, "error": "Action not found"}
             if original.uid != user_id:
                 return {"success": False, "error": "Unauthorized"}
+
+            original_category = (getattr(original, "category", None) or "").strip().lower() or "food"
 
             # Load user context
             user_context = await self._load_user_context(user_id, db)
@@ -4458,7 +4638,7 @@ REQUIREMENTS:
 - Must target hormone: {original.target_hormone}
 - Must be DIFFERENT from: {original.title}
 - Dislike reason: {reason or 'not specified'}
-- Prefer a different category from: {original.category}
+- {'Category MUST be: ' + original_category if enforce_same_category else 'Prefer a different category from: ' + (original_category or 'food')}
 - Lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 
 HEALTH PROFILE (condensed):
@@ -4606,6 +4786,11 @@ Respond with valid JSON only."""
             valid_actions: List[Dict[str, Any]] = []
             for a in filled_actions:
                 cat = (a.get("category") or "food").lower()
+
+                # For alternate-suggestions UX we want true category alternates (e.g. food -> food).
+                if enforce_same_category and cat != original_category:
+                    continue
+
                 ok, _missing = self._validate_action_fields(a, cat)
                 if ok:
                     valid_actions.append(a)

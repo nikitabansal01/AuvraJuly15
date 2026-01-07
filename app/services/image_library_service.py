@@ -49,13 +49,13 @@ class ImageLibraryService:
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
-    # Retry settings (Fix #14 + Cold Start Fix)
-    MAX_IMAGE_RETRIES = 3
-    RETRY_DELAYS = [2.0, 5.0, 10.0]  # Longer delays for cold start recovery
+    # Retry settings - optimized for faster recovery
+    MAX_IMAGE_RETRIES = 2  # Reduced from 3 (fail faster, retry smarter)
+    RETRY_DELAYS = [1.0, 2.0]  # Shorter delays - GPU warms on first attempt
     
-    # RunPod timeout settings - increased for cold start
-    RUNPOD_POLL_TIMEOUT = 120  # 120 seconds max wait (cold start can take 60-90s)
-    RUNPOD_POLL_INTERVAL = 1.0  # Poll every 1 second (faster response detection)
+    # RunPod timeout settings - optimized for performance
+    RUNPOD_POLL_TIMEOUT = 45  # 45 seconds max wait (fail fast, retry will hit warm GPU)
+    RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second for faster response detection
     
     def __init__(self):
         """Initialize the image library service."""
@@ -397,9 +397,7 @@ class ImageLibraryService:
         prompt_embedding: Optional[List[float]],
         db: AsyncSession
     ) -> Tuple[str, bool, float]:
-        """
-        Generate a new image using RunPod Flux Schnell and store it.
-        """
+        """Generate a new image using RunPod Flux Schnell and store it."""
         start_time = time.time()
         
         try:
@@ -417,6 +415,19 @@ class ImageLibraryService:
                 if not image_url:
                     # Fallback: use RunPod URL directly (may expire)
                     image_url = result
+
+                # Store in image library for future semantic matching
+                await self._store_in_library(
+                    image_url=image_url,
+                    prompt_text=prompt,
+                    prompt_embedding=prompt_embedding,
+                    category=category,
+                    variant_type=variant_type,
+                    user_id=user_id,
+                    generation_time_ms=generation_time_ms,
+                    db=db
+                )
+
             elif isinstance(result, bytes):
                 # We have image bytes - upload to Cloudinary or Supabase
                 image_url = await self._upload_to_cloudinary(result, category, variant_type)
@@ -425,21 +436,21 @@ class ImageLibraryService:
                 if not image_url:
                     logger.error("Failed to upload image to any storage")
                     return ("", False, 0.0)
+
+                # Store in image library for future semantic matching
+                await self._store_in_library(
+                    image_url=image_url,
+                    prompt_text=prompt,
+                    prompt_embedding=prompt_embedding,
+                    category=category,
+                    variant_type=variant_type,
+                    user_id=user_id,
+                    generation_time_ms=generation_time_ms,
+                    db=db
+                )
             else:
                 logger.error(f"Unexpected result type: {type(result)}")
                 return ("", False, 0.0)
-            
-            # Store in image library for future semantic matching
-            await self._store_in_library(
-                image_url=image_url,
-                prompt_text=prompt,
-                prompt_embedding=prompt_embedding,
-                category=category,
-                variant_type=variant_type,
-                user_id=user_id,
-                generation_time_ms=generation_time_ms,
-                db=db
-            )
             
             elapsed = time.time() - start_time
             logger.info(f"🎨 New image generated. Time: {elapsed:.2f}s, Cost: ${self.COST_PER_IMAGE}")
