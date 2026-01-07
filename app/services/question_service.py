@@ -552,22 +552,30 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 🚀 IMPORTANT: Do NOT create ActionPlan here anymore!
-                # Let ActionPlanGenerator._convert_session_recommendations_to_plan() handle it
-                # when HomeScreen loads. That method has ALL the features:
-                # - Proper hormone persona intros
-                # - Full variant generation with image prompts  
-                # - Better image generation
-                # - All the personalization logic
-                # 
-                # The conversion is very fast (~200ms) so HomeScreen will still load quickly
-                # compared to full GPT regeneration (~100s).
+                # 🚀 CRITICAL: Create ActionPlan IMMEDIATELY after signup
+                # This provides INSTANT HomeScreen load (no waiting at all!)
+                # The full-featured ActionPlanGenerator._convert_session_recommendations_to_plan()
+                # will ALSO be called on HomeScreen as a fallback if this fails, and it can
+                # also enhance the plan with missing images.
                 if len(successful_recommendations) >= 2:
-                    logger.info(f"✅ [SESSION_LINK] Migrated {len(successful_recommendations)} recommendations (ActionPlan will be created on HomeScreen load)")
-                    logger.info(f"✅ [SESSION_LINK] HomeScreen will use ActionPlanGenerator._convert_session_recommendations_to_plan()")
+                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan immediately with {len(successful_recommendations)} recommendations")
+                    try:
+                        action_plan_created = self._create_action_plan_from_session_recs(
+                            uid=uid,
+                            recommendations=successful_recommendations,
+                            user_response=user_response,
+                            current_timezone=current_timezone,
+                            lifestyle_focus=lifestyle_focus
+                        )
+                        if action_plan_created:
+                            logger.info(f"✅ [SESSION_LINK] ActionPlan created successfully for {uid} - HomeScreen will load INSTANTLY!")
+                        else:
+                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation failed, ActionPlanGenerator will handle on HomeScreen")
+                    except Exception as ap_error:
+                        logger.error(f"❌ [SESSION_LINK] ActionPlan creation error: {ap_error}", exc_info=True)
+                        # Don't fail session linking if action plan creation fails
                 else:
-                    # If no session recommendations exist, ActionPlanGenerator will do full generation
-                    logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} session recommendations. ActionPlanGenerator will generate on HomeScreen load.")
+                    logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} recommendations, ActionPlanGenerator will generate on HomeScreen")
                 
                 # Check if generation is still in progress
                 from app.services.processing_status_service import ProcessingStatusService
