@@ -308,6 +308,14 @@ FAILURE TO INCLUDE THESE FIELDS WILL CAUSE VALIDATION ERRORS.
 ✅ For "food" category, ALWAYS include:
    - food_items: [...] 
    - food_amounts: [...] 
+   
+   🎯 FOOD AMOUNTS RULES (CRITICAL):
+   - These are DAILY action plans, so use IMMEDIATE, TODAY language
+   - Use SMALL, UI-FRIENDLY portions ("1 cup", "1 scoop", "handful", "2 tbsp")
+   - ❌ NEVER say "2 servings per week" or "3x per week" - this is a daily plan!
+   - ✅ GOOD: "1 cup", "1 scoop", "handful", "4 oz", "2 pieces", "1 tbsp"
+   - ❌ BAD: "2 servings per week", "consume 3x weekly", "large portions"
+   - Think: What fits in the user's hand or on a small plate TODAY 
 
 ✅ For "movement" category, ALWAYS include:
    - exercise_types: [...] 
@@ -359,6 +367,7 @@ IMPORTANT GUIDELINES:
 3. Use the 'search_research_paper' tool to get REAL citations - NEVER fabricate citations
 4. Time slots should be appropriate: morning (6-11am), afternoon (12-5pm), evening (6-10pm)
 5. Image prompts should follow a consistent photography style for better semantic matching
+6. 🎯 DAILY ACTION LANGUAGE: Use immediate, today-focused language ("add to your breakfast today", "try this evening"), NOT weekly frequencies ("consume 2x per week"). These are daily action plans!
 
 CATEGORY DEFINITIONS:
 - "food" (eat): Specific meals, recipes, or food recommendations
@@ -642,6 +651,9 @@ CATEGORY-SPECIFIC REQUIRED FIELDS:
 For FOOD actions:
 - food_items: Array like ["salmon", "quinoa"] (REQUIRED)
 - food_amounts: Array like ["4 oz", "1 cup cooked"] (REQUIRED)
+  🎯 CRITICAL: Use SMALL, UI-FRIENDLY portions for TODAY ("1 scoop", "handful", "1 cup", "2 tbsp")
+  ❌ NEVER use weekly frequencies ("2 servings per week") - this is a DAILY action plan!
+  ✅ Think: What the user can consume in ONE sitting or ONE day
 - exercise_types: [] (empty array - not a food action)
 - exercise_durations: [] (empty array)
 - exercise_intensities: [] (empty array)
@@ -675,7 +687,7 @@ EXAMPLE FOOD ACTION (notice specific_action includes 3 ways to consume):
   "title": "Walnuts",
   "category": "food",
   "time_slot": "morning",
-  "specific_action": "Walnuts are rich in omega-3 fatty acids and melatonin precursors that support hormonal balance. Try them as: (1) Raw handful - eat 7-10 walnuts as a quick morning snack with your coffee, (2) Smoothie boost - blend a handful into your morning smoothie with banana and spinach, or (3) Oatmeal topper - add crushed walnuts to your oatmeal with a drizzle of honey.",
+  "specific_action": "Walnuts are rich in omega-3 fatty acids and melatonin precursors that support hormonal balance. Try them today as: (1) Raw handful - eat 7-10 walnuts as a quick morning snack with your coffee, (2) Smoothie boost - blend 1/4 cup into your morning smoothie with banana and spinach, or (3) Oatmeal topper - sprinkle 2 tbsp crushed walnuts on your oatmeal with a drizzle of honey.",
   "purpose": "Walnuts contain alpha-linolenic acid (ALA) which converts to DHA, supporting brain-ovary communication and reducing inflammation that disrupts hormone signaling in your follicular phase.",
   "target_hormone": "Estrogen",
   "hormone_persona_intro": "Good morning! It's Estrogen here. I'm rising in your follicular phase, and I need some healthy fats to help me do my job properly.",
@@ -697,7 +709,7 @@ EXAMPLE MOVEMENT ACTION (notice specific_action includes 3 ways to do the exerci
   "title": "Morning Yoga",
   "category": "movement",
   "time_slot": "morning",
-  "specific_action": "Morning yoga activates your parasympathetic nervous system to reduce cortisol and calm your mind. Try it as: (1) Gentle flow - 15 min of cat-cow, child's pose, and forward folds, (2) Hip openers - focus on pigeon pose and butterfly stretch for 10 min, or (3) Energizing sequence - 5 rounds of sun salutations to wake up your body and boost circulation.",
+  "specific_action": "Morning yoga activates your parasympathetic nervous system to reduce cortisol and calm your mind. Try it today as: (1) Gentle flow - 15 min of cat-cow, child's pose, and forward folds, (2) Hip openers - focus on pigeon pose and butterfly stretch for 10 min, or (3) Energizing sequence - 5 rounds of sun salutations to wake up your body and boost circulation.",
   "purpose": "Forward folds and hip openers activate the parasympathetic nervous system, directly lowering cortisol release and helping prevent the stress-induced disruption of your reproductive hormones.",
   "target_hormone": "Cortisol",
   "hormone_persona_intro": "Good morning! It's Cortisol here. Instead of spiking your stress, let's channel my energy into something calming that will help you feel centered all day.",
@@ -720,7 +732,7 @@ EXAMPLE MINDFULNESS ACTION (notice specific_action includes 3 ways to practice):
   "title": "Deep Breathing",
   "category": "mindfulness",
   "time_slot": "evening",
-  "specific_action": "Deep breathing activates your vagus nerve to signal safety and reduce cortisol for better sleep. Try it as: (1) 4-4-6 technique - inhale 4 counts, hold 4 counts, exhale 6 counts for 5 minutes, (2) Box breathing - inhale 4, hold 4, exhale 4, hold 4 for 10 cycles, or (3) Belly breathing - place hands on belly, breathe deeply until hands rise, exhale slowly for 3 minutes.",
+  "specific_action": "Deep breathing activates your vagus nerve to signal safety and reduce cortisol for better sleep. Try it tonight as: (1) 4-4-6 technique - inhale 4 counts, hold 4 counts, exhale 6 counts for 5 minutes, (2) Box breathing - inhale 4, hold 4, exhale 4, hold 4 for 10 cycles, or (3) Belly breathing - place hands on belly, breathe deeply until hands rise, exhale slowly for 3 minutes.",
   "purpose": "Deep breathing signals safety to your nervous system, helping me (Cortisol) decrease so you can rest and restore.",
   "target_hormone": "Cortisol",
   "hormone_persona_intro": "Hey, it's Cortisol checking in for the evening. Let's work together to wind down so you can get the restorative sleep you deserve.",
@@ -927,8 +939,8 @@ class ActionPlanGenerator:
             expire_on_commit=False
         )
         
-        # Semaphore to limit concurrent DB writes/ops to 16 at a time (allows all images in parallel)
-        self.db_semaphore = asyncio.Semaphore(16)
+        # Semaphore to limit concurrent DB writes/ops to 32 at a time (allows all images in parallel)
+        self.db_semaphore = asyncio.Semaphore(32)
         
         logger.info(f"ActionPlanGenerator initialized with shared engine")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
@@ -1382,6 +1394,7 @@ class ActionPlanGenerator:
         
         start_time = time.time()
         logger.info(f"[SESSION_CONVERT] Starting conversion check for user {user_id}")
+        t0 = time.time()
         
         try:
             # Step 1: Check if user has any existing action plans
