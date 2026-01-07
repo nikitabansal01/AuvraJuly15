@@ -1376,6 +1376,7 @@ class ActionPlanGenerator:
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, RecommendationRecord
         
         start_time = time.time()
+        logger.info(f"[SESSION_CONVERT] Starting conversion check for user {user_id}")
         
         try:
             # Step 1: Check if user has any existing action plans
@@ -1388,9 +1389,13 @@ class ActionPlanGenerator:
                 logger.info(f"[SESSION_CONVERT] User {user_id} has existing plans, skipping conversion")
                 return None
             
+            logger.info(f"[SESSION_CONVERT] User {user_id} has no existing plans, checking for fresh session recs")
+            
             # Step 2: Find fresh session recommendations for this user
             # Only consider recs created in the last 10 minutes (fresh from onboarding)
-            cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+            # CRITICAL: Use naive UTC to match the database column (created_at is naive)
+            cutoff_time = datetime.utcnow() - timedelta(minutes=10)
+            logger.info(f"[SESSION_CONVERT] Looking for recs created after {cutoff_time} (10 min cutoff)")
             
             fresh_recs_result = await db.execute(
                 select(RecommendationRecord).where(
@@ -1402,6 +1407,7 @@ class ActionPlanGenerator:
                 ).order_by(RecommendationRecord.created_at.desc())
             )
             fresh_recs = fresh_recs_result.scalars().all()
+            logger.info(f"[SESSION_CONVERT] Query returned {len(fresh_recs)} fresh recs for user {user_id}")
             
             if len(fresh_recs) < 2:
                 logger.info(f"[SESSION_CONVERT] Only {len(fresh_recs)} fresh recs for {user_id}, need at least 2. Skipping conversion.")
