@@ -584,7 +584,7 @@ class QuestionService:
                                     today=today,
                                     user_timezone=current_timezone,
                                     db=db,
-                                    image_mode="hero_only"  # Generate hero images immediately
+                                    image_mode="full"  # Generate all 16 images in parallel
                                 )
                                 return result
                         
