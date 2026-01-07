@@ -552,25 +552,55 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 🚀 CRITICAL: Create ActionPlan IMMEDIATELY after signup
-                # This provides INSTANT HomeScreen load (no waiting at all!)
-                # The full-featured ActionPlanGenerator._convert_session_recommendations_to_plan()
-                # will ALSO be called on HomeScreen as a fallback if this fails, and it can
-                # also enhance the plan with missing images.
+                # 🚀 CRITICAL: Create ActionPlan IMMEDIATELY after signup using FULL-FEATURED ActionPlanGenerator
+                # This uses the SAME code path that runs "after signup" with ALL features:
+                # - Full ActionPlanGenerator._convert_session_recommendations_to_plan()
+                # - Hormone personas, variants, image generation, research studies
+                # - All the fixes and improvements made to the "after signup" path
                 if len(successful_recommendations) >= 2:
-                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan immediately with {len(successful_recommendations)} recommendations")
+                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan immediately with FULL-FEATURED generator and {len(successful_recommendations)} recommendations")
                     try:
-                        action_plan_created = self._create_action_plan_from_session_recs(
-                            uid=uid,
-                            recommendations=successful_recommendations,
-                            user_response=user_response,
-                            current_timezone=current_timezone,
-                            lifestyle_focus=lifestyle_focus
-                        )
-                        if action_plan_created:
-                            logger.info(f"✅ [SESSION_LINK] ActionPlan created successfully for {uid} - HomeScreen will load INSTANTLY!")
+                        # Import and run the ASYNC ActionPlanGenerator method synchronously
+                        import asyncio
+                        from app.services.action_plan_generator import get_action_plan_generator
+                        from app.core.database import get_async_session_maker
+                        from app.utils.timezone_utils import ZoneInfo
+                        from datetime import date
+                        
+                        # Get today's date in user's timezone
+                        try:
+                            tz = ZoneInfo(current_timezone)
+                            today = datetime.now(tz).date()
+                        except Exception:
+                            today = date.today()
+                        
+                        # Run the async method synchronously
+                        async def create_plan_async():
+                            async_session_maker = get_async_session_maker()
+                            async with async_session_maker() as db:
+                                generator = get_action_plan_generator()
+                                result = await generator._convert_session_recommendations_to_plan(
+                                    user_id=uid,
+                                    today=today,
+                                    user_timezone=current_timezone,
+                                    db=db,
+                                    image_mode="hero_only"  # Generate hero images immediately
+                                )
+                                return result
+                        
+                        # Run in event loop
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                        
+                        plan_result = loop.run_until_complete(create_plan_async())
+                        
+                        if plan_result and plan_result.get('success'):
+                            logger.info(f"✅ [SESSION_LINK] FULL-FEATURED ActionPlan created successfully for {uid} - HomeScreen will load INSTANTLY!")
                         else:
-                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation failed, ActionPlanGenerator will handle on HomeScreen")
+                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation returned no result, ActionPlanGenerator will handle on HomeScreen")
                     except Exception as ap_error:
                         logger.error(f"❌ [SESSION_LINK] ActionPlan creation error: {ap_error}", exc_info=True)
                         # Don't fail session linking if action plan creation fails
