@@ -563,10 +563,24 @@ class QuestionService:
                         # Import and run the FULL-FEATURED generate_new_plan() method (same as after signup)
                         import asyncio
                         from app.services.action_plan_generator import get_action_plan_generator
-                        from app.core.database import get_async_session_maker
                         from app.utils.timezone_utils import ZoneInfo
                         from datetime import date
                         
+                         # Helper to create async session localy since it shares logic
+                        def get_async_session_maker():
+                            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+                            from sqlalchemy.orm import sessionmaker
+                            import os
+                            
+                            db_url = os.getenv("DATABASE_URL", "")
+                            if db_url.startswith("postgres://"):
+                                db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+                            elif db_url.startswith("postgresql://"):
+                                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+                            
+                            engine = create_async_engine(db_url, echo=False)
+                            return sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
                         # Get today's date in user's timezone
                         try:
                             tz = ZoneInfo(current_timezone)

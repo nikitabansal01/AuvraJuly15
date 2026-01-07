@@ -588,7 +588,11 @@ async def _link_session_to_user_internal(
             )
         
         logger.info(f"Session linking service call: uid={current_user.get('uid')}, name={link_data.user_profile.name}, current_timezone={link_data.current_timezone}, lifestyle_focus={link_data.lifestyle_focus}")
-        success = service.link_session_to_user(
+        
+        # Execute in threadpool to allow new event loop creation in service
+        from starlette.concurrency import run_in_threadpool
+        success = await run_in_threadpool(
+            service.link_session_to_user,
             session_id, 
             current_user.get("uid"),
             link_data.user_profile.name,
