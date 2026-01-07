@@ -980,6 +980,17 @@ class ActionPlanGenerator:
             carryforward_result["plan_source"] = "carryforward"
             return carryforward_result
         
+        # NEW: Check if user has fresh session recommendations that can be converted
+        # This happens when user just signed up and session recs were migrated
+        conversion_result = await self._convert_session_recommendations_to_plan(
+            user_id, today, user_timezone, db, image_mode
+        )
+        
+        if conversion_result and conversion_result.get("success"):
+            logger.info(f"🚀 Converted session recommendations to action plan for {user_id}")
+            conversion_result["plan_source"] = "session_conversion"
+            return conversion_result
+        
         # Generate new plan
         logger.info(f"Generating new plan for user {user_id} on {today}")
         gen_result = await self.generate_new_plan(
@@ -1336,6 +1347,260 @@ class ActionPlanGenerator:
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Error checking existing plan: {e}")
+            return None
+    
+    async def _convert_session_recommendations_to_plan(
+        self,
+        user_id: str,
+        today: date,
+        user_timezone: str,
+        db: AsyncSession,
+        image_mode: str = "hero_only"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Convert freshly migrated session recommendations to an ActionPlan.
+        
+        This is called for NEW users who just signed up. Instead of generating
+        a brand new plan via GPT (which takes ~100s), we convert the session
+        recommendations that were generated during onboarding.
+        
+        Criteria for conversion:
+        - User has NO existing action plans (brand new user)
+        - User has fresh RecommendationRecords (created in last 10 minutes)
+        - At least 2 recommendations available for conversion
+        
+        Returns:
+            Formatted plan response if conversion succeeded, None otherwise
+        """
+        from datetime import timedelta
+        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, RecommendationRecord
+        
+        start_time = time.time()
+        
+        try:
+            # Step 1: Check if user has any existing action plans
+            existing_plans_result = await db.execute(
+                select(ActionPlan.id).where(ActionPlan.uid == user_id).limit(1)
+            )
+            has_existing_plans = existing_plans_result.scalar_one_or_none() is not None
+            
+            if has_existing_plans:
+                logger.info(f"[SESSION_CONVERT] User {user_id} has existing plans, skipping conversion")
+                return None
+            
+            # Step 2: Find fresh session recommendations for this user
+            # Only consider recs created in the last 10 minutes (fresh from onboarding)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+            
+            fresh_recs_result = await db.execute(
+                select(RecommendationRecord).where(
+                    and_(
+                        RecommendationRecord.uid == user_id,
+                        RecommendationRecord.session_id.is_(None),  # Already migrated
+                        RecommendationRecord.created_at >= cutoff_time
+                    )
+                ).order_by(RecommendationRecord.created_at.desc())
+            )
+            fresh_recs = fresh_recs_result.scalars().all()
+            
+            if len(fresh_recs) < 2:
+                logger.info(f"[SESSION_CONVERT] Only {len(fresh_recs)} fresh recs for {user_id}, need at least 2. Skipping conversion.")
+                return None
+            
+            logger.info(f"[SESSION_CONVERT] 🚀 Found {len(fresh_recs)} fresh session recommendations for {user_id}")
+            logger.info(f"[SESSION_CONVERT] Converting to ActionPlan (saves ~100s of GPT generation)")
+            
+            # Step 3: Load user context for hormone info
+            user_context = await self._load_user_context(user_id, db)
+            if not user_context:
+                logger.error(f"[SESSION_CONVERT] Could not load user context for {user_id}")
+                return None
+            
+            primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
+            secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
+            cycle_day = user_context.get("cycle_day", 1)
+            cycle_phase = user_context.get("cycle_phase", "menstrual")
+            lifestyle_focus = user_context.get("lifestyle_focus", ["eat", "move", "pause"])
+            
+            # Step 4: Select up to 4 recommendations (2 food, 2 movement ideally)
+            selected_recs = []
+            categories_needed = {"food": 2, "movement": 2, "mindfulness": 0}
+            
+            # Adjust based on lifestyle_focus
+            if "eat" in lifestyle_focus and "move" in lifestyle_focus and "pause" not in lifestyle_focus:
+                categories_needed = {"food": 2, "movement": 2, "mindfulness": 0}
+            elif "eat" in lifestyle_focus and "pause" in lifestyle_focus and "move" not in lifestyle_focus:
+                categories_needed = {"food": 2, "movement": 0, "mindfulness": 2}
+            elif "move" in lifestyle_focus and "pause" in lifestyle_focus and "eat" not in lifestyle_focus:
+                categories_needed = {"food": 0, "movement": 2, "mindfulness": 2}
+            elif len(lifestyle_focus) == 3:
+                categories_needed = {"food": 2, "movement": 1, "mindfulness": 1}
+            
+            for rec in fresh_recs:
+                cat = rec.category.lower() if rec.category else "food"
+                if cat in categories_needed and categories_needed[cat] > 0:
+                    selected_recs.append(rec)
+                    categories_needed[cat] -= 1
+                    if sum(categories_needed.values()) == 0:
+                        break
+            
+            # Fill remaining slots with any category
+            remaining_needed = 4 - len(selected_recs)
+            if remaining_needed > 0:
+                for rec in fresh_recs:
+                    if rec not in selected_recs:
+                        selected_recs.append(rec)
+                        remaining_needed -= 1
+                        if remaining_needed == 0:
+                            break
+            
+            if len(selected_recs) < 2:
+                logger.info(f"[SESSION_CONVERT] Could only select {len(selected_recs)} recs, need at least 2. Skipping.")
+                return None
+            
+            logger.info(f"[SESSION_CONVERT] Selected {len(selected_recs)} recommendations for conversion")
+            for i, rec in enumerate(selected_recs):
+                logger.info(f"[SESSION_CONVERT]   {i+1}. {rec.title} ({rec.category})")
+            
+            # Step 5: Create ActionPlan
+            new_plan = ActionPlan(
+                uid=user_id,
+                plan_date=today,
+                primary_hormone=primary_hormone,
+                secondary_hormones=[secondary_hormone] if secondary_hormone else [],
+                cycle_day=cycle_day,
+                cycle_phase=cycle_phase,
+                lifestyle_focus=lifestyle_focus,
+                generation_cost="$0.00 (converted)",
+                generation_time_ms=int((time.time() - start_time) * 1000),
+                gpt_model_used="session_conversion",
+                is_regenerated=False,
+                feedback_collected=False,
+                review_completed=False
+            )
+            db.add(new_plan)
+            await db.flush()  # Get plan ID
+            
+            # Step 6: Convert each recommendation to ActionPlanItem
+            time_slots = ["morning", "afternoon", "evening", "morning"]  # Cycle through
+            
+            for slot_idx, rec in enumerate(selected_recs[:4]):  # Max 4 items
+                target_hormone = primary_hormone if slot_idx < 2 else secondary_hormone
+                
+                # Build hormone persona intro
+                hormone_intros = {
+                    "cortisol": "Hi, I'm Cortisol! I help regulate your stress response and energy levels.",
+                    "progesterone": "Hi, I'm Progesterone! I help with mood stability and sleep quality.",
+                    "estrogen": "Hi, I'm Estrogen! I support your mood, skin, and overall well-being.",
+                    "testosterone": "Hi, I'm Testosterone! I support your energy, strength, and motivation.",
+                    "androgens": "Hi, I'm Androgens! I help regulate your skin, energy, and metabolism.",
+                    "insulin": "Hi, I'm Insulin! I help manage your blood sugar and energy balance.",
+                    "thyroid": "Hi, I'm Thyroid! I regulate your metabolism and energy production.",
+                }
+                
+                hormone_intro = hormone_intros.get(target_hormone, f"Hi, I'm {target_hormone.title()}! I help support your hormonal health.")
+                
+                # Generate image prompt from recommendation data
+                category = rec.category.lower() if rec.category else "food"
+                title = rec.title or "Healthy Choice"
+                
+                if category == "food":
+                    image_prompt = f"Professional close-up food photography of {title}, appetizing presentation, natural lighting, soft shadows, 4K quality"
+                elif category == "movement":
+                    image_prompt = f"Serene photograph of a woman doing {title}, natural setting, peaceful atmosphere, soft morning light"
+                else:
+                    image_prompt = f"Calming photograph representing {title}, peaceful atmosphere, soft natural lighting"
+                
+                item = ActionPlanItem(
+                    plan_id=new_plan.id,
+                    uid=user_id,
+                    slot=slot_idx + 1,
+                    time_slot=time_slots[slot_idx],
+                    category=category,
+                    title=title,
+                    specific_action=rec.specific_action or f"Try {title} today",
+                    purpose=rec.purpose or f"Supports your {target_hormone} balance",
+                    target_hormone=target_hormone,
+                    hormone_persona_intro=hormone_intro,
+                    food_amounts=rec.food_amounts or [],
+                    food_items=rec.food_items or [],
+                    exercise_durations=rec.exercise_durations or [],
+                    exercise_types=rec.exercise_types or [],
+                    exercise_intensities=rec.exercise_intensities or [],
+                    mindfulness_durations=rec.mindfulness_durations or [],
+                    mindfulness_techniques=rec.mindfulness_techniques or [],
+                    conditions=rec.conditions or [],
+                    symptoms=rec.symptoms or [],
+                    hero_image_url=None,  # Will be generated below
+                    hero_image_prompt=image_prompt,
+                    research_studies=rec.research_studies or [],
+                    is_completed=False,
+                    is_replaced=False
+                )
+                db.add(item)
+                await db.flush()
+                
+                # Add default variants
+                variant_types = {
+                    "food": ["easy", "tasty", "healthy"],
+                    "movement": ["gentle", "energizing", "quick"],
+                    "mindfulness": ["guided", "silent", "brief"]
+                }
+                
+                variants_for_cat = variant_types.get(category, ["alternative", "simpler", "advanced"])
+                for v_idx, v_type in enumerate(variants_for_cat):
+                    variant = ActionPlanItemVariant(
+                        item_id=item.id,
+                        variant_type=v_type,
+                        title=f"{v_type.title()} {title}",
+                        description=f"A {v_type} way to enjoy {title}",
+                        image_url=None,
+                        image_prompt=f"{v_type.title()} version of {title}, professional photography"
+                    )
+                    db.add(variant)
+            
+            await db.commit()
+            
+            # Step 7: Generate hero images (quick, in parallel)
+            logger.info(f"[SESSION_CONVERT] Generating hero images for {len(selected_recs)} items...")
+            
+            # Reload plan with items for image generation
+            plan_result = await db.execute(
+                select(ActionPlan).where(ActionPlan.id == new_plan.id)
+            )
+            plan = plan_result.scalar_one()
+            
+            items_result = await db.execute(
+                select(ActionPlanItem).where(ActionPlanItem.plan_id == plan.id)
+            )
+            items = items_result.scalars().all()
+            
+            # Generate images in parallel
+            if image_mode != "none":
+                image_service = get_image_library_service()
+                
+                async def generate_hero_image(item):
+                    try:
+                        if item.hero_image_prompt:
+                            url = await image_service.get_or_generate_image(item.hero_image_prompt)
+                            if url:
+                                item.hero_image_url = url
+                                await db.commit()
+                    except Exception as e:
+                        logger.warning(f"[SESSION_CONVERT] Image generation failed for {item.title}: {e}")
+                
+                # Generate all hero images in parallel
+                await asyncio.gather(*[generate_hero_image(item) for item in items], return_exceptions=True)
+            
+            total_time_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"[SESSION_CONVERT] ✅ Plan conversion complete in {total_time_ms}ms (saved ~100s)")
+            
+            # Step 8: Format and return response
+            return await self._format_plan_response(plan, db)
+            
+        except Exception as e:
+            logger.error(f"[SESSION_CONVERT] Error converting session recs: {e}", exc_info=True)
+            await db.rollback()
             return None
     
     async def _check_and_carryforward_frozen_plan(
