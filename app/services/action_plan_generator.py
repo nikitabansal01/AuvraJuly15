@@ -4261,11 +4261,11 @@ JSON ONLY:
     ) -> None:
         """
         Check if plan items have missing hero images and generate them.
+        Also generates variant images if image_mode is 'full'.
         
         This handles plans created via session linking where images weren't generated.
-        Only generates hero images (not variants) to keep it fast.
         """
-        from app.core.database import ActionPlanItem
+        from app.core.database import ActionPlanItem, ActionPlanItemVariant
         
         try:
             # Get items with missing hero images
@@ -4283,21 +4283,50 @@ JSON ONLY:
             )
             items_missing_images = items_result.scalars().all()
             
-            if not items_missing_images:
+            # Also get variants with missing images
+            all_items_result = await db.execute(
+                select(ActionPlanItem).where(
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_replaced.isnot(True)
+                    )
+                )
+            )
+            all_items = all_items_result.scalars().all()
+            
+            variants_missing_images = []
+            if image_mode == "full":
+                for item in all_items:
+                    variants_result = await db.execute(
+                        select(ActionPlanItemVariant).where(
+                            and_(
+                                ActionPlanItemVariant.item_id == item.id,
+                                or_(
+                                    ActionPlanItemVariant.image_url.is_(None),
+                                    ActionPlanItemVariant.image_url == ""
+                                )
+                            )
+                        )
+                    )
+                    variants = variants_result.scalars().all()
+                    for v in variants:
+                        variants_missing_images.append((item, v))
+            
+            total_missing = len(items_missing_images) + len(variants_missing_images)
+            
+            if total_missing == 0:
                 logger.info(f"[ENSURE_IMAGES] All items in plan {plan.id} already have images")
                 return
             
-            logger.info(f"[ENSURE_IMAGES] Found {len(items_missing_images)} items without images in plan {plan.id}")
+            logger.info(f"[ENSURE_IMAGES] Found {len(items_missing_images)} hero + {len(variants_missing_images)} variant images missing in plan {plan.id}")
             
-            # Generate images using the same pattern as _generate_all_images
-            async def generate_image_for_item(item):
+            # Generate hero images
+            async def generate_hero_image(item):
                 """Wrapper that creates its own session for each image task."""
                 task_session = None
                 try:
-                    # Build image prompt from item title/category
                     prompt = item.hero_image_prompt
                     if not prompt:
-                        # Fallback: generate prompt from title and category
                         category_prompts = {
                             "food": f"Healthy nutritious meal: {item.title}, fresh ingredients, natural lighting, food photography",
                             "movement": f"Woman exercising: {item.title}, fitness lifestyle, energetic, wellness photography",
@@ -4306,10 +4335,8 @@ JSON ONLY:
                         prompt = category_prompts.get(item.category.lower() if item.category else "food",
                                                       f"Healthy lifestyle: {item.title}, professional photography")
                     
-                    # Use semaphore to limit concurrent operations
                     async with self.db_semaphore:
                         task_session = await _create_async_session(self.async_session_maker)
-                        
                         url, was_cached, cost = await self.image_service.get_or_generate_image(
                             prompt=prompt,
                             category=item.category or "food",
@@ -4319,30 +4346,60 @@ JSON ONLY:
                         )
                     
                     if url:
-                        # Update the item with the new image URL
                         item.hero_image_url = url
-                        logger.info(f"[ENSURE_IMAGES] Generated image for item {item.id}: {item.title[:30]}...")
+                        logger.info(f"[ENSURE_IMAGES] Hero: {item.title[:25]}...")
                         return url
-                    else:
-                        logger.warning(f"[ENSURE_IMAGES] No image URL returned for item {item.id}")
-                        return None
-                        
+                    return None
                 except Exception as e:
-                    logger.warning(f"[ENSURE_IMAGES] Failed to generate image for item {item.id}: {e}")
+                    logger.warning(f"[ENSURE_IMAGES] Hero failed for {item.id}: {e}")
+                    return None
+                finally:
+                    if task_session:
+                        await task_session.close()
+            
+            # Generate variant images
+            async def generate_variant_image(item, variant):
+                """Wrapper for variant image generation."""
+                task_session = None
+                try:
+                    prompt = variant.image_prompt
+                    if not prompt:
+                        prompt = f"{variant.variant_type.title()} {item.title}, {item.category} lifestyle, professional photography"
+                    
+                    async with self.db_semaphore:
+                        task_session = await _create_async_session(self.async_session_maker)
+                        url, was_cached, cost = await self.image_service.get_or_generate_image(
+                            prompt=prompt,
+                            category=item.category or "food",
+                            variant_type=variant.variant_type,
+                            user_id=user_id,
+                            db=task_session
+                        )
+                    
+                    if url:
+                        variant.image_url = url
+                        logger.info(f"[ENSURE_IMAGES] Variant {variant.variant_type}: {item.title[:20]}...")
+                        return url
+                    return None
+                except Exception as e:
+                    logger.warning(f"[ENSURE_IMAGES] Variant failed for {variant.id}: {e}")
                     return None
                 finally:
                     if task_session:
                         await task_session.close()
             
             # Generate all missing images in parallel
-            results = await asyncio.gather(
-                *[generate_image_for_item(item) for item in items_missing_images],
+            hero_tasks = [generate_hero_image(item) for item in items_missing_images]
+            variant_tasks = [generate_variant_image(item, var) for item, var in variants_missing_images]
+            
+            all_results = await asyncio.gather(
+                *hero_tasks, *variant_tasks,
                 return_exceptions=True
             )
             
             # Count successes
-            success_count = sum(1 for r in results if r and not isinstance(r, Exception))
-            logger.info(f"[ENSURE_IMAGES] Generated {success_count}/{len(items_missing_images)} images for plan {plan.id}")
+            success_count = sum(1 for r in all_results if r and not isinstance(r, Exception))
+            logger.info(f"[ENSURE_IMAGES] Generated {success_count}/{total_missing} images for plan {plan.id}")
             
             # Commit all changes to the main session
             await db.commit()

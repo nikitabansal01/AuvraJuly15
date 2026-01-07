@@ -359,6 +359,22 @@ async def _generate_recommendations_background(session_id: str, service, process
         # Create temporary UserProfile from session data
         session_data = service.get_session_data(session_id)
         if session_data:
+            # Combine all user concerns into a symptoms list for personalization
+            all_symptoms = []
+            if session_data.period_concerns:
+                all_symptoms.extend(session_data.period_concerns)
+            if session_data.body_concerns:
+                all_symptoms.extend(session_data.body_concerns)
+            if session_data.skin_hair_concerns:
+                all_symptoms.extend(session_data.skin_hair_concerns)
+            if session_data.mental_health_concerns:
+                all_symptoms.extend(session_data.mental_health_concerns)
+            if session_data.other_concerns:
+                # Filter out "Others (please specify)" placeholder
+                for concern in session_data.other_concerns:
+                    if concern and not concern.startswith("Others (please"):
+                        all_symptoms.append(concern)
+            
             # Create temporary UserProfile (uid is None)
             temp_user_profile = {
                 "age": session_data.age,
@@ -378,8 +394,9 @@ async def _generate_recommendations_background(session_id: str, service, process
                 "stress_level": session_data.stress_level,
                 # PERSONALIZATION: Eat/Move/Pause preference
                 "lifestyle_focus": getattr(session_data, 'lifestyle_focus', None) or [],
-                # For the new engine
-                "conditions": session_data.diagnosed_conditions or ['PCOS']
+                # For the new engine - combine all concerns as symptoms
+                "conditions": session_data.diagnosed_conditions or ['PCOS'],
+                "symptoms": all_symptoms  # Pass all user symptoms to GPT!
             }
             
             # Use session-level caching - this will be a cache HIT from the main endpoint

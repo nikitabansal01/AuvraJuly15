@@ -390,8 +390,31 @@ class QuestionService:
                     is_completed=False
                 )
                 self.db.add(item)
+                self.db.flush()  # Get item ID for variants
                 
-                logger.info(f"[SESSION_LINK]   Item {slot}: {rec.title} ({rec.category}) -> {target_hormone}")
+                # Create variant records (3 per item)
+                variant_types = {
+                    "food": [("easy", "A simpler version"), ("tasty", "A tastier version"), ("healthy", "An extra healthy version")],
+                    "movement": [("gentle", "A gentler version"), ("energizing", "An energizing version"), ("quick", "A quicker version")],
+                    "mindfulness": [("guided", "A guided version"), ("silent", "A silent version"), ("brief", "A brief version")]
+                }
+                
+                cat_key = rec.category.lower() if rec.category else "food"
+                variants_for_cat = variant_types.get(cat_key, [("alternative", "An alternative version"), ("simpler", "A simpler version"), ("advanced", "An advanced version")])
+                
+                for v_type, v_desc in variants_for_cat:
+                    variant_prompt = f"{v_type.title()} {rec.title}, {cat_key} lifestyle, professional photography"
+                    variant = ActionPlanItemVariant(
+                        item_id=item.id,
+                        variant_type=v_type,
+                        title=f"{v_type.title()} {rec.title}",
+                        description=f"{v_desc} of {rec.title}",
+                        image_url=None,  # Will be generated later
+                        image_prompt=variant_prompt
+                    )
+                    self.db.add(variant)
+                
+                logger.info(f"[SESSION_LINK]   Item {slot}: {rec.title} ({rec.category}) -> {target_hormone} + 3 variants")
             
             # Commit all changes
             self.db.commit()
