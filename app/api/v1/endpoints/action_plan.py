@@ -152,11 +152,9 @@ async def get_today_assignments(
         async_db = await get_async_db_session()
 
         # Decide image generation mode.
-        # Always generate all 16 images (4 hero + 12 variants) in parallel
-        # With num_inference_steps=4 and semaphore=32, completes in ~3-4 seconds
-        effective_image_mode = image_mode
-        if effective_image_mode == "auto":
-            effective_image_mode = "full"  # Always generate all images in parallel
+        # FORCE "full" mode to ensure 16 images (4 hero + 12 variants) are always generated
+        # This overrides any client-side "hero_only" requests which cause user complaints
+        effective_image_mode = "full" 
 
         if effective_image_mode not in {"full", "hero_only", "none"}:
             raise HTTPException(status_code=400, detail="Invalid image_mode. Use auto, full, hero_only, or none.")

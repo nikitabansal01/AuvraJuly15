@@ -41,7 +41,7 @@ import os
 from typing import Dict, Any, List, Optional, Literal
 from datetime import datetime
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +127,22 @@ class ActionItemModel(BaseModel):
     conditions: List[str] = Field(default_factory=list)
     
     model_config = {"extra": "ignore"}
+
+    @field_validator(
+        'food_items', 'food_amounts', 
+        'exercise_types', 'exercise_durations', 'exercise_intensities',
+        'mindfulness_techniques', 'mindfulness_durations',
+        'symptoms', 'conditions',
+        mode='before'
+    )
+    @classmethod
+    def convert_list_items_to_strings(cls, v):
+        """Handle cases where LLM returns numbers instead of strings for list items."""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [str(item) for item in v]
+        return [str(v)]
 
 
 class ActionPlanResponseModel(BaseModel):

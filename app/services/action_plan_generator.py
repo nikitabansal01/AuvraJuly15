@@ -26,7 +26,7 @@ from typing import Optional, List, Dict, Any, Tuple, Literal
 from datetime import datetime, timezone, date, timedelta
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update, text, or_
 
@@ -125,6 +125,22 @@ class ActionItemModel(BaseModel):
     conditions: List[str] = Field(default_factory=list)
     
     model_config = {"extra": "forbid"}
+
+    @field_validator(
+        'food_items', 'food_amounts', 
+        'exercise_types', 'exercise_durations', 'exercise_intensities',
+        'mindfulness_techniques', 'mindfulness_durations',
+        'symptoms', 'conditions',
+        mode='before'
+    )
+    @classmethod
+    def convert_list_items_to_strings(cls, v):
+        """Handle cases where LLM returns numbers instead of strings for list items."""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [str(item) for item in v]
+        return [str(v)]
 
 
 class ActionPlanResponseModel(BaseModel):
@@ -999,14 +1015,22 @@ class ActionPlanGenerator:
         
         # NEW: Check if user has fresh session recommendations that can be converted
         # This happens when user just signed up and session recs were migrated
-        conversion_result = await self._convert_session_recommendations_to_plan(
-            user_id, today, user_timezone, db, image_mode
-        )
         
-        if conversion_result and conversion_result.get("success"):
-            logger.info(f"🚀 Converted session recommendations to action plan for {user_id}")
-            conversion_result["plan_source"] = "session_conversion"
-            return conversion_result
+        # [DISABLED BY USER REQUEST - "Z NEED TO BE Y"]
+        # User requested to ALWAYS use the full generation engine (Function Y) instead of 
+        # converting session recommendations (Function X/Z) which were effectively a "lite" version.
+        # This ensures everyone gets the full 16-image experience immediately.
+        
+        # conversion_result = await self._convert_session_recommendations_to_plan(
+        #     user_id, today, user_timezone, db, image_mode
+        # )
+        
+        # if conversion_result and conversion_result.get("success"):
+        #     logger.info(f"🚀 Converted session recommendations to action plan for {user_id}")
+        #     conversion_result["plan_source"] = "session_conversion"
+        #     return conversion_result
+        
+        conversion_result = None  # Force skip conversion
         
         # Generate new plan
         logger.info(f"Generating new plan for user {user_id} on {today}")
