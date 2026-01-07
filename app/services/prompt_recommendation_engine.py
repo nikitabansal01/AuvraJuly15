@@ -108,7 +108,7 @@ class ActionItemModel(BaseModel):
     research_studies: List[ResearchStudyModel] = Field(default_factory=list)
     
     # Variants - OPTIONAL with auto-generation (LLM often omits these)
-    variants: Optional[List[ActionVariantModel]] = None
+    variants: List[ActionVariantModel] = Field(default_factory=list)
     
     # Category-specific fields - ALL required, use [] for non-matching categories
     # Food fields
@@ -1289,6 +1289,8 @@ Include the real PMID and verification_link for each citation.
 Ensure strict adherence to the JSON schema.
 
 Return ONLY a valid JSON object matching the ActionPlanResponseModel schema.
+The root key MUST be "actions".
+Each action MUST have "variants" array (even if empty).
 """
 
     # Call GPT (OpenAI with Groq Fallback)
