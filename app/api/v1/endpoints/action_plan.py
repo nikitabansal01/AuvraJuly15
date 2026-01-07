@@ -152,11 +152,11 @@ async def get_today_assignments(
         async_db = await get_async_db_session()
 
         # Decide image generation mode.
-        # On signup/first-ever plan, full image generation can add ~30-60s due to external image APIs.
-        # Default behavior: hero_only for first plan to reduce time-to-first-plan.
+        # Use hero_only mode by default for fast loading (4 images instead of 12)
+        # Variants are generated async in background when user views action details
         effective_image_mode = image_mode
         if effective_image_mode == "auto":
-            effective_image_mode = "hero_only" if is_first_plan_for_user else "full"
+            effective_image_mode = "hero_only"  # Always hero_only for speed
 
         if effective_image_mode not in {"full", "hero_only", "none"}:
             raise HTTPException(status_code=400, detail="Invalid image_mode. Use auto, full, hero_only, or none.")

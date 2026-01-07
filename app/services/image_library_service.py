@@ -491,7 +491,7 @@ class ImageLibraryService:
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 8,      # Better detail/legibility for small in-app thumbnails
+                    "num_inference_steps": 4,      # Flux Schnell optimized for 4 steps (8 is 2x slower)
                     "guidance": 5,                  # Kept from known-working integration
                     "seed": -1,
                     "negative_prompt": negative_prompt,
