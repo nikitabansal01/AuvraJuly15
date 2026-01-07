@@ -28,7 +28,7 @@ from datetime import datetime, timezone, date, timedelta
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, update, text
+from sqlalchemy import select, and_, update, text, or_
 
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
@@ -964,6 +964,11 @@ class ActionPlanGenerator:
         # If plan already exists for today, return it (never replace)
         if existing_plan:
             logger.info(f"Found existing plan for user {user_id} on {today}")
+            
+            # Check for missing images and generate them if needed
+            if image_mode != "none":
+                await self._ensure_plan_has_images(existing_plan, user_id, db, image_mode)
+            
             resp = await self._format_plan_response(existing_plan, db)
             if isinstance(resp, dict) and resp.get("success"):
                 resp["plan_source"] = "existing_today"
@@ -4246,6 +4251,106 @@ JSON ONLY:
             
             logger.error(f"Error storing plan: {e}")
             raise
+    
+    async def _ensure_plan_has_images(
+        self,
+        plan: Any,
+        user_id: str,
+        db: AsyncSession,
+        image_mode: str = "hero_only"
+    ) -> None:
+        """
+        Check if plan items have missing hero images and generate them.
+        
+        This handles plans created via session linking where images weren't generated.
+        Only generates hero images (not variants) to keep it fast.
+        """
+        from app.core.database import ActionPlanItem
+        
+        try:
+            # Get items with missing hero images
+            items_result = await db.execute(
+                select(ActionPlanItem).where(
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_replaced.isnot(True),
+                        or_(
+                            ActionPlanItem.hero_image_url.is_(None),
+                            ActionPlanItem.hero_image_url == ""
+                        )
+                    )
+                )
+            )
+            items_missing_images = items_result.scalars().all()
+            
+            if not items_missing_images:
+                logger.info(f"[ENSURE_IMAGES] All items in plan {plan.id} already have images")
+                return
+            
+            logger.info(f"[ENSURE_IMAGES] Found {len(items_missing_images)} items without images in plan {plan.id}")
+            
+            # Generate images using the same pattern as _generate_all_images
+            async def generate_image_for_item(item):
+                """Wrapper that creates its own session for each image task."""
+                task_session = None
+                try:
+                    # Build image prompt from item title/category
+                    prompt = item.hero_image_prompt
+                    if not prompt:
+                        # Fallback: generate prompt from title and category
+                        category_prompts = {
+                            "food": f"Healthy nutritious meal: {item.title}, fresh ingredients, natural lighting, food photography",
+                            "movement": f"Woman exercising: {item.title}, fitness lifestyle, energetic, wellness photography",
+                            "mindfulness": f"Peaceful meditation scene: {item.title}, calm atmosphere, soft natural light"
+                        }
+                        prompt = category_prompts.get(item.category.lower() if item.category else "food",
+                                                      f"Healthy lifestyle: {item.title}, professional photography")
+                    
+                    # Use semaphore to limit concurrent operations
+                    async with self.db_semaphore:
+                        task_session = await _create_async_session(self.async_session_maker)
+                        
+                        url, was_cached, cost = await self.image_service.get_or_generate_image(
+                            prompt=prompt,
+                            category=item.category or "food",
+                            variant_type="hero",
+                            user_id=user_id,
+                            db=task_session
+                        )
+                    
+                    if url:
+                        # Update the item with the new image URL
+                        item.hero_image_url = url
+                        logger.info(f"[ENSURE_IMAGES] Generated image for item {item.id}: {item.title[:30]}...")
+                        return url
+                    else:
+                        logger.warning(f"[ENSURE_IMAGES] No image URL returned for item {item.id}")
+                        return None
+                        
+                except Exception as e:
+                    logger.warning(f"[ENSURE_IMAGES] Failed to generate image for item {item.id}: {e}")
+                    return None
+                finally:
+                    if task_session:
+                        await task_session.close()
+            
+            # Generate all missing images in parallel
+            results = await asyncio.gather(
+                *[generate_image_for_item(item) for item in items_missing_images],
+                return_exceptions=True
+            )
+            
+            # Count successes
+            success_count = sum(1 for r in results if r and not isinstance(r, Exception))
+            logger.info(f"[ENSURE_IMAGES] Generated {success_count}/{len(items_missing_images)} images for plan {plan.id}")
+            
+            # Commit all changes to the main session
+            await db.commit()
+            logger.info(f"[ENSURE_IMAGES] Completed image generation for plan {plan.id}")
+            
+        except Exception as e:
+            logger.error(f"[ENSURE_IMAGES] Error ensuring plan has images: {e}")
+            # Don't raise - we want the plan to load even if images fail
     
     async def _format_plan_response(
         self,

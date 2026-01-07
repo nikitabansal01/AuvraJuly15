@@ -354,6 +354,15 @@ class QuestionService:
                 conditions = rec.conditions if rec.conditions else []
                 symptoms = rec.symptoms if rec.symptoms else []
                 
+                # Build image prompt for later generation
+                category_prompts = {
+                    "food": f"Healthy nutritious meal: {rec.title}, fresh ingredients, natural lighting, food photography, appetizing",
+                    "movement": f"Woman exercising: {rec.title}, fitness lifestyle, energetic, bright studio, wellness photography",
+                    "mindfulness": f"Peaceful meditation scene: {rec.title}, calm atmosphere, soft natural light, wellness and relaxation"
+                }
+                image_prompt = category_prompts.get(rec.category.lower() if rec.category else "food", 
+                                                    f"Healthy lifestyle: {rec.title}, professional photography")
+                
                 # Create ActionPlanItem
                 item = ActionPlanItem(
                     plan_id=action_plan.id,
@@ -376,7 +385,8 @@ class QuestionService:
                     conditions=conditions,
                     symptoms=symptoms,
                     research_studies=rec.research_studies,
-                    hero_image_url=None,  # Will be generated on first view or async
+                    hero_image_url=None,  # Will be generated on first HomeScreen view
+                    hero_image_prompt=image_prompt,  # Prompt for image generation
                     is_completed=False
                 )
                 self.db.add(item)
