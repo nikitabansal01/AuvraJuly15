@@ -558,9 +558,9 @@ class QuestionService:
                 # - Hormone personas, variants, image generation, research studies
                 # - All the fixes and improvements made to the "after signup" path
                 if len(successful_recommendations) >= 2:
-                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan immediately with FULL-FEATURED generator and {len(successful_recommendations)} recommendations")
+                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan with FULL generate_new_plan() and {len(successful_recommendations)} recommendations")
                     try:
-                        # Import and run the ASYNC ActionPlanGenerator method synchronously
+                        # Import and run the FULL-FEATURED generate_new_plan() method (same as after signup)
                         import asyncio
                         from app.services.action_plan_generator import get_action_plan_generator
                         from app.core.database import get_async_session_maker
@@ -574,17 +574,19 @@ class QuestionService:
                         except Exception:
                             today = date.today()
                         
-                        # Run the async method synchronously
+                        # Run the FULL generate_new_plan() method (Y, not X)
                         async def create_plan_async():
                             async_session_maker = get_async_session_maker()
                             async with async_session_maker() as db:
                                 generator = get_action_plan_generator()
-                                result = await generator._convert_session_recommendations_to_plan(
+                                # Use generate_new_plan() - the FULL-FEATURED function Y
+                                result = await generator.generate_new_plan(
                                     user_id=uid,
-                                    today=today,
+                                    plan_date=today,
                                     user_timezone=current_timezone,
                                     db=db,
-                                    image_mode="full"  # Generate all 16 images in parallel
+                                    image_mode="full",  # Generate all 16 images in parallel
+                                    skip_quality_check=False  # Run full quality checks
                                 )
                                 return result
                         
@@ -598,11 +600,11 @@ class QuestionService:
                         plan_result = loop.run_until_complete(create_plan_async())
                         
                         if plan_result and plan_result.get('success'):
-                            logger.info(f"✅ [SESSION_LINK] FULL-FEATURED ActionPlan created successfully for {uid} - HomeScreen will load INSTANTLY!")
+                            logger.info(f"✅ [SESSION_LINK] FULL generate_new_plan() completed for {uid} - HomeScreen will load INSTANTLY!")
                         else:
-                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation returned no result, ActionPlanGenerator will handle on HomeScreen")
+                            logger.warning(f"⚠️ [SESSION_LINK] generate_new_plan() returned no result, ActionPlanGenerator will handle on HomeScreen")
                     except Exception as ap_error:
-                        logger.error(f"❌ [SESSION_LINK] ActionPlan creation error: {ap_error}", exc_info=True)
+                        logger.error(f"❌ [SESSION_LINK] generate_new_plan() error: {ap_error}", exc_info=True)
                         # Don't fail session linking if action plan creation fails
                 else:
                     logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} recommendations, ActionPlanGenerator will generate on HomeScreen")
