@@ -74,6 +74,53 @@ class RecommendationService:
             # Check results
             success_count = sum(1 for r in results if r is True)
             logger.info(f"Session recommendation generation completed: {session_id}, {category}, saved={success_count}/{len(recommendations_with_hormones)}")
+            
+            # CRITICAL FIX: Check if session was linked to a user while we were generating
+            try:
+                from app.core.database import QuestionSession
+                # Use a fresh session check to get latest status
+                session_check = self.db.query(QuestionSession).filter(QuestionSession.session_id == session_id).first()
+                
+                if session_check and session_check.status and session_check.status.startswith("linked:"):
+                     target_uid = session_check.status.split(":")[1]
+                     logger.info(f"🔄 Late-binding detected! Session {session_id} was linked to {target_uid}. Migrating new records...")
+                     
+                     # Migrate the records we just created
+                     from app.core.database import RecommendationRecord, RecommendationAdvice
+                     
+                     # Look for records with this session_id that have NULL uid
+                     orphans = self.db.query(RecommendationRecord).filter(
+                         RecommendationRecord.session_id == session_id,
+                         RecommendationRecord.uid == None
+                     ).all()
+                     
+                     count_migrated = 0
+                     for orphan in orphans:
+                         orphan.uid = target_uid
+                         # Keep session_id for traceability or clear it? Cleared in LinkService, so clear here too
+                         orphan.session_id = None 
+                         
+                         # Also update advice
+                         advices = self.db.query(RecommendationAdvice).filter(
+                             RecommendationAdvice.session_id == session_id,
+                             RecommendationAdvice.recommendation_id == orphan.id
+                         ).all()
+                         for adv in advices:
+                             adv.uid = target_uid
+                             adv.session_id = None
+                         
+                         count_migrated += 1
+                     
+                     self.db.commit()
+                     logger.info(f"✅ Migrated {count_migrated} late-arriving records to user {target_uid}")
+                     
+                     # If this completes the session (hard to know if other categories are running), 
+                     # we could check StatusService. BUT linking service will handle cleanup if we don't.
+                     # However, to be clean, if ALL categories are done, we should delete the session.
+                     # For now, let's leave the session; a daily cron job can clean "linked:" sessions.
+            except Exception as link_err:
+                logger.error(f"Error checking linked status: {link_err}")
+                
             return success_count > 0
             
         except Exception as e:

@@ -360,9 +360,22 @@ class QuestionService:
                 # The action_plan_generator.py creates personalized daily plans when users open the app
                 logger.info(f"Session linking completed with {len(successful_recommendations)} recommendations (Action Plan system handles scheduling)")
                 
-                # 6. Delete session
-                self.db.delete(session)
-                logger.info(f"Session deletion completed: {session_id}")
+                # Check if generation is still in progress
+                from app.services.processing_status_service import ProcessingStatusService
+                processing_service = ProcessingStatusService(self.db)
+                status = processing_service.get_processing_status(session_id)
+                
+                is_still_processing = status and status.processing_status in ["queued", "in_progress"]
+                
+                if is_still_processing:
+                    logger.info(f"⚠️ Recommendation generation still in progress for {session_id}. Keeping session alive and marking as linked to {uid}")
+                    # Mark session as "linked:{uid}" so background worker knows where to send data
+                    session.status = f"linked:{uid}"
+                    self.db.commit()
+                else:
+                    # 6. Delete session only if processing is done
+                    self.db.delete(session)
+                    logger.info(f"Session deletion completed: {session_id}")
                 
                 # 7. Commit
                 self.db.commit()

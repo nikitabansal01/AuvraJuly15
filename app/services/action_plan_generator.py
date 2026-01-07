@@ -1187,20 +1187,27 @@ class ActionPlanGenerator:
             
             # Step 3: Generate images
             # - full: hero + 3 variants per action (16 total)
+            #   OPTIMIZATION: Split into Sync (Hero) and Async (Variants) to reduce blocking time.
             # - hero_only: only 1 hero image per action (4 total)
             # - none: skip image generation entirely
+            
+            initial_image_mode = image_mode
+            if image_mode == "full":
+                initial_image_mode = "hero_only"
+                logger.info("[GENERATE] Optimization: Generating Hero images synchronously, Variants in background")
+            
             if image_mode == "none":
                 logger.info("[GENERATE] Step 3: Skipping image generation (image_mode=none)")
                 actions_with_images, image_cost = actions, 0.0
             else:
                 logger.info(
-                    f"[GENERATE] Step 3: Generating images for {len(actions)} actions (image_mode={image_mode})..."
+                    f"[GENERATE] Step 3: Generating images for {len(actions)} actions (image_mode={initial_image_mode})..."
                 )
                 actions_with_images, image_cost = await self._generate_all_images(
                     actions=actions,
                     user_id=user_id,
                     db=db,
-                    image_mode=image_mode,
+                    image_mode=initial_image_mode,
                 )
                 total_cost += image_cost
                 logger.info(f"[GENERATE] ✅ Images generated. Cost: ${image_cost:.4f}")
@@ -1240,6 +1247,13 @@ class ActionPlanGenerator:
                 logger.info(f"📊 AI model usage logged for plan {plan.id}")
             except Exception as log_err:
                 logger.error(f"Failed to log AI model usage: {log_err}")
+                
+            # Step 4.7: Generate Variants in Background (if mode was full)
+            if image_mode == "full":
+                logger.info(f"[GENERATE] 🚀 Launching background task for variant images (Plan {plan.id})")
+                asyncio.create_task(
+                    self._background_generate_variants(plan.id, user_id, actions_with_images)
+                )
             
             # Step 5: Fire-and-forget quality evaluation (async, non-blocking)
             # This stores metrics for trend monitoring without impacting UX
@@ -3689,7 +3703,7 @@ JSON ONLY:
         actions: List[Dict],
         user_id: str,
         db: AsyncSession,
-        image_mode: Literal["full", "hero_only", "none"] = "full",
+        image_mode: Literal["full", "hero_only", "variants_only", "none"] = "full",
     ) -> Tuple[List[Dict], float]:
         """
         Generate all images for all actions (16 total) in PARALLEL.
@@ -3749,19 +3763,20 @@ JSON ONLY:
             action_category = action.get("category", "food")
             action_image_prompt = action.get("image_prompt", action_title)
             
-            # Hero image task (with its own session)
-            image_tasks.append(
-                _generate_single_image(
-                    prompt=action_image_prompt,
-                    category=action_category,
-                    variant_type="hero",
-                    user_id=user_id
+            # Hero image task (with its own session) - Only if NOT "variants_only"
+            if image_mode != "variants_only":
+                image_tasks.append(
+                    _generate_single_image(
+                        prompt=action_image_prompt,
+                        category=action_category,
+                        variant_type="hero",
+                        user_id=user_id
+                    )
                 )
-            )
-            task_metadata.append({"action_idx": action_idx, "variant_idx": None})
+                task_metadata.append({"action_idx": action_idx, "variant_idx": None})
             
             # Variant image tasks (each with its own session)
-            if image_mode == "full":
+            if image_mode in ["full", "variants_only"]:
                 variants = action.get("variants", [])
                 for variant_idx, variant in enumerate(variants):
                     if not isinstance(variant, dict):
@@ -3776,6 +3791,7 @@ JSON ONLY:
                         )
                     )
                     task_metadata.append({"action_idx": action_idx, "variant_idx": variant_idx})
+
         
         # Execute all image tasks in parallel (each with its own isolated session)
         logger.info(f"⚡ Generating {len(image_tasks)} images in PARALLEL with isolated sessions... (image_mode={image_mode})")
@@ -4048,6 +4064,87 @@ JSON ONLY:
             logger.error(f"Error formatting plan response: {e}")
             return {"success": False, "error": "Failed to load plan. Please try again."}
     
+    async def _background_generate_variants(
+        self,
+        plan_id: int,
+        user_id: str,
+        actions: List[Dict],
+    ):
+        """
+        Background task to generate variant images and update the database.
+        This runs after the plan has been returned to the user to improve latency.
+        """
+        logger.info(f"[BG-IMAGE] Starting background variant generation for plan {plan_id}")
+        start_time = time.time()
+        
+        # Create a dedicated session for this background task
+        session = self.async_session_maker()
+        try:
+            from app.core.database import ActionPlanItem, ActionPlanItemVariant
+            
+            # 1. Generate the variant images (this uses its own internal sessions for image gen)
+            # We reuse the existing actions list which has the prompts
+            updated_actions, cost = await self._generate_all_images(
+                actions=actions,
+                user_id=user_id,
+                db=session, # Passed but not used for the image gen logic itself
+                image_mode="variants_only"
+            )
+            
+            # 2. Update the database records
+            # Get all items for this plan ordered by slot
+            items_result = await session.execute(
+                select(ActionPlanItem)
+                .where(ActionPlanItem.plan_id == plan_id)
+                .order_by(ActionPlanItem.slot)
+            )
+            items = items_result.scalars().all()
+            
+            if len(items) != len(updated_actions):
+                logger.warning(f"[BG-IMAGE] Mismatch: Plan has {len(items)} items, but generated {len(updated_actions)} actions.")
+            
+            updates_count = 0
+            
+            for i, item in enumerate(items):
+                if i >= len(updated_actions):
+                    break
+                    
+                action_data = updated_actions[i]
+                variants_data = action_data.get("variants", [])
+                
+                # Get existing variants for this item
+                variants_result = await session.execute(
+                    select(ActionPlanItemVariant)
+                    .where(ActionPlanItemVariant.item_id == item.id)
+                )
+                db_variants = variants_result.scalars().all()
+                
+                # Map by variant_type for easy update
+                db_variant_map = {v.variant_type: v for v in db_variants}
+                
+                for v_data in variants_data:
+                    if not isinstance(v_data, dict):
+                        continue
+                        
+                    v_type = v_data.get("variant_type")
+                    image_url = v_data.get("image_url")
+                    
+                    if v_type and image_url and v_type in db_variant_map:
+                        db_variant = db_variant_map[v_type]
+                        db_variant.image_url = image_url
+                        updates_count += 1
+            
+            await session.commit()
+            elapsed = time.time() - start_time
+            logger.info(f"[BG-IMAGE] ✅ Updated {updates_count} variant images for plan {plan_id} in {elapsed:.2f}s")
+            
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"[BG-IMAGE] ❌ Failed to update variant images: {e}")
+            logger.error(traceback.format_exc())
+        finally:
+            await session.close()
+
     async def replace_action(
         self,
         user_id: str,
