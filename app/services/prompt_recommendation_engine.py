@@ -108,7 +108,7 @@ class ActionItemModel(BaseModel):
     research_studies: List[ResearchStudyModel] = Field(default_factory=list)
     
     # Variants - OPTIONAL with auto-generation (LLM often omits these)
-    variants: Optional[List[ActionVariantModel]] = Field(default=None)
+    variants: Optional[List[ActionVariantModel]] = None
     
     # Category-specific fields - ALL required, use [] for non-matching categories
     # Food fields
