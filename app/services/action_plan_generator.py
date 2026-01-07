@@ -1586,22 +1586,42 @@ class ActionPlanGenerator:
             )
             items = items_result.scalars().all()
             
-            # Generate images in parallel
+            # Generate images in parallel using proper image service call
             if image_mode != "none":
-                image_service = get_image_library_service()
-                
                 async def generate_hero_image(item):
+                    """Generate hero image for an item using proper image service."""
+                    task_session = None
                     try:
-                        if item.hero_image_prompt:
-                            url = await image_service.get_or_generate_image(item.hero_image_prompt)
-                            if url:
-                                item.hero_image_url = url
-                                await db.commit()
+                        if not item.hero_image_prompt:
+                            return None
+                        
+                        async with self.db_semaphore:
+                            task_session = await _create_async_session(self.async_session_maker)
+                            url, was_cached, cost = await self.image_service.get_or_generate_image(
+                                prompt=item.hero_image_prompt,
+                                category=item.category or "food",
+                                variant_type="hero",
+                                user_id=user_id,
+                                db=task_session
+                            )
+                        
+                        if url:
+                            item.hero_image_url = url
+                            logger.info(f"[SESSION_CONVERT] Generated hero for: {item.title[:30]}...")
+                            return url
+                        return None
                     except Exception as e:
                         logger.warning(f"[SESSION_CONVERT] Image generation failed for {item.title}: {e}")
+                        return None
+                    finally:
+                        if task_session:
+                            await task_session.close()
                 
                 # Generate all hero images in parallel
                 await asyncio.gather(*[generate_hero_image(item) for item in items], return_exceptions=True)
+                
+                # Commit image URLs
+                await db.commit()
             
             total_time_ms = int((time.time() - start_time) * 1000)
             logger.info(f"[SESSION_CONVERT] ✅ Plan conversion complete in {total_time_ms}ms (saved ~100s)")

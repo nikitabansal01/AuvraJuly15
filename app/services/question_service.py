@@ -552,70 +552,22 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 🚀 CRITICAL: Create ActionPlan immediately from session recommendations
-                # This eliminates the 100+ second wait when HomeScreen loads
+                # 🚀 IMPORTANT: Do NOT create ActionPlan here anymore!
+                # Let ActionPlanGenerator._convert_session_recommendations_to_plan() handle it
+                # when HomeScreen loads. That method has ALL the features:
+                # - Proper hormone persona intros
+                # - Full variant generation with image prompts  
+                # - Better image generation
+                # - All the personalization logic
+                # 
+                # The conversion is very fast (~200ms) so HomeScreen will still load quickly
+                # compared to full GPT regeneration (~100s).
                 if len(successful_recommendations) >= 2:
-                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan from {len(successful_recommendations)} session recommendations...")
-                    try:
-                        action_plan_created = self._create_action_plan_from_session_recs(
-                            uid=uid,
-                            recommendations=successful_recommendations,
-                            user_response=user_response,
-                            current_timezone=current_timezone,
-                            lifestyle_focus=lifestyle_focus
-                        )
-                        if action_plan_created:
-                            logger.info(f"✅ [SESSION_LINK] ActionPlan created successfully for {uid} - HomeScreen will load instantly!")
-                        else:
-                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation failed, will regenerate on HomeScreen")
-                    except Exception as ap_error:
-                        logger.error(f"❌ [SESSION_LINK] ActionPlan creation error: {ap_error}", exc_info=True)
-                        # Don't fail session linking if action plan creation fails
+                    logger.info(f"✅ [SESSION_LINK] Migrated {len(successful_recommendations)} recommendations (ActionPlan will be created on HomeScreen load)")
+                    logger.info(f"✅ [SESSION_LINK] HomeScreen will use ActionPlanGenerator._convert_session_recommendations_to_plan()")
                 else:
-                    # 🚀 NEW FIX: If no session recommendations exist, trigger action_plan_generator directly
-                    # This happens when the session recommendation engine fails (Pydantic validation, etc.)
-                    # Instead of waiting for HomeScreen to trigger generation, do it NOW
-                    logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} session recommendations. Triggering ActionPlanGenerator directly...")
-                    try:
-                        import asyncio
-                        from app.services.action_plan_generator import ActionPlanGenerator
-                        
-                        # Create a new async database session for the generator
-                        generator = ActionPlanGenerator()
-                        
-                        # Run the generator in background (non-blocking)
-                        # The HomeScreen will poll and find the plan when ready
-                        async def generate_plan_async():
-                            try:
-                                from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-                                from sqlalchemy.orm import sessionmaker
-                                import os
-                                
-                                db_url = os.getenv("DATABASE_URL", "")
-                                if db_url.startswith("postgres://"):
-                                    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-                                elif db_url.startswith("postgresql://"):
-                                    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-                                
-                                engine = create_async_engine(db_url)
-                                async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-                                
-                                async with async_session() as db_session:
-                                    result = await generator.get_or_generate_today_plan(uid, current_timezone, db_session)
-                                    if result.get("success"):
-                                        logger.info(f"✅ [SESSION_LINK] ActionPlanGenerator completed for {uid}!")
-                                    else:
-                                        logger.warning(f"⚠️ [SESSION_LINK] ActionPlanGenerator returned: {result}")
-                            except Exception as gen_err:
-                                logger.error(f"❌ [SESSION_LINK] ActionPlanGenerator async error: {gen_err}", exc_info=True)
-                        
-                        # Start the background task
-                        asyncio.create_task(generate_plan_async())
-                        logger.info(f"🚀 [SESSION_LINK] ActionPlanGenerator task started for {uid}")
-                        
-                    except Exception as gen_error:
-                        logger.error(f"❌ [SESSION_LINK] Failed to start ActionPlanGenerator: {gen_error}", exc_info=True)
-                        # Non-fatal - HomeScreen will trigger it anyway
+                    # If no session recommendations exist, ActionPlanGenerator will do full generation
+                    logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} session recommendations. ActionPlanGenerator will generate on HomeScreen load.")
                 
                 # Check if generation is still in progress
                 from app.services.processing_status_service import ProcessingStatusService
