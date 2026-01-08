@@ -438,28 +438,73 @@ async def respond_care_plan_checkin(
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
-        # Use AI-generated tap options directly (AI now suggests replacements inline)
-        tap_options = []
+        tap_options = _default_tap_options()
         for t in (ai_response.tap_options or []):
             if _should_exclude_tap_option(t.id, t.text):
                 continue
-            tap_options.append({"id": t.id, "text": t.text})
-        
-        # Always ensure manage_plan option is available
+            tap_options = _ensure_tap_option(tap_options, t.id, t.text)
         tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
 
-        # Store replacement suggestion if AI provided one
-        if ai_response.insights and ai_response.insights.replacement_suggestion:
-            repl = ai_response.insights.replacement_suggestion
-            ai_data = dict(thread.actionable_insights or {})
-            ai_data["pending_replacement"] = {
-                "original_item": repl.original_item,
-                "suggestions": repl.suggestions
-            }
-            thread.actionable_insights = ai_data
-            db.add(thread)
-            db.commit()
-            db.refresh(thread)
+        ui_blocks: List[UIBlock] = []
+
+        # Check if AI extracted a specific item the user is referring to
+        selected_item_title = None
+        selected_item_id = None
+        if ai_response.insights:
+            selected_item_title = getattr(ai_response.insights, "selected_item_title", None)
+        
+        # If user mentioned a specific item, try to match it to plan items
+        items = service.get_plan_items_for_ui(uid, limit=8)
+        if selected_item_title and items:
+            selected_item_title_lower = selected_item_title.strip().lower()
+            for item in items:
+                item_title = (item.get("title") or "").strip().lower()
+                # Match: exact, contained in, or contains
+                if (item_title == selected_item_title_lower or 
+                    selected_item_title_lower in item_title or 
+                    item_title in selected_item_title_lower):
+                    selected_item_id = item.get("item_id")
+                    break
+        
+        # If we have a specific item selected, generate alternates directly
+        if selected_item_id:
+            # Generate candidate alternatives directly
+            candidates_result = await service.generate_alternate_candidates(
+                uid, item_id=selected_item_id, reason="User requested via chat"
+            )
+            if candidates_result.get("success"):
+                # Store pending alternate + candidates
+                ai_data = dict(thread.actionable_insights or {})
+                ai_data["pending_alternate"] = {"stage": "choose_candidate", "item_id": selected_item_id, "reason": "User requested via chat"}
+                ai_data["alternate_candidates"] = candidates_result.get("candidates_by_id") or {}
+                thread.actionable_insights = ai_data
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
+                
+                ui_blocks.append(_pick_alternate_candidate_block(selected_item_id, candidates_result.get("candidates_ui") or []))
+            else:
+                # Fallback to picker if generation failed
+                if items:
+                    ui_blocks.append(_pick_alternate_item_block(items))
+        else:
+            # Prefer model-selected intent. Keep a light heuristic fallback so UX doesn't break
+            # if the model forgets to set the flag.
+            wants_alternates = bool(getattr(ai_response.insights, "alternate_suggestions_requested", False))
+            if not wants_alternates:
+                wants_alternates = _looks_like_alternate_suggestions_request(payload.message_text)
+
+            if wants_alternates:
+                if items:
+                    ui_blocks.append(_pick_alternate_item_block(items))
+                else:
+                    ui_blocks.append(_open_plan_manager_block())
+            else:
+                if _looks_like_change_intent(payload.message_text) or (
+                    ai_response.insights and ai_response.insights.plan_changes_requested
+                ):
+                    if items:
+                        ui_blocks.append(_pick_replace_block(items))
 
         return {
             "thread_id": thread.id,
@@ -467,7 +512,7 @@ async def respond_care_plan_checkin(
             "history": history,
             "tap_options": tap_options,
             "actionable_insights": thread.actionable_insights or {},
-            "ui_blocks": [],  # AI handles suggestions via tap_options now
+            "ui_blocks": ui_blocks,
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -510,83 +555,7 @@ async def care_plan_ui_event(
                 "ui_blocks": [_open_plan_manager_block()],
             }
 
-        # AI-generated replacement flow: user tapped "replace_with_[title]"
-        if action_id.startswith("replace_with_"):
-            replacement_title = action_id.replace("replace_with_", "").strip()
-            thread = service.get_thread_by_id(uid, payload.thread_id)
-            
-            # Get the pending replacement info
-            pending = (thread.actionable_insights or {}).get("pending_replacement") or {}
-            original_item = pending.get("original_item", "")
-            
-            # Find the original item to replace
-            items = service.get_plan_items_for_ui(uid, limit=10)
-            original_item_id = None
-            for item in items:
-                item_title = (item.get("title") or "").strip().lower()
-                if original_item and original_item.lower() in item_title or item_title in original_item.lower():
-                    original_item_id = item.get("item_id")
-                    break
-            
-            # Add user message to thread
-            raw = list(thread.raw_messages or [])
-            display_text = (meta.get("display_text") or f"Replace with: {replacement_title}").strip()
-            raw.append({
-                "id": str(uuid4()),
-                "role": "user",
-                "content": display_text,
-                "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-            })
-            thread.raw_messages = raw
-            
-            if original_item_id:
-                # Execute the replacement
-                result = await service.replace_action_item(uid, original_item_id, f"User chose: {replacement_title}")
-                
-                if result.get("success"):
-                    repl = result.get("replacement_action") or {}
-                    repl_title = (repl.get("title") or repl.get("specific_action") or replacement_title).strip()
-                    raw.append({
-                        "id": str(uuid4()),
-                        "role": "bot",
-                        "content": f"Done! I've replaced it with {repl_title}. 🎉",
-                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                    })
-                else:
-                    raw.append({
-                        "id": str(uuid4()),
-                        "role": "bot",
-                        "content": f"I'll update your plan to include {replacement_title} instead. Check your plan! 👍",
-                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                    })
-            else:
-                raw.append({
-                    "id": str(uuid4()),
-                    "role": "bot",
-                    "content": f"Got it! I'll note that you prefer {replacement_title}. I'll include this in your future plans. 👍",
-                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                })
-            
-            # Clear pending replacement
-            ai_data = dict(thread.actionable_insights or {})
-            ai_data.pop("pending_replacement", None)
-            thread.actionable_insights = ai_data
-            thread.raw_messages = raw
-            db.add(thread)
-            db.commit()
-            db.refresh(thread)
-            
-            history = service.format_history_for_mobile(thread)
-            return {
-                "thread_id": thread.id,
-                "local_date": thread.local_date.isoformat(),
-                "history": history,
-                "tap_options": _ensure_tap_option([], "manage_plan", "🧩 Manage plan"),
-                "actionable_insights": thread.actionable_insights or {},
-                "ui_blocks": [],
-            }
-
-        # Legacy replace flow (picker -> confirm -> execute)
+        # Replace flow (picker -> confirm -> execute)
         if action_id.startswith("care_plan_replace_pick_"):
             try:
                 item_id = int(action_id.split("care_plan_replace_pick_", 1)[1])
