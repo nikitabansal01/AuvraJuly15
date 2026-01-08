@@ -32,7 +32,9 @@ if settings.ENVIRONMENT == "production":
     )
 
     # Async Engine
+    # asyncpg uses 'ssl' parameter, not 'sslmode' - convert for compatibility
     async_database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+    async_database_url = async_database_url.replace("sslmode=", "ssl=")
     async_engine = create_async_engine(
         async_database_url,
         poolclass=NullPool,
