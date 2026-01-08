@@ -508,8 +508,8 @@ class ImageLibraryService:
             # RunPod Serverless API - use async run endpoint
             endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
             
-            # Enhance prompt with category-specific styling and negative prompts
-            enhanced_prompt, negative_prompt = self._enhance_prompt(prompt, category)
+            # Enhance prompt with category-specific styling (no negative prompt - Schnell doesn't use it)
+            enhanced_prompt = self._enhance_prompt(prompt, category)
             
             payload = {
                 "input": {
@@ -519,7 +519,6 @@ class ImageLibraryService:
                     "num_inference_steps": 4,       # FLUX Schnell optimal: 4 steps (fast!)
                     "guidance": 3.5,                 # Lower = more natural, faster
                     "seed": -1,
-                    "negative_prompt": negative_prompt,
                     "image_format": "png"
                 }
             }
@@ -656,94 +655,87 @@ class ImageLibraryService:
         logger.error(f"❌ All {self.MAX_IMAGE_RETRIES} retry attempts exhausted, using placeholder")
         return await self._generate_placeholder_image(prompt)
     
-    def _enhance_prompt(self, prompt: str, category: str = "food") -> Tuple[str, str]:
+    def _enhance_prompt(self, prompt: str, category: str = "food") -> str:
         """
-        Enhance the prompt for FLUX.1 Schnell with ILLUSTRATIVE styling.
+        Enhance the prompt for FLUX.1 Schnell with PHOTOREALISTIC styling.
         
-        GOAL: User should understand EXACTLY what to do by looking at the image!
-        - Food: Show the exact dish/ingredient clearly
-        - Movement: Show a person DOING the exercise
-        - Mindfulness: Show a person DOING the meditation/technique
+        RESEARCH-BASED TECHNIQUES (2024):
+        - FLUX Schnell does NOT support negative prompts - removed entirely
+        - Focus on detailed descriptions, specific lighting, textures, composition
+        - Use sensory language for food (glossy, steaming, crispy)
+        - Use action words for movement (dynamic, energetic, flowing)
+        - Use atmosphere words for mindfulness (serene, peaceful, glowing)
         
         Args:
             prompt: Action title (e.g., "Salmon bowl", "Morning yoga stretch")
             category: "food", "movement", or "mindfulness"
             
         Returns:
-            Tuple of (enhanced_prompt, negative_prompt)
+            Enhanced prompt string (no negative prompt - Schnell doesn't use them)
         """
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
         
         if category == "food":
-            # Food: EXACTLY what you're eating, beautiful and appetizing
-            # Key: The food item must be the hero, clearly identifiable
+            # FOOD: Hyper-realistic, mouthwatering, editorial food photography
+            # Key techniques: glossy textures, steam, fresh ingredients, professional styling
             enhanced = (
-                f"{prompt}, "
-                f"beautiful food photography, "
-                f"appetizing and delicious looking, "
-                f"fresh vibrant ingredients clearly visible, "
-                f"overhead shot on white ceramic plate, "
-                f"bright natural daylight, clean white background, "
-                f"high detail, professional food styling, "
-                f"instagram worthy, mouth-watering"
-            )
-            negative = (
-                "text, watermark, logo, blurry, dark, underexposed, "
-                "artificial looking, plastic food, low quality, "
-                "cluttered, hands, people, messy, unappetizing"
+                f"Hyper-realistic photo of {prompt}, "
+                f"professional food photography, editorial quality, "
+                f"fresh glistening ingredients with visible textures, "
+                f"steam rising gently, vibrant natural colors, "
+                f"shallow depth of field with creamy bokeh background, "
+                f"soft diffused natural window light from the side, "
+                f"arranged on elegant white ceramic plate, "
+                f"garnished with fresh herbs, "
+                f"shot with 85mm lens, f/2.8 aperture, "
+                f"michelin star restaurant presentation, "
+                f"instagrammable, mouthwatering, appetizing"
             )
             
         elif category == "movement":
-            # Movement: Show a WOMAN ACTIVELY DOING the exercise
-            # Key: The pose/movement must be clearly visible and instructional
+            # MOVEMENT: Dynamic fitness photography, motivational, clear form
+            # Key techniques: motion blur hints, athletic wear, modern studio
             enhanced = (
-                f"woman actively doing {prompt}, "
-                f"fitness lifestyle photography, "
-                f"clear instructional pose, full body visible, "
-                f"wearing comfortable workout clothes, "
-                f"bright modern home or studio setting, "
-                f"soft natural lighting, clean minimal background, "
-                f"wellness and health aesthetic, "
-                f"motivating and energetic mood"
-            )
-            negative = (
-                "text, watermark, bad anatomy, extra limbs, "
-                "deformed body, distorted face, blurry, dark, "
-                "gym equipment, crowded background, aggressive, "
-                "stiff unnatural pose, low quality"
+                f"Professional fitness photography of a fit woman performing {prompt}, "
+                f"dynamic action pose mid-movement, "
+                f"athletic body in stylish modern workout wear, "
+                f"determined focused expression, "
+                f"clean bright modern gym studio with large windows, "
+                f"golden hour natural light streaming in, "
+                f"slight motion blur showing energy and movement, "
+                f"full body visible with perfect form, "
+                f"shot with Sony A7IV, 35mm lens, "
+                f"Nike or Lululemon advertisement style, "
+                f"motivational, empowering, energetic"
             )
             
         elif category == "mindfulness":
-            # Mindfulness: Show a WOMAN DOING the meditation/relaxation technique
-            # Key: The technique must be visible (breathing, posture, etc.)
+            # MINDFULNESS: Zen wellness, peaceful atmosphere, soft glow
+            # Key techniques: soft lighting, serene expression, cozy setting
             enhanced = (
-                f"woman peacefully practicing {prompt}, "
-                f"zen wellness photography, "
-                f"eyes closed, calm serene expression, "
-                f"correct meditation posture clearly visible, "
-                f"cozy peaceful indoor space, "
-                f"soft warm diffused lighting, "
-                f"muted natural tones, minimal background, "
-                f"relaxing and calming atmosphere"
-            )
-            negative = (
-                "text, watermark, deformed hands, extra fingers, "
-                "distorted face, blurry, dark, cluttered, "
-                "busy background, harsh lighting, "
-                "stressed expression, low quality"
+                f"Serene wellness photography of a peaceful woman practicing {prompt}, "
+                f"eyes gently closed with calm content expression, "
+                f"sitting in perfect meditation posture, "
+                f"wearing comfortable neutral-toned loungewear, "
+                f"cozy minimalist room with soft textures, "
+                f"warm golden hour sunlight filtering through sheer curtains, "
+                f"soft glowing ethereal atmosphere, "
+                f"plants and natural elements in background, "
+                f"shot with 50mm lens, soft focus, "
+                f"spa advertisement aesthetic, "
+                f"tranquil, peaceful, zen"
             )
             
         else:
-            # Fallback: generic wellness
+            # Fallback: clean wellness aesthetic
             enhanced = (
-                f"{prompt}, wellness lifestyle photography, "
-                f"bright natural lighting, clean minimal aesthetic, "
-                f"warm inviting tones, high quality"
+                f"Professional lifestyle photography of {prompt}, "
+                f"bright natural lighting, clean minimalist aesthetic, "
+                f"warm inviting tones, high quality editorial style"
             )
-            negative = "text, watermark, blurry, dark, low quality, cluttered"
         
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")
-        return (enhanced, negative)
+        return enhanced
     
     async def _generate_placeholder_image(self, prompt: str) -> Tuple[bytes, int]:
         """
