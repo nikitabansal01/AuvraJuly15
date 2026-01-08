@@ -552,73 +552,25 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 🚀 CRITICAL: Create ActionPlan IMMEDIATELY after signup using FULL-FEATURED ActionPlanGenerator
-                # This uses the SAME code path that runs "after signup" with ALL features:
-                # - Full ActionPlanGenerator._convert_session_recommendations_to_plan()
-                # - Hormone personas, variants, image generation, research studies
-                # - All the fixes and improvements made to the "after signup" path
+                # 🚀 CRITICAL: Create ActionPlan from existing session recommendations (NO REGENERATION!)
+                # This converts the already-generated recommendations into an ActionPlan
+                # WITHOUT calling GPT, PubMed, or image generation again.
                 if len(successful_recommendations) >= 2:
-                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan with FULL generate_new_plan() and {len(successful_recommendations)} recommendations")
+                    logger.info(f"🚀 [SESSION_LINK] Converting {len(successful_recommendations)} session recommendations to ActionPlan (NO regeneration)")
                     try:
-                        # Import and run the FULL-FEATURED generate_new_plan() method (same as after signup)
-                        import asyncio
-                        from app.services.action_plan_generator import get_action_plan_generator
-                        from app.utils.timezone_utils import ZoneInfo
-                        from datetime import date
-                        
-                         # Helper to create async session localy since it shares logic
-                        def get_async_session_maker():
-                            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-                            from sqlalchemy.orm import sessionmaker
-                            import os
-                            
-                            db_url = os.getenv("DATABASE_URL", "")
-                            if db_url.startswith("postgres://"):
-                                db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-                            elif db_url.startswith("postgresql://"):
-                                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-                            
-                            engine = create_async_engine(db_url, echo=False)
-                            return sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-                        # Get today's date in user's timezone
-                        try:
-                            tz = ZoneInfo(current_timezone)
-                            today = datetime.now(tz).date()
-                        except Exception:
-                            today = date.today()
-                        
-                        # Run the FULL generate_new_plan() method (Y, not X)
-                        async def create_plan_async():
-                            async_session_maker = get_async_session_maker()
-                            async with async_session_maker() as db:
-                                generator = get_action_plan_generator()
-                                # Use generate_new_plan() - the FULL-FEATURED function Y
-                                result = await generator.generate_new_plan(
-                                    user_id=uid,
-                                    plan_date=today,
-                                    user_timezone=current_timezone,
-                                    db=db,
-                                    image_mode="full",  # Generate all 16 images in parallel
-                                    skip_quality_check=False  # Run full quality checks
-                                )
-                                return result
-                        
-                        # Run in event loop
-                        try:
-                            loop = asyncio.get_event_loop()
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                        
-                        plan_result = loop.run_until_complete(create_plan_async())
-                        
-                        if plan_result and plan_result.get('success'):
-                            logger.info(f"✅ [SESSION_LINK] FULL generate_new_plan() completed for {uid} - HomeScreen will load INSTANTLY!")
+                        success = self._create_action_plan_from_session_recs(
+                            uid=uid,
+                            recommendations=successful_recommendations,
+                            user_response=user_response,
+                            current_timezone=current_timezone,
+                            lifestyle_focus=lifestyle_focus or []
+                        )
+                        if success:
+                            logger.info(f"✅ [SESSION_LINK] ActionPlan created from session recs - HomeScreen will load INSTANTLY!")
                         else:
-                            logger.warning(f"⚠️ [SESSION_LINK] generate_new_plan() returned no result, ActionPlanGenerator will handle on HomeScreen")
+                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation failed, will be generated on HomeScreen")
                     except Exception as ap_error:
-                        logger.error(f"❌ [SESSION_LINK] generate_new_plan() error: {ap_error}", exc_info=True)
+                        logger.error(f"❌ [SESSION_LINK] _create_action_plan_from_session_recs() error: {ap_error}", exc_info=True)
                         # Don't fail session linking if action plan creation fails
                 else:
                     logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} recommendations, ActionPlanGenerator will generate on HomeScreen")
