@@ -5769,7 +5769,7 @@ Respond with valid JSON only."""
                     "reason": reasons.get(item.id, "user disliked")
                 })
             
-            # Build batch replacement prompt with full context
+            # Build batch replacement prompt with full context and schema
             batch_prompt = f"""
 USER PROFILE:
 - Age: {user_context.get('age', 'Unknown')}
@@ -5790,7 +5790,28 @@ For each item in the list above, generate a BRAND NEW replacement action.
 3. Must address the specific `reason` for dislike/replacement.
 4. DO NOT repeat the original action.
 5. Use the `search_research_paper` tool to find REAL scientific backing.
-6. Return a valid JSON array of ActionItemModel objects corresponding to the replacements.
+
+OUTPUT FORMAT (JSON Array):
+[
+  {{
+    "title": "Action Title",
+    "category": "food" | "movement" | "mindfulness",
+    "time_slot": "morning" | "afternoon" | "evening",
+    "specific_action": "Detailed description of what to do",
+    "purpose": "Scientific explanation of WHY this helps the target hormone",
+    "target_hormone": "Name of hormone",
+    "hormone_persona": "First-person intro from the hormone (e.g., 'I am Cortisol...')",
+    "benefits": ["benefit 1", "benefit 2"],
+    "research_studies": [], 
+    "image_prompt": "Detailed prompt for generating an image of this action",
+    "food_items": ["item1"], 
+    "food_amounts": ["amount1"],
+    "exercise_types": [],
+    "exercise_durations": [],
+    "mindfulness_techniques": [],
+    "mindfulness_durations": []
+  }}
+]
 """
 
             # Generate replacements via GPT with retry logic
