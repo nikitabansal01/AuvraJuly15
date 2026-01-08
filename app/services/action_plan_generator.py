@@ -5769,7 +5769,29 @@ Respond with valid JSON only."""
                     "reason": reasons.get(item.id, "user disliked")
                 })
             
-            batch_prompt = """Generate replacement wellness actions in valid JSON format only. Return valid JSON array."""
+            # Build batch replacement prompt with full context
+            batch_prompt = f"""
+USER PROFILE:
+- Age: {user_context.get('age', 'Unknown')}
+- Cycle Day: {user_context.get('cycle_day', 'Unknown')}
+- Cycle Phase: {user_context.get('cycle_phase', 'Unknown')}
+- Primary Hormone: {user_context.get('primary_hormone', 'Unknown')}
+- Conditions: {user_context.get('diagnosed_conditions', [])}
+- Food Allergies: {user_context.get('food_allergies', [])}
+- Diet: {user_context.get('diet_preference', 'None')}
+
+ITEMS TO REPLACE:
+{json.dumps(items_to_replace, indent=2)}
+
+TASK:
+For each item in the list above, generate a BRAND NEW replacement action.
+1. Must target the SAME hormone (`target_hormone`) as the original.
+2. Must be suitable for the user's conditions (SAFE).
+3. Must address the specific `reason` for dislike/replacement.
+4. DO NOT repeat the original action.
+5. Use the `search_research_paper` tool to find REAL scientific backing.
+6. Return a valid JSON array of ActionItemModel objects corresponding to the replacements.
+"""
 
             # Generate replacements via GPT with retry logic
             replacement_actions = None
