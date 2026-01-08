@@ -1335,7 +1335,8 @@ class ActionPlanGenerator:
                         actions=actions_with_images,
                         user_context=user_context,
                         structure_valid=True,  # Pydantic validated already
-                        db=self.async_session_maker()  # New session for async task
+                        db=self.async_session_maker(),  # New session for async task
+                        session_id=session_id
                     )
                 )
                 logger.info(f" Evaluation task queued for plan {plan.id}")

@@ -201,27 +201,37 @@ class ActionPlanEvaluator:
     async def evaluate_plan(
         self,
         plan_id: int,
-        user_id: str,
+        user_id: Optional[str],
         actions: List[Dict[str, Any]],
         user_context: Dict[str, Any],
         structure_valid: bool,
-        db: AsyncSession
+        db: AsyncSession,
+        session_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Run all evaluation metrics and store results.
         
         Args:
             plan_id: The action plan ID
-            user_id: The user's UID
+            user_id: The user's UID (None for guests)
             actions: List of generated actions
             user_context: User profile/context data
             structure_valid: Whether Pydantic validation passed
             db: Database session
+            session_id: Session ID for guest users
             
         Returns:
             Evaluation results dict or None on error
         """
         from app.core.database import ActionPlanEvaluation, ActionPlanFeedback
+        
+        # Handle guest users
+        effective_uid = user_id
+        if not effective_uid:
+            if session_id:
+                effective_uid = f"guest_{session_id}"
+            else:
+                effective_uid = "guest_unknown"
         
         start_time = time.time()
         total_cost = 0.0
@@ -230,7 +240,10 @@ class ActionPlanEvaluator:
             logger.info(f"📊 Starting evaluation for plan {plan_id}")
             
             # Step 1: Get recent feedback for context
-            feedback_history = await self._get_recent_feedback(user_id, db)
+            if user_id:
+                feedback_history = await self._get_recent_feedback(user_id, db)
+            else:
+                feedback_history = "No previous feedback (Guest User)"
             
             # Step 2: Calculate scores
             llm_scores, llm_cost, citation_validity = await self.calculate_scores(
@@ -252,7 +265,7 @@ class ActionPlanEvaluator:
             # Step 4: Store evaluation in database
             evaluation = ActionPlanEvaluation(
                 plan_id=plan_id,
-                uid=user_id,
+                uid=effective_uid,
                 structure_valid=structure_valid,
                 personalization_score=llm_scores.get("personalization_score"),
                 condition_appropriateness=llm_scores.get("condition_appropriateness"),
