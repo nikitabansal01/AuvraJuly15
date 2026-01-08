@@ -446,25 +446,35 @@ async def respond_care_plan_checkin(
         tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
 
         ui_blocks: List[UIBlock] = []
-
-        # Check if AI extracted a specific item the user is referring to
-        selected_item_title = None
-        selected_item_id = None
-        if ai_response.insights:
-            selected_item_title = getattr(ai_response.insights, "selected_item_title", None)
         
-        # If user mentioned a specific item, try to match it to plan items
+        # Get plan items for matching
         items = service.get_plan_items_for_ui(uid, limit=8)
-        if selected_item_title and items:
-            selected_item_title_lower = selected_item_title.strip().lower()
+        
+        # Try to match user's text directly to a plan item (for typed responses to pickers)
+        user_text_lower = (payload.message_text or "").strip().lower()
+        matched_item_id = None
+        if items and len(user_text_lower) > 2:  # Only try matching for meaningful text
             for item in items:
                 item_title = (item.get("title") or "").strip().lower()
-                # Match: exact, contained in, or contains
-                if (item_title == selected_item_title_lower or 
-                    selected_item_title_lower in item_title or 
-                    item_title in selected_item_title_lower):
-                    selected_item_id = item.get("item_id")
+                # Match: exact, user text is substring of item, or item is substring of user text
+                if (item_title == user_text_lower or 
+                    user_text_lower in item_title or 
+                    item_title in user_text_lower):
+                    matched_item_id = item.get("item_id")
                     break
+        # Use directly matched item, or try AI-extracted item title
+        selected_item_id = matched_item_id
+        if not selected_item_id and ai_response.insights:
+            selected_item_title = getattr(ai_response.insights, "selected_item_title", None)
+            if selected_item_title and items:
+                selected_item_title_lower = selected_item_title.strip().lower()
+                for item in items:
+                    item_title = (item.get("title") or "").strip().lower()
+                    if (item_title == selected_item_title_lower or 
+                        selected_item_title_lower in item_title or 
+                        item_title in selected_item_title_lower):
+                        selected_item_id = item.get("item_id")
+                        break
         
         # If we have a specific item selected, generate alternates directly
         if selected_item_id:
