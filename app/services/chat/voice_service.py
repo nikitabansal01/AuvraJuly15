@@ -68,7 +68,7 @@ class VoiceService:
                 temp_path = temp_file.name
             
             try:
-                # Try GPT-4o-transcribe first (better accuracy)
+                # Use GPT-4o-transcribe (best accuracy, same price as whisper-1)
                 result = await self._transcribe_with_gpt4o(
                     temp_path,
                     language,
@@ -80,7 +80,7 @@ class VoiceService:
                     "text": result["text"],
                     "model": "gpt-4o-transcribe",
                     "language": language,
-                    "confidence": result.get("confidence", 0.95)
+                    "confidence": result.get("confidence", 0.98)
                 }
                 
             except Exception as e:
@@ -170,9 +170,9 @@ class VoiceService:
                 if prompt_context:
                     system_prompt += f"\nContext: {prompt_context}"
                 
-                # Use whisper model through the transcriptions endpoint
+                # Use GPT-4o-transcribe for best accuracy
                 transcript = await self.client.audio.transcriptions.create(
-                    model="whisper-1",  # GPT-4o-transcribe when available
+                    model="gpt-4o-transcribe",
                     file=audio_file,
                     language=language if language != "auto" else None,
                     prompt=system_prompt,
