@@ -1667,8 +1667,58 @@ class ActionPlanGenerator:
                 # Generate all hero images in parallel
                 await asyncio.gather(*[generate_hero_image(item) for item in items], return_exceptions=True)
                 
-                # Commit image URLs
+                # Commit hero image URLs
                 await db.commit()
+                
+                # Step 7b: Generate variant images in parallel
+                logger.info(f"[SESSION_CONVERT] Generating variant images...")
+                
+                from app.core.database import ActionPlanItemVariant
+                
+                async def generate_variant_image(variant, item_category):
+                    """Generate image for a variant."""
+                    task_session = None
+                    try:
+                        if not variant.title:
+                            return None
+                        
+                        async with self.db_semaphore:
+                            task_session = await _create_async_session(self.async_session_maker)
+                            # Use variant title for cache matching
+                            url, was_cached, cost = await self.image_service.get_or_generate_image(
+                                prompt=variant.title,
+                                category=item_category or "food",
+                                variant_type=variant.variant_type,
+                                user_id=user_id,
+                                db=task_session
+                            )
+                        
+                        if url:
+                            variant.image_url = url
+                            logger.debug(f"[SESSION_CONVERT] Variant image: '{variant.title[:25]}...'")
+                            return url
+                        return None
+                    except Exception as e:
+                        logger.warning(f"[SESSION_CONVERT] Variant image failed for {variant.title}: {e}")
+                        return None
+                    finally:
+                        if task_session:
+                            await task_session.close()
+                
+                # Collect all variants and generate images
+                variant_tasks = []
+                for item in items:
+                    variants_result = await db.execute(
+                        select(ActionPlanItemVariant).where(ActionPlanItemVariant.item_id == item.id)
+                    )
+                    variants = variants_result.scalars().all()
+                    for variant in variants:
+                        variant_tasks.append(generate_variant_image(variant, item.category))
+                
+                if variant_tasks:
+                    await asyncio.gather(*variant_tasks, return_exceptions=True)
+                    await db.commit()
+                    logger.info(f"[SESSION_CONVERT]  Generated {len(variant_tasks)} variant images")
             
             total_time_ms = int((time.time() - start_time) * 1000)
             logger.info(f"[SESSION_CONVERT]  Plan conversion complete in {total_time_ms}ms (saved ~100s)")
