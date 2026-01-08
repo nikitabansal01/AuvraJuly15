@@ -552,25 +552,66 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 🚀 CRITICAL: Create ActionPlan from existing session recommendations (NO REGENERATION!)
-                # This converts the already-generated recommendations into an ActionPlan
-                # WITHOUT calling GPT, PubMed, or image generation again.
+                # 🚀 CRITICAL: Create ActionPlan IMMEDIATELY after signup using FULL-FEATURED ActionPlanGenerator
+                # This uses the SAME code path that runs "after signup" with ALL features:
+                # - Full ActionPlanGenerator.generate_new_plan()
+                # - Hormone personas, variants, image generation, research studies
+                # - All the carefully designed prompts and improvements
                 if len(successful_recommendations) >= 2:
-                    logger.info(f"🚀 [SESSION_LINK] Converting {len(successful_recommendations)} session recommendations to ActionPlan (NO regeneration)")
+                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan with FULL generate_new_plan() and {len(successful_recommendations)} recommendations")
                     try:
-                        success = self._create_action_plan_from_session_recs(
-                            uid=uid,
-                            recommendations=successful_recommendations,
-                            user_response=user_response,
-                            current_timezone=current_timezone,
-                            lifestyle_focus=lifestyle_focus or []
-                        )
-                        if success:
-                            logger.info(f"✅ [SESSION_LINK] ActionPlan created from session recs - HomeScreen will load INSTANTLY!")
+                        # Import and run the FULL-FEATURED generate_new_plan() method (same as after signup)
+                        import asyncio
+                        from app.services.action_plan_generator import get_action_plan_generator
+                        from app.core.database import get_async_session_maker
+                        from app.utils.timezone_utils import ZoneInfo
+                        from datetime import date
+                        
+                        # Get today's date in user's timezone
+                        try:
+                            tz = ZoneInfo(current_timezone)
+                            today = datetime.now(tz).date()
+                        except Exception:
+                            today = date.today()
+                        
+                        # Run the FULL generate_new_plan() method (NOT session conversion!)
+                        async def create_plan_async():
+                            async_session_maker = get_async_session_maker()
+                            async with async_session_maker() as db:
+                                generator = get_action_plan_generator()
+                                # Use generate_new_plan() - the FULL-FEATURED function with designed prompts
+                                result = await generator.generate_new_plan(
+                                    user_id=uid,
+                                    plan_date=today,
+                                    user_timezone=current_timezone,
+                                    db=db,
+                                    image_mode="full",  # Generate all 16 images in parallel
+                                    skip_quality_check=False  # Run full quality checks
+                                )
+                                return result
+                        
+                        # Run in event loop
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                # We're already in an async context, use run_until_complete carefully
+                                import concurrent.futures
+                                with concurrent.futures.ThreadPoolExecutor() as pool:
+                                    future = pool.submit(asyncio.run, create_plan_async())
+                                    plan_result = future.result(timeout=120)
+                            else:
+                                plan_result = loop.run_until_complete(create_plan_async())
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            plan_result = loop.run_until_complete(create_plan_async())
+                        
+                        if plan_result:
+                            logger.info(f"✅ [SESSION_LINK] ActionPlan created with FULL generate_new_plan() - HomeScreen will load with proper action plan!")
                         else:
-                            logger.warning(f"⚠️ [SESSION_LINK] ActionPlan creation failed, will be generated on HomeScreen")
+                            logger.warning(f"⚠️ [SESSION_LINK] generate_new_plan() returned None, will regenerate on HomeScreen")
                     except Exception as ap_error:
-                        logger.error(f"❌ [SESSION_LINK] _create_action_plan_from_session_recs() error: {ap_error}", exc_info=True)
+                        logger.error(f"❌ [SESSION_LINK] generate_new_plan() error: {ap_error}", exc_info=True)
                         # Don't fail session linking if action plan creation fails
                 else:
                     logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} recommendations, ActionPlanGenerator will generate on HomeScreen")
