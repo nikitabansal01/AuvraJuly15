@@ -1124,6 +1124,7 @@ class ActionPlanGenerator:
                     await asyncio.sleep(wait_time)
                     
                     # Check if plan was created by the other request
+                    from app.core.database import ActionPlan
                     query = select(ActionPlan).where(ActionPlan.plan_date == plan_date)
                     if user_id:
                         query = query.where(ActionPlan.uid == user_id)
