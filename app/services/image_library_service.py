@@ -52,12 +52,12 @@ class ImageLibraryService:
     EMBEDDING_DIMENSION = 1536
     
     # Retry settings - fast failure, fast retry
-    MAX_IMAGE_RETRIES = 2
-    RETRY_DELAYS = [1.0, 3.0]  # Quick retries for always-on endpoint
+    MAX_IMAGE_RETRIES = 3  # 3 retries for shared endpoint variability
+    RETRY_DELAYS = [1.0, 2.0, 4.0]  # Progressive delays for retries
     
-    # RunPod timeout settings - fast for always-on endpoint
-    RUNPOD_POLL_TIMEOUT = 30  # 30 seconds max wait
-    RUNPOD_POLL_INTERVAL = 0.3  # Poll every 0.3 second for faster response
+    # RunPod timeout settings - longer for shared endpoint (can have queue delays)
+    RUNPOD_POLL_TIMEOUT = 120  # 120 seconds (2 min) max wait - shared endpoint can be slow
+    RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second
     
     def __init__(self):
         """Initialize the image library service."""
