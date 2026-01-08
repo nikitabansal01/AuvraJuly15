@@ -34,6 +34,10 @@ class CarePlanInsights(BaseModel):
     plan_changes_requested: List[str] = Field(default_factory=list)
     actions_to_skip: List[str] = Field(default_factory=list)
     alternate_suggestions_requested: bool = False
+    
+    # Specific item user is referring to (extracted from their message)
+    # Should match exactly one of the item titles from the action plan
+    selected_item_title: Optional[str] = None
 
     # Conversation extraction
     wins: List[str] = Field(default_factory=list)
@@ -102,12 +106,16 @@ Return STRICT JSON only with this schema:
     "plan_changes_requested": ["string"],
     "actions_to_skip": ["string"],
     "alternate_suggestions_requested": true|false,
+    "selected_item_title": "string|null",
     "wins": ["string"],
     "blockers": ["string"],
     "preferences": ["string"],
     "key_takeaway": "string|null"
   }}
 }}
+
+IMPORTANT: If the user mentions a SPECIFIC action item from their plan (like "walking", "strength training", "broccoli", etc), 
+set "selected_item_title" to the EXACT title from TODAY'S ACTION PLAN above. This helps auto-select the item for replacement.
 
 USER PROFILE CONTEXT:
 {user_profile_context}

@@ -447,25 +447,64 @@ async def respond_care_plan_checkin(
 
         ui_blocks: List[UIBlock] = []
 
-        # Prefer model-selected intent. Keep a light heuristic fallback so UX doesn't break
-        # if the model forgets to set the flag.
-        wants_alternates = bool(getattr(ai_response.insights, "alternate_suggestions_requested", False))
-        if not wants_alternates:
-            wants_alternates = _looks_like_alternate_suggestions_request(payload.message_text)
-
-        if wants_alternates:
-            items = service.get_plan_items_for_ui(uid, limit=8)
-            if items:
-                ui_blocks.append(_pick_alternate_item_block(items))
+        # Check if AI extracted a specific item the user is referring to
+        selected_item_title = None
+        selected_item_id = None
+        if ai_response.insights:
+            selected_item_title = getattr(ai_response.insights, "selected_item_title", None)
+        
+        # If user mentioned a specific item, try to match it to plan items
+        items = service.get_plan_items_for_ui(uid, limit=8)
+        if selected_item_title and items:
+            selected_item_title_lower = selected_item_title.strip().lower()
+            for item in items:
+                item_title = (item.get("title") or "").strip().lower()
+                # Match: exact, contained in, or contains
+                if (item_title == selected_item_title_lower or 
+                    selected_item_title_lower in item_title or 
+                    item_title in selected_item_title_lower):
+                    selected_item_id = item.get("item_id")
+                    break
+        
+        # If we have a specific item selected, generate alternates directly
+        if selected_item_id:
+            # Generate candidate alternatives directly
+            candidates_result = await service.generate_alternate_candidates(
+                uid, item_id=selected_item_id, reason="User requested via chat"
+            )
+            if candidates_result.get("success"):
+                # Store pending alternate + candidates
+                ai_data = dict(thread.actionable_insights or {})
+                ai_data["pending_alternate"] = {"stage": "choose_candidate", "item_id": selected_item_id, "reason": "User requested via chat"}
+                ai_data["alternate_candidates"] = candidates_result.get("candidates_by_id") or {}
+                thread.actionable_insights = ai_data
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
+                
+                ui_blocks.append(_pick_alternate_candidate_block(selected_item_id, candidates_result.get("candidates_ui") or []))
             else:
-                ui_blocks.append(_open_plan_manager_block())
-        else:
-            if _looks_like_change_intent(payload.message_text) or (
-                ai_response.insights and ai_response.insights.plan_changes_requested
-            ):
-                items = service.get_plan_items_for_ui(uid, limit=8)
+                # Fallback to picker if generation failed
                 if items:
-                    ui_blocks.append(_pick_replace_block(items))
+                    ui_blocks.append(_pick_alternate_item_block(items))
+        else:
+            # Prefer model-selected intent. Keep a light heuristic fallback so UX doesn't break
+            # if the model forgets to set the flag.
+            wants_alternates = bool(getattr(ai_response.insights, "alternate_suggestions_requested", False))
+            if not wants_alternates:
+                wants_alternates = _looks_like_alternate_suggestions_request(payload.message_text)
+
+            if wants_alternates:
+                if items:
+                    ui_blocks.append(_pick_alternate_item_block(items))
+                else:
+                    ui_blocks.append(_open_plan_manager_block())
+            else:
+                if _looks_like_change_intent(payload.message_text) or (
+                    ai_response.insights and ai_response.insights.plan_changes_requested
+                ):
+                    if items:
+                        ui_blocks.append(_pick_replace_block(items))
 
         return {
             "thread_id": thread.id,
