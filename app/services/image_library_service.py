@@ -493,7 +493,7 @@ class ImageLibraryService:
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 4,      # Flux Schnell optimized for 4 steps (8 is 2x slower)
+                    "num_inference_steps": 8,      # Restored from 4 - better quality with original prompts
                     "guidance": 5,                  # Kept from known-working integration
                     "seed": -1,
                     "negative_prompt": negative_prompt,
@@ -637,11 +637,8 @@ class ImageLibraryService:
         """
         Enhance the prompt for FLUX.1 Schnell with category-specific styling.
         
-        FLUX.1 Schnell best practices:
-        - Lead with subject (FLUX pays attention to first tokens)
-        - Specify camera/lens style for realism
-        - Clear composition and lighting cues
-        - Use negative prompts to avoid unwanted elements
+        NOTE: These prompts were optimized for cache hits. Changing them breaks
+        semantic matching with existing cached images!
         
         Args:
             prompt: Base prompt from GPT
@@ -650,62 +647,62 @@ class ImageLibraryService:
         Returns:
             Tuple of (enhanced_prompt, negative_prompt)
         """
-        # App-specific constraints:
-        # - Images are rendered small and often inside circular crops.
-        # - The subject must be centered and fill most of the frame so it survives cropping.
-        # - These are illustrative/instructional images ("what do I do?" should be obvious at a glance).
-        # - Avoid text, logos, watermarks, and anatomy artifacts.
-
         if category == "food":
-            # Food: the exact ingredient/meal should be instantly recognizable.
+            # Food-specific enhancement: appetizing, overhead photography
             style_suffix = (
-                "professional food photography, centered composition, close-up or medium-close shot, subject fills 70% of the frame, "
-                "single clear hero ingredient, minimal props, clean kitchen context, neutral background, "
-                "soft natural window light, realistic texture detail, warm inviting tones, warm inviting wellness aesthetic"
+                "professional food photography, overhead 45-degree angle, "
+                "Canon EOS R5 35mm lens f/2.8, soft natural window light, "
+                "rustic wooden table, fresh ingredients visible, "
+                "warm inviting tones, vibrant saturated colors, "
+                "shallow depth of field, photorealistic, high quality"
             )
             negative = (
-                "text, watermark, logo, label, brand, typography, caption, "
-                "blurry, lowres, pixelated, noisy, oversharpened, "
-                "plastic-looking food, waxy texture, unnatural colors, "
-                "hands, people, faces, utensils blocking the food, cluttered background"
+                "blurry, out of focus, dark, underexposed, overexposed, "
+                "artificial lighting, plastic food, processed, "
+                "low quality, pixelated, distorted"
             )
             
         elif category == "movement":
-            # Movement: show the exact pose/exercise clearly (instructional).
+            # Movement-specific: natural pose, wellness aesthetic
             style_suffix = (
-                "professional photography, centered full-body or 3/4-body framing, pose clearly readable, subject fills most of the frame, "
-                "simple uncluttered room (yoga mat visible if relevant), soft natural light, calm wellness aesthetic, "
-                "realistic anatomy, no dramatic angles"
+                "lifestyle wellness photography, natural relaxed pose, "
+                "Canon EOS R5 50mm lens f/1.8, soft window backlighting, "
+                "serene peaceful indoor setting, warm earth tones, "
+                "calming aesthetic, atmospheric depth, "
+                "photorealistic, professional quality"
             )
             negative = (
-                "text, watermark, logo, brand, "
-                "bad anatomy, deformed body, extra limbs, extra fingers, missing fingers, distorted hands, "
-                "uncanny face, disfigured face, blurry, lowres, "
-                "crowded background, gym equipment, aggressive pose"
+                "stiff pose, gym equipment, aggressive,intense, commercial, "
+                "stock photo, artificial, low quality, blurry, "
+                "crowded background, distorted body"
             )
             
         elif category == "mindfulness":
-            # Mindfulness: the technique/setup must be visible (hands placement, posture, objects).
+            # Mindfulness-specific: zen, minimalist, cozy
             style_suffix = (
-                "professional photography, centered composition, clear technique cues (hands placement, posture, object in use), "
-                "minimal calm environment, soft diffused natural light, muted warm tones, peaceful restorative mood"
+                "lifestyle zen photography, minimalist composition, "
+                "Sony A7III 35mm lens f/2.0, soft diffused natural lighting, "
+                "cozy intimate atmosphere, warm muted tones, "
+                "peaceful calming mood, shallow focus, "
+                "photorealistic, professional quality"
             )
             negative = (
-                "text, watermark, logo, brand, "
-                "blurry, lowres, noisy, "
-                "messy clutter, chaotic scene, neon colors, harsh lighting, "
-                "uncanny face, deformed hands, extra fingers"
+                "cluttered, busy, bright neon colors, harsh lighting, "
+                "commercial, artificial, low quality, blurry, "
+                "messy, chaotic"
             )
             
         else:
             # Fallback: generic wellness style
             style_suffix = (
-                "professional photography, centered composition, subject fills most of the frame, soft natural lighting, calm wellness aesthetic, warm tones"
+                "professional wellness photography, natural lighting, "
+                "calm peaceful aesthetic, warm tones, "
+                "photorealistic, high quality"
             )
-            negative = "text, watermark, logo, blurry, low quality, artificial, commercial"
+            negative = "blurry, low quality, artificial, commercial"
         
-        # Keep the caller's prompt first (subject early), then add composition constraints.
-        enhanced = f"{prompt}. {style_suffix}."
+        # IMPORTANT: Use comma separator (not period) to match cached image prompts!
+        enhanced = f"{prompt}, {style_suffix}"
         
         return (enhanced, negative)
     
