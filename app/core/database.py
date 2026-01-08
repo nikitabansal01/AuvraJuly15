@@ -12,6 +12,8 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
 # Database engine creation
 # For Supabase Session Pooler, use NullPool (no local pooling)
 # Supabase Session Pooler already manages connection pooling on their side
@@ -20,12 +22,21 @@ if settings.ENVIRONMENT == "production":
     if "?" not in database_url:
         database_url += "?sslmode=require"
     
+    # Sync Engine
     # Use NullPool - Supabase Session Pooler handles all connection pooling
     # This prevents "MaxClientsInSessionMode" errors
     engine = create_engine(
         database_url,
         poolclass=NullPool,    # No local pooling - let Supabase handle it
         echo=False             # Disable SQL logging in production
+    )
+
+    # Async Engine
+    async_database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+    async_engine = create_async_engine(
+        async_database_url,
+        poolclass=NullPool,
+        echo=False
     )
 else:
     # Development environment - use minimal pooling
@@ -38,7 +49,24 @@ else:
         pool_timeout=30,          # Connection wait time
         echo=False                # Disable SQL query logging
     )
+
+    # Async Engine
+    async_database_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    async_engine = create_async_engine(
+        async_database_url,
+        pool_size=2,
+        max_overflow=3,
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        pool_timeout=30,
+        echo=False
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+AsyncSessionLocal = sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+
+def get_async_session_maker():
+    return AsyncSessionLocal
 
 Base = declarative_base()
 
@@ -611,7 +639,8 @@ class ActionPlan(Base):
     __tablename__ = "action_plans"
     
     id = Column(Integer, primary_key=True, index=True)
-    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=True, index=True)
+    session_id = Column(String(255), nullable=True, index=True)  # NEW: For guest users
     
     # Plan date (user's local date when plan was generated)
     plan_date = Column(Date, nullable=False, index=True)
@@ -637,9 +666,10 @@ class ActionPlan(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Unique constraint: one plan per user per day
+    # Unique constraint: one plan per user per day OR per session per day
     __table_args__ = (
-        Index('idx_action_plan_user_date', 'uid', 'plan_date', unique=True),
+        Index('idx_action_plan_user_date', 'uid', 'plan_date'),
+        Index('idx_action_plan_session_date', 'session_id', 'plan_date'),
     )
     
     # Relationships
@@ -652,7 +682,8 @@ class ActionPlanItem(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     plan_id = Column(Integer, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=False, index=True)
-    uid = Column(String(255), nullable=False, index=True)  # Denormalized for easy queries
+    uid = Column(String(255), nullable=True, index=True)  # Denormalized for easy queries
+    session_id = Column(String(255), nullable=True, index=True)  # NEW: For guest users
     
     # Item position and timing
     slot = Column(Integer, nullable=False)  # 1, 2, 3, 4

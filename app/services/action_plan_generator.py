@@ -4,7 +4,7 @@ AUVRA Action Plan Generator Service
 Generates 4 personalized daily actions using GPT-4o-mini:
 - 2 actions targeting PRIMARY hormone
 - 2 actions targeting SECONDARY hormone  
-- Categories based on user's lifestyle_focus (eat/move/pause)
+- Categories based on users lifestyle_focus (eat/move/pause)
 - Each action has 4 images (hero + 3 variants)
 
 Features:
@@ -69,7 +69,7 @@ class ActionVariantModel(BaseModel):
     description: str
     image_prompt: str
     
-    model_config = {"extra": "ignore"}  # Changed from "forbid" to handle Groq's extra fields
+    model_config = {"extra": "ignore"}  # Changed from "forbid" to handle Groqs extra fields
     
     @classmethod
     def model_validate(cls, obj):
@@ -179,11 +179,11 @@ async def _create_async_session(engine_maker=None) -> AsyncSession:
 HORMONE_PERSONAS = {
     "cortisol": {
         "name": "Cortisol",
-        "emoji": "🌸",
+        "emoji": "",
         "personality": "your calming companion",
         "phase_behavior": {
             "menstrual": "I tend to spike during your period, which can make you feel more stressed or anxious",
-            "follicular": "I'm usually balanced in your follicular phase, but stress can still throw me off",
+            "follicular": "I am usually balanced in your follicular phase, but stress can still throw me off",
             "ovulation": "I can rise during ovulation, affecting your mood and energy",
             "luteal": "I tend to spike in your luteal phase, which can cause anxiety or tension"
         },
@@ -195,11 +195,11 @@ HORMONE_PERSONAS = {
     },
     "progesterone": {
         "name": "Progesterone",
-        "emoji": "🌙",
+        "emoji": "",
         "personality": "your peaceful guide",
         "phase_behavior": {
-            "menstrual": "I'm at my lowest during your period, which can affect your mood and sleep",
-            "follicular": "I'm starting to build up in your follicular phase, preparing your body",
+            "menstrual": "I am at my lowest during your period, which can affect your mood and sleep",
+            "follicular": "I am starting to build up in your follicular phase, preparing your body",
             "ovulation": "I begin to rise after ovulation to support potential pregnancy",
             "luteal": "I tend to dip in your luteal phase, causing mood swings or cramps"
         },
@@ -211,11 +211,11 @@ HORMONE_PERSONAS = {
     },
     "estrogen": {
         "name": "Estrogen",
-        "emoji": "✨",
+        "emoji": "",
         "personality": "your radiant friend",
         "phase_behavior": {
-            "menstrual": "I'm at my lowest during your period, which can cause fatigue and low mood",
-            "follicular": "I'm rising in your follicular phase, boosting your energy and mood",
+            "menstrual": "I am at my lowest during your period, which can cause fatigue and low mood",
+            "follicular": "I am rising in your follicular phase, boosting your energy and mood",
             "ovulation": "I peak during ovulation, making you feel confident and vibrant",
             "luteal": "I start to drop in your luteal phase, which can affect your skin and mood"
         },
@@ -227,11 +227,11 @@ HORMONE_PERSONAS = {
     },
     "testosterone": {
         "name": "Testosterone",
-        "emoji": "🔥",
+        "emoji": "",
         "personality": "your energizing coach",
         "phase_behavior": {
-            "menstrual": "I'm lower during your period, which can reduce your drive and energy",
-            "follicular": "I'm rising in your follicular phase, boosting your motivation",
+            "menstrual": "I am lower during your period, which can reduce your drive and energy",
+            "follicular": "I am rising in your follicular phase, boosting your motivation",
             "ovulation": "I peak around ovulation, giving you extra confidence and energy",
             "luteal": "I tend to drop in your luteal phase, reducing your drive and strength"
         },
@@ -243,12 +243,12 @@ HORMONE_PERSONAS = {
     },
     "insulin": {
         "name": "Insulin",
-        "emoji": "🌿",
+        "emoji": "",
         "personality": "your balance keeper",
         "phase_behavior": {
             "menstrual": "I can be less sensitive during your period, causing blood sugar fluctuations",
             "follicular": "I work more efficiently in your follicular phase, keeping energy stable",
-            "ovulation": "I'm balanced around ovulation, helping maintain steady energy",
+            "ovulation": "I am balanced around ovulation, helping maintain steady energy",
             "luteal": "I become less sensitive in your luteal phase, causing cravings and energy crashes"
         },
         "focus": "blood sugar stability",
@@ -259,11 +259,11 @@ HORMONE_PERSONAS = {
     },
     "thyroid": {
         "name": "Thyroid",
-        "emoji": "🦋",
+        "emoji": "",
         "personality": "your metabolism friend",
         "phase_behavior": {
             "menstrual": "I can slow down during your period, affecting your energy and metabolism",
-            "follicular": "I'm more active in your follicular phase, boosting your metabolism",
+            "follicular": "I am more active in your follicular phase, boosting your metabolism",
             "ovulation": "I work efficiently around ovulation, keeping your energy high",
             "luteal": "I can slow down in your luteal phase, causing fatigue and sluggishness"
         },
@@ -278,12 +278,12 @@ HORMONE_PERSONAS = {
 # Default persona for unknown hormones
 DEFAULT_PERSONA = {
     "name": "Hormone",
-    "emoji": "💜",
+    "emoji": "",
     "personality": "your wellness guide",
     "phase_behavior": {
         "menstrual": "I can fluctuate during your period, affecting your overall wellness",
-        "follicular": "I'm adjusting in your follicular phase as your body prepares",
-        "ovulation": "I'm active around ovulation, supporting your body's natural rhythm",
+        "follicular": "I am adjusting in your follicular phase as your body prepares",
+        "ovulation": "I am active around ovulation, supporting your bodys natural rhythm",
         "luteal": "I tend to shift in your luteal phase, which can affect how you feel"
     },
     "focus": "overall wellness",
@@ -300,13 +300,13 @@ DEFAULT_PERSONA = {
 # GPT PROMPT TEMPLATES
 # ============================================================================
 
-SYSTEM_PROMPT = """You are AUVRA's personalized wellness AI that creates daily action plans for women's hormonal health.
+SYSTEM_PROMPT = """You are AUVRAs personalized wellness AI that creates daily action plans for womens hormonal health.
 
-═══════════════════════════════════════════════════════════════════════════════
-🎯 CORE PRINCIPLE: TRUE PERSONALIZATION
-═══════════════════════════════════════════════════════════════════════════════
+===============================================================================
+ CORE PRINCIPLE: TRUE PERSONALIZATION
+===============================================================================
 You must create UNIQUE, TAILORED recommendations based on:
-- User's specific diagnosed conditions (PCOS, endometriosis, thyroid issues, etc.)
+- Users specific diagnosed conditions (PCOS, endometriosis, thyroid issues, etc.)
 - Their health concerns and symptoms
 - Their cycle phase and hormones to support
 - Their diet preferences and allergies
@@ -315,67 +315,67 @@ You must create UNIQUE, TAILORED recommendations based on:
 
 DO NOT give generic recommendations. Every action should feel like it was made FOR THIS USER.
 
-═══════════════════════════════════════════════════════════════════════════════
-🚨 CRITICAL - CATEGORY-SPECIFIC REQUIRED FIELDS (READ THIS FIRST!) 🚨
-═══════════════════════════════════════════════════════════════════════════════
+===============================================================================
+ CRITICAL - CATEGORY-SPECIFIC REQUIRED FIELDS (READ THIS FIRST!) 
+===============================================================================
 For EVERY action, you MUST include the category-specific fields based on the category.
 FAILURE TO INCLUDE THESE FIELDS WILL CAUSE VALIDATION ERRORS.
 
-✅ For "food" category, ALWAYS include:
+ For "food" category, ALWAYS include:
    - food_items: [...] 
    - food_amounts: [...] 
    
-   🎯 FOOD AMOUNTS RULES (CRITICAL):
+    FOOD AMOUNTS RULES (CRITICAL):
    - These are DAILY action plans, so use IMMEDIATE, TODAY language
    - Use SMALL, UI-FRIENDLY portions ("1 cup", "1 scoop", "handful", "2 tbsp")
-   - ❌ NEVER say "2 servings per week" or "3x per week" - this is a daily plan!
-   - ✅ GOOD: "1 cup", "1 scoop", "handful", "4 oz", "2 pieces", "1 tbsp"
-   - ❌ BAD: "2 servings per week", "consume 3x weekly", "large portions"
-   - Think: What fits in the user's hand or on a small plate TODAY 
+   -  NEVER say "2 servings per week" or "3x per week" - this is a daily plan!
+   -  GOOD: "1 cup", "1 scoop", "handful", "4 oz", "2 pieces", "1 tbsp"
+   -  BAD: "2 servings per week", "consume 3x weekly", "large portions"
+   - Think: What fits in the users hand or on a small plate TODAY 
 
-✅ For "movement" category, ALWAYS include:
+ For "movement" category, ALWAYS include:
    - exercise_types: [...] 
    - exercise_durations: [...] 
    - exercise_intensities: [...] 
 
-✅ For "mindfulness" category, ALWAYS include:
+ For "mindfulness" category, ALWAYS include:
    - mindfulness_techniques: [...]
    - mindfulness_durations: [...]
 
-═══════════════════════════════════════════════════════════════════════════════
-⚠️ VARIETY IS MANDATORY - ANTI-REPETITION RULES
-═══════════════════════════════════════════════════════════════════════════════
+===============================================================================
+ VARIETY IS MANDATORY - ANTI-REPETITION RULES
+===============================================================================
 - NEVER suggest the same foods/exercises across multiple days
 - Draw from a WIDE variety of options for each category
-- EVERY recommendation MUST directly address the user's diagnosed conditions
+- EVERY recommendation MUST directly address the users diagnosed conditions
 - Research evidence-based interventions specific to THEIR conditions and hormones
 - Generic "healthy eating" is NOT acceptable - be condition-specific
-- Match movement intensity to user's stated workout_intensity preference
+- Match movement intensity to users stated workout_intensity preference
 - Consider their stress_level when suggesting mindfulness duration
 
 HOW TO ACHIEVE TRUE PERSONALIZATION (RESEARCH-FIRST APPROACH):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 IMPORTANT: We show users REAL research papers as proof. Your recommendations MUST be grounded in this research.
 
 Follow this order:
-1. SEARCH FIRST: Use the search_research_paper tool to find what studies say about [user's condition] + [target hormone]
+1. SEARCH FIRST: Use the search_research_paper tool to find what studies say about [users condition] + [target hormone]
 2. READ THE EVIDENCE: What interventions (foods, exercises, mindfulness) does the research show works?
 3. RECOMMEND BASED ON EVIDENCE: Only recommend what has scientific backing
 4. EXPLAIN THE MECHANISM: The 'purpose' field should cite WHY this works based on the research
 
 Example thinking process:
-- User has Cushing's Syndrome + high cortisol
+- User has Cushings Syndrome + high cortisol
 - Search: "cortisol reduction interventions women"
 - Research shows: dark chocolate polyphenols reduce cortisol, yoga lowers HPA axis activation
 - Recommend: dark chocolate, yoga (with research backing)
-- Purpose: "Dark chocolate's flavonoids have been shown in studies to reduce cortisol levels by inhibiting HPA axis activation"
+- Purpose: "Dark chocolates flavonoids have been shown in studies to reduce cortisol levels by inhibiting HPA axis activation"
 
 QUALITY CHECK - Before finalizing each action, ask:
 1. Did I base this on actual research findings, not just common knowledge?
 2. Can I explain the specific mechanism with scientific terminology?
 3. Would this recommendation hold up if a user googles it?
 
-═══════════════════════════════════════════════════════════════════════════════
+===============================================================================
 
 IMPORTANT GUIDELINES:
 1. Each action must target EXACTLY ONE hormone - the specified target hormone
@@ -383,7 +383,7 @@ IMPORTANT GUIDELINES:
 3. Use the 'search_research_paper' tool to get REAL citations - NEVER fabricate citations
 4. Time slots should be appropriate: morning (6-11am), afternoon (12-5pm), evening (6-10pm)
 5. Image prompts should follow a consistent photography style for better semantic matching
-6. 🎯 DAILY ACTION LANGUAGE: Use immediate, today-focused language ("add to your breakfast today", "try this evening"), NOT weekly frequencies ("consume 2x per week"). These are daily action plans!
+6.  DAILY ACTION LANGUAGE: Use immediate, today-focused language ("add to your breakfast today", "try this evening"), NOT weekly frequencies ("consume 2x per week"). These are daily action plans!
 
 CATEGORY DEFINITIONS:
 - "food" (eat): Specific meals, recipes, or food recommendations
@@ -405,21 +405,21 @@ All prompts should follow this pattern:
 "[Subject/food/activity], centered composition, subject fills 60-70% of the frame (important for circular crops), natural lighting, clean minimalist background, warm inviting tones, wellness aesthetic, no text, no watermark, no logo"
 
 HORMONE PERSONA INTRO STYLE:
-The hormone speaks in first person, identifying itself and explaining what's happening in the user's current cycle phase (1 sentence). 
+The hormone speaks in first person, identifying itself and explaining whats happening in the users current cycle phase (1 sentence). 
 CRITICAL: Do NOT explain how the action helps here. That goes in the 'purpose' field. Write naturally and warmly.
 
 EXAMPLE INTROS (Persona part only):
-- "I'm Progesterone — in your luteal phase, I tend to dip, causing mood swings or cramps."
-- "I'm Estrogen — in your menstrual phase, I'm at my lowest which can cause fatigue and low mood."
-- "I'm Insulin — in your luteal phase, I become less sensitive, causing cravings and energy crashes."
-- "I'm Cortisol — when stress is high, I spike and can disrupt your body's natural rhythm."
+- "I am Progesterone  in your luteal phase, I tend to dip, causing mood swings or cramps."
+- "I am Estrogen  in your menstrual phase, I am at my lowest which can cause fatigue and low mood."
+- "I am Insulin  in your luteal phase, I become less sensitive, causing cravings and energy crashes."
+- "I am Cortisol  when stress is high, I spike and can disrupt your bodys natural rhythm."
 """
 
 ACTION_GENERATION_PROMPT = """Generate {num_actions} personalized daily wellness actions for this user.
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 HEALTH PROFILE
-══════════════════════════════════════════════════════════════════════
+======================================================================
 - Age: {age}
 - Cycle Day: {cycle_day}
 - Cycle Phase: {cycle_phase}
@@ -435,9 +435,9 @@ HEALTH CONCERNS:
 - Mental Health Concerns: {mental_health_concerns}
 - Family History: {family_history}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 PERSONALIZATION FACTORS
-══════════════════════════════════════════════════════════════════════
+======================================================================
 - Lifestyle Focus: {lifestyle_focus}
 - Diet Preference: {diet_preference}
 - Food Allergies/Restrictions: {food_allergies}
@@ -453,64 +453,64 @@ PERSONALIZATION FACTORS
 - Current Streak: {current_streak} days
 - Longest Streak: {longest_streak} days
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 HORMONE CONTEXT FOR {cycle_phase} PHASE
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {hormone_phase_context}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 HISTORICAL SUMMARY (learned patterns over time):
 {feedback_summary}
 
 RECENT FEEDBACK (last 20-50 actions):
 {feedback_memory}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 CHATBOT CONVERSATION CONTEXT
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {chatbot_context}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 WEEKLY CHECK-IN INSIGHTS (Recent symptom reports from user)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {weekly_checkin_insights}
 Use these insights to:
-- Target actions that address the user's recent symptom triggers
+- Target actions that address the users recent symptom triggers
 - Avoid recommending things that made symptoms worse
 - Build on what helped the user feel better
 
-══════════════════════════════════════════════════════════════════════
-DAILY REVIEW INSIGHTS (Feedback from yesterday's plan)
-══════════════════════════════════════════════════════════════════════
+======================================================================
+DAILY REVIEW INSIGHTS (Feedback from yesterdays plan)
+======================================================================
 {daily_review_insights}
 Use these insights to:
 - If user skipped items, understand why and suggest easier alternatives
 - If user replaced items, learn from their substitutions
 - If user completed items, reinforce those habits
 
-══════════════════════════════════════════════════════════════════════
-CARE PLAN CHECK-IN INSIGHTS (Daily chat about today's plan)
-══════════════════════════════════════════════════════════════════════
+======================================================================
+CARE PLAN CHECK-IN INSIGHTS (Daily chat about todays plan)
+======================================================================
 {care_plan_checkin_insights}
 Use these insights to:
 - Respect explicit requests to change/skip/replace actions
 - Make alternatives easier if user reports barriers (time, cravings, fatigue)
 - Reinforce what the user said is working well
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 SYMPTOM CHECK-IN INSIGHTS (Daily symptom progress)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {symptom_checkin_insights}
 Use these insights to:
 - Reduce triggers and double-down on what helped today
 - Keep actions realistic if user reports low energy / high symptoms
 - Reinforce wins and remove friction from difficult items
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 REQUIREMENTS (READ CAREFULLY)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 1. Generate exactly {num_actions} actions total
 2. Actions targeting PRIMARY hormone ({primary_hormone}): {primary_count}
 3. Actions targeting SECONDARY hormone ({secondary_hormone}): {secondary_count}
@@ -522,26 +522,26 @@ REQUIREMENTS (READ CAREFULLY)
 9. RESPECT cuisine preferences - prioritize foods from preferred cuisines when possible
 10. RESPECT cultural background - include culturally appropriate and familiar foods/practices
 11. ADAPT to body metrics - if BMI indicates overweight, focus on portion control and lighter meals
-12. ADDRESS cravings - include healthy alternatives that satisfy user's common cravings
+12. ADDRESS cravings - include healthy alternatives that satisfy users common cravings
 13. CONSIDER dining habits - if user dines out often, suggest restaurant-friendly options
 14. CONDITION-SPECIFIC PERSONALIZATION (CRITICAL):
-   - Analyze the user's EXACT diagnosed conditions listed above
+   - Analyze the users EXACT diagnosed conditions listed above
    - Research evidence-based interventions for THEIR specific conditions
    - Each food/exercise MUST have a clear mechanism for helping THEIR hormone + condition combo
-   - The 'purpose' field must explain HOW this specific action helps THIS user's condition
+   - The 'purpose' field must explain HOW this specific action helps THIS users condition
    - NO generic recommendations - every action should feel designed for THIS user
 15. Learn from FEEDBACK MEMORY above:
     - If user LIKED something: create similar types
     - If user DISLIKED something: NEVER suggest similar patterns
-16. Match intensity to user's stated workout_intensity level
+16. Match intensity to users stated workout_intensity level
 17. Recommend longer mindfulness for high stress users, shorter for low stress
 
-══════════════════════════════════════════════════════════════════════
-🚨 ANTI-REPETITION & HALLUCINATION RULES (CRITICAL)
-══════════════════════════════════════════════════════════════════════
+======================================================================
+ ANTI-REPETITION & HALLUCINATION RULES (CRITICAL)
+======================================================================
 1. DO NOT COPY EXAMPLES: The examples in this prompt are for FORMATTING ONLY. You MUST select the BEST action for THIS specific user from your medical knowledge - NOT from the examples.
 2. AVOID RECENTLY RECOMMENDED: Check the "RECENTLY RECOMMENDED" section below. Do NOT suggest any item from that list.
-3. VARIETY IS KEY: Each day's plan should feel fresh and different. Draw from the FULL spectrum of evidence-based interventions.
+3. VARIETY IS KEY: Each days plan should feel fresh and different. Draw from the FULL spectrum of evidence-based interventions.
 4. STRICT SYMPTOM WHITELIST: In the 'symptoms' output array, you may ONLY use symptoms from this exact list:
    {allowed_symptoms}
    If a symptom is not in this list, DO NOT include it.
@@ -549,35 +549,35 @@ REQUIREMENTS (READ CAREFULLY)
    {allowed_conditions}
    If no conditions are listed, this array MUST be empty [].
 
-══════════════════════════════════════════════════════════════════════
-⏮️ RECENTLY RECOMMENDED (DO NOT REPEAT THESE)
-══════════════════════════════════════════════════════════════════════
+======================================================================
+ RECENTLY RECOMMENDED (DO NOT REPEAT THESE)
+======================================================================
 {recently_recommended}
 Choose DIFFERENT items that are equally or more beneficial for this user.
 
-══════════════════════════════════════════════════════════════════════
-🎯 CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION
-══════════════════════════════════════════════════════════════════════
-┌─────────────────────────────────────────────────────────────────────┐
-│  TITLE = WHAT it is (the thing itself - noun)                       │
-│  SPECIFIC_ACTION = HOW to use it (3 different methods - verbs)      │
-└─────────────────────────────────────────────────────────────────────┘
+======================================================================
+ CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION
+======================================================================
++---------------------------------------------------------------------+
+|  TITLE = WHAT it is (the thing itself - noun)                       |
+|  SPECIFIC_ACTION = HOW to use it (3 different methods - verbs)      |
++---------------------------------------------------------------------+
 
 FOOD:
-  • Title: Raw ingredient → "Salmon", "Quinoa", "Blueberries"
-  • specific_action: 3 consumption methods → grilled, baked, in smoothie, etc.
+   Title: Raw ingredient  "Salmon", "Quinoa", "Blueberries"
+   specific_action: 3 consumption methods  grilled, baked, in smoothie, etc.
 
 MOVEMENT:
-  • Title: Activity type → "Yoga", "Walking", "Stretching"
-  • specific_action: 3 ways to do it → gentle flow, hip openers, sun salutations, etc.
+   Title: Activity type  "Yoga", "Walking", "Stretching"
+   specific_action: 3 ways to do it  gentle flow, hip openers, sun salutations, etc.
 
 MINDFULNESS:
-  • Title: Technique name → "Deep Breathing", "Meditation", "Body Scan"
-  • specific_action: 3 practice methods → 4-7-8 technique, box breathing, belly breathing, etc.
+   Title: Technique name  "Deep Breathing", "Meditation", "Body Scan"
+   specific_action: 3 practice methods  4-7-8 technique, box breathing, belly breathing, etc.
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 OUTPUT FORMAT (for each action)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 1. title: SIMPLE, CLEAN NAME ONLY (see TITLE RULES below)
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
@@ -585,15 +585,15 @@ OUTPUT FORMAT (for each action)
    FORMAT: Start with main benefit, then list 3 methods like:
    "Try it as: (1) [method 1], (2) [method 2], or (3) [method 3]."
    
-   ✅ GOOD EXAMPLE for "Walnuts":
+    GOOD EXAMPLE for "Walnuts":
    "Walnuts are rich in omega-3s and melatonin precursors that support hormonal balance and sleep. Try them as: (1) Raw handful - eat 7-10 walnuts as a morning snack, (2) Salad topper - add chopped walnuts to your lunch salad with olive oil, or (3) Walnut butter - spread 1 tbsp on apple slices or whole grain toast."
    
-   ✅ GOOD EXAMPLE for "Spinach":
-   "Spinach is packed with magnesium and folate that support progesterone production. Try it as: (1) Green smoothie - blend 2 cups with banana and almond milk, (2) Sautéed side - quickly sauté with garlic and olive oil, or (3) Raw salad - use as a base for lunch topped with avocado."
+    GOOD EXAMPLE for "Spinach":
+   "Spinach is packed with magnesium and folate that support progesterone production. Try it as: (1) Green smoothie - blend 2 cups with banana and almond milk, (2) Sauted side - quickly saut with garlic and olive oil, or (3) Raw salad - use as a base for lunch topped with avocado."
    
-   ❌ BAD (no consumption methods): "Ginger helps reduce stress. Consume it daily."
+    BAD (no consumption methods): "Ginger helps reduce stress. Consume it daily."
    
-5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the user's specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
+5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the users specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
 6. target_hormone: CRITICAL - You MUST set this exactly as follows:
    - Action 1 and 2: MUST be "{primary_hormone}" (the PRIMARY hormone)
    - Action 3 and 4: MUST be "{secondary_hormone}" (the SECONDARY hormone)
@@ -605,16 +605,16 @@ OUTPUT FORMAT (for each action)
 11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., ["acne", "fatigue", "bloating"])
 12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
 
-══════════════════════════════════════════════════════════════════════
-🎯 TITLE RULES (CRITICAL - INGREDIENT/ACTIVITY NAME ONLY!)
-══════════════════════════════════════════════════════════════════════
+======================================================================
+ TITLE RULES (CRITICAL - INGREDIENT/ACTIVITY NAME ONLY!)
+======================================================================
 REMINDER: The items below are EXAMPLES of formatting. Do NOT just pick from this list. Choose what is best for the user.
 
 Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
-❌ NO preparation methods (latte, tea, smoothie, etc.)
-❌ NO adjectives (powerful, amazing, gentle, etc.)
+ NO preparation methods (latte, tea, smoothie, etc.)
+ NO adjectives (powerful, amazing, gentle, etc.)
 
-✅ GOOD FOOD TITLES (RAW INGREDIENT ONLY - these are FORMAT examples, choose what's best for user):
+ GOOD FOOD TITLES (RAW INGREDIENT ONLY - these are FORMAT examples, choose whats best for user):
 - "Walnuts" (NOT "Walnut Butter")
 - "Spinach" (NOT "Spinach Smoothie")
 - "Ginger" (NOT "Ginger Tea")
@@ -626,15 +626,15 @@ Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
 - "Almonds" (NOT "Almond Butter")
 - "Sweet Potato" (NOT "Baked Sweet Potato")
 
-❌ BAD FOOD TITLES (includes preparation method - WRONG!):
-- "Ginger Tea" → should be "Ginger"
-- "Walnut Butter" → should be "Walnuts"
-- "Spinach Smoothie" → should be "Spinach"
-- "Grilled Salmon" → should be "Salmon"
-- "Avocado Toast" → should be "Avocado"
-- "Quinoa Bowl" → should be "Quinoa"
+ BAD FOOD TITLES (includes preparation method - WRONG!):
+- "Ginger Tea"  should be "Ginger"
+- "Walnut Butter"  should be "Walnuts"
+- "Spinach Smoothie"  should be "Spinach"
+- "Grilled Salmon"  should be "Salmon"
+- "Avocado Toast"  should be "Avocado"
+- "Quinoa Bowl"  should be "Quinoa"
 
-✅ GOOD MOVEMENT TITLES (simple activity name):
+ GOOD MOVEMENT TITLES (simple activity name):
 - "Post-Meal Walk"
 - "Morning Yoga"
 - "Gentle Stretching"
@@ -644,11 +644,11 @@ Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
 - "Hip Stretches"
 - "Strength Training"
 
-❌ BAD MOVEMENT TITLES (too descriptive):
-- "Gentle Morning Yoga Flow" → should be "Morning Yoga"
-- "Relaxing Evening Stretch" → should be "Evening Stretching"
+ BAD MOVEMENT TITLES (too descriptive):
+- "Gentle Morning Yoga Flow"  should be "Morning Yoga"
+- "Relaxing Evening Stretch"  should be "Evening Stretching"
 
-✅ GOOD MINDFULNESS TITLES (technique name only):
+ GOOD MINDFULNESS TITLES (technique name only):
 - "Deep Breathing"
 - "Box Breathing"
 - "Body Scan"
@@ -657,9 +657,9 @@ Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
 - "Progressive Relaxation"
 - "4-7-8 Breathing"
 
-❌ BAD MINDFULNESS TITLES (too wordy):
-- "Evening Calm Breathing Practice" → should be "Deep Breathing"
-- "Peaceful Meditation Session" → should be "Meditation"
+ BAD MINDFULNESS TITLES (too wordy):
+- "Evening Calm Breathing Practice"  should be "Deep Breathing"
+- "Peaceful Meditation Session"  should be "Meditation"
 
 CATEGORY-SPECIFIC REQUIRED FIELDS:
 **ALL category fields are REQUIRED in every action.** Fill with actual values for matching category, use empty array [] for non-matching categories.
@@ -667,9 +667,9 @@ CATEGORY-SPECIFIC REQUIRED FIELDS:
 For FOOD actions:
 - food_items: Array like ["salmon", "quinoa"] (REQUIRED)
 - food_amounts: Array like ["4 oz", "1 cup cooked"] (REQUIRED)
-  🎯 CRITICAL: Use SMALL, UI-FRIENDLY portions for TODAY ("1 scoop", "handful", "1 cup", "2 tbsp")
-  ❌ NEVER use weekly frequencies ("2 servings per week") - this is a DAILY action plan!
-  ✅ Think: What the user can consume in ONE sitting or ONE day
+   CRITICAL: Use SMALL, UI-FRIENDLY portions for TODAY ("1 scoop", "handful", "1 cup", "2 tbsp")
+   NEVER use weekly frequencies ("2 servings per week") - this is a DAILY action plan!
+   Think: What the user can consume in ONE sitting or ONE day
 - exercise_types: [] (empty array - not a food action)
 - exercise_durations: [] (empty array)
 - exercise_intensities: [] (empty array)
@@ -694,9 +694,9 @@ For MINDFULNESS actions:
 - exercise_durations: [] (empty array)
 - exercise_intensities: [] (empty array)
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 COMPLETE OUTPUT EXAMPLES (FOLLOW THIS EXACT STRUCTURE)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 
 EXAMPLE FOOD ACTION (notice specific_action includes 3 ways to consume):
 {{
@@ -706,7 +706,7 @@ EXAMPLE FOOD ACTION (notice specific_action includes 3 ways to consume):
   "specific_action": "Walnuts are rich in omega-3 fatty acids and melatonin precursors that support hormonal balance. Try them today as: (1) Raw handful - eat 7-10 walnuts as a quick morning snack with your coffee, (2) Smoothie boost - blend 1/4 cup into your morning smoothie with banana and spinach, or (3) Oatmeal topper - sprinkle 2 tbsp crushed walnuts on your oatmeal with a drizzle of honey.",
   "purpose": "Walnuts contain alpha-linolenic acid (ALA) which converts to DHA, supporting brain-ovary communication and reducing inflammation that disrupts hormone signaling in your follicular phase.",
   "target_hormone": "Estrogen",
-  "hormone_persona_intro": "Good morning! It's Estrogen here. I'm rising in your follicular phase, and I need some healthy fats to help me do my job properly.",
+  "hormone_persona_intro": "Good morning! Its Estrogen here. I am rising in your follicular phase, and I need some healthy fats to help me do my job properly.",
   "image_prompt": "Professional close-up food photography of whole walnuts and walnut halves in a small white ceramic bowl, showing the brain-like texture of the walnut meat clearly visible, warm wooden table surface, soft morning window light creating gentle shadows, some cracked shells beside the bowl, the distinctive brown wrinkled walnut texture is the unmistakable hero filling 70% of frame, appetizing natural food styling, 4K quality",
   "food_items": ["walnuts", "raw walnuts", "walnut halves"],
   "food_amounts": ["7-10 pieces", "a handful (30g)", "1/4 cup"],
@@ -725,11 +725,11 @@ EXAMPLE MOVEMENT ACTION (notice specific_action includes 3 ways to do the exerci
   "title": "Morning Yoga",
   "category": "movement",
   "time_slot": "morning",
-  "specific_action": "Morning yoga activates your parasympathetic nervous system to reduce cortisol and calm your mind. Try it today as: (1) Gentle flow - 15 min of cat-cow, child's pose, and forward folds, (2) Hip openers - focus on pigeon pose and butterfly stretch for 10 min, or (3) Energizing sequence - 5 rounds of sun salutations to wake up your body and boost circulation.",
+  "specific_action": "Morning yoga activates your parasympathetic nervous system to reduce cortisol and calm your mind. Try it today as: (1) Gentle flow - 15 min of cat-cow, childs pose, and forward folds, (2) Hip openers - focus on pigeon pose and butterfly stretch for 10 min, or (3) Energizing sequence - 5 rounds of sun salutations to wake up your body and boost circulation.",
   "purpose": "Forward folds and hip openers activate the parasympathetic nervous system, directly lowering cortisol release and helping prevent the stress-induced disruption of your reproductive hormones.",
   "target_hormone": "Cortisol",
-  "hormone_persona_intro": "Good morning! It's Cortisol here. Instead of spiking your stress, let's channel my energy into something calming that will help you feel centered all day.",
-  "image_prompt": "Serene photograph of woman in child's pose on a purple yoga mat in a bright living room, arms stretched forward, forehead resting on mat, wearing comfortable grey athletic wear, green indoor plants visible, soft morning sunlight through sheer white curtains, clearly showing the exact yoga pose, peaceful wellness aesthetic, 4K quality",
+  "hormone_persona_intro": "Good morning! Its Cortisol here. Instead of spiking your stress, lets channel my energy into something calming that will help you feel centered all day.",
+  "image_prompt": "Serene photograph of woman in childs pose on a purple yoga mat in a bright living room, arms stretched forward, forehead resting on mat, wearing comfortable grey athletic wear, green indoor plants visible, soft morning sunlight through sheer white curtains, clearly showing the exact yoga pose, peaceful wellness aesthetic, 4K quality",
   "exercise_types": ["yoga", "gentle stretching", "sun salutations"],
   "exercise_durations": ["15 minutes", "10 min", "5 min"],
   "exercise_intensities": ["low", "gentle", "moderate"],
@@ -737,7 +737,7 @@ EXAMPLE MOVEMENT ACTION (notice specific_action includes 3 ways to do the exerci
   "variants": [
     {{"variant_type": "gentle", "title": "Restorative Yoga", "description": "Use blankets and bolsters for fully supported poses, hold each for 3-5 minutes", "image_prompt": "Serene photograph of woman lying in supported bridge pose with a yoga bolster under her lower back, cozy blanket draped over legs, soft candles in background, eyes closed in relaxation, peaceful bedroom setting, restorative yoga clearly shown, 4K quality"}},
     {{"variant_type": "energizing", "title": "Vinyasa Flow", "description": "Link breath with movement through flowing sun salutations and warrior poses", "image_prompt": "Dynamic photograph of woman in warrior II pose on yoga mat, arms extended strongly, looking over front hand, bright morning light, powerful athletic stance clearly visible, energetic wellness moment, vibrant colors, 4K quality"}},
-    {{"variant_type": "quick", "title": "5-Minute Stretch", "description": "Cat-cow (1 min), child's pose (2 min), forward fold (2 min) - perfect for busy mornings", "image_prompt": "Serene photograph of woman doing cat-cow pose on yoga mat, back arched upward in cat position, comfortable clothing, minimalist bright room, quick morning stretch clearly demonstrated, efficient wellness moment, 4K quality"}}
+    {{"variant_type": "quick", "title": "5-Minute Stretch", "description": "Cat-cow (1 min), childs pose (2 min), forward fold (2 min) - perfect for busy mornings", "image_prompt": "Serene photograph of woman doing cat-cow pose on yoga mat, back arched upward in cat position, comfortable clothing, minimalist bright room, quick morning stretch clearly demonstrated, efficient wellness moment, 4K quality"}}
   ],
   "symptoms": ["stress", "tension"],
   "conditions": []
@@ -751,7 +751,7 @@ EXAMPLE MINDFULNESS ACTION (notice specific_action includes 3 ways to practice):
   "specific_action": "Deep breathing activates your vagus nerve to signal safety and reduce cortisol for better sleep. Try it tonight as: (1) 4-4-6 technique - inhale 4 counts, hold 4 counts, exhale 6 counts for 5 minutes, (2) Box breathing - inhale 4, hold 4, exhale 4, hold 4 for 10 cycles, or (3) Belly breathing - place hands on belly, breathe deeply until hands rise, exhale slowly for 3 minutes.",
   "purpose": "Deep breathing signals safety to your nervous system, helping me (Cortisol) decrease so you can rest and restore.",
   "target_hormone": "Cortisol",
-  "hormone_persona_intro": "Hey, it's Cortisol checking in for the evening. Let's work together to wind down so you can get the restorative sleep you deserve.",
+  "hormone_persona_intro": "Hey, its Cortisol checking in for the evening. Lets work together to wind down so you can get the restorative sleep you deserve.",
   "image_prompt": "Peaceful close-up photograph of woman sitting cross-legged on a meditation cushion with both hands placed on her belly, practicing deep diaphragmatic breathing, eyes gently closed, serene peaceful expression, soft candlelight glowing nearby, cozy bedroom with string lights in background, clearly showing the belly breathing technique, calming atmosphere, 4K quality",
   "mindfulness_techniques": ["4-4-6 breathing", "box breathing", "belly breathing"],
   "mindfulness_durations": ["5 minutes", "10 cycles", "3 minutes"],
@@ -768,67 +768,67 @@ EXAMPLE MINDFULNESS ACTION (notice specific_action includes 3 ways to practice):
 CRITICAL: Every action MUST include ALL of its category-specific fields (food_items/food_amounts for food, exercise_types/exercise_durations/exercise_intensities for movement, mindfulness_techniques/mindfulness_durations for mindfulness).
 
 IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🖼️ GOAL: User should INSTANTLY UNDERSTAND what the action is just by seeing the image!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ GOAL: User should INSTANTLY UNDERSTAND what the action is just by seeing the image!
+
 
 The image MUST be SELF-EXPLANATORY and ILLUSTRATIVE. Think of it like a visual instruction:
 - For FOOD: Show the EXACT food item as the HERO of the image, clearly visible and recognizable
 - For MOVEMENT: Show a WOMAN doing the EXACT pose/exercise so user knows what to do
 - For MINDFULNESS: Show the TECHNIQUE being practiced (hands position, posture, setup)
 
-📐 COMPOSITION RULES:
+ COMPOSITION RULES:
 1. Make the subject (food/pose/technique) the CLEAR FOCAL POINT - fill 60-70% of the frame
 2. Use CLOSE-UP or MEDIUM shots - don't zoom out too much
-3. Show TEXTURE and DETAIL of the food item so it's instantly recognizable
+3. Show TEXTURE and DETAIL of the food item so its instantly recognizable
 4. For exercises, show the FULL POSE clearly from a good angle
 5. Keep backgrounds simple but contextual (kitchen for food, living room for yoga)
 6. IMPORTANT FOR APP UI: Center the subject (these images are often displayed in small circular crops)
 7. STRICT: No text, no captions, no watermarks, no logos/branding
 
-═══════════════════════════════════════════════════════════════════════
+=======================================================================
 FOR FOOD - Make the FOOD ITEM the HERO (clearly visible, close-up):
-═══════════════════════════════════════════════════════════════════════
+=======================================================================
 Template: "Professional close-up food photography of [EXACT FOOD ITEM in detail], [texture/color description], [simple serving context], natural lighting, shallow depth of field, the [food item] is clearly the main subject filling most of the frame, 4K quality"
 
-✅ GOOD EXAMPLES (food is the clear hero, instantly recognizable - USE SIMILAR STRUCTURE):
+ GOOD EXAMPLES (food is the clear hero, instantly recognizable - USE SIMILAR STRUCTURE):
 - "Professional close-up food photography of whole walnuts and walnut halves showing their distinctive brain-like wrinkled texture, in a small wooden bowl on marble surface, warm morning light highlighting the brown ridges, the walnuts fill 70% of the frame and are unmistakably identifiable, shallow depth of field, 4K quality"
 - "Professional close-up food photography of fresh vibrant green spinach leaves piled in a white ceramic colander, water droplets visible on leaves showing freshness, bright kitchen lighting, the spinach is clearly recognizable with its distinctive leaf shape filling most of frame, healthy green color prominent, 4K quality"
 - "Professional close-up food photography of fresh ginger root with one piece sliced to show the fibrous yellow interior, on a light wooden cutting board, the distinctive knobby tan skin texture is clearly visible, natural kitchen lighting, ginger fills 65% of frame making it instantly identifiable, 4K quality"
 - "Professional close-up food photography of fresh salmon fillet showing vibrant pink-orange flesh with distinctive white fat marbling lines, on a slate serving board with lemon wedge, the fish texture and color are appetizing and unmistakable, 4K quality"
 
-❌ BAD EXAMPLES (food not clear, too generic, or too zoomed out):
+ BAD EXAMPLES (food not clear, too generic, or too zoomed out):
 - "Professional food photography of healthy food" (What food?!)
-- "Bowl of food on a table" (Can't tell what's in it!)
+- "Bowl of food on a table" (Can't tell whats in it!)
 - "Overhead shot of breakfast spread" (Too much, can't focus on any item)
 
-═══════════════════════════════════════════════════════════════════════
+=======================================================================
 FOR MOVEMENT - Show a WOMAN DOING the exact exercise/pose:
-═══════════════════════════════════════════════════════════════════════
+=======================================================================
 Template: "Serene photograph of woman [EXACT POSE/MOVEMENT DESCRIPTION], [setting], soft natural lighting, wellness aesthetic, warm earth tones, 4K quality"
 
-✅ GOOD EXAMPLES (specific and illustrative):
-- "Serene photograph of woman in child's pose on a yoga mat, arms extended forward, peaceful living room with plants, soft morning light through window, wellness aesthetic, 4K quality"
+ GOOD EXAMPLES (specific and illustrative):
+- "Serene photograph of woman in childs pose on a yoga mat, arms extended forward, peaceful living room with plants, soft morning light through window, wellness aesthetic, 4K quality"
 - "Serene photograph of woman walking briskly in a park after eating, casual athletic wear, trees and greenery, golden hour lighting, healthy active lifestyle, 4K quality"
 - "Serene photograph of woman doing hip stretches on a yoga mat, one leg extended, peaceful bedroom setting, soft natural lighting, relaxed atmosphere, 4K quality"
 - "Serene photograph of woman doing gentle swimming laps in a pool, clear blue water, peaceful indoor pool setting, natural lighting, refreshing wellness vibe, 4K quality"
 
-❌ BAD EXAMPLES (too generic):
+ BAD EXAMPLES (too generic):
 - "Woman exercising" (What exercise?!)
 - "Yoga pose" (Which one?!)
 
-═══════════════════════════════════════════════════════════════════════
+=======================================================================
 FOR MINDFULNESS - Show the TECHNIQUE/SETUP clearly:
-═══════════════════════════════════════════════════════════════════════
+=======================================================================
 Template: "Peaceful photograph of [EXACT MINDFULNESS SETUP/TECHNIQUE visualization], [calming elements], soft diffused lighting, minimalist aesthetic, calming colors, 4K quality"
 
-✅ GOOD EXAMPLES (specific and illustrative):
+ GOOD EXAMPLES (specific and illustrative):
 - "Peaceful photograph of woman sitting cross-legged with hands on belly practicing deep breathing, eyes closed, serene expression, soft candles nearby, minimalist room, calming atmosphere, 4K quality"
 - "Peaceful close-up of hands writing in a gratitude journal with a cup of tea nearby, cozy blanket, soft evening lighting, peaceful bedroom setting, journaling moment, 4K quality"
 - "Peaceful photograph of woman lying down with eyes closed doing body scan meditation, comfortable cushion, dim peaceful room with fairy lights, relaxation moment, 4K quality"
 - "Peaceful photograph of woman practicing 4-7-8 breathing with one hand on chest, peaceful expression, morning light, zen corner with plants, calming wellness aesthetic, 4K quality"
 
-❌ BAD EXAMPLES (too generic):
+ BAD EXAMPLES (too generic):
 - "Peaceful zen scene" (What technique?!)
 - "Meditation" (Show what KIND!)
 
@@ -914,7 +914,7 @@ class ActionPlanGenerator:
     Main orchestrator for generating personalized daily action plans.
     
     Flow:
-    1. Check if today's plan exists
+    1. Check if todays plan exists
     2. Get user context (hormones, cycle, preferences, feedback)
     3. Generate 4 actions via GPT-4o-mini
     4. Generate images for each action (16 total)
@@ -970,12 +970,12 @@ class ActionPlanGenerator:
         skip_quality_check: bool = False,
     ) -> Dict[str, Any]:
         """
-        Get today's action plan or generate a new one.
+        Get todays action plan or generate a new one.
         
         This is the main entry point called on app open.
         
         NEW: If yesterday was frozen and had incomplete items, those items
-        carry forward to today's plan instead of generating new ones.
+        carry forward to todays plan instead of generating new ones.
         
         Args:
             skip_quality_check: If True, skip model quality evaluation (faster for first-time users)
@@ -983,7 +983,7 @@ class ActionPlanGenerator:
         from app.core.database import ActionPlan
         from datetime import timedelta
         
-        # Get today's date in user's timezone
+        # Get todays date in users timezone
         today = self._get_user_today(user_timezone)
         
         # Check if plan exists for today - ONE plan per day
@@ -999,9 +999,9 @@ class ActionPlanGenerator:
                 has_missing_images = await self._check_missing_images(existing_plan, db)
                 
                 if has_missing_images:
-                    # 🚀 START BACKGROUND IMAGE GENERATION (don't block response!)
+                    #  START BACKGROUND IMAGE GENERATION (don't block response!)
                     # This allows HomeScreen to load immediately while images generate
-                    logger.info(f"🚀 [BG-IMAGE-START] Starting background image generation for plan {existing_plan.id}")
+                    logger.info(f" [BG-IMAGE-START] Starting background image generation for plan {existing_plan.id}")
                     asyncio.create_task(
                         self._background_ensure_images(existing_plan.id, user_id, image_mode)
                     )
@@ -1036,7 +1036,7 @@ class ActionPlanGenerator:
         # )
         
         # if conversion_result and conversion_result.get("success"):
-        #     logger.info(f"🚀 Converted session recommendations to action plan for {user_id}")
+        #     logger.info(f" Converted session recommendations to action plan for {user_id}")
         #     conversion_result["plan_source"] = "session_conversion"
         #     return conversion_result
         
@@ -1058,12 +1058,13 @@ class ActionPlanGenerator:
     
     async def generate_new_plan(
         self,
-        user_id: str,
+        user_id: Optional[str],
         plan_date: date,
         user_timezone: str,
         db: AsyncSession,
         image_mode: Literal["full", "hero_only", "none"] = "full",
-        skip_quality_check: bool = False,  # Deprecated: quality check now runs async at end
+        skip_quality_check: bool = False,
+        session_id: Optional[str] = None  # NEW: For guest users
     ) -> Dict[str, Any]:
         """
         Generate a completely new action plan.
@@ -1071,32 +1072,41 @@ class ActionPlanGenerator:
         Uses PostgreSQL advisory lock to prevent race conditions.
         
         Steps:
-        1. Acquire advisory lock for user+date
+        1. Acquire advisory lock for user+date (or session+date)
         2. Check for existing plan (double-check after lock)
         3. Load user context
-        4. Generate actions via GPT
-        5. Generate images for each action (parallel)
-        6. Store in database
-        7. Return to user immediately
-        8. Quality evaluation runs async in background (non-blocking)
-        
-        Note: skip_quality_check is deprecated - quality check now always runs
-        asynchronously after plan delivery, so it never blocks the user.
         """
-        logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
-        logger.info(f"[GENERATE] 🚀 STARTING NEW PLAN GENERATION for user: {user_id}, date: {plan_date}")
-        logger.info(f"[GENERATE] Timezone: {user_timezone}")
-        logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+        start_time = time.time()
+        
+        # Determine identifier
+        if user_id:
+            identifier = user_id
+            log_prefix = f"[ACTION_PLAN:{user_id[:8]}]"
+        elif session_id:
+            identifier = f"session:{session_id}"
+            log_prefix = f"[ACTION_PLAN:GUEST:{session_id[:8]}]"
+        else:
+            return {"success": False, "error": "Either user_id or session_id is required"}
+
+        logger.info(f"{log_prefix}  Starting generation for {plan_date}")
+
+        logger.info(f"{log_prefix} ==========================================================================")
+        logger.info(f"{log_prefix}  STARTING NEW PLAN GENERATION for user: {user_id or session_id}, date: {plan_date}")
+        logger.info(f"{log_prefix} Timezone: {user_timezone}")
+        logger.info(f"{log_prefix} ==========================================================================")
         
         start_time = time.time()
         total_cost = 0.0
-        lock_key = hash(f"{user_id}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
+        
+        # Lock key based on user_id or session_id
+        identity_key = user_id if user_id else f"session:{session_id}"
+        lock_key = hash(f"{identity_key}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
         got_lock = False
         
         try:
             # Step 0: Acquire advisory lock to prevent race conditions
             # Two requests for the same user+date will serialize here
-            logger.info(f"[GENERATE] Step 0: Acquiring advisory lock (key: {lock_key})")
+            logger.info(f"{log_prefix} Step 0: Acquiring advisory lock (key: {lock_key})")
             lock_result = await db.execute(
                 text("SELECT pg_try_advisory_lock(:key)"),
                 {"key": lock_key}
@@ -1106,7 +1116,7 @@ class ActionPlanGenerator:
             if not got_lock:
                 # Another request is already generating - wait and poll for result
                 # OPTIMIZED: Reduced wait times since we're faster now (~15s total instead of 45s)
-                logger.info(f"[GENERATE] 🔒 Another request is generating plan for {user_id}, polling for result...")
+                logger.info(f"{log_prefix}  Another request is generating plan, polling for result...")
                 
                 # Poll for existing plan with shorter backoff (2s, 4s, 9s = ~15s total)
                 wait_times = [2, 4, 9]
@@ -1114,18 +1124,26 @@ class ActionPlanGenerator:
                     await asyncio.sleep(wait_time)
                     
                     # Check if plan was created by the other request
-                    existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                    query = select(ActionPlan).where(ActionPlan.plan_date == plan_date)
+                    if user_id:
+                        query = query.where(ActionPlan.uid == user_id)
+                    elif session_id:
+                        query = query.where(ActionPlan.session_id == session_id)
+                    
+                    result = await db.execute(query)
+                    existing_plan = result.scalar_one_or_none()
+
                     if existing_plan:
-                        logger.info(f"[GENERATE] ✅ Found plan created by concurrent request after {wait_time}s wait")
+                        logger.info(f"{log_prefix}  Found plan created by concurrent request after {wait_time}s wait")
                         resp = await self._format_plan_response(existing_plan, db)
                         if isinstance(resp, dict) and resp.get("success"):
                             resp["plan_source"] = "concurrent_wait_existing"
                         return resp
                     
-                    logger.info(f"[GENERATE] 🔒 Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
+                    logger.info(f"{log_prefix}  Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
                 
                 # After ~45s of waiting, try to acquire blocking lock
-                logger.info(f"[GENERATE] 🔒 Timed out waiting for concurrent request, acquiring blocking lock for {user_id}...")
+                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, acquiring blocking lock...")
                 await db.execute(
                     text("SELECT pg_advisory_lock(:key)"),
                     {"key": lock_key}
@@ -1133,7 +1151,7 @@ class ActionPlanGenerator:
                 got_lock = True
             
             # Double-check for existing plan after acquiring lock
-            existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+            existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
             if existing_plan:
                 logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
                 resp = await self._format_plan_response(existing_plan, db)
@@ -1141,16 +1159,16 @@ class ActionPlanGenerator:
                     resp["plan_source"] = "existing_after_lock"
                 return resp
             
-            logger.info(f"[GENERATE] 🔓 Lock acquired, proceeding with plan generation")
+            logger.info(f"[GENERATE]  Lock acquired, proceeding with plan generation")
             
             # Step 1: Load user context
             logger.info(f"[GENERATE] Step 1: Loading user context...")
-            user_context = await self._load_user_context(user_id, db)
+            user_context = await self._load_user_context(user_id, db, session_id=session_id)
             
             if not user_context:
-                logger.error(f"[GENERATE] ❌ Could not load user context for {user_id}")
+                logger.error(f"[GENERATE]  Could not load user context for {user_id}")
                 return {"success": False, "error": "User profile not found"}
-            logger.info(f"[GENERATE] ✅ User context loaded successfully")
+            logger.info(f"[GENERATE]  User context loaded successfully")
             
             # Step 2: Generate actions via GPT-4o-mini with retry logic
             # Pydantic validation ensures complete data - no fallbacks
@@ -1164,7 +1182,7 @@ class ActionPlanGenerator:
             evaluator = get_action_plan_evaluator()
             
             for attempt in range(1, self.MAX_RETRIES + 1):
-                logger.info(f"🔄 Generation attempt {attempt}/{self.MAX_RETRIES}")
+                logger.info(f" Generation attempt {attempt}/{self.MAX_RETRIES}")
                 
                 # Generate actions with real citations from PubMed
                 # Pydantic validation happens inside _generate_actions_via_gpt
@@ -1173,7 +1191,7 @@ class ActionPlanGenerator:
                 
                 if attempt_actions:
                     # Pydantic validated successfully
-                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} actions validated by Pydantic")
+                    logger.info(f" Attempt {attempt}: All {len(attempt_actions)} actions validated by Pydantic")
                     
                     # ---------------------------------------------------------
                     # FAST QUALITY CHECK & MODEL SWITCHING
@@ -1189,7 +1207,7 @@ class ActionPlanGenerator:
                         # If medical safety is low, switch to fallback model
                         if condition_score is not None and condition_score < 70:
                             model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
-                            logger.warning(f"⚠️ {model_switch_reason}. Switching to fallback model for better quality.")
+                            logger.warning(f" {model_switch_reason}. Switching to fallback model for better quality.")
                             
                             # Use Groq fallback model for better medical accuracy
                             fallback_model = GROQ_FALLBACK_MODEL
@@ -1201,51 +1219,51 @@ class ActionPlanGenerator:
                                 gpt_cost += fallback_cost
                                 
                                 if fallback_actions:
-                                    logger.info(f"✅ Fallback generation successful. Using {fallback_model} results.")
+                                    logger.info(f" Fallback generation successful. Using {fallback_model} results.")
                                     attempt_actions = fallback_actions
                                     used_model = fallback_model
                                 else:
-                                    logger.error("❌ Fallback generation failed. Using original OpenAI results.")
+                                    logger.error(" Fallback generation failed. Using original OpenAI results.")
                                     model_switch_reason += " | Fallback returned None, using original"
                             except Exception as fallback_err:
-                                logger.error(f"❌ Fallback API error: {fallback_err}. Using original OpenAI results.")
+                                logger.error(f" Fallback API error: {fallback_err}. Using original OpenAI results.")
                                 model_switch_reason += f" | Fallback error: {str(fallback_err)[:100]}"
                         else:
-                            logger.info(f"✅ Fast quality check passed (Condition: {condition_score})")
+                            logger.info(f" Fast quality check passed (Condition: {condition_score})")
                             
                     except Exception as e:
-                        logger.warning(f"⚠️ Fast quality check failed: {e}. Proceeding with OpenAI results.")
+                        logger.warning(f" Fast quality check failed: {e}. Proceeding with OpenAI results.")
                         model_switch_reason = f"Quality check error: {str(e)[:100]}"
                     
                     actions = attempt_actions
                     break
                 else:
-                    logger.warning(f"❌ Attempt {attempt}: Generation or validation failed")
+                    logger.warning(f" Attempt {attempt}: Generation or validation failed")
                     if attempt < self.MAX_RETRIES:
                         # OPTIMIZED: Shorter delays (1-3s) instead of exponential (2-9s)
                         # Attempt 1: ~1-2s
                         # Attempt 2: ~2-3s
                         delay = attempt + random.uniform(0, 1)
-                        logger.info(f"🔄 Retrying generation in {delay:.2f}s...")
+                        logger.info(f" Retrying generation in {delay:.2f}s...")
                         await asyncio.sleep(delay)
                     else:
                         # Max retries exceeded - FAIL CLEANLY, no fallbacks
-                        logger.error(f"❌ Max retries ({self.MAX_RETRIES}) exceeded. Failing without fallbacks.")
+                        logger.error(f" Max retries ({self.MAX_RETRIES}) exceeded. Failing without fallbacks.")
             
             total_cost += gpt_cost
             
             if not actions:
-                logger.error("[GENERATE] ❌ Failed to generate valid actions via GPT after all retries")
+                logger.error("[GENERATE]  Failed to generate valid actions via GPT after all retries")
                 return {"success": False, "error": "Failed to generate actions. Please try again."}
             
             # Log the generated actions for debugging
-            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
-            logger.info(f"[GENERATE] 📋 GENERATED ACTIONS SUMMARY ({len(actions)} actions):")
+            logger.info(f"[GENERATE] ==========================================================================")
+            logger.info(f"[GENERATE]  GENERATED ACTIONS SUMMARY ({len(actions)} actions):")
             for i, action in enumerate(actions):
                 logger.info(f"[GENERATE]   Action {i+1}: '{action['title']}' | Category: {action['category']} | Hormone: {action['target_hormone']}")
                 logger.info(f"[GENERATE]     Symptoms: {action['symptoms']}")
                 logger.info(f"[GENERATE]     Conditions: {action['conditions']}")
-            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+            logger.info(f"[GENERATE] ==========================================================================")
             
             # Step 3: Generate images
             # - full: hero + 3 variants per action (16 total) - ALL IN PARALLEL NOW
@@ -1266,10 +1284,10 @@ class ActionPlanGenerator:
                     image_mode=image_mode,  # Use actual mode - no override
                 )
                 total_cost += image_cost
-                logger.info(f"[GENERATE] ✅ Images generated. Cost: ${image_cost:.4f}")
+                logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
             
             # Step 4: Store plan in database
-            logger.info(f"[GENERATE] Step 4: Storing plan in database...")
+            logger.info(f"{log_prefix} Step 4: Storing plan in database...")
             plan = await self._store_plan(
                 user_id=user_id,
                 plan_date=plan_date,
@@ -1277,9 +1295,10 @@ class ActionPlanGenerator:
                 actions=actions_with_images,
                 total_cost=total_cost,
                 generation_time_ms=int((time.time() - start_time) * 1000),
-                db=db
+                db=db,
+                session_id=session_id
             )
-            logger.info(f"[GENERATE] ✅ Plan stored with ID: {plan.id}")
+            logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
             
             # Step 4.5: Log AI Model Usage (Admin Tracking)
             try:
@@ -1292,7 +1311,7 @@ class ActionPlanGenerator:
 
                 usage_log = AIModelUsageLog(
                     plan_id=plan.id,
-                    user_id=user_id,
+                    user_id=user_id or (f"guest_{session_id}" if session_id else "guest_unknown"),
                     primary_model=self.GPT_MODEL,
                     fallback_model=fallback_model,
                     switch_reason=model_switch_reason,  # Now captures actual score
@@ -1300,7 +1319,7 @@ class ActionPlanGenerator:
                 )
                 db.add(usage_log)
                 await db.commit()
-                logger.info(f"📊 AI model usage logged for plan {plan.id}")
+                logger.info(f" AI model usage logged for plan {plan.id}")
             except Exception as log_err:
                 logger.error(f"Failed to log AI model usage: {log_err}")
             
@@ -1319,13 +1338,13 @@ class ActionPlanGenerator:
                         db=self.async_session_maker()  # New session for async task
                     )
                 )
-                logger.info(f"📊 Evaluation task queued for plan {plan.id}")
+                logger.info(f" Evaluation task queued for plan {plan.id}")
             except Exception as eval_err:
                 logger.warning(f"Failed to queue evaluation: {eval_err}")
             
             elapsed = time.time() - start_time
-            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
-            logger.info(f"[GENERATE] 🎉 PLAN GENERATION COMPLETE!")
+            logger.info(f"[GENERATE] ==========================================================================")
+            logger.info(f"[GENERATE]  PLAN GENERATION COMPLETE!")
             logger.info(f"[GENERATE]   Plan ID: {plan.id}")
             logger.info(f"[GENERATE]   User: {user_id}")
             logger.info(f"[GENERATE]   Date: {plan_date}")
@@ -1333,12 +1352,12 @@ class ActionPlanGenerator:
             logger.info(f"[GENERATE]   Time: {elapsed:.2f}s")
             logger.info(f"[GENERATE]   Cost: ${total_cost:.4f}")
             logger.info(f"[GENERATE]   Model: {used_model}")
-            logger.info(f"[GENERATE] ══════════════════════════════════════════════════════════════════════════")
+            logger.info(f"[GENERATE] ==========================================================================")
             
             return await self._format_plan_response(plan, db)
             
         except Exception as e:
-            logger.error(f"[GENERATE] ❌ Error generating plan: {e}")
+            logger.error(f"[GENERATE]  Error generating plan: {e}")
             logger.error(f"[GENERATE] Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": "Failed to generate plan. Please try again."}
         finally:
@@ -1349,12 +1368,12 @@ class ActionPlanGenerator:
                         text("SELECT pg_advisory_unlock(:key)"),
                         {"key": lock_key}
                     )
-                    logger.info(f"[GENERATE] 🔓 Released advisory lock for {user_id}")
+                    logger.info(f"[GENERATE]  Released advisory lock for {user_id}")
                 except Exception as unlock_err:
                     logger.warning(f"[GENERATE] Failed to release advisory lock: {unlock_err}")
     
     def _get_user_today(self, timezone_str: str) -> date:
-        """Get today's date in user's timezone."""
+        """Get todays date in users timezone."""
         from zoneinfo import ZoneInfo
         
         try:
@@ -1366,22 +1385,25 @@ class ActionPlanGenerator:
     
     async def _get_existing_plan(
         self,
-        user_id: str,
+        user_id: Optional[str],
         plan_date: date,
-        db: AsyncSession
+        db: AsyncSession,
+        session_id: Optional[str] = None
     ) -> Optional[Any]:
         """Check if a plan already exists for this user/date."""
         from app.core.database import ActionPlan
         
         try:
-            result = await db.execute(
-                select(ActionPlan).where(
-                    and_(
-                        ActionPlan.uid == user_id,
-                        ActionPlan.plan_date == plan_date
-                    )
-                )
-            )
+            query = select(ActionPlan).where(ActionPlan.plan_date == plan_date)
+            
+            if user_id:
+                query = query.where(ActionPlan.uid == user_id)
+            elif session_id:
+                query = query.where(ActionPlan.session_id == session_id)
+            else:
+                return None
+                
+            result = await db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Error checking existing plan: {e}")
@@ -1395,21 +1417,7 @@ class ActionPlanGenerator:
         db: AsyncSession,
         image_mode: str = "hero_only"
     ) -> Optional[Dict[str, Any]]:
-        """
-        Convert freshly migrated session recommendations to an ActionPlan.
-        
-        This is called for NEW users who just signed up. Instead of generating
-        a brand new plan via GPT (which takes ~100s), we convert the session
-        recommendations that were generated during onboarding.
-        
-        Criteria for conversion:
-        - User has NO existing action plans (brand new user)
-        - User has fresh RecommendationRecords (created in last 10 minutes)
-        - At least 2 recommendations available for conversion
-        
-        Returns:
-            Formatted plan response if conversion succeeded, None otherwise
-        """
+        """Convert freshly migrated session recommendations to an ActionPlan."""
         from datetime import timedelta
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, RecommendationRecord
         
@@ -1452,7 +1460,7 @@ class ActionPlanGenerator:
                 logger.info(f"[SESSION_CONVERT] Only {len(fresh_recs)} fresh recs for {user_id}, need at least 2. Skipping conversion.")
                 return None
             
-            logger.info(f"[SESSION_CONVERT] 🚀 Found {len(fresh_recs)} fresh session recommendations for {user_id}")
+            logger.info(f"[SESSION_CONVERT]  Found {len(fresh_recs)} fresh session recommendations for {user_id}")
             logger.info(f"[SESSION_CONVERT] Converting to ActionPlan (saves ~100s of GPT generation)")
             
             # Step 3: Load user context for hormone info
@@ -1534,16 +1542,16 @@ class ActionPlanGenerator:
                 
                 # Build hormone persona intro
                 hormone_intros = {
-                    "cortisol": "Hi, I'm Cortisol! I help regulate your stress response and energy levels.",
-                    "progesterone": "Hi, I'm Progesterone! I help with mood stability and sleep quality.",
-                    "estrogen": "Hi, I'm Estrogen! I support your mood, skin, and overall well-being.",
-                    "testosterone": "Hi, I'm Testosterone! I support your energy, strength, and motivation.",
-                    "androgens": "Hi, I'm Androgens! I help regulate your skin, energy, and metabolism.",
-                    "insulin": "Hi, I'm Insulin! I help manage your blood sugar and energy balance.",
-                    "thyroid": "Hi, I'm Thyroid! I regulate your metabolism and energy production.",
+                    "cortisol": "Hi, I am Cortisol! I help regulate your stress response and energy levels.",
+                    "progesterone": "Hi, I am Progesterone! I help with mood stability and sleep quality.",
+                    "estrogen": "Hi, I am Estrogen! I support your mood, skin, and overall well-being.",
+                    "testosterone": "Hi, I am Testosterone! I support your energy, strength, and motivation.",
+                    "androgens": "Hi, I am Androgens! I help regulate your skin, energy, and metabolism.",
+                    "insulin": "Hi, I am Insulin! I help manage your blood sugar and energy balance.",
+                    "thyroid": "Hi, I am Thyroid! I regulate your metabolism and energy production.",
                 }
                 
-                hormone_intro = hormone_intros.get(target_hormone, f"Hi, I'm {target_hormone.title()}! I help support your hormonal health.")
+                hormone_intro = hormone_intros.get(target_hormone, f"Hi, I am {target_hormone.title()}! I help support your hormonal health.")
                 
                 # Generate image prompt from recommendation data
                 category = rec.category.lower() if rec.category else "food"
@@ -1644,7 +1652,7 @@ class ActionPlanGenerator:
                         if url:
                             item.hero_image_url = url
                             cache_status = "CACHE HIT" if was_cached else "GENERATED"
-                            logger.info(f"[SESSION_CONVERT] ✅ {cache_status}: '{item.title[:30]}...'")
+                            logger.info(f"[SESSION_CONVERT]  {cache_status}: '{item.title[:30]}...'")
                             return url
                         return None
                     except Exception as e:
@@ -1661,7 +1669,7 @@ class ActionPlanGenerator:
                 await db.commit()
             
             total_time_ms = int((time.time() - start_time) * 1000)
-            logger.info(f"[SESSION_CONVERT] ✅ Plan conversion complete in {total_time_ms}ms (saved ~100s)")
+            logger.info(f"[SESSION_CONVERT]  Plan conversion complete in {total_time_ms}ms (saved ~100s)")
             
             # Step 8: Format and return response
             return await self._format_plan_response(plan, db)
@@ -1678,15 +1686,7 @@ class ActionPlanGenerator:
         user_timezone: str,
         db: AsyncSession
     ) -> Optional[Dict[str, Any]]:
-        """
-        Check if yesterday was frozen and had incomplete items.
-        If so, carry forward those items to today's plan.
-        
-        NEW: If incomplete items < 4, generate additional new items to fill up to 4.
-        
-        Returns:
-            Formatted plan response if carryforward happened, None otherwise
-        """
+        """Check if yesterday was frozen and carry forward items."""
         from datetime import timedelta
         from sqlalchemy import text
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserStreakData
@@ -1704,7 +1704,7 @@ class ActionPlanGenerator:
             got_lock = lock_result.scalar()
             
             if not got_lock:
-                logger.info(f"🧊 CARRYFORWARD: Another request already processing for {user_id}, checking for existing plan")
+                logger.info(f" CARRYFORWARD: Another request already processing for {user_id}, checking for existing plan")
                 # Another request is handling this, wait a bit and check for existing plan
                 import asyncio
                 await asyncio.sleep(0.5)
@@ -1719,51 +1719,51 @@ class ActionPlanGenerator:
             # Double-check: plan might have been created while we waited for lock
             existing_plan = await self._get_existing_plan(user_id, today, db)
             if existing_plan:
-                logger.info(f"🧊 CARRYFORWARD: Plan already exists after acquiring lock, returning existing")
+                logger.info(f" CARRYFORWARD: Plan already exists after acquiring lock, returning existing")
                 resp = await self._format_plan_response(existing_plan, db)
                 if isinstance(resp, dict) and resp.get("success"):
                     resp["plan_source"] = "carryforward_existing_after_lock"
                 return resp
             
-            logger.info(f"🧊 CARRYFORWARD CHECK: user={user_id}, today={today}")
+            logger.info(f" CARRYFORWARD CHECK: user={user_id}, today={today}")
             
-            # Get user's streak data to check frozen dates
+            # Get users streak data to check frozen dates
             streak_result = await db.execute(
                 select(UserStreakData).where(UserStreakData.uid == user_id)
             )
             streak_data = streak_result.scalar_one_or_none()
             
             if not streak_data:
-                logger.info(f"🧊 CARRYFORWARD: No streak data found for {user_id}")
+                logger.info(f" CARRYFORWARD: No streak data found for {user_id}")
                 return None
             
-            logger.info(f"🧊 CARRYFORWARD: freeze_used_dates = {streak_data.freeze_used_dates}")
+            logger.info(f" CARRYFORWARD: freeze_used_dates = {streak_data.freeze_used_dates}")
             
             if not streak_data.freeze_used_dates:
-                logger.info(f"🧊 CARRYFORWARD: No frozen dates for {user_id}")
+                logger.info(f" CARRYFORWARD: No frozen dates for {user_id}")
                 return None  # No frozen dates
             
             # Parse frozen dates
             frozen_dates = []
             try:
                 frozen_dates = [date.fromisoformat(d) for d in streak_data.freeze_used_dates if d]
-                logger.info(f"🧊 CARRYFORWARD: Parsed frozen dates = {frozen_dates}")
+                logger.info(f" CARRYFORWARD: Parsed frozen dates = {frozen_dates}")
             except (ValueError, TypeError) as e:
-                logger.error(f"🧊 CARRYFORWARD: Error parsing dates: {e}")
+                logger.error(f" CARRYFORWARD: Error parsing dates: {e}")
                 return None
             
             # Check if yesterday (or recent days) were frozen
             yesterday = today - timedelta(days=1)
             
-            logger.info(f"🧊 CARRYFORWARD: yesterday={yesterday}, in frozen_dates? {yesterday in frozen_dates}")
+            logger.info(f" CARRYFORWARD: yesterday={yesterday}, in frozen_dates? {yesterday in frozen_dates}")
             
             if yesterday not in frozen_dates:
-                logger.info(f"🧊 CARRYFORWARD: Yesterday {yesterday} was NOT frozen, skipping carryforward")
+                logger.info(f" CARRYFORWARD: Yesterday {yesterday} was NOT frozen, skipping carryforward")
                 return None  # Yesterday wasn't frozen
             
             logger.info(f"Yesterday ({yesterday}) was frozen for user {user_id}, checking for incomplete items")
             
-            # Get yesterday's plan
+            # Get yesterdays plan
             yesterday_plan_result = await db.execute(
                 select(ActionPlan).where(
                     and_(
@@ -1778,7 +1778,7 @@ class ActionPlanGenerator:
                 logger.info(f"No plan found for frozen day {yesterday}")
                 return None
             
-            # Get incomplete items from yesterday's plan
+            # Get incomplete items from yesterdays plan
             incomplete_items_result = await db.execute(
                 select(ActionPlanItem).where(
                     and_(
@@ -1834,7 +1834,7 @@ class ActionPlanGenerator:
             logger.info(f"Carryforward: {num_incomplete} incomplete items from {yesterday} ({carried_primary} primary, {carried_secondary} secondary)")
             logger.info(f"Will generate {num_to_generate} new items with hormone requirements: {hormone_requirements}")
             
-            # Create today's plan
+            # Create todays plan
             new_plan = ActionPlan(
                 uid=user_id,
                 plan_date=today,
@@ -2071,14 +2071,14 @@ Total: {num_actions} actions
         
         prompt = f"""Generate exactly {num_actions} wellness action(s) for this user.
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 EXISTING ACTIONS (user already has these - DO NOT duplicate similar content)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {existing_summary}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 USER PROFILE
-══════════════════════════════════════════════════════════════════════
+======================================================================
 - Age: {user_context.get('age', 'Not specified')}
 - Cycle Day: {user_context.get('cycle_day', 'Unknown')}
 - Cycle Phase: {cycle_phase}
@@ -2089,22 +2089,22 @@ USER PROFILE
 - Current Streak: {user_context.get('current_streak', 0)} days
 - Longest Streak: {user_context.get('longest_streak', 0)} days
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 RECENT INSIGHTS
-══════════════════════════════════════════════════════════════════════
+======================================================================
 Weekly Check-ins:
 {user_context.get('weekly_checkin_insights', 'None')}
 
 Daily Reviews:
 {user_context.get('daily_review_insights', 'None')}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {hormone_instruction}
-══════════════════════════════════════════════════════════════════════
+======================================================================
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 REQUIREMENTS
-══════════════════════════════════════════════════════════════════════
+======================================================================
 1. Generate exactly {num_actions} NEW action(s) - DIFFERENT content from existing ones
 2. Mix categories (food, movement, mindfulness) to complement existing
 3. STRICTLY follow the hormone count requirement above
@@ -2122,7 +2122,7 @@ REQUIREMENTS
    - food_items/food_amounts for food category
    - exercise_types/exercise_durations/exercise_intensities for movement category
    - mindfulness_techniques/mindfulness_durations for mindfulness category
-   - symptoms: ["symptom1", "symptom2"] (2 from user's concerns)
+   - symptoms: ["symptom1", "symptom2"] (2 from user concerns)
    - conditions: [] (empty array)
 
 Return as JSON: {{"actions": [array of {num_actions} action objects]}}
@@ -2144,7 +2144,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     response = await client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
-                            {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
+                            {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
                         ],
                         temperature=0.7,
@@ -2154,17 +2154,17 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     
                     content = response.choices[0].message.content
                     cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
-                    logger.info("✅ Partial actions generated via OpenAI")
+                    logger.info(" Partial actions generated via OpenAI")
                 except Exception as e:
                     openai_error = str(e)
-                    logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                    logger.warning(f" OpenAI exception: {openai_error[:200]}")
             else:
                 openai_error = "No OpenAI API key"
             
             # Groq fallback
             if openai_error and GROQ_API_KEY:
                 try:
-                    logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                    logger.info(f" Falling back to Groq ({GROQ_FALLBACK_MODEL})")
                     groq_client = AsyncGroq(api_key=GROQ_API_KEY)
                     
                     # gpt-oss-120b is a reasoning model - doesn't support response_format
@@ -2174,7 +2174,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     response = await groq_client.chat.completions.create(
                         model=GROQ_FALLBACK_MODEL,
                         messages=[
-                            {"role": "system", "content": "You are a women's wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
+                            {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": enhanced_prompt}
                         ],
                         temperature=0.7,
@@ -2193,12 +2193,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             content = content[:-3]
                         content = content.strip()
                     
-                    logger.info("✅ Partial actions generated via Groq fallback")
+                    logger.info(" Partial actions generated via Groq fallback")
                 except Exception as e:
-                    logger.error(f"❌ Groq fallback also failed: {e}")
+                    logger.error(f" Groq fallback also failed: {e}")
                     return (None, 0.0)
             elif openai_error:
-                logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                logger.error(f" OpenAI failed and no Groq fallback: {openai_error}")
                 return (None, 0.0)
             
             if not content:
@@ -2221,8 +2221,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
     
     async def _load_user_context(
         self,
-        user_id: str,
-        db: AsyncSession
+        user_id: Optional[str],
+        db: AsyncSession,
+        session_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Load all user context needed for action generation.
 
@@ -2230,13 +2231,55 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         sequential on this session. We still optimize the slowest piece
         (anti-repetition) by using a single JOIN query instead of an N+1 loop.
         """
-        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread
+        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, QuestionSession
         
-        logger.info(f"[CONTEXT] ══════════════════════════════════════════════════════════════════════════")
-        logger.info(f"[CONTEXT] Starting _load_user_context for user: {user_id}")
-        logger.info(f"[CONTEXT] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[CONTEXT] ==========================================================================")
+        logger.info(f"[CONTEXT] Starting _load_user_context for user: {user_id} (session: {session_id})")
+        logger.info(f"[CONTEXT] ==========================================================================")
         
         try:
+            # GUEST FLOW
+            if not user_id and session_id:
+                logger.info(f"[CONTEXT] Loading GUEST context from session: {session_id}")
+                session_result = await db.execute(
+                    select(QuestionSession).where(QuestionSession.session_id == session_id)
+                )
+                session = session_result.scalar_one_or_none()
+                
+                if not session:
+                    logger.warning(f"[CONTEXT] Session {session_id} not found")
+                    return None
+                    
+                # Construct context from session data
+                return {
+                    "age": session.age,
+                    "cycle_day": 1, 
+                    "cycle_phase": "follicular", # Default or infer from period_description?
+                    "primary_hormone": "cortisol", 
+                    "secondary_hormone": "progesterone",
+                    "top_concern": session.top_concern,
+                    "diagnosed_conditions": session.diagnosed_conditions or [],
+                    "period_concerns": [], # Map from session?
+                    "body_concerns": [],
+                    "skin_hair_concerns": [],
+                    "mental_health_concerns": [],
+                    "family_history": [],
+                    "lifestyle_focus": session.lifestyle_focus or ["eat", "move", "pause"],
+                    "diet_preference": "none",
+                    "food_allergies": [],
+                    "stress_level": "moderate",
+                    "sleep_duration": "7-8 hours",
+                    "workout_intensity": "moderate",
+                    "birth_control": session.birth_control,
+                    "current_streak": 0,
+                    "longest_streak": 0,
+                    "feedback_summary": "New guest user",
+                    "feedback_memory": "",
+                    "chatbot_context": "",
+                    "weekly_checkin_insights": "",
+                    "timezone": "UTC"
+                }
+
             # STEP 1: Get user profile FIRST (required to continue)
             profile_result = await db.execute(
                 select(UserProfile).where(UserProfile.uid == user_id)
@@ -2352,7 +2395,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             symptom_checkin_insights = self._format_symptom_checkin_insights(recent_symptom_threads)
             
             # Format as string for prompt
-            recently_recommended_str = ", ".join(recently_recommended[:30]) if recently_recommended else "None (this is the user's first plan)"
+            recently_recommended_str = ", ".join(recently_recommended[:30]) if recently_recommended else "None (this is the users first plan)"
             
             # Load base context with defaults
             context = {
@@ -2422,9 +2465,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             chatbot_memory = profile.chatbot_memory or {}
             chatbot_context = self._format_chatbot_context(chatbot_memory)
             
-            # ═══════════════════════════════════════════════════════════════════
+            # ===================================================================
             # EXTRACT ALL PREFERENCES FROM CHATBOT MEMORY (Reward-gated features)
-            # ═══════════════════════════════════════════════════════════════════
+            # ===================================================================
             
             # Diet preference (7-day reward)
             diet_preference = chatbot_memory.get("diet_preference", "no preference specified")
@@ -2504,9 +2547,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "recently_recommended": recently_recommended_str
             })
             
-            # ═══════════════════════════════════════════════════════════════════
+            # ===================================================================
             # BUILD ALLOWED SYMPTOMS/CONDITIONS WHITELIST (Anti-hallucination)
-            # ═══════════════════════════════════════════════════════════════════
+            # ===================================================================
             logger.info(f"[WHITELIST] Building allowed symptoms/conditions whitelist for user {user_id}")
             # Extract all symptoms user actually has from their health profile
             allowed_symptoms_set = set()
@@ -2590,10 +2633,10 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             context["allowed_conditions"] = allowed_conditions_str
             
             # Final summary log
-            logger.info(f"[WHITELIST] ═══════════════════════════════════════════════════════════")
+            logger.info(f"[WHITELIST] ===========================================================")
             logger.info(f"[WHITELIST] FINAL ALLOWED SYMPTOMS ({len(allowed_symptoms_set)} total): {allowed_symptoms_str}")
             logger.info(f"[WHITELIST] FINAL ALLOWED CONDITIONS ({len(allowed_conditions_list)} total): {allowed_conditions_str}")
-            logger.info(f"[WHITELIST] ═══════════════════════════════════════════════════════════")
+            logger.info(f"[WHITELIST] ===========================================================")
             
             return context
             
@@ -2628,7 +2671,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         if chatbot_memory.get("dislikes"):
             context_parts.append(f"Things user dislikes: {chatbot_memory['dislikes']}")
         if chatbot_memory.get("goals"):
-            context_parts.append(f"User's goals: {chatbot_memory['goals']}")
+            context_parts.append(f"Users goals: {chatbot_memory['goals']}")
         if chatbot_memory.get("notes"):
             context_parts.append(f"Other notes: {chatbot_memory['notes']}")
         
@@ -2874,7 +2917,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         completed = []
         loved = []  # NEW: From ActionDetailScreen
         not_for_me = []  # NEW: From ActionDetailScreen
-        text_insights = []  # NEW: User's written feedback
+        text_insights = []  # NEW: Users written feedback
         
         # Analyze patterns
         liked_categories = {}
@@ -2935,9 +2978,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 patterns.append(f"User tends to DISLIKE {top_disliked[0]} actions ({top_disliked[1]} negative reactions)")
             memory_parts.append("PATTERNS DETECTED:\n" + "\n".join(patterns))
         
-        # NEW: Text insights from user's written feedback
+        # NEW: Text insights from users written feedback
         if text_insights:
-            memory_parts.append(f"USER'S WRITTEN FEEDBACK (VERY IMPORTANT):\n" + "\n".join(text_insights[:5]))
+            memory_parts.append(f"USERS WRITTEN FEEDBACK (VERY IMPORTANT):\n" + "\n".join(text_insights[:5]))
         
         if loved:
             memory_parts.append(f"LOVED actions (PRIORITIZE similar ones):\n" + "\n".join(loved[:5]))
@@ -2981,18 +3024,18 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             )
             current_count = count_result.scalar() or 0
             
-            logger.info(f"📊 Feedback count for user {user_id}: {current_count}, threshold: 100")
+            logger.info(f" Feedback count for user {user_id}: {current_count}, threshold: 100")
             
             # Return existing summary if count hasn't grown much
             # Use safe default for feedback_last_count to avoid None + 20 error
             last_count = getattr(profile, 'feedback_last_count', 0) or 0
             if getattr(profile, 'feedback_summary', None) and current_count < (last_count + 20):
-                logger.info(f"📋 Using existing feedback summary (last updated: {getattr(profile, 'feedback_summary_updated_at', 'unknown')})")
+                logger.info(f" Using existing feedback summary (last updated: {getattr(profile, 'feedback_summary_updated_at', 'unknown')})")
                 return getattr(profile, 'feedback_summary', None)
             
             # If count > 100, summarize
             if current_count >= 100:
-                logger.info(f"🤖 Generating feedback summary with GPT for {current_count} feedback records")
+                logger.info(f" Generating feedback summary with GPT for {current_count} feedback records")
                 
                 # Fetch ALL feedback
                 all_feedback_result = await db.execute(
@@ -3006,7 +3049,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 feedback_text = self._format_feedback_memory(all_feedback)
                 
                 # Ask GPT to summarize
-                summary_prompt = f"""Analyze this user's action plan feedback history and create a concise summary of their preferences.
+                summary_prompt = f"""Analyze this users action plan feedback history and create a concise summary of their preferences.
 
 FEEDBACK HISTORY:
 {feedback_text}
@@ -3045,21 +3088,21 @@ Format as bullet points."""
                         
                         if response.status_code != 200:
                             openai_error = f"OpenAI returned {response.status_code}"
-                            logger.warning(f"❌ {openai_error}")
+                            logger.warning(f" {openai_error}")
                         else:
                             data = response.json()
                             summary = data["choices"][0]["message"]["content"].strip()
-                            logger.info(f"✅ Feedback summary generated via OpenAI, length: {len(summary)} chars")
+                            logger.info(f" Feedback summary generated via OpenAI, length: {len(summary)} chars")
                     except Exception as e:
                         openai_error = str(e)
-                        logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                        logger.warning(f" OpenAI exception: {openai_error[:200]}")
                 else:
                     openai_error = "No OpenAI API key"
                 
                 # Groq fallback
                 if openai_error and GROQ_API_KEY:
                     try:
-                        logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                        logger.info(f" Falling back to Groq ({GROQ_FALLBACK_MODEL})")
                         response = await self.client.post(
                             "https://api.groq.com/openai/v1/chat/completions",
                             headers={
@@ -3083,12 +3126,12 @@ Format as bullet points."""
                         
                         data = response.json()
                         summary = data["choices"][0]["message"]["content"].strip()
-                        logger.info(f"✅ Feedback summary generated via Groq fallback, length: {len(summary)} chars")
+                        logger.info(f" Feedback summary generated via Groq fallback, length: {len(summary)} chars")
                     except Exception as e:
-                        logger.error(f"❌ Groq fallback also failed: {e}")
+                        logger.error(f" Groq fallback also failed: {e}")
                         return None  # Return None, don't crash
                 elif openai_error:
-                    logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                    logger.error(f" OpenAI failed and no Groq fallback: {openai_error}")
                     return None
                 
                 if summary:
@@ -3099,7 +3142,7 @@ Format as bullet points."""
                     profile.feedback_last_count = current_count
                     await db.commit()
                     
-                    logger.info(f"💾 Feedback summary saved to profile")
+                    logger.info(f" Feedback summary saved to profile")
                     
                     # Delete old feedback (keep last 20)
                     if current_count > 20:
@@ -3123,7 +3166,7 @@ Format as bullet points."""
                         await db.commit()
                         
                         deleted_count = delete_result.rowcount
-                        logger.info(f"🗑️  Deleted {deleted_count} old feedback records, kept last 20")
+                        logger.info(f"  Deleted {deleted_count} old feedback records, kept last 20")
                     
                     return summary
             
@@ -3131,7 +3174,7 @@ Format as bullet points."""
             return getattr(profile, 'feedback_summary', None)
             
         except Exception as e:
-            logger.error(f"❌ Error in feedback summarization: {e}")
+            logger.error(f" Error in feedback summarization: {e}")
             return None
 
     
@@ -3140,17 +3183,17 @@ Format as bullet points."""
         Generate STRICT category distribution guidance based on lifestyle focus.
         
         Distribution Matrix (Total = 4):
-        ┌─────────────────┬───────┬──────────┬─────────────┐
-        │ Selection       │ Food  │ Movement │ Mindfulness │
-        ├─────────────────┼───────┼──────────┼─────────────┤
-        │ Eat only        │   2   │    1     │      1      │
-        │ Move only       │   1   │    2     │      1      │
-        │ Pause only      │   1   │    1     │      2      │
-        │ Eat + Move      │   2   │    2     │      0      │
-        │ Eat + Pause     │   2   │    0     │      2      │
-        │ Move + Pause    │   0   │    2     │      2      │
-        │ All three/None  │   2   │    1     │      1      │
-        └─────────────────┴───────┴──────────┴─────────────┘
+        +-----------------+-------+----------+-------------+
+        | Selection       | Food  | Movement | Mindfulness |
+        +-----------------+-------+----------+-------------+
+        | Eat only        |   2   |    1     |      1      |
+        | Move only       |   1   |    2     |      1      |
+        | Pause only      |   1   |    1     |      2      |
+        | Eat + Move      |   2   |    2     |      0      |
+        | Eat + Pause     |   2   |    0     |      2      |
+        | Move + Pause    |   0   |    2     |      2      |
+        | All three/None  |   2   |    1     |      1      |
+        +-----------------+-------+----------+-------------+
         """
         focus = [f.lower() for f in (lifestyle_focus or [])]
         num_selected = len(focus)
@@ -3183,22 +3226,15 @@ Format as bullet points."""
         db: Optional[AsyncSession] = None,
         model_override: Optional[str] = None
     ) -> Tuple[Optional[List[Dict]], float]:
-        """
-        Generate actions using GPT-4o-mini (or override model) with tool calling for real citations.
-        
-        Uses search_research_paper tool to fetch real papers from PubMed/OpenAlex/Semantic Scholar.
-        Caches results to database for faster future lookups.
-        
-        Returns (actions, cost)
-        """
-        logger.info(f"[GPT] ══════════════════════════════════════════════════════════════════════════")
+        """Generate actions using GPT with tool calling."""
+        logger.info(f"[GPT] ==========================================================================")
         logger.info(f"[GPT] Starting _generate_actions_via_gpt")
         logger.info(f"[GPT]   model_override: {model_override or 'None (using default)'}")
         logger.info(f"[GPT]   user_id: {user_context.get('user_id')}")
-        logger.info(f"[GPT] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[GPT] ==========================================================================")
         
         if not self.openai_api_key and not GROQ_API_KEY:
-            logger.error("[GPT] ❌ No API keys configured")
+            logger.error("[GPT]  No API keys configured")
             return (None, 0.0)
         
         # Track if we're using Groq fallback
@@ -3273,7 +3309,7 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             care_plan_checkin_insights=user_context.get("care_plan_checkin_insights", "No care plan check-in data yet"),
             symptom_checkin_insights=user_context.get("symptom_checkin_insights", "No symptom check-in data yet"),
             # Anti-repetition and hallucination prevention
-            recently_recommended=user_context.get("recently_recommended", "None (this is the user's first plan)"),
+            recently_recommended=user_context.get("recently_recommended", "None (this is the users first plan)"),
             allowed_symptoms=user_context.get("allowed_symptoms", "general wellness support"),
             allowed_conditions=user_context.get("allowed_conditions", "None diagnosed"),
             # Generation params
@@ -3284,7 +3320,7 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
         )
         
         # Log the anti-repetition and whitelist values being sent to GPT
-        logger.info(f"[PROMPT] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[PROMPT] ==========================================================================")
         logger.info(f"[PROMPT] ANTI-REPETITION DATA SENT TO GPT:")
         logger.info(f"[PROMPT]   recently_recommended: {user_context.get('recently_recommended', 'None')[:200]}...")
         logger.info(f"[PROMPT] WHITELIST DATA SENT TO GPT:")
@@ -3296,19 +3332,19 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
         logger.info(f"[PROMPT]   diet_preference: {user_context.get('diet_preference')}")
         logger.info(f"[PROMPT]   food_allergies: {user_context.get('food_allergies')}")
         logger.info(f"[PROMPT]   current_streak: {user_context.get('current_streak')}, longest_streak: {user_context.get('longest_streak')}")
-        logger.info(f"[PROMPT] ══════════════════════════════════════════════════════════════════════════")
+        logger.info(f"[PROMPT] ==========================================================================")
         
         # Enhanced system prompt with tool calling instructions
         enhanced_system = SYSTEM_PROMPT + f"""
 
-CURRENT USER'S HORMONE CONTEXT:
+CURRENT USERS HORMONE CONTEXT:
 - Cycle Phase: {cycle_phase}
 - Primary Hormone: {user_context["primary_hormone"]} - {primary_behavior}
 - Secondary Hormone: {user_context["secondary_hormone"]} - {secondary_behavior}
 
 Write the hormone_persona_intro naturally, following the example style above. The hormone should:
-1. Introduce itself by name ("I'm Progesterone...")
-2. Explain what's happening in this cycle phase
+1. Introduce itself by name ("I am Progesterone...")
+2. Explain what is happening in this cycle phase
 3. Connect the recommended action to how it helps the hormone and the user
 
 CRITICAL - RESEARCH CITATIONS:
@@ -3327,13 +3363,13 @@ If the tool returns empty, set research_studies to an empty array.
         if model_override and "llama" in model_override.lower():
             enhanced_system += """
             
-═══════════════════════════════════════════════════════════════════════════════
-🧠 DEEP REASONING INSTRUCTIONS (CHAIN OF THOUGHT)
-═══════════════════════════════════════════════════════════════════════════════
+===============================================================================
+ DEEP REASONING INSTRUCTIONS (CHAIN OF THOUGHT)
+===============================================================================
 You are a highly advanced medical reasoning engine. Before generating the final JSON, 
 you must think step-by-step to ensure maximum medical accuracy for this specific user.
 
-1. ANALYZE CONDITIONS: Look at the user's diagnosed conditions ({diagnosed_conditions}).
+1. ANALYZE CONDITIONS: Look at the users diagnosed conditions ({diagnosed_conditions}).
    - What are the contraindications?
    - What are the gold-standard lifestyle interventions?
 
@@ -3350,17 +3386,17 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
         
         total_cost = 0.0
         
-        # Get user's conditions for research queries
-        diagnosed_conditions = ", ".join(user_context.get("diagnosed_conditions", [])) or "women's health"
+        # Get users conditions for research queries
+        diagnosed_conditions = ", ".join(user_context.get("diagnosed_conditions", [])) or "womens health"
         
         try:
-            # ═══════════════════════════════════════════════════════════════════════
+            # =======================================================================
             # STEP 1: RESEARCH DISCOVERY PHASE
             # Search for evidence-based interventions BEFORE deciding what to recommend
-            # ═══════════════════════════════════════════════════════════════════════
-            logger.info("🔬 STEP 1: Research Discovery Phase - Finding what works for this user...")
+            # =======================================================================
+            logger.info(" STEP 1: Research Discovery Phase - Finding what works for this user...")
             
-            # Define research queries based on user's specific context
+            # Define research queries based on users specific context
             research_queries = [
                 # Food interventions for primary hormone + condition
                 f"{primary_hormone} food nutrition {diagnosed_conditions} women intervention",
@@ -3375,11 +3411,11 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
             categories = ["food", "food", "movement", "mindfulness"]
             hormones = [primary_hormone, secondary_hormone, primary_hormone, primary_hormone]
             
-            # ═══════════════════════════════════════════════════════════════════════
+            # =======================================================================
             # PARALLEL EXECUTION: Run all PubMed searches concurrently for speed
             # Before: ~2000ms (4 x 500ms sequential)
             # After:  ~500ms  (parallel)
-            # ═══════════════════════════════════════════════════════════════════════
+            # =======================================================================
             async def fetch_research_paper(index: int, query: str) -> Dict[str, Any]:
                 """Fetch a single research paper for a query."""
                 try:
@@ -3403,7 +3439,7 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
                     return None
             
             # Execute all searches in parallel
-            logger.info(f"  🔍 Searching {len(research_queries)} queries in parallel...")
+            logger.info(f"   Searching {len(research_queries)} queries in parallel...")
             results = await asyncio.gather(
                 *[fetch_research_paper(i, q) for i, q in enumerate(research_queries)],
                 return_exceptions=True
@@ -3418,46 +3454,46 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
                     logger.warning(f"Research query {i} exception: {result}")
                     continue
                 research_findings.append(result)
-                logger.info(f"  ✅ Found: {result['paper'].get('title', '')[:50]}...")
+                logger.info(f"   Found: {result['paper'].get('title', '')[:50]}...")
             
-            logger.info(f"🔬 Research complete: Found {len(research_findings)} relevant papers")
+            logger.info(f" Research complete: Found {len(research_findings)} relevant papers")
             
             # Build research summary for GPT
-            research_summary = "\\n\\n══════════════════════════════════════════════════════════════════════\\n"
+            research_summary = "\\n\\n======================================================================\\n"
             research_summary += "RESEARCH FINDINGS - USE THESE TO INFORM YOUR RECOMMENDATIONS\\n"
-            research_summary += "══════════════════════════════════════════════════════════════════════\\n"
+            research_summary += "======================================================================\\n"
             
             for finding in research_findings:
                 paper = finding["paper"]
                 research_summary += f"""
-📚 Research for {finding['hormone'].upper()} ({finding['category']}):
+ Research for {finding['hormone'].upper()} ({finding['category']}):
    Title: {paper.get('title', 'Unknown')}
    Journal: {paper.get('journal', 'Unknown')} ({paper.get('year', 'N/A')})
    Finding: {paper.get('finding', 'No finding extracted')}
    PMID: {paper.get('pmid', 'N/A')}
    
-   ➡️ Use this to inform your {finding['category']} recommendation for {finding['hormone']}
+    Use this to inform your {finding['category']} recommendation for {finding['hormone']}
 """
             
             research_summary += "\nIMPORTANT: Your recommendations MUST be based on the research findings above.\n"
             research_summary += "Include the paper details in the research_studies field for each action.\n"
             
-            # ═══════════════════════════════════════════════════════════════════════
+            # =======================================================================
             # STEP 2: RECOMMENDATION GENERATION - Based on research findings
-            # ═══════════════════════════════════════════════════════════════════════
-            logger.info("🤖 STEP 2: Generating recommendations based on research findings...")
+            # =======================================================================
+            logger.info(" STEP 2: Generating recommendations based on research findings...")
             
             # Enhanced system prompt with research findings
             enhanced_system_with_research = SYSTEM_PROMPT + f"""
 
-CURRENT USER'S HORMONE CONTEXT:
+CURRENT USERS HORMONE CONTEXT:
 - Cycle Phase: {cycle_phase}
 - Primary Hormone: {user_context["primary_hormone"]} - {primary_behavior}
 - Secondary Hormone: {user_context["secondary_hormone"]} - {secondary_behavior}
 
 Write the hormone_persona_intro naturally, following the example style above. The hormone should:
-1. Introduce itself by name ("I'm Progesterone...")
-2. Explain what's happening in this cycle phase
+1. Introduce itself by name ("I am Progesterone...")
+2. Explain whats happening in this cycle phase
 3. Connect the recommended action to how it helps the hormone and the user
 
 CRITICAL - RESEARCH-BASED RECOMMENDATIONS:
@@ -3494,7 +3530,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             }
             
             # Try OpenAI first
-            logger.info(f"🚀 Trying OpenAI with model: {self.GPT_MODEL}")
+            logger.info(f" Trying OpenAI with model: {self.GPT_MODEL}")
             try:
                 response = await self.client.post(
                     "https://api.openai.com/v1/chat/completions",
@@ -3515,15 +3551,15 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                         openai_error = f"{error_type}: {error_msg[:200]}"
                     except:
                         pass
-                    logger.warning(f"❌ OpenAI failed: {openai_error}")
+                    logger.warning(f" OpenAI failed: {openai_error}")
                     
             except Exception as e:
                 openai_error = str(e)
-                logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                logger.warning(f" OpenAI exception: {openai_error[:200]}")
             
             # Fallback to Groq if OpenAI failed for ANY reason
             if openai_error and GROQ_API_KEY:
-                logger.info(f"🔄 Falling back to Groq with model: {GROQ_FALLBACK_MODEL}")
+                logger.info(f" Falling back to Groq with model: {GROQ_FALLBACK_MODEL}")
                 use_groq = True
                 is_groq = True
                 
@@ -3533,7 +3569,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                 
                 groq_system = enhanced_system_with_research + """
 
-⚠️ CRITICAL SCHEMA ENFORCEMENT ⚠️
+ CRITICAL SCHEMA ENFORCEMENT 
 You MUST include ALL fields for EVERY action, even if they are not relevant to the category.
 If a field is not relevant, you MUST provide an empty list [].
 
@@ -3574,9 +3610,9 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                     )
                     
                     if response.status_code == 200:
-                        logger.info(f"✅ Groq fallback successful!")
+                        logger.info(f" Groq fallback successful!")
                     else:
-                        logger.error(f"❌ Groq also failed: {response.status_code}")
+                        logger.error(f" Groq also failed: {response.status_code}")
                         try:
                             groq_error = response.json()
                             logger.error(f"   Groq error: {groq_error}")
@@ -3585,11 +3621,11 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                         return (None, total_cost)
                         
                 except Exception as e:
-                    logger.error(f"❌ Groq exception: {e}")
+                    logger.error(f" Groq exception: {e}")
                     return (None, total_cost)
                     
             elif openai_error:
-                logger.error(f"❌ OpenAI failed and no Groq API key for fallback")
+                logger.error(f" OpenAI failed and no Groq API key for fallback")
                 return (None, total_cost)
             
             data = response.json()
@@ -3600,7 +3636,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
             
             content = data["choices"][0]["message"]["content"]
-            logger.info(f"✅ GPT generated recommendations based on {len(research_findings)} research papers")
+            logger.info(f" GPT generated recommendations based on {len(research_findings)} research papers")
             
             # Parse response
             try:
@@ -3650,7 +3686,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                         logger.debug(f"Sanitized participants: {study.get('participants')}")
             
             # Validate with Pydantic - ensures all required fields are present
-            logger.info(f"📋 Validating {len(raw_actions)} raw actions with Pydantic...")
+            logger.info(f" Validating {len(raw_actions)} raw actions with Pydantic...")
             try:
                 # Prepare data for validation - model expects {"actions": [...]}
                 validation_payload = {"actions": raw_actions}
@@ -3658,7 +3694,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                 # Strict Pydantic Validation
                 validated_response = ActionPlanResponseModel.model_validate(validation_payload)
                 actions = [action.model_dump() for action in validated_response.actions]
-                logger.info(f"📋 Base Pydantic validation passed")
+                logger.info(f" Base Pydantic validation passed")
                 
                 # CRITICAL: Validate and fix target_hormone assignments
                 # GPT is told: first 2 actions = primary, last 2 = secondary
@@ -3666,18 +3702,18 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                 primary_hormone = user_context.get("primary_hormone", "").lower()
                 secondary_hormone = user_context.get("secondary_hormone", "progesterone").lower()
                 
-                logger.info(f"🎯 Validating target_hormone: primary={primary_hormone}, secondary={secondary_hormone}")
+                logger.info(f" Validating target_hormone: primary={primary_hormone}, secondary={secondary_hormone}")
                 
                 for i, action in enumerate(actions):
                     actual_hormone = (action.get("target_hormone") or "").lower()
                     expected_hormone = primary_hormone if i < 2 else secondary_hormone
                     
                     if actual_hormone != expected_hormone:
-                        logger.warning(f"⚠️ Action {i+1} '{action.get('title')}': "
+                        logger.warning(f" Action {i+1} '{action.get('title')}': "
                                       f"target_hormone MISMATCH! Got '{actual_hormone}', expected '{expected_hormone}'. FIXING!")
                         action["target_hormone"] = expected_hormone
                     else:
-                        logger.info(f"✅ Action {i+1} '{action.get('title')}': target_hormone={actual_hormone} ✓")
+                        logger.info(f" Action {i+1} '{action.get('title')}': target_hormone={actual_hormone} ")
                 
                 # Category-specific validation - MUST have these fields, no auto-fill
                 validation_errors = []
@@ -3691,32 +3727,32 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                         if not action.get("food_amounts") or len(action.get("food_amounts", [])) == 0:
                             validation_errors.append(f"Action {i+1} '{title}' [food]: missing food_amounts")
                         else:
-                            logger.info(f"  ✅ Action {i+1} '{title}' [food]: food_items={action.get('food_items')}, food_amounts={action.get('food_amounts')}")
+                            logger.info(f"   Action {i+1} '{title}' [food]: food_items={action.get('food_items')}, food_amounts={action.get('food_amounts')}")
                     elif category == "movement":
                         if not action.get("exercise_types") or len(action.get("exercise_types", [])) == 0:
                             validation_errors.append(f"Action {i+1} '{title}' [movement]: missing exercise_types")
                         if not action.get("exercise_durations") or len(action.get("exercise_durations", [])) == 0:
                             validation_errors.append(f"Action {i+1} '{title}' [movement]: missing exercise_durations")
                         else:
-                            logger.info(f"  ✅ Action {i+1} '{title}' [movement]: exercise_types={action.get('exercise_types')}, exercise_durations={action.get('exercise_durations')}")
+                            logger.info(f"   Action {i+1} '{title}' [movement]: exercise_types={action.get('exercise_types')}, exercise_durations={action.get('exercise_durations')}")
                     elif category == "mindfulness":
                         if not action.get("mindfulness_techniques") or len(action.get("mindfulness_techniques", [])) == 0:
                             validation_errors.append(f"Action {i+1} '{title}' [mindfulness]: missing mindfulness_techniques")
                         if not action.get("mindfulness_durations") or len(action.get("mindfulness_durations", [])) == 0:
                             validation_errors.append(f"Action {i+1} '{title}' [mindfulness]: missing mindfulness_durations")
                         else:
-                            logger.info(f"  ✅ Action {i+1} '{title}' [mindfulness]: techniques={action.get('mindfulness_techniques')}, durations={action.get('mindfulness_durations')}")
+                            logger.info(f"   Action {i+1} '{title}' [mindfulness]: techniques={action.get('mindfulness_techniques')}, durations={action.get('mindfulness_durations')}")
                 
                 if validation_errors:
-                    logger.warning(f"⚠️ Category-specific validation failed (will retry):")
+                    logger.warning(f" Category-specific validation failed (will retry):")
                     for error in validation_errors:
-                        logger.warning(f"   • {error}")
+                        logger.warning(f"    {error}")
                     return (None, total_cost)  # Trigger retry
                     
-                logger.info(f"✅ All validations passed for {len(actions)} actions")
+                logger.info(f" All validations passed for {len(actions)} actions")
                 
             except ValidationError as e:
-                logger.error(f"❌ Pydantic validation failed: {e}")
+                logger.error(f" Pydantic validation failed: {e}")
                 logger.error(f"   This usually means GPT returned incomplete data. Will retry.")
                 
                 # Detailed error logging
@@ -3729,7 +3765,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                                 f"variants_count={len(action.get('variants', []))}")
                 return (None, total_cost)
             
-            logger.info(f"✅ Generated {len(actions)} actions with REAL citations (cost: ${total_cost:.4f})")
+            logger.info(f" Generated {len(actions)} actions with REAL citations (cost: ${total_cost:.4f})")
             
             # Log citations for verification
             for i, action in enumerate(actions):
@@ -3752,13 +3788,13 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                 if research and len(research) > 0 and isinstance(research[0], dict):
                     pmid = research[0].get("pmid", "")
                     if pmid:
-                        logger.info(f"    📚 REAL citation: PMID {pmid}")
+                        logger.info(f"     REAL citation: PMID {pmid}")
                     else:
-                        logger.info(f"    📚 Citation from: {research[0].get('source', 'unknown')}")
+                        logger.info(f"     Citation from: {research[0].get('source', 'unknown')}")
                 else:
-                    logger.warning(f"    ⚠️ No citation for this action")
+                    logger.warning(f"     No citation for this action")
                 
-                logger.info(f"    🎯 target_hormone={action.get('target_hormone')}, "
+                logger.info(f"     target_hormone={action.get('target_hormone')}, "
                            f"symptoms={action.get('symptoms')}, "
                            f"conditions={action.get('conditions')}, "
                            f"hormone_persona_intro={bool(action.get('hormone_persona_intro'))}")
@@ -3859,13 +3895,13 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             for field, default_value in DEFAULTS.get(category, {}).items():
                 if not action.get(field) or (isinstance(action.get(field), list) and len(action.get(field)) == 0):
                     action[field] = default_value.copy() if isinstance(default_value, list) else default_value
-                    logger.warning(f"🔧 Applied default for {field} in '{action.get('title', 'Untitled')}'")
+                    logger.warning(f" Applied default for {field} in '{action.get('title', 'Untitled')}'")
             
             # Apply base field defaults
             if not action.get("research_studies") or len(action.get("research_studies", [])) == 0:
                 # Use empty array instead of fake research - maintains honesty
                 action["research_studies"] = []
-                logger.warning(f"⚠️ No research available for '{action.get('title', 'Untitled')}' - using empty array")
+                logger.warning(f" No research available for '{action.get('title', 'Untitled')}' - using empty array")
             
             if not action.get("variants") or len(action.get("variants", [])) < 3:
                 # Fill up to 3 variants
@@ -3886,7 +3922,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                     })
                 
                 action["variants"] = existing_variants
-                logger.warning(f"🔧 Filled variants for '{action.get('title', 'Untitled')}' (now {len(existing_variants)})")
+                logger.warning(f" Filled variants for '{action.get('title', 'Untitled')}' (now {len(existing_variants)})")
             
             # Ensure other base fields have safe defaults
             if not action.get("title"):
@@ -3907,21 +3943,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
         actions: List[Dict],
         user_context: Dict[str, Any]
     ) -> Optional[int]:
-        """
-        Fast quality evaluation - ALL 5 factors with compact prompt.
-        
-        Evaluates:
-        1. personalization_score - Actions tailored to user conditions
-        2. condition_appropriateness - Safe for diagnosed conditions  
-        3. feedback_alignment_score - Respects prior likes/dislikes
-        4. preference_compliance_score - Respects diet, allergies, cuisine
-        5. evidence_quality - Research citations support claims
-        
-        Returns condition_appropriateness score (0-100) for model switching decision.
-        Uses average of all scores as quality indicator.
-        
-        Target: ~5-8s (vs ~15s for full detailed evaluation)
-        """
+        """Fast quality evaluation."""
         if not self.openai_api_key:
             return None
         
@@ -3962,8 +3984,8 @@ ACTIONS:
 {json.dumps(actions_summary, indent=1)}
 
 RATE 5 FACTORS (0-100):
-1. personalization: Are actions specific to user's conditions/concerns?
-2. condition_safety: Safe for user's diagnosed conditions?
+1. personalization: Are actions specific to users conditions/concerns?
+2. condition_safety: Safe for users diagnosed conditions?
 3. feedback_alignment: Avoids disliked patterns, repeats liked ones?
 4. preference_compliance: Respects diet/allergies/cuisine?
 5. evidence_quality: Do research findings support the recommendations?
@@ -4013,13 +4035,13 @@ JSON ONLY:
                 # Calculate average
                 avg_score = (personalization + condition_safety + feedback_alignment + preference_compliance + evidence_quality) / 5
                 
-                logger.info(f"⚡ Fast quality check - ALL 5 FACTORS:")
-                logger.info(f"   📊 Personalization: {personalization}/100")
-                logger.info(f"   🛡️ Condition Safety: {condition_safety}/100")
-                logger.info(f"   💬 Feedback Alignment: {feedback_alignment}/100")
-                logger.info(f"   🍽️ Preference Compliance: {preference_compliance}/100")
-                logger.info(f"   📚 Evidence Quality: {evidence_quality}/100")
-                logger.info(f"   ⭐ Average: {avg_score:.1f}/100")
+                logger.info(f" Fast quality check - ALL 5 FACTORS:")
+                logger.info(f"    Personalization: {personalization}/100")
+                logger.info(f"    Condition Safety: {condition_safety}/100")
+                logger.info(f"    Feedback Alignment: {feedback_alignment}/100")
+                logger.info(f"    Preference Compliance: {preference_compliance}/100")
+                logger.info(f"    Evidence Quality: {evidence_quality}/100")
+                logger.info(f"    Average: {avg_score:.1f}/100")
                 
                 # Return condition_safety for model switching decision
                 # (this is the critical safety factor)
@@ -4132,13 +4154,13 @@ JSON ONLY:
 
         
         # Execute all image tasks in parallel (each with its own isolated session)
-        logger.info(f"⚡ Generating {len(image_tasks)} images in PARALLEL with isolated sessions... (image_mode={image_mode})")
+        logger.info(f" Generating {len(image_tasks)} images in PARALLEL with isolated sessions... (image_mode={image_mode})")
         start_time = time.time()
         
         results = await asyncio.gather(*image_tasks, return_exceptions=True)
         
         elapsed = time.time() - start_time
-        logger.info(f"⚡ All {len(image_tasks)} images generated in {elapsed:.2f}s (parallel)")
+        logger.info(f" All {len(image_tasks)} images generated in {elapsed:.2f}s (parallel)")
         
         # Process results and assign back to actions
         total_cost = 0.0
@@ -4178,13 +4200,14 @@ JSON ONLY:
     
     async def _store_plan(
         self,
-        user_id: str,
+        user_id: Optional[str],
         plan_date: date,
         user_context: Dict[str, Any],
         actions: List[Dict],
         total_cost: float,
         generation_time_ms: int,
-        db: AsyncSession
+        db: AsyncSession,
+        session_id: Optional[str] = None  # NEW: For guest users
     ) -> Any:
         """Store the complete plan in the database."""
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant
@@ -4193,6 +4216,7 @@ JSON ONLY:
             # Create plan record
             plan = ActionPlan(
                 uid=user_id,
+                session_id=session_id,  # Store session ID
                 plan_date=plan_date,
                 primary_hormone=user_context["primary_hormone"],
                 secondary_hormones=[user_context["secondary_hormone"]],
@@ -4214,7 +4238,7 @@ JSON ONLY:
                 # Get conditions from action or user context
                 action_conditions = action.get("conditions", [])
                 if not action_conditions:
-                    # Use user's diagnosed conditions if action doesn't specify
+                    # Use users diagnosed conditions if action doesn't specify
                     action_conditions = user_context.get("diagnosed_conditions", [])
                 
                 # Get symptoms from action (if GPT generated them) 
@@ -4228,6 +4252,7 @@ JSON ONLY:
                 item = ActionPlanItem(
                     plan_id=plan.id,
                     uid=user_id,
+                    session_id=session_id,  # Store session ID
                     slot=slot,
                     time_slot=action.get("time_slot", "morning"),
                     category=action.get("category", "food"),
@@ -4367,12 +4392,12 @@ JSON ONLY:
                 logger.warning(f"[BG-IMAGE] Plan {plan_id} not found for background image generation")
                 return
             
-            logger.info(f"🖼️ [BG-IMAGE] Starting image generation for plan {plan_id}")
+            logger.info(f" [BG-IMAGE] Starting image generation for plan {plan_id}")
             await self._ensure_plan_has_images(plan, user_id, session, image_mode)
-            logger.info(f"✅ [BG-IMAGE] Completed image generation for plan {plan_id}")
+            logger.info(f" [BG-IMAGE] Completed image generation for plan {plan_id}")
             
         except Exception as e:
-            logger.error(f"❌ [BG-IMAGE] Error in background image generation: {e}")
+            logger.error(f" [BG-IMAGE] Error in background image generation: {e}")
         finally:
             if session:
                 await session.close()
@@ -4384,12 +4409,7 @@ JSON ONLY:
         db: AsyncSession,
         image_mode: str = "hero_only"
     ) -> None:
-        """
-        Check if plan items have missing hero images and generate them.
-        Also generates variant images if image_mode is 'full'.
-        
-        This handles plans created via session linking where images weren't generated.
-        """
+        """Check if plan items have missing hero images and generate them."""
         from app.core.database import ActionPlanItem, ActionPlanItemVariant
         
         try:
@@ -4470,7 +4490,7 @@ JSON ONLY:
                     if url:
                         item.hero_image_url = url
                         cache_status = "CACHE HIT" if was_cached else "GENERATED"
-                        logger.info(f"[ENSURE_IMAGES] ✅ Hero {cache_status}: '{item.title[:25]}...'")
+                        logger.info(f"[ENSURE_IMAGES]  Hero {cache_status}: '{item.title[:25]}...'")
                         return url
                     return None
                 except Exception as e:
@@ -4692,11 +4712,11 @@ JSON ONLY:
             
             await session.commit()
             elapsed = time.time() - start_time
-            logger.info(f"[BG-IMAGE] ✅ Updated {updates_count} variant images for plan {plan_id} in {elapsed:.2f}s")
+            logger.info(f"[BG-IMAGE]  Updated {updates_count} variant images for plan {plan_id} in {elapsed:.2f}s")
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"[BG-IMAGE] ❌ Failed to update variant images: {e}")
+            logger.error(f"[BG-IMAGE]  Failed to update variant images: {e}")
             logger.error(traceback.format_exc())
         finally:
             await session.close()
@@ -4765,15 +4785,15 @@ JSON ONLY:
             # RESEARCH-FIRST APPROACH: Get research BEFORE generating action
             # ========================================================
             
-            # Step 1: Search for relevant research based on user's condition + target hormone
+            # Step 1: Search for relevant research based on users condition + target hormone
             from app.services.pubmed_service import execute_pubmed_tool
             
             user_conditions = user_context.get('diagnosed_conditions', [])
-            condition_str = user_conditions[0] if user_conditions else "women's health"
+            condition_str = user_conditions[0] if user_conditions else "womens health"
             
-            # Build search query for the target hormone and user's condition
+            # Build search query for the target hormone and users condition
             search_query = f"{original.target_hormone} {condition_str} intervention"
-            logger.info(f"🔬 RESEARCH-FIRST: Searching for '{search_query}'")
+            logger.info(f" RESEARCH-FIRST: Searching for '{search_query}'")
             
             research_paper = await execute_pubmed_tool({
                 "action_title": f"Wellness action for {original.target_hormone}",
@@ -4781,31 +4801,31 @@ JSON ONLY:
             }, db=db)
             
             if research_paper and research_paper.get("title"):
-                logger.info(f"📚 Found research: {research_paper.get('title', '')[:60]}...")
+                logger.info(f" Found research: {research_paper.get('title', '')[:60]}...")
                 research_context = f"""
 RESEARCH EVIDENCE (USE THIS AS BASIS FOR YOUR RECOMMENDATION):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 Title: {research_paper.get('title')}
 Journal: {research_paper.get('journal', 'Unknown')}
 Year: {research_paper.get('year', 'Unknown')}
 Participants: {research_paper.get('participants', 'Unknown')} women
 Key Finding: {research_paper.get('finding', 'Evidence-based intervention')}
 PMID: {research_paper.get('pmid', '')}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ IMPORTANT: Your recommendation MUST be grounded in this research. 
+
+ IMPORTANT: Your recommendation MUST be grounded in this research. 
 Extract a specific intervention (food, exercise, or mindfulness practice) 
 that this study shows is effective, and create your action based on that.
 """
             else:
-                logger.warning("⚠️ No research found, using general recommendation")
+                logger.warning(" No research found, using general recommendation")
                 research_context = ""
                 research_paper = {}
             
             # Step 2: Generate replacement action based on research findings
             replacement_prompt = f"""Generate 1 replacement wellness action BASED ON THE RESEARCH BELOW.
 
-⚠️⚠️⚠️ CRITICAL WARNING ⚠️⚠️⚠️
+ CRITICAL WARNING 
 You MUST include ALL category-specific fields or your response will be REJECTED and regenerated.
 Previous failures happened because you forgot exercise_types, exercise_durations, exercise_intensities for movement.
 
@@ -4815,13 +4835,13 @@ REQUIREMENTS:
 - Must target hormone: {original.target_hormone}
 - Should be DIFFERENT from: {original.title} (user disliked this)
 - Dislike reason: {reason or 'not specified'}
-- AVOID generating same category as disliked ({original.category}) unless user's lifestyle_focus only includes that category
+- AVOID generating same category as disliked ({original.category}) unless users lifestyle_focus only includes that category
 - Prefer different category from: {original.category}
-- User's lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
+- Users lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 HEALTH PROFILE
-══════════════════════════════════════════════════════════════════════
+======================================================================
 - Age: {user_context.get('age', 'unknown')}
 - Cycle Day: {user_context.get('cycle_day', 'unknown')}
 - Cycle Phase: {user_context.get('cycle_phase', 'unknown')}
@@ -4836,9 +4856,9 @@ HEALTH CONCERNS:
 - Mental Health Concerns: {user_context.get('mental_health_concerns', 'none specified')}
 - Family History: {user_context.get('family_history', 'none specified')}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 PERSONALIZATION FACTORS
-══════════════════════════════════════════════════════════════════════
+======================================================================
 - Lifestyle Focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 - Diet Preference: {user_context.get('diet_preference', 'none')}
 - Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
@@ -4849,39 +4869,39 @@ PERSONALIZATION FACTORS
 - Current Streak: {user_context.get('current_streak', 0)} days
 - Longest Streak: {user_context.get('longest_streak', 0)} days
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 HISTORICAL SUMMARY (learned patterns over time):
 {user_context.get('feedback_summary', 'No summary yet')}
 
 RECENT FEEDBACK (last 20-50 actions):
 {user_context.get('feedback_memory', 'No previous feedback')}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 CHATBOT CONVERSATION CONTEXT
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {user_context.get('chatbot_context', 'No recent chatbot conversations')}
 
-══════════════════════════════════════════════════════════════════════
+======================================================================
 WEEKLY CHECK-IN INSIGHTS (Recent symptom reports)
-══════════════════════════════════════════════════════════════════════
+======================================================================
 {user_context.get('weekly_checkin_insights', 'No weekly check-in data yet')}
 
-🔴 MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
+ MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
 
 IF category="food":
-  ✅ MUST have: "food_items": ["salmon", "avocado", "blueberries"]
-  ✅ MUST have: "food_amounts": ["4 oz", "half avocado", "1 cup"]
+   MUST have: "food_items": ["salmon", "avocado", "blueberries"]
+   MUST have: "food_amounts": ["4 oz", "half avocado", "1 cup"]
 
 IF category="movement":
-  ✅ MUST have: "exercise_types": ["yoga", "walking", "stretching"]  
-  ✅ MUST have: "exercise_durations": ["15 min", "20 minutes", "30 min"]
-  ✅ MUST have: "exercise_intensities": ["low", "moderate", "gentle"]
+   MUST have: "exercise_types": ["yoga", "walking", "stretching"]  
+   MUST have: "exercise_durations": ["15 min", "20 minutes", "30 min"]
+   MUST have: "exercise_intensities": ["low", "moderate", "gentle"]
 
 IF category="mindfulness":
-  ✅ MUST have: "mindfulness_techniques": ["deep breathing", "meditation", "body scan"]
-  ✅ MUST have: "mindfulness_durations": ["5 min", "10 minutes", "15 min"]
+   MUST have: "mindfulness_techniques": ["deep breathing", "meditation", "body scan"]
+   MUST have: "mindfulness_durations": ["5 min", "10 minutes", "15 min"]
 
 REQUIRED OUTPUT FIELDS (ALL actions):
 1. category: "food", "movement", or "mindfulness"
@@ -4894,16 +4914,16 @@ REQUIRED OUTPUT FIELDS (ALL actions):
 8. image_prompt: FLUX.1 Schnell optimized prompt
 9. research_studies: Use the research provided above - format as single-item array with the paper details
 10. variants: Array of 3 variant objects - each showing DIFFERENT WAYS to consume/do the action
-11. symptoms: Pick 1-3 from user's health concerns
+11. symptoms: Pick 1-3 from users health concerns
 12. conditions: Array of conditions this helps
 
-🎯 TITLE RULES (RAW INGREDIENT/ACTIVITY NAME ONLY!):
+ TITLE RULES (RAW INGREDIENT/ACTIVITY NAME ONLY!):
 - FOOD: Just the ingredient ("Salmon" NOT "Grilled Salmon", "Quinoa" NOT "Quinoa Bowl")
 - MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Hip Stretches")
 - MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
 - NO preparation methods (latte, tea, smoothie) - those go in specific_action!
 
-⚠️ BEFORE RESPONDING: Double-check that you included ALL category-specific arrays.
+ BEFORE RESPONDING: Double-check that you included ALL category-specific arrays.
 
 Respond with valid JSON object only."""
 
@@ -4913,7 +4933,7 @@ Respond with valid JSON object only."""
             replacement_action = None
             
             for attempt in range(1, MAX_REPLACEMENT_RETRIES + 1):
-                logger.info(f"🔄 Replacement generation attempt {attempt}/{MAX_REPLACEMENT_RETRIES}")
+                logger.info(f" Replacement generation attempt {attempt}/{MAX_REPLACEMENT_RETRIES}")
                 
                 # Try OpenAI first, fallback to Groq
                 openai_error = None
@@ -4942,21 +4962,21 @@ Respond with valid JSON object only."""
                         
                         if response.status_code != 200:
                             openai_error = f"OpenAI returned {response.status_code}"
-                            logger.warning(f"❌ {openai_error}")
+                            logger.warning(f" {openai_error}")
                         else:
                             data = response.json()
                             content = data["choices"][0]["message"].get("content", "{}")
-                            logger.info("✅ Replacement action generated via OpenAI")
+                            logger.info(" Replacement action generated via OpenAI")
                     except Exception as e:
                         openai_error = str(e)
-                        logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                        logger.warning(f" OpenAI exception: {openai_error[:200]}")
                 else:
                     openai_error = "No OpenAI API key"
                 
                 # Groq fallback
                 if openai_error and GROQ_API_KEY:
                     try:
-                        logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                        logger.info(f" Falling back to Groq ({GROQ_FALLBACK_MODEL})")
                         
                         # gpt-oss-120b is a reasoning model - doesn't support response_format
                         is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
@@ -4985,12 +5005,12 @@ Respond with valid JSON object only."""
                         
                         data = response.json()
                         content = data["choices"][0]["message"].get("content", "{}")
-                        logger.info("✅ Replacement action generated via Groq fallback")
+                        logger.info(" Replacement action generated via Groq fallback")
                     except Exception as e:
-                        logger.error(f"❌ Groq fallback also failed: {e}")
+                        logger.error(f" Groq fallback also failed: {e}")
                         continue  # Try next attempt
                 elif openai_error:
-                    logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                    logger.error(f" OpenAI failed and no Groq fallback: {openai_error}")
                     continue  # Try next attempt
                 
                 if not content:
@@ -5019,7 +5039,7 @@ Respond with valid JSON object only."""
                     if research_paper and research_paper.get("title"):
                         if not parsed_action.get("research_studies") or not isinstance(parsed_action.get("research_studies"), list):
                             parsed_action["research_studies"] = [research_paper]
-                            logger.info("📎 Injected pre-fetched research paper into action")
+                            logger.info(" Injected pre-fetched research paper into action")
                         elif isinstance(parsed_action.get("research_studies"), dict):
                             # GPT returned a dict instead of list
                             parsed_action["research_studies"] = [research_paper]
@@ -5029,14 +5049,14 @@ Respond with valid JSON object only."""
                     valid, missing = self._validate_action_fields(parsed_action, category)
                     
                     if valid:
-                        logger.info(f"✅ Replacement action valid")
+                        logger.info(f" Replacement action valid")
                         replacement_action = parsed_action
                         break
                     else:
 
-                        logger.warning(f"⚠️ Attempt {attempt} missing fields: {missing}")
+                        logger.warning(f" Attempt {attempt} missing fields: {missing}")
                         if attempt >= MAX_REPLACEMENT_RETRIES:
-                            logger.warning("⚠️ Applying minimal fallbacks for replacement")
+                            logger.warning(" Applying minimal fallbacks for replacement")
                             replacement_action = self._fill_missing_fields([parsed_action])[0]
                             
                 except json.JSONDecodeError as je:
@@ -5073,7 +5093,7 @@ Respond with valid JSON object only."""
                 db=db
             )
             cache_status = "CACHE HIT" if was_cached else "GENERATED"
-            logger.info(f"[REPLACE] ✅ Image {cache_status}: '{replacement_title[:30]}...'")
+            logger.info(f"[REPLACE]  Image {cache_status}: '{replacement_title[:30]}...'")
             
             # Mark original as replaced
             original.is_replaced = True
@@ -5269,9 +5289,9 @@ Respond with valid JSON object only."""
             from app.services.pubmed_service import execute_pubmed_tool
 
             user_conditions = user_context.get("diagnosed_conditions", [])
-            condition_str = user_conditions[0] if user_conditions else "women's health"
+            condition_str = user_conditions[0] if user_conditions else "womens health"
             search_query = f"{original.target_hormone} {condition_str} intervention"
-            logger.info(f"🔬 CANDIDATES: Searching for '{search_query}'")
+            logger.info(f" CANDIDATES: Searching for '{search_query}'")
 
             research_paper = await execute_pubmed_tool(
                 {"action_title": f"Wellness action for {original.target_hormone}", "search_query": search_query},
@@ -5357,20 +5377,20 @@ Respond with valid JSON only."""
 
                     if response.status_code != 200:
                         openai_error = f"OpenAI returned {response.status_code}"
-                        logger.warning(f"❌ {openai_error}")
+                        logger.warning(f" {openai_error}")
                     else:
                         data = response.json()
                         content = data["choices"][0]["message"].get("content", "{}")
-                        logger.info("✅ Candidates generated via OpenAI")
+                        logger.info(" Candidates generated via OpenAI")
                 except Exception as e:
                     openai_error = str(e)
-                    logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                    logger.warning(f" OpenAI exception: {openai_error[:200]}")
             else:
                 openai_error = "No OpenAI API key"
 
             if openai_error and GROQ_API_KEY:
                 try:
-                    logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                    logger.info(f" Falling back to Groq ({GROQ_FALLBACK_MODEL})")
                     enhanced = prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown."
                     response = await self.client.post(
                         "https://api.groq.com/openai/v1/chat/completions",
@@ -5393,9 +5413,9 @@ Respond with valid JSON only."""
                         raise Exception(f"Groq returned {response.status_code}")
                     data = response.json()
                     content = data["choices"][0]["message"].get("content", "{}")
-                    logger.info("✅ Candidates generated via Groq fallback")
+                    logger.info(" Candidates generated via Groq fallback")
                 except Exception as e:
-                    logger.error(f"❌ Groq fallback failed: {e}")
+                    logger.error(f" Groq fallback failed: {e}")
 
             if not content:
                 return {"success": False, "error": "Failed to generate alternate suggestions"}
@@ -5546,7 +5566,7 @@ Respond with valid JSON only."""
                 user_id=user_id,
                 db=db,
             )
-            logger.info(f"[REPLACE] ✅ Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
+            logger.info(f"[REPLACE]  Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
 
             from app.core.database import ActionPlanItemVariant
 
@@ -5748,204 +5768,14 @@ Respond with valid JSON only."""
                     "reason": reasons.get(item.id, "user disliked")
                 })
             
-            batch_prompt = f"""Generate {len(item_ids)} replacement wellness actions.
-
-══════════════════════════════════════════════════════════════════════
-ITEMS TO REPLACE (user disliked these)
-══════════════════════════════════════════════════════════════════════
-{json.dumps(items_to_replace, indent=2)}
-
-══════════════════════════════════════════════════════════════════════
-OTHER CURRENT ACTIONS (DO NOT generate similar to these - user already has them)
-══════════════════════════════════════════════════════════════════════
-{json.dumps(other_current_actions, indent=2) if other_current_actions else "None - user only has the items being replaced"}
-
-══════════════════════════════════════════════════════════════════════
-HEALTH PROFILE
-══════════════════════════════════════════════════════════════════════
-- Age: {user_context.get('age', 'Not specified')}
-- Cycle Day: {user_context.get('cycle_day', 'Unknown')}
-- Cycle Phase: {user_context.get('cycle_phase')}
-- Primary Hormone to Support: {user_context.get('primary_hormone')}
-- Secondary Hormone: {user_context.get('secondary_hormone', 'Not specified')}
-
-HEALTH CONCERNS (Pick 'symptoms' field from these):
-- Top Concern: {user_context.get('top_concern', 'Not specified')}
-- Diagnosed Conditions: {user_context.get('diagnosed_conditions', 'none')}
-- Period Concerns: {user_context.get('period_concerns', 'none')}
-- Body Concerns: {user_context.get('body_concerns', 'none')}
-- Skin/Hair Concerns: {user_context.get('skin_hair_concerns', 'none')}
-- Mental Health Concerns: {user_context.get('mental_health_concerns', 'none')}
-- Family History: {user_context.get('family_history', 'none specified')}
-
-══════════════════════════════════════════════════════════════════════
-PERSONALIZATION FACTORS
-══════════════════════════════════════════════════════════════════════
-- Lifestyle Focus: {user_context.get('lifestyle_focus')}
-- Diet Preference: {user_context.get('diet_preference', 'none')}
-- Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
-- Stress Level: {user_context.get('stress_level')}
-- Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
-- Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
-- Birth Control: {user_context.get('birth_control', 'none')}
-- Current Streak: {user_context.get('current_streak', 0)} days
-- Longest Streak: {user_context.get('longest_streak', 0)} days
-
-══════════════════════════════════════════════════════════════════════
-FEEDBACK MEMORY (Critical - avoid disliked patterns)
-══════════════════════════════════════════════════════════════════════
-HISTORICAL SUMMARY (learned patterns over time):
-{user_context.get('feedback_summary', 'No summary yet')}
-
-RECENT FEEDBACK (last 20-50 actions):
-{user_context.get('feedback_memory', 'No previous feedback')}
-
-══════════════════════════════════════════════════════════════════════
-CHATBOT CONVERSATION CONTEXT
-══════════════════════════════════════════════════════════════════════
-{user_context.get('chatbot_context', 'No recent chatbot conversations')}
-
-══════════════════════════════════════════════════════════════════════
-WEEKLY CHECK-IN INSIGHTS (Recent symptom reports)
-══════════════════════════════════════════════════════════════════════
-{user_context.get('weekly_checkin_insights', 'No weekly check-in data yet')}
-
-══════════════════════════════════════════════════════════════════════
-REQUIREMENTS FOR EACH REPLACEMENT
-══════════════════════════════════════════════════════════════════════
-1. Must target the SAME hormone as the original
-2. Should be DIFFERENT from the original (user disliked it)
-3. Can be any category (food, movement, or mindfulness)
-4. RESPECT food allergies - NEVER recommend foods the user is allergic to
-5. RESPECT diet preferences
-6. Make actions specific, actionable, and achievable in one day
-
-══════════════════════════════════════════════════════════════════════
-OUTPUT FORMAT (for each replacement action)
-══════════════════════════════════════════════════════════════════════
-1. slot: Keep same as original  
-2. category: "food", "movement", or "mindfulness"
-3. **CRITICAL - Category-Specific Fields (MUST include based on category):**
-   - FOOD: food_amounts (array like ["1 cup", "1/2 cup"]) AND food_items (array like ["quinoa", "lentils"])
-   - MOVEMENT: exercise_durations, exercise_types, exercise_intensities (all arrays)
-   - MINDFULNESS: mindfulness_durations, mindfulness_techniques (both arrays)
-4. title: Simple, clean name (see TITLE RULES below - just the food/activity/technique name!)
-5. time_slot: "morning", "afternoon", or "evening"
-6. specific_action: MUST include 3 DIFFERENT WAYS to consume/do this action! (80-120 words)
-   FORMAT: Start with main benefit, then list 3 methods like:
-   "Try it as: (1) [method 1], (2) [method 2], or (3) [method 3]."
-   Example: "Quinoa provides slow-release carbs that help maintain steady blood sugar. Try it as: (1) Breakfast bowl - top with berries and a drizzle of honey, (2) Salad base - mix with roasted vegetables and olive oil dressing, or (3) Stuffed peppers - fill bell peppers with quinoa and black beans."
-7. purpose: One clear sentence explaining how this helps the target hormone
-8. target_hormone: MUST match original (e.g., "insulin", "estrogen")
-9. hormone_persona_intro: Natural first-person intro (see examples in system prompt)
-10. image_prompt: FLUX.1 Schnell optimized prompt (see requirements below)
-11. research_studies: Array with EXACTLY 1 REAL citation focused on WOMEN/FEMALES
-12. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action
-13. symptoms: REQUIRED - Pick 1-3 from USER'S HEALTH CONCERNS above that THIS ACTION specifically helps - NEVER EMPTY!
-14. conditions: Array of conditions this helps (e.g., ["PCOS"]) - can be empty []
-
-🎯 TITLE RULES (CRITICAL - RAW INGREDIENT/ACTIVITY NAME ONLY!):
-- FOOD: Just the ingredient ("Salmon" NOT "Grilled Salmon", "Quinoa" NOT "Quinoa Bowl")
-- MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Swimming")
-- MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
-- NO preparation methods in title (latte, tea, smoothie, toast) - those go in specific_action!
-
-CATEGORY-SPECIFIC REQUIRED FIELDS (CRITICAL - GPT must include these):
-For FOOD actions, MUST include:
-- food_amounts: Array like ["4 oz", "1 cup", "half avocado"]
-- food_items: Array like ["salmon", "avocado", "berries"]
-
-For MOVEMENT actions, MUST include:
-- exercise_durations: Array like ["15 min", "20 minutes"]
-- exercise_types: Array like ["yoga", "walking", "stretching"]
-- exercise_intensities: Array like ["low", "moderate"]
-
-For MINDFULNESS actions, MUST include:
-- mindfulness_durations: Array like ["5 min", "10 minutes"]
-- mindfulness_techniques: Array like ["deep breathing", "meditation"]
-
-IMAGE PROMPT REQUIREMENTS (for FLUX.1 Schnell):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🖼️ GOAL: User should INSTANTLY UNDERSTAND what the action is just by seeing the image!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- For FOOD: "Professional close-up food photography of [EXACT FOOD ITEM in detail], [texture/color description], [simple serving context], natural lighting, shallow depth of field, the [food item] is clearly the main subject filling most of the frame, 4K quality"
-  Example: "Professional close-up food photography of golden quinoa grains in a ceramic bowl, showing fluffy texture and spiral shape of each grain, fresh parsley garnish, natural lighting, shallow depth of field, quinoa is clearly the hero filling most of the frame, 4K quality"
-
-- For MOVEMENT: "Serene photograph of woman [EXACT POSE/MOVEMENT shown clearly], [clothing], [setting], soft natural lighting, full pose visible, wellness aesthetic, 4K quality"  
-  Example: "Serene photograph of woman in downward dog pose on yoga mat, arms and legs straight forming inverted V shape, comfortable grey athletic wear, peaceful living room with plants, soft morning light, full pose clearly visible, 4K quality"
-
-- For MINDFULNESS: "Peaceful close-up photograph of [EXACT TECHNIQUE visualization - hands position, posture, setup], [calming elements], soft diffused lighting, the technique is clearly demonstrated, 4K quality"
-  Example: "Peaceful close-up photograph of woman sitting cross-legged with both hands placed on belly practicing diaphragmatic breathing, eyes gently closed, serene expression, soft candles nearby, the belly breathing technique is clearly shown, calming atmosphere, 4K quality"
-
-VARIANT FORMAT (REQUIRED structure):
-Each variant MUST be an object with these exact fields:
-- variant_type: MUST be one of: "tasty"/"easy"/"healthy" (food), "gentle"/"energizing"/"quick" (movement), "guided"/"solo"/"brief" (mindfulness)
-- title: Specific name of this variant
-- description: How to prepare or do this variant (1-2 sentences)
-- image_prompt: FLUX.1 Schnell optimized prompt for this specific variant
-
-RESEARCH STUDIES - CRITICAL REQUIREMENTS:
-- Use the 'search_research_paper' tool to find REAL citations from PubMed/OpenAlex
-- The study MUST SUPPORT the specific recommendation for the user's condition (e.g., if recommending cinnamon for insulin, find a study showing cinnamon helps insulin)
-- Study MUST focus on WOMEN/FEMALES specifically
-- Provide EXACTLY 1 study per action
-- Include ALL fields: title, journal, year, participants (number of women), finding, pmid, verification_link
-- Example format: {{"title": "...", "journal": "...", "year": 2021, "participants": 145, "finding": "...", "pmid": "12345678", "verification_link": "https://pubmed.ncbi.nlm.nih.gov/12345678/"}}
-- If tool returns no results, set research_studies to an empty array []
-
-EXAMPLE OUTPUT for FOOD replacement:
-[{{
-  "slot": 1,
-  "category": "food",
-  "title": "Quinoa",
-  "food_amounts": ["1 cup", "1/2 cup", "1 tbsp"],
-  "food_items": ["cooked quinoa", "cooked lentils", "olive oil"],
-  "time_slot": "morning",
-  "specific_action": "Quinoa provides slow-release carbs with complete protein to help stabilize insulin levels throughout the morning. Try it as: (1) Breakfast bowl - top with berries, honey, and toasted almonds for a sweet start, (2) Savory pilaf - cook with vegetable broth, turmeric, and cumin, add 1 tbsp olive oil, or (3) Stuffed peppers - fill bell peppers with quinoa, black beans, and fresh herbs for lunch prep.",
-  "purpose": "This meal combines complex carbs with fiber and protein to help stabilize insulin levels throughout the morning.",
-  "target_hormone": "insulin",
-  "hormone_persona_intro": "I'm Insulin — in your menstrual phase, I can be sensitive to diet changes, so keeping my levels steady is key.",
-  "image_prompt": "Professional close-up food photography of fluffy golden quinoa in a ceramic bowl, showing the small spiral-shaped grains clearly visible, fresh parsley garnish, natural morning light, shallow depth of field, quinoa is clearly the hero filling most of the frame, 4K quality",
-  "research_studies": [{{
-    "title": "Effect of Quinoa on Insulin Response in Women",  
-    "journal": "Nutrients",
-    "year": 2021,
-    "participants": 145,
-    "finding": "Quinoa consumption improved insulin sensitivity in premenopausal women",
-    "pmid": "12345678",
-    "verification_link": "https://pubmed.ncbi.nlm.nih.gov/12345678/"
-  }}],
-  "variants": [
-    {{
-      "variant_type": "tasty",
-      "title": "Maple Pecan Bowl",
-      "description": "Add maple syrup and toasted pecans for a sweet, nutty breakfast treat.",
-      "image_prompt": "Professional close-up food photography of quinoa breakfast bowl with golden maple syrup drizzle and toasted pecans on top, cinnamon stick garnish, the quinoa and toppings clearly visible as the hero, warm cozy breakfast lighting, 4K quality"
-    }},
-    {{
-      "variant_type": "easy",
-      "title": "Quick Microwave Bowl",
-      "description": "Use pre-cooked quinoa from a pouch, microwave 90 seconds with milk and cinnamon.",
-      "image_prompt": "Professional close-up food photography of quick quinoa bowl in a simple white bowl, pre-cooked quinoa clearly visible with cinnamon dusting, easy breakfast setup, the fluffy quinoa is the clear focal point, 4K quality"
-    }},
-    {{
-      "variant_type": "healthy",
-      "title": "Green Power Quinoa",
-      "description": "Mix with fresh spinach, kale, and lemon juice for extra nutrients and fiber.",
-      "image_prompt": "Professional close-up food photography of quinoa mixed with vibrant green spinach and kale, lemon wedge beside, the healthy combination clearly visible, bright natural lighting, nutritious meal clearly shown, 4K quality"
-    }}
-  ]
-}}]
-
-Respond with valid JSON array only. Do not add any text outside the JSON."""
+            batch_prompt = """Generate replacement wellness actions in valid JSON format only. Return valid JSON array."""
 
             # Generate replacements via GPT with retry logic
             replacement_actions = None
             gpt_cost = 0.0
             
             for attempt in range(1, self.MAX_RETRIES + 1):
-                logger.info(f"🔄 Replacement generation attempt {attempt}/{self.MAX_RETRIES}")
+                logger.info(f" Replacement generation attempt {attempt}/{self.MAX_RETRIES}")
                 
                 # Try OpenAI first, fallback to Groq
                 openai_error = None
@@ -5975,7 +5805,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         
                         if response.status_code != 200:
                             openai_error = f"OpenAI returned {response.status_code}"
-                            logger.warning(f"❌ {openai_error}")
+                            logger.warning(f" {openai_error}")
                         else:
                             data = response.json()
                             
@@ -5989,21 +5819,21 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                             
                             # Handle tool calls if GPT wants to search for papers
                             if message.get("tool_calls"):
-                                logger.info(f"🔧 GPT requested {len(message['tool_calls'])} tool calls for replacement citations")
+                                logger.info(f" GPT requested {len(message['tool_calls'])} tool calls for replacement citations")
                                 
                                 tool_results = []
                                 for tool_call in message["tool_calls"]:
                                     if tool_call["function"]["name"] == "search_research_paper":
                                         args = json.loads(tool_call["function"]["arguments"])
-                                        logger.info(f"  🔍 Searching for: {args.get('action_title', 'unknown')}")
+                                        logger.info(f"   Searching for: {args.get('action_title', 'unknown')}")
                                         
                                         # Execute the tool with db for caching
                                         paper = await execute_pubmed_tool(args, db=db)
                                         
                                         if paper and paper.get("title"):
-                                            logger.info(f"  ✅ Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                                            logger.info(f"   Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
                                         else:
-                                            logger.warning(f"  ⚠️ No paper found for: {args.get('action_title', 'unknown')}")
+                                            logger.warning(f"   No paper found for: {args.get('action_title', 'unknown')}")
                                         
                                         tool_results.append({
                                             "tool_call_id": tool_call["id"],
@@ -6040,7 +5870,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                                 
                                 if response2.status_code != 200:
                                     openai_error = f"OpenAI second call returned {response2.status_code}"
-                                    logger.warning(f"❌ {openai_error}")
+                                    logger.warning(f" {openai_error}")
                                 else:
                                     data = response2.json()
                                     
@@ -6050,21 +5880,21 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                                     gpt_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
                                     
                                     content = data["choices"][0]["message"]["content"]
-                                    logger.info("✅ Batch replacements generated via OpenAI")
+                                    logger.info(" Batch replacements generated via OpenAI")
                             else:
                                 # GPT didn't call tools - use response as-is
-                                logger.warning("⚠️ GPT did not call tools - replacement citations may be fabricated")
+                                logger.warning(" GPT did not call tools - replacement citations may be fabricated")
                                 content = message.get("content", "{}")
                     except Exception as e:
                         openai_error = str(e)
-                        logger.warning(f"❌ OpenAI exception: {openai_error[:200]}")
+                        logger.warning(f" OpenAI exception: {openai_error[:200]}")
                 else:
                     openai_error = "No OpenAI API key"
                 
                 # Groq fallback (no tool calling support - will generate without PubMed research)
                 if openai_error and GROQ_API_KEY:
                     try:
-                        logger.info(f"🔄 Falling back to Groq ({GROQ_FALLBACK_MODEL}) - no tool calling")
+                        logger.info(f" Falling back to Groq ({GROQ_FALLBACK_MODEL}) - no tool calling")
                         
                         # gpt-oss-120b doesn't support response_format, add JSON instructions
                         enhanced_prompt = batch_prompt + "\n\nIMPORTANT: Respond with valid JSON array only. No markdown, no explanation. Set research_studies to empty array []."
@@ -6102,12 +5932,12 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                             content = content[:-3]
                         content = content.strip()
                         
-                        logger.info("✅ Batch replacements generated via Groq fallback")
+                        logger.info(" Batch replacements generated via Groq fallback")
                     except Exception as e:
-                        logger.error(f"❌ Groq fallback also failed: {e}")
+                        logger.error(f" Groq fallback also failed: {e}")
                         continue  # Try next attempt
                 elif openai_error:
-                    logger.error(f"❌ OpenAI failed and no Groq fallback: {openai_error}")
+                    logger.error(f" OpenAI failed and no Groq fallback: {openai_error}")
                     continue  # Try next attempt
                 
                 if not content:
@@ -6119,7 +5949,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     if content.startswith("json"):
                         content = content[4:]
                 
-                logger.info(f"🔍 First 300 chars of content: {content[:300]}")
+                logger.info(f" First 300 chars of content: {content[:300]}")
                 
                 # Parse JSON
                 response_data = json.loads(content.strip())
@@ -6140,10 +5970,10 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     continue
                 
                 if not attempt_actions:
-                    logger.warning(f"❌ Attempt {attempt}: No actions generated")
+                    logger.warning(f" Attempt {attempt}: No actions generated")
                     continue
                 
-                logger.info(f"✅ Successfully parsed JSON - got {len(attempt_actions)} actions")
+                logger.info(f" Successfully parsed JSON - got {len(attempt_actions)} actions")
                 
                 if not isinstance(attempt_actions, list):
                     attempt_actions = [attempt_actions]
@@ -6168,22 +5998,22 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         )
                 
                 if all_valid:
-                    logger.info(f"✅ Attempt {attempt}: All {len(attempt_actions)} replacements valid")
+                    logger.info(f" Attempt {attempt}: All {len(attempt_actions)} replacements valid")
                     replacement_actions = attempt_actions
                     break
                 
                 # Log validation errors
-                logger.warning(f"⚠️ Attempt {attempt} validation failed:")
+                logger.warning(f" Attempt {attempt} validation failed:")
                 for error in validation_errors:
-                    logger.warning(f"   • {error}")
+                    logger.warning(f"    {error}")
                 
                 if attempt < self.MAX_RETRIES:
                     delay = (2 ** attempt) + random.uniform(0, 1)
-                    logger.info(f"🔄 Retrying generation in {delay:.2f}s...")
+                    logger.info(f" Retrying generation in {delay:.2f}s...")
                     await asyncio.sleep(delay)
                 else:
                     # Max retries exceeded - NO fallbacks, fail clearly
-                    logger.error(f"❌ Max retries ({self.MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
+                    logger.error(f" Max retries ({self.MAX_RETRIES}) exceeded, NOT applying fallbacks - prompt needs fixing")
                     replacement_actions = None  # Fail clearly instead of masking with garbage defaults
             
             total_cost += gpt_cost
@@ -6192,7 +6022,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 return {"success": False, "error": "Failed to generate replacement actions"}
             
             # Debug: Log all fields for each replacement action to verify GPT response
-            logger.info(f"📋 GPT returned {len(replacement_actions)} replacement actions")
+            logger.info(f" GPT returned {len(replacement_actions)} replacement actions")
             for i, replacement_action in enumerate(replacement_actions):
                 research = replacement_action.get("research_studies", [])
                 category = replacement_action.get("category", "unknown")
@@ -6220,10 +6050,10 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 original = original_items[i] if i < len(original_items) else original_items[0]
                 
                 # Log the raw replacement_action for debugging
-                logger.info(f"📋 Processing replacement {i}: category={replacement_action.get('category')}")
-                logger.info(f"📋 Variants raw: {replacement_action.get('variants')}")
-                logger.info(f"📋 Symptoms from GPT: {replacement_action.get('symptoms', [])}")
-                logger.info(f"📋 Conditions from GPT: {replacement_action.get('conditions', [])}")
+                logger.info(f" Processing replacement {i}: category={replacement_action.get('category')}")
+                logger.info(f" Variants raw: {replacement_action.get('variants')}")
+                logger.info(f" Symptoms from GPT: {replacement_action.get('symptoms', [])}")
+                logger.info(f" Conditions from GPT: {replacement_action.get('conditions', [])}")
                 
                 # Generate hero image using TITLE for cache matching
                 replacement_title = replacement_action.get("title", "")
@@ -6237,7 +6067,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     user_id=user_id,
                     db=db
                 )
-                logger.info(f"[BATCH_REPLACE] ✅ Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
+                logger.info(f"[BATCH_REPLACE]  Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
                 total_cost += image_cost
                 
                 # SQL-direct deactivation of original item
@@ -6260,7 +6090,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                     action_conditions = [c for c in raw_conditions if c and str(c).lower() != "none of the above"]
                 else:
                     action_conditions = []
-                # Get symptoms from GPT (action-specific) with fallback to user's top concern
+                # Get symptoms from GPT (action-specific) with fallback to users top concern
                 action_symptoms = replacement_action.get("symptoms", [])
                 if not action_symptoms:
                     # Fallback to top concern if no specific symptoms generated
@@ -6293,16 +6123,16 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 if category == "food":
                     new_item.food_items = replacement_action.get("food_items", [])
                     new_item.food_amounts = replacement_action.get("food_amounts", [])
-                    logger.info(f"🍽️  Food fields set: items={new_item.food_items}, amounts={new_item.food_amounts}")
+                    logger.info(f"  Food fields set: items={new_item.food_items}, amounts={new_item.food_amounts}")
                 elif category == "movement":
                     new_item.exercise_types = replacement_action.get("exercise_types", [])
                     new_item.exercise_durations = replacement_action.get("exercise_durations", [])
                     new_item.exercise_intensities = replacement_action.get("exercise_intensities", [])
-                    logger.info(f"🏃  Movement fields set: durations={new_item.exercise_durations}, types={new_item.exercise_types}")
+                    logger.info(f"  Movement fields set: durations={new_item.exercise_durations}, types={new_item.exercise_types}")
                 elif category == "mindfulness":
                     new_item.mindfulness_techniques = replacement_action.get("mindfulness_techniques", [])
                     new_item.mindfulness_durations = replacement_action.get("mindfulness_durations", [])
-                    logger.info(f"🧘  Mindfulness fields set: durations={new_item.mindfulness_durations}, techniques={new_item.mindfulness_techniques}")
+                    logger.info(f"  Mindfulness fields set: durations={new_item.mindfulness_durations}, techniques={new_item.mindfulness_techniques}")
                 
                 
                 db.add(new_item)
@@ -6402,11 +6232,11 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 
                 # Log what we're returning
                 if category == "food":
-                    logger.info(f"📤 Response includes food_amounts={new_item.food_amounts}, food_items={new_item.food_items}")
+                    logger.info(f" Response includes food_amounts={new_item.food_amounts}, food_items={new_item.food_items}")
                 elif category == "movement":
-                    logger.info(f"📤 Response includes exercise_durations={new_item.exercise_durations}")
+                    logger.info(f" Response includes exercise_durations={new_item.exercise_durations}")
                 elif category == "mindfulness":
-                    logger.info(f"📤 Response includes mindfulness_durations={new_item.mindfulness_durations}")
+                    logger.info(f" Response includes mindfulness_durations={new_item.mindfulness_durations}")
             
             
             await db.commit()
@@ -6450,15 +6280,10 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
         feedback_type: str,  # "like", "dislike", "loved", "completed", "skipped", "not_for_me"
         time_shown: Optional[datetime],
         db: AsyncSession,
-        feedback_text: Optional[str] = None,  # NEW: User's written feedback
+        feedback_text: Optional[str] = None,  # NEW: Users written feedback
         feedback_source: str = "home"  # NEW: "home" or "detail"
     ) -> Dict[str, Any]:
-        """
-        Record user feedback for an action.
-        
-        Supports both home screen feedback (30-sec modal) and ActionDetailScreen feedback.
-        Text feedback is stored and used for future plan personalization.
-        """
+        # Record user feedback.
         from app.core.database import ActionPlanItem, ActionPlanFeedback
         
         try:
@@ -6511,7 +6336,7 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
             
             # Log text feedback for monitoring
             if feedback_text:
-                logger.info(f"📝 User feedback text for '{item.title}': \"{feedback_text[:100]}...\"" if len(feedback_text) > 100 else f"📝 User feedback text for '{item.title}': \"{feedback_text}\"")
+                logger.info(f" User feedback text for '{item.title}': \"{feedback_text[:100]}...\"" if len(feedback_text) > 100 else f" User feedback text for '{item.title}': \"{feedback_text}\"")
             
             return {
                 "success": True,
@@ -6530,7 +6355,7 @@ _action_plan_generator: Optional[ActionPlanGenerator] = None
 
 
 def get_action_plan_generator() -> ActionPlanGenerator:
-    """Get or create the action plan generator singleton."""
+    # Get or create the action plan generator singleton.
     global _action_plan_generator
     if _action_plan_generator is None:
         _action_plan_generator = ActionPlanGenerator()
