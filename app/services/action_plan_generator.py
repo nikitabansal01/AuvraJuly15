@@ -5999,18 +5999,32 @@ OUTPUT FORMAT (JSON Array):
                 response_data = json.loads(content.strip())
                 
                 # Extract actions array (GPT may use 'actions' or 'replacements' key, or return a single action)
-                if isinstance(response_data, dict) and "actions" in response_data:
-                    attempt_actions = response_data["actions"]
-                elif isinstance(response_data, dict) and "replacements" in response_data:
-                    attempt_actions = response_data["replacements"]
-                elif isinstance(response_data, list):
+                # Extract actions array (flexible parsing)
+                if isinstance(response_data, list):
                     attempt_actions = response_data
-                elif isinstance(response_data, dict) and "category" in response_data:
-                    # GPT returned a single action dict instead of list
-                    logger.info("GPT returned single action dict, wrapping in list")
-                    attempt_actions = [response_data]
+                elif isinstance(response_data, dict):
+                    if "actions" in response_data:
+                        attempt_actions = response_data["actions"]
+                    elif "replacements" in response_data:
+                        attempt_actions = response_data["replacements"]
+                    elif "category" in response_data:
+                        # GPT returned a single action dict instead of list
+                        logger.info("GPT returned single action dict, wrapping in list")
+                        attempt_actions = [response_data]
+                    else:
+                        # Fallback: Find first list value in dict
+                        attempt_actions = None
+                        for key, value in response_data.items():
+                            if isinstance(value, list):
+                                logger.info(f"Found specific list under key '{key}'")
+                                attempt_actions = value
+                                break
+                        
+                        if not attempt_actions:
+                            logger.error(f"Unexpected response format: {type(response_data)}, keys={response_data.keys()}")
+                            continue
                 else:
-                    logger.error(f"Unexpected response format: {type(response_data)}, keys={response_data.keys() if isinstance(response_data, dict) else 'N/A'}")
+                    logger.error(f"Unexpected response format: {type(response_data)}")
                     continue
                 
                 if not attempt_actions:
