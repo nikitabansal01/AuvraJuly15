@@ -40,7 +40,9 @@ class ImageLibraryService:
     """
     
     # Similarity threshold for reusing cached images
-    SIMILARITY_THRESHOLD = 0.95
+    # 0.85 allows semantic matches even with slight prompt variations
+    # 0.95 was too strict - almost no cache hits!
+    SIMILARITY_THRESHOLD = 0.85  # Restored from 0.95 to enable cache hits
     
     # RunPod pricing
     COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
@@ -49,12 +51,12 @@ class ImageLibraryService:
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
-    # Retry settings - optimized for faster recovery
-    MAX_IMAGE_RETRIES = 2  # Reduced from 3 (fail faster, retry smarter)
-    RETRY_DELAYS = [1.0, 2.0]  # Shorter delays - GPU warms on first attempt
+    # Retry settings - balanced for cold start recovery
+    MAX_IMAGE_RETRIES = 3  # Restored from 2 - better cold start handling
+    RETRY_DELAYS = [2.0, 5.0, 10.0]  # Longer delays for cold start recovery
     
-    # RunPod timeout settings - optimized for performance
-    RUNPOD_POLL_TIMEOUT = 45  # 45 seconds max wait (fail fast, retry will hit warm GPU)
+    # RunPod timeout settings - increased for cold start
+    RUNPOD_POLL_TIMEOUT = 90  # Restored from 45s - cold starts need more time
     RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second for faster response detection
     
     def __init__(self):
