@@ -151,6 +151,7 @@ class WeeklyCheckInAI:
         {"id": "caffeine", "text": "More caffeine", "emoji": "☕"},
         {"id": "alcohol", "text": "Had alcohol", "emoji": "🍷"},
         {"id": "hormonal_changes", "text": "Hormonal changes", "emoji": "🌙"},
+        {"id": "something_else", "text": "Something else", "emoji": "✏️"},
     ]
     
     POSITIVE_FACTORS = [
@@ -164,6 +165,7 @@ class WeeklyCheckInAI:
         {"id": "mindfulness", "text": "Mindfulness/meditation", "emoji": "🧠"},
         {"id": "nature", "text": "Time in nature", "emoji": "🌳"},
         {"id": "social", "text": "Social connection", "emoji": "👥"},
+        {"id": "something_else", "text": "Something else", "emoji": "✏️"},
     ]
     
     def __init__(self, db: Session):
@@ -192,14 +194,14 @@ class WeeklyCheckInAI:
 
     def _default_tap_options_for_category(self, category: Optional[str]) -> List[Dict[str, str]]:
         # Defaults are meant to be *direct answers* to the question category.
+        # Always include "Something else" so users can type their own answer
         if category == "diet":
             texts = [
                 "Ate out more / takeout",
                 "More sugar / desserts",
                 "More carbs (bread/pasta)",
-                "More dairy",
                 "Skipped meals / irregular meals",
-                "Started supplements / vitamins",
+                "Something else",
             ]
         elif category == "sleep":
             texts = [
@@ -207,43 +209,38 @@ class WeeklyCheckInAI:
                 "Woke up a lot at night",
                 "Less total sleep",
                 "More screen time at night",
-                "More naps",
-                "Sleep was about the same",
+                "Something else",
             ]
         elif category == "stress":
             texts = [
                 "Work has been more demanding",
                 "Personal / family stress",
                 "Mental load / overwhelm",
-                "More conflict / tension",
                 "Stress about the same",
-                "Not sure",
+                "Something else",
             ]
         elif category == "exercise":
             texts = [
                 "Worked out more",
                 "Worked out less",
                 "More walking",
-                "More intense workouts",
                 "No change",
-                "Not sure",
+                "Something else",
             ]
         elif category == "supplements":
             texts = [
                 "Started a new supplement",
                 "Stopped a supplement",
                 "Took them inconsistently",
-                "Changed the dose",
                 "No supplements",
-                "Not sure",
+                "Something else",
             ]
         else:
             texts = [
                 "Not sure",
                 "Nothing changed",
                 "A few small changes",
-                "A big change",
-                "I'd rather type",
+                "Something else",
             ]
 
         opts: List[Dict[str, str]] = []

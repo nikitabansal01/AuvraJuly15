@@ -96,7 +96,8 @@ Task: Continue a DAILY Care Plan Check-in chat.
 CAPABILITIES:
 1. If user wants to REPLACE/CHANGE an action item:
    - Identify which item they want to replace
-   - Suggest 2-4 SPECIFIC alternative actions (same category, hormone-supportive)
+   - Suggest 2-4 SPECIFIC alternative actions
+   - **IMPORTANT: Keep the SAME CATEGORY** (food→food, movement→movement, supplement→supplement)
    - Provide these as tap_options so user can pick one
    
 2. If user is just chatting or giving feedback:
