@@ -4304,12 +4304,15 @@ JSON ONLY:
                         }.get(category, ["alternative"])
                         v_type = defaults[action.get("variants", []).index(variant) % len(defaults)]
                         
+                    variant_image_url = variant.get("image_url")
+                    logger.info(f"[STORE_VARIANT] {v_type}: title='{variant.get('title', '')[:30]}', has_image={bool(variant_image_url)}, url_preview='{str(variant_image_url)[:50] if variant_image_url else 'None'}'")
+                    
                     variant_record = ActionPlanItemVariant(
                         item_id=item.id,
                         variant_type=v_type,
                         title=variant.get("title", ""),
                         description=variant.get("description", ""),
-                        image_url=variant.get("image_url"),
+                        image_url=variant_image_url,
                         image_prompt=variant.get("image_prompt"),
                         created_at=datetime.utcnow()
                     )
