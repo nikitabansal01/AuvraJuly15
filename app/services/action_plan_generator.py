@@ -1626,13 +1626,15 @@ class ActionPlanGenerator:
                     """Generate hero image for an item using proper image service."""
                     task_session = None
                     try:
-                        if not item.hero_image_prompt:
+                        if not item.title:
                             return None
                         
                         async with self.db_semaphore:
                             task_session = await _create_async_session(self.async_session_maker)
+                            # Use TITLE for image generation (title-based cache matching)
+                            logger.info(f"[SESSION_CONVERT] Generating hero for: '{item.title[:40]}' ({item.category})")
                             url, was_cached, cost = await self.image_service.get_or_generate_image(
-                                prompt=item.hero_image_prompt,
+                                prompt=item.title,  # Use TITLE, not hero_image_prompt
                                 category=item.category or "food",
                                 variant_type="hero",
                                 user_id=user_id,
@@ -1641,7 +1643,8 @@ class ActionPlanGenerator:
                         
                         if url:
                             item.hero_image_url = url
-                            logger.info(f"[SESSION_CONVERT] Generated hero for: {item.title[:30]}...")
+                            cache_status = "CACHE HIT" if was_cached else "GENERATED"
+                            logger.info(f"[SESSION_CONVERT] ✅ {cache_status}: '{item.title[:30]}...'")
                             return url
                         return None
                     except Exception as e:
@@ -4091,13 +4094,16 @@ JSON ONLY:
         for action_idx, action in enumerate(actions):
             action_title = action.get("title", "Wellness Action")
             action_category = action.get("category", "food")
-            action_image_prompt = action.get("image_prompt", action_title)
+            # Use TITLE for image generation (not image_prompt)
+            # Title-based matching gives better cache hits
+            # Prompt enhancement in image_library_service adds the styling
             
             # Hero image task (with its own session) - Only if NOT "variants_only"
             if image_mode != "variants_only":
+                logger.info(f"[IMAGES] Queue hero image: '{action_title[:40]}' ({action_category})")
                 image_tasks.append(
                     _generate_single_image(
-                        prompt=action_image_prompt,
+                        prompt=action_title,  # Use TITLE, not image_prompt
                         category=action_category,
                         variant_type="hero",
                         user_id=user_id
@@ -4111,10 +4117,12 @@ JSON ONLY:
                 for variant_idx, variant in enumerate(variants):
                     if not isinstance(variant, dict):
                         continue
-                    variant_prompt = variant.get("image_prompt", variant.get("title", action_title))
+                    # Use variant TITLE for cache matching (fall back to type + action title)
+                    variant_title = variant.get("title", f"{variant.get('variant_type', 'variant')} {action_title}")
+                    logger.info(f"[IMAGES] Queue variant image: '{variant_title[:40]}' ({action_category})")
                     image_tasks.append(
                         _generate_single_image(
-                            prompt=variant_prompt,
+                            prompt=variant_title,  # Use TITLE for cache matching
                             category=action_category,
                             variant_type=variant.get("variant_type", f"variant_{variant_idx}"),
                             user_id=user_id
@@ -4442,20 +4450,17 @@ JSON ONLY:
                 """Wrapper that creates its own session for each image task."""
                 task_session = None
                 try:
-                    prompt = item.hero_image_prompt
-                    if not prompt:
-                        category_prompts = {
-                            "food": f"Healthy nutritious meal: {item.title}, fresh ingredients, natural lighting, food photography",
-                            "movement": f"Woman exercising: {item.title}, fitness lifestyle, energetic, wellness photography",
-                            "mindfulness": f"Peaceful meditation scene: {item.title}, calm atmosphere, soft natural light"
-                        }
-                        prompt = category_prompts.get(item.category.lower() if item.category else "food",
-                                                      f"Healthy lifestyle: {item.title}, professional photography")
+                    # Use TITLE for image generation - prompt enhancement done by image_library_service
+                    if not item.title:
+                        logger.warning(f"[ENSURE_IMAGES] Item {item.id} has no title, skipping")
+                        return False
+                    
+                    logger.info(f"[ENSURE_IMAGES] Generating hero: '{item.title[:40]}' ({item.category})")
                     
                     async with self.db_semaphore:
                         task_session = await _create_async_session(self.async_session_maker)
                         url, was_cached, cost = await self.image_service.get_or_generate_image(
-                            prompt=prompt,
+                            prompt=item.title,  # Use TITLE for cache matching
                             category=item.category or "food",
                             variant_type="hero",
                             user_id=user_id,
@@ -4464,7 +4469,8 @@ JSON ONLY:
                     
                     if url:
                         item.hero_image_url = url
-                        logger.info(f"[ENSURE_IMAGES] Hero: {item.title[:25]}...")
+                        cache_status = "CACHE HIT" if was_cached else "GENERATED"
+                        logger.info(f"[ENSURE_IMAGES] ✅ Hero {cache_status}: '{item.title[:25]}...'")
                         return url
                     return None
                 except Exception as e:
@@ -5054,14 +5060,20 @@ Respond with valid JSON object only."""
                 replacement_action["research_studies"] = []
 
             
-            # Generate images for replacement
-            hero_url, _, _ = await self.image_service.get_or_generate_image(
-                prompt=replacement_action.get("image_prompt", replacement_action.get("title", "Wellness Action")),
-                category=replacement_action.get("category", "food"),
+            # Generate images for replacement using TITLE for cache matching
+            replacement_title = replacement_action.get("title", "Wellness Action")
+            replacement_category = replacement_action.get("category", "food")
+            logger.info(f"[REPLACE] Generating image: '{replacement_title[:40]}' ({replacement_category})")
+            
+            hero_url, was_cached, _ = await self.image_service.get_or_generate_image(
+                prompt=replacement_title,  # Use TITLE for cache matching
+                category=replacement_category,
                 variant_type="hero",
                 user_id=user_id,
                 db=db
             )
+            cache_status = "CACHE HIT" if was_cached else "GENERATED"
+            logger.info(f"[REPLACE] ✅ Image {cache_status}: '{replacement_title[:30]}...'")
             
             # Mark original as replaced
             original.is_replaced = True
@@ -5133,8 +5145,11 @@ Respond with valid JSON object only."""
             variant_results = []
             for vd in variant_data:
                 try:
+                    # Use variant TITLE for cache matching
+                    variant_title = vd["variant"].get("title", f"{vd['v_type']} version")
+                    logger.info(f"[REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
                     result = await self.image_service.get_or_generate_image(
-                        prompt=vd["variant"].get("image_prompt", vd["variant"].get("title")),
+                        prompt=variant_title,  # Use TITLE for cache matching
                         category=category,
                         variant_type=vd["v_type"],
                         user_id=user_id,
@@ -5521,14 +5536,17 @@ Respond with valid JSON only."""
                 )
             )
 
-            # Generate images for replacement
-            hero_url, _, _ = await self.image_service.get_or_generate_image(
-                prompt=replacement_action.get("image_prompt", replacement_action.get("title", "Wellness Action")),
+            # Generate images for replacement using TITLE for cache matching
+            replacement_title = replacement_action.get("title", "Wellness Action")
+            logger.info(f"[REPLACE] Generating image: '{replacement_title[:40]}' ({category})")
+            hero_url, was_cached, _ = await self.image_service.get_or_generate_image(
+                prompt=replacement_title,  # Use TITLE for cache matching
                 category=category,
                 variant_type="hero",
                 user_id=user_id,
                 db=db,
             )
+            logger.info(f"[REPLACE] ✅ Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
 
             from app.core.database import ActionPlanItemVariant
 
@@ -6207,14 +6225,19 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                 logger.info(f"📋 Symptoms from GPT: {replacement_action.get('symptoms', [])}")
                 logger.info(f"📋 Conditions from GPT: {replacement_action.get('conditions', [])}")
                 
-                # Generate hero image
-                hero_url, _, image_cost = await self.image_service.get_or_generate_image(
-                    prompt=replacement_action.get("image_prompt", replacement_action.get("title", "")),
-                    category=replacement_action.get("category", "food"),
+                # Generate hero image using TITLE for cache matching
+                replacement_title = replacement_action.get("title", "")
+                replacement_category = replacement_action.get("category", "food")
+                logger.info(f"[BATCH_REPLACE] Generating image: '{replacement_title[:40]}' ({replacement_category})")
+                
+                hero_url, was_cached, image_cost = await self.image_service.get_or_generate_image(
+                    prompt=replacement_title,  # Use TITLE for cache matching
+                    category=replacement_category,
                     variant_type="hero",
                     user_id=user_id,
                     db=db
                 )
+                logger.info(f"[BATCH_REPLACE] ✅ Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
                 total_cost += image_cost
                 
                 # SQL-direct deactivation of original item
@@ -6309,8 +6332,12 @@ Respond with valid JSON array only. Do not add any text outside the JSON."""
                         }.get(category, ["alternative"])
                         v_type = defaults[raw_variants.index(variant) % len(defaults)]
                     
-                    variant_url, _, variant_cost = await self.image_service.get_or_generate_image(
-                        prompt=variant.get("image_prompt", variant.get("title", "")),
+                    # Use variant TITLE for cache matching
+                    variant_title = variant.get("title", f"{v_type} {replacement_title}")
+                    logger.info(f"[BATCH_REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
+                    
+                    variant_url, was_cached, variant_cost = await self.image_service.get_or_generate_image(
+                        prompt=variant_title,  # Use TITLE for cache matching
                         category=replacement_action.get("category", "food"),
                         variant_type=v_type,
                         user_id=user_id,

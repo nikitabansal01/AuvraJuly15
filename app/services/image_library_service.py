@@ -102,11 +102,11 @@ class ImageLibraryService:
         """
         Get a cached image or generate a new one.
         
-        OPTIMIZATION: Uses TITLE-based embedding for cache matching (not full prompt).
+        TITLE-BASED EMBEDDING: We embed the TITLE (not full prompt) for cache matching.
         This gives stable cache hits even when prompt styling changes.
         
         Args:
-            prompt: The action TITLE (e.g., "Salmon bowl") - used for embedding
+            prompt: The action TITLE (e.g., "Salmon bowl") - used for BOTH embedding AND generation
             category: "food", "movement", or "mindfulness"
             variant_type: "hero", "tasty", "easy", "healthy", etc.
             user_id: User's UID to avoid showing same image twice
@@ -117,18 +117,25 @@ class ImageLibraryService:
         """
         start_time = time.time()
         
+        # Log what we're processing
+        logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
+        
         try:
             # Step 1: Get embedding for the TITLE (not full enhanced prompt!)
             # This gives stable cache matching regardless of prompt style changes
+            logger.info(f"[IMAGE] Step 1: Getting embedding for title '{prompt[:30]}...'")
             title_embedding = await self._get_embedding(prompt)
             
             if not title_embedding:
-                logger.warning("Embedding failed - generating without cache")
+                logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{prompt[:30]}...' - generating without cache")
                 return await self._generate_and_store_image(
                     prompt, category, variant_type, user_id, None, db
                 )
             
+            logger.info(f"[IMAGE] Step 1: ✅ Got embedding (dim={len(title_embedding)})")
+            
             # Step 2: Search for semantically similar cached images by TITLE
+            logger.info(f"[IMAGE] Step 2: Searching cache with threshold {self.SIMILARITY_THRESHOLD}")
             cached_image = await self._find_similar_image(
                 title_embedding, 
                 category, 
@@ -141,17 +148,29 @@ class ImageLibraryService:
                 # Found a semantically similar image!
                 await self._update_image_usage(cached_image["id"], user_id, db)
                 elapsed = time.time() - start_time
-                logger.info(f"✅ Cache HIT! Title: '{prompt[:30]}...' Sim: {cached_image['similarity']:.3f} Time: {elapsed:.2f}s")
+                logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
+                logger.info(f"[IMAGE]   Title: '{prompt[:40]}...'")
+                logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
+                logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
+                logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
                 return (cached_image["image_url"], True, 0.0)
             
             # Step 3: No cache hit - generate new image
-            logger.info(f"🎨 Cache MISS for '{prompt[:30]}...' - generating new image")
-            return await self._generate_and_store_image(
+            elapsed_cache = time.time() - start_time
+            logger.info(f"[IMAGE] Step 2: ❌ CACHE MISS (checked in {elapsed_cache:.2f}s)")
+            logger.info(f"[IMAGE] Step 3: 🎨 Generating new image for '{prompt[:40]}...'")
+            
+            result = await self._generate_and_store_image(
                 prompt, category, variant_type, user_id, title_embedding, db
             )
             
+            elapsed = time.time() - start_time
+            logger.info(f"[IMAGE] Step 3: ✅ Generation complete in {elapsed:.2f}s")
+            
+            return result
+            
         except Exception as e:
-            logger.error(f"Error in get_or_generate_image: {e}")
+            logger.error(f"[IMAGE] ❌ Error: {e}")
             # Fallback: try to generate without caching
             return await self._generate_and_store_image(
                 prompt, category, variant_type, user_id, None, db
@@ -639,73 +658,91 @@ class ImageLibraryService:
     
     def _enhance_prompt(self, prompt: str, category: str = "food") -> Tuple[str, str]:
         """
-        Enhance the prompt for FLUX.1 Schnell with illustrative wellness styling.
+        Enhance the prompt for FLUX.1 Schnell with ILLUSTRATIVE styling.
         
-        Optimized for:
-        - Fast generation (simple, clear prompts)
-        - App thumbnails (centered, vibrant, recognizable)
-        - Wellness aesthetic (bright, fresh, inviting)
+        GOAL: User should understand EXACTLY what to do by looking at the image!
+        - Food: Show the exact dish/ingredient clearly
+        - Movement: Show a person DOING the exercise
+        - Mindfulness: Show a person DOING the meditation/technique
         
         Args:
-            prompt: Action title (e.g., "Salmon bowl")
+            prompt: Action title (e.g., "Salmon bowl", "Morning yoga stretch")
             category: "food", "movement", or "mindfulness"
             
         Returns:
             Tuple of (enhanced_prompt, negative_prompt)
         """
+        logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
+        
         if category == "food":
-            # Food: bright, appetizing, clearly identifiable ingredient
-            style_suffix = (
-                "fresh organic ingredients, bright airy aesthetic, "
-                "overhead shot, soft natural daylight, "
-                "clean minimalist white plate, vibrant saturated colors, "
-                "light wooden background, wellness food photography"
+            # Food: EXACTLY what you're eating, beautiful and appetizing
+            # Key: The food item must be the hero, clearly identifiable
+            enhanced = (
+                f"{prompt}, "
+                f"beautiful food photography, "
+                f"appetizing and delicious looking, "
+                f"fresh vibrant ingredients clearly visible, "
+                f"overhead shot on white ceramic plate, "
+                f"bright natural daylight, clean white background, "
+                f"high detail, professional food styling, "
+                f"instagram worthy, mouth-watering"
             )
             negative = (
-                "text, watermark, logo, blurry, dark, "
-                "artificial lighting, plastic food, low quality, "
-                "cluttered background, hands, people"
+                "text, watermark, logo, blurry, dark, underexposed, "
+                "artificial looking, plastic food, low quality, "
+                "cluttered, hands, people, messy, unappetizing"
             )
             
         elif category == "movement":
-            # Movement: clear pose, wellness vibe
-            style_suffix = (
-                "lifestyle wellness photography, natural relaxed pose, "
-                "full body visible, soft window backlighting, "
-                "serene indoor setting with yoga mat, earth tones, "
-                "calm aesthetic, clean background"
+            # Movement: Show a WOMAN ACTIVELY DOING the exercise
+            # Key: The pose/movement must be clearly visible and instructional
+            enhanced = (
+                f"woman actively doing {prompt}, "
+                f"fitness lifestyle photography, "
+                f"clear instructional pose, full body visible, "
+                f"wearing comfortable workout clothes, "
+                f"bright modern home or studio setting, "
+                f"soft natural lighting, clean minimal background, "
+                f"wellness and health aesthetic, "
+                f"motivating and energetic mood"
             )
             negative = (
-                "text, watermark, stiff pose, gym equipment, "
-                "aggressive, commercial, low quality, blurry, "
-                "crowded background, bad anatomy"
+                "text, watermark, bad anatomy, extra limbs, "
+                "deformed body, distorted face, blurry, dark, "
+                "gym equipment, crowded background, aggressive, "
+                "stiff unnatural pose, low quality"
             )
             
         elif category == "mindfulness":
-            # Mindfulness: zen, peaceful, clear technique
-            style_suffix = (
-                "zen minimalist style, soft diffused lighting, "
-                "cozy intimate atmosphere, muted warm tones, "
-                "peaceful calming mood, clean background, "
-                "centered composition, meditation wellness"
+            # Mindfulness: Show a WOMAN DOING the meditation/relaxation technique
+            # Key: The technique must be visible (breathing, posture, etc.)
+            enhanced = (
+                f"woman peacefully practicing {prompt}, "
+                f"zen wellness photography, "
+                f"eyes closed, calm serene expression, "
+                f"correct meditation posture clearly visible, "
+                f"cozy peaceful indoor space, "
+                f"soft warm diffused lighting, "
+                f"muted natural tones, minimal background, "
+                f"relaxing and calming atmosphere"
             )
             negative = (
-                "text, watermark, cluttered, busy, "
-                "neon colors, harsh lighting, commercial, "
-                "low quality, blurry, chaotic"
+                "text, watermark, deformed hands, extra fingers, "
+                "distorted face, blurry, dark, cluttered, "
+                "busy background, harsh lighting, "
+                "stressed expression, low quality"
             )
             
         else:
-            # Fallback: generic wellness style
-            style_suffix = (
-                "wellness photography, natural lighting, "
-                "calm aesthetic, warm tones, clean background"
+            # Fallback: generic wellness
+            enhanced = (
+                f"{prompt}, wellness lifestyle photography, "
+                f"bright natural lighting, clean minimal aesthetic, "
+                f"warm inviting tones, high quality"
             )
-            negative = "text, watermark, blurry, low quality, dark"
+            negative = "text, watermark, blurry, dark, low quality, cluttered"
         
-        # Simple comma-separated format for FLUX Schnell
-        enhanced = f"{prompt}, {style_suffix}"
-        
+        logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")
         return (enhanced, negative)
     
     async def _generate_placeholder_image(self, prompt: str) -> Tuple[bytes, int]:
