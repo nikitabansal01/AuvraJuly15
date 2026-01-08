@@ -373,7 +373,7 @@ async def _generate_recommendations_background(session_id: str, service, process
         
         # We need a new AsyncSession for the generator
         async with AsyncSessionLocal() as async_session:
-            generator = ActionPlanGenerator(db) # Pass sync db for legacy support if needed, but methods use async_session
+            generator = ActionPlanGenerator()  # No args needed - uses internal engine
             
             # Generate the plan!
             # We pass session_id and NO user_id
