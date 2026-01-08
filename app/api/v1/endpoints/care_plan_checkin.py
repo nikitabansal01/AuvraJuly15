@@ -498,23 +498,36 @@ async def respond_care_plan_checkin(
                 if items:
                     ui_blocks.append(_pick_alternate_item_block(items))
         else:
-            # Prefer model-selected intent. Keep a light heuristic fallback so UX doesn't break
-            # if the model forgets to set the flag.
-            wants_alternates = bool(getattr(ai_response.insights, "alternate_suggestions_requested", False))
-            if not wants_alternates:
-                wants_alternates = _looks_like_alternate_suggestions_request(payload.message_text)
-
-            if wants_alternates:
+            # Check for explicit "I want to change it" tap option FIRST
+            # This takes priority over AI model flags
+            msg_lower = (payload.message_text or "").strip().lower()
+            is_explicit_change = (
+                "want to change" in msg_lower or 
+                "👎" in payload.message_text or
+                msg_lower in {"want-to-change", "i want to change it"}
+            )
+            
+            if is_explicit_change:
+                # Direct replace flow - show which item to replace
                 if items:
-                    ui_blocks.append(_pick_alternate_item_block(items))
-                else:
-                    ui_blocks.append(_open_plan_manager_block())
+                    ui_blocks.append(_pick_replace_block(items))
             else:
-                if _looks_like_change_intent(payload.message_text) or (
-                    ai_response.insights and ai_response.insights.plan_changes_requested
-                ):
+                # Check for alternate suggestions request
+                wants_alternates = bool(getattr(ai_response.insights, "alternate_suggestions_requested", False))
+                if not wants_alternates:
+                    wants_alternates = _looks_like_alternate_suggestions_request(payload.message_text)
+
+                if wants_alternates:
                     if items:
-                        ui_blocks.append(_pick_replace_block(items))
+                        ui_blocks.append(_pick_alternate_item_block(items))
+                    else:
+                        ui_blocks.append(_open_plan_manager_block())
+                else:
+                    if _looks_like_change_intent(payload.message_text) or (
+                        ai_response.insights and ai_response.insights.plan_changes_requested
+                    ):
+                        if items:
+                            ui_blocks.append(_pick_replace_block(items))
 
         return {
             "thread_id": thread.id,
