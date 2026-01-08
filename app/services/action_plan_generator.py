@@ -5659,11 +5659,26 @@ Respond with valid JSON only."""
             db.add(new_item)
             await db.flush()
 
-            # Variants (up to 3)
+            # Variants (up to 3) - if none provided, generate defaults
             raw_variants = replacement_action.get("variants", [])
             if isinstance(raw_variants, str) or not isinstance(raw_variants, list):
                 raw_variants = []
             valid_variants = [v for v in raw_variants[:3] if isinstance(v, dict)]
+
+            # Generate default variants if none provided
+            if not valid_variants:
+                variant_type_defaults = {
+                    "food": ["healthy", "easy", "tasty"],
+                    "movement": ["gentle", "quick", "energizing"],
+                    "mindfulness": ["brief", "guided", "solo"],
+                }.get(category, ["alternative", "simpler", "quick"])
+                
+                title = replacement_action.get("title", "Wellness Action")
+                valid_variants = [
+                    {"variant_type": vt, "title": f"{vt.title()} {title}", "description": f"A {vt} way to enjoy {title}"}
+                    for vt in variant_type_defaults
+                ]
+                logger.info(f"[REPLACE] No variants provided, generating 3 default variants for '{title[:30]}'")
 
             variant_data = []
             for i, variant in enumerate(valid_variants):
