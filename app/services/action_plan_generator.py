@@ -5314,7 +5314,7 @@ Respond with valid JSON object only."""
         reason: Optional[str],
         n: int,
         db: AsyncSession,
-        enforce_same_category: bool = False,
+        enforce_same_category: bool = True,  # Changed default to True
     ) -> Dict[str, Any]:
         """Generate N replacement candidates for a single plan item (preview-only).
 
@@ -5334,29 +5334,38 @@ Respond with valid JSON object only."""
                 return {"success": False, "error": "Unauthorized"}
 
             original_category = (getattr(original, "category", None) or "").strip().lower() or "food"
+            original_hormone = getattr(original, "target_hormone", None) or "cortisol"
 
             # Load user context
             user_context = await self._load_user_context(user_id, db)
             if not user_context:
                 return {"success": False, "error": "Could not load user context"}
 
-            # Fetch one research paper up-front (reuse replace_action behavior)
+            # Fetch research paper for same category + hormone + user condition
             from app.services.pubmed_service import execute_pubmed_tool
 
             user_conditions = user_context.get("diagnosed_conditions", [])
             condition_str = user_conditions[0] if user_conditions else "womens health"
-            search_query = f"{original.target_hormone} {condition_str} intervention"
-            logger.info(f" CANDIDATES: Searching for '{search_query}'")
+            
+            # Build category-specific search query
+            category_terms = {
+                "food": "diet nutrition food",
+                "movement": "exercise physical activity",
+                "mindfulness": "meditation mindfulness relaxation"
+            }
+            cat_term = category_terms.get(original_category, "wellness")
+            search_query = f"{original_hormone} {condition_str} {cat_term}"
+            logger.info(f" CANDIDATES: Searching for '{search_query}' (category={original_category})")
 
             research_paper = await execute_pubmed_tool(
-                {"action_title": f"Wellness action for {original.target_hormone}", "search_query": search_query},
+                {"action_title": f"{original_category} action for {original_hormone}", "search_query": search_query},
                 db=db,
             )
 
             research_context = ""
             if research_paper and research_paper.get("title"):
                 research_context = f"""
-RESEARCH EVIDENCE (use as grounding; do not fabricate citations):
+RESEARCH EVIDENCE (use as grounding for your recommendations):
 Title: {research_paper.get('title')}
 Journal: {research_paper.get('journal', 'Unknown')}
 Year: {research_paper.get('year', 'Unknown')}
@@ -5365,23 +5374,35 @@ Key Finding: {research_paper.get('finding', 'Evidence-based intervention')}
 PMID: {research_paper.get('pmid', '')}
 """.strip()
 
+            # Category-specific field requirements
+            category_fields = {
+                "food": "food_items (array), food_amounts (array)",
+                "movement": "exercise_types (array), exercise_durations (array), exercise_intensities (array)",
+                "mindfulness": "mindfulness_techniques (array), mindfulness_durations (array)"
+            }
+            required_fields = category_fields.get(original_category, "")
+
             prompt = f"""Generate {n} DIFFERENT replacement wellness actions.
 
-You are generating alternates the user can choose from. Keep them meaningfully different.
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  CRITICAL: ALL alternatives MUST be {original_category.upper()} category!              ║
+║  User is replacing a {original_category} item → suggest ONLY other {original_category} options!          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 
 {research_context}
 
-REQUIREMENTS:
-- Must target hormone: {original.target_hormone}
-- Must be DIFFERENT from: {original.title}
-- Dislike reason: {reason or 'not specified'}
-- {'Category MUST be: ' + original_category if enforce_same_category else 'Prefer a different category from: ' + (original_category or 'food')}
-- Lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
+STRICT REQUIREMENTS:
+1. Category MUST be: {original_category} (DO NOT suggest other categories!)
+2. Target hormone MUST be: {original_hormone}
+3. Must be DIFFERENT from: {original.title}
+4. Dislike reason: {reason or 'user wants alternatives'}
+5. MUST include category-specific fields: {required_fields}
 
-HEALTH PROFILE (condensed):
+USER HEALTH PROFILE (tailor recommendations to this):
 - Age: {user_context.get('age', 'unknown')}
 - Cycle Phase: {user_context.get('cycle_phase', 'unknown')}
-- Top Concern: {user_context.get('top_concern', 'general wellness')}
+- Top Health Concern: {user_context.get('top_concern', 'general wellness')}
+- Diagnosed Conditions: {', '.join(user_conditions) if user_conditions else 'none'}
 - Diet Preference: {user_context.get('diet_preference', 'none')}
 - Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
 
@@ -5391,12 +5412,14 @@ Return a JSON OBJECT with exactly this shape:
   "actions": [ ...{n} action objects... ]
 }}
 
-Each action object MUST include all required fields and category-specific arrays:
-- category: food|movement|mindfulness
-- title, time_slot, specific_action, purpose, target_hormone, hormone_persona_intro, image_prompt
-- research_studies: if the research above exists, include it as a single-item array; otherwise []
+Each action object MUST include:
+- category: "{original_category}" (MUST be this exact value!)
+- title, time_slot, specific_action, purpose
+- target_hormone: "{original_hormone}" (MUST be this exact value!)
+- hormone_persona_intro, image_prompt
+- research_studies: array (include the research above if relevant)
 - variants: array of 3 variant objects
-- symptoms: 1-3
+- symptoms: array of 1-3 symptom keywords
 - conditions: array
 
 CATEGORY-SPECIFIC REQUIRED FIELDS:
