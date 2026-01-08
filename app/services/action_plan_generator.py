@@ -6104,29 +6104,61 @@ OUTPUT FORMAT (JSON Array):
             
             # Process each replacement
             new_actions = []
+            
+            # ===== PARALLEL IMAGE GENERATION =====
+            # First, generate all hero images in parallel for speed
+            from app.core.database import async_engine
+            from sqlalchemy.ext.asyncio import AsyncSession
+            logger.info(f" Generating {len(replacement_actions)} hero images in PARALLEL...")
+            
+            async def generate_hero_image(replacement_action, index):
+                """Generate hero image for a replacement action."""
+                replacement_title = replacement_action.get("title", "")
+                replacement_category = replacement_action.get("category", "food")
+                logger.info(f"[BATCH_REPLACE] Generating image {index+1}: '{replacement_title[:40]}' ({replacement_category})")
+                
+                async with AsyncSession(async_engine) as image_db:
+                    hero_url, was_cached, image_cost = await self.image_service.get_or_generate_image(
+                        prompt=replacement_title,
+                        category=replacement_category,
+                        variant_type="hero",
+                        user_id=user_id,
+                        db=image_db
+                    )
+                    logger.info(f"[BATCH_REPLACE]  Image {index+1} {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
+                    return (hero_url, was_cached, image_cost)
+            
+            # Run all hero image generations in parallel
+            image_tasks = [
+                generate_hero_image(replacement_action, i)
+                for i, replacement_action in enumerate(replacement_actions)
+            ]
+            image_results = await asyncio.gather(*image_tasks, return_exceptions=True)
+            
+            # Process results and calculate total cost
+            hero_images = []
+            for i, result in enumerate(image_results):
+                if isinstance(result, Exception):
+                    logger.error(f"Image {i+1} failed: {result}")
+                    hero_images.append((None, False, 0))
+                else:
+                    hero_images.append(result)
+                    total_cost += result[2]  # image_cost
+            
+            logger.info(f" All {len(replacement_actions)} hero images generated in parallel")
+            
+            # ===== PROCESS EACH REPLACEMENT WITH PRE-GENERATED IMAGES =====
             for i, replacement_action in enumerate(replacement_actions):
                 original = original_items[i] if i < len(original_items) else original_items[0]
+                hero_url, was_cached, _ = hero_images[i]
                 
                 # Log the raw replacement_action for debugging
                 logger.info(f" Processing replacement {i}: category={replacement_action.get('category')}")
                 logger.info(f" Variants raw: {replacement_action.get('variants')}")
                 logger.info(f" Symptoms from GPT: {replacement_action.get('symptoms', [])}")
                 logger.info(f" Conditions from GPT: {replacement_action.get('conditions', [])}")
-                
-                # Generate hero image using TITLE for cache matching
-                replacement_title = replacement_action.get("title", "")
-                replacement_category = replacement_action.get("category", "food")
-                logger.info(f"[BATCH_REPLACE] Generating image: '{replacement_title[:40]}' ({replacement_category})")
-                
-                hero_url, was_cached, image_cost = await self.image_service.get_or_generate_image(
-                    prompt=replacement_title,  # Use TITLE for cache matching
-                    category=replacement_category,
-                    variant_type="hero",
-                    user_id=user_id,
-                    db=db
-                )
-                logger.info(f"[BATCH_REPLACE]  Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
-                total_cost += image_cost
+                logger.info(f"[BATCH_REPLACE]  Using pre-generated image: '{replacement_action.get('title', '')[:30]}...'")
+
                 
                 # SQL-direct deactivation of original item
                 await db.execute(
