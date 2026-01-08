@@ -993,13 +993,23 @@ class ActionPlanGenerator:
         if existing_plan:
             logger.info(f"Found existing plan for user {user_id} on {today}")
             
-            # Check for missing images and generate them if needed
+            # Check if images are missing (fast check, no generation)
+            has_missing_images = False
             if image_mode != "none":
-                await self._ensure_plan_has_images(existing_plan, user_id, db, image_mode)
+                has_missing_images = await self._check_missing_images(existing_plan, db)
+                
+                if has_missing_images:
+                    # 🚀 START BACKGROUND IMAGE GENERATION (don't block response!)
+                    # This allows HomeScreen to load immediately while images generate
+                    logger.info(f"🚀 [BG-IMAGE-START] Starting background image generation for plan {existing_plan.id}")
+                    asyncio.create_task(
+                        self._background_ensure_images(existing_plan.id, user_id, image_mode)
+                    )
             
             resp = await self._format_plan_response(existing_plan, db)
             if isinstance(resp, dict) and resp.get("success"):
                 resp["plan_source"] = "existing_today"
+                resp["images_generating"] = has_missing_images  # Tell frontend to poll for updates
             return resp
         
         # No plan for today - check if we should carryforward from frozen day
@@ -4295,6 +4305,69 @@ JSON ONLY:
             
             logger.error(f"Error storing plan: {e}")
             raise
+    
+    async def _check_missing_images(self, plan: Any, db: AsyncSession) -> bool:
+        """
+        Quick check if any items are missing images (without generating them).
+        
+        Returns True if any hero images are missing.
+        """
+        from app.core.database import ActionPlanItem
+        
+        try:
+            result = await db.execute(
+                select(ActionPlanItem).where(
+                    and_(
+                        ActionPlanItem.plan_id == plan.id,
+                        ActionPlanItem.is_replaced.isnot(True),
+                        or_(
+                            ActionPlanItem.hero_image_url.is_(None),
+                            ActionPlanItem.hero_image_url == ""
+                        )
+                    )
+                ).limit(1)  # We only need to know if ANY are missing
+            )
+            return bool(result.scalars().first())
+        except Exception as e:
+            logger.warning(f"Error checking missing images: {e}")
+            return False
+    
+    async def _background_ensure_images(
+        self,
+        plan_id: int,
+        user_id: str,
+        image_mode: str = "full"
+    ) -> None:
+        """
+        Background task to generate missing images.
+        
+        Creates its own database session since this runs independently of the request.
+        """
+        from app.core.database import ActionPlan
+        
+        session = None
+        try:
+            session = self.async_session_maker()
+            
+            # Fetch the plan in this session
+            result = await session.execute(
+                select(ActionPlan).where(ActionPlan.id == plan_id)
+            )
+            plan = result.scalar_one_or_none()
+            
+            if not plan:
+                logger.warning(f"[BG-IMAGE] Plan {plan_id} not found for background image generation")
+                return
+            
+            logger.info(f"🖼️ [BG-IMAGE] Starting image generation for plan {plan_id}")
+            await self._ensure_plan_has_images(plan, user_id, session, image_mode)
+            logger.info(f"✅ [BG-IMAGE] Completed image generation for plan {plan_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ [BG-IMAGE] Error in background image generation: {e}")
+        finally:
+            if session:
+                await session.close()
     
     async def _ensure_plan_has_images(
         self,
