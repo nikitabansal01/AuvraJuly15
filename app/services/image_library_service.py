@@ -40,9 +40,9 @@ class ImageLibraryService:
     """
     
     # Similarity threshold for reusing cached images
-    # 0.85 allows semantic matches even with slight prompt variations
-    # 0.95 was too strict - almost no cache hits!
-    SIMILARITY_THRESHOLD = 0.85  # Restored from 0.95 to enable cache hits
+    # Using TITLE-based embedding now (not full prompt), so 0.95 works well
+    # Title "Salmon bowl" matches "Salmon with avocado" precisely
+    SIMILARITY_THRESHOLD = 0.95
     
     # RunPod pricing
     COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
@@ -51,13 +51,13 @@ class ImageLibraryService:
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
-    # Retry settings - balanced for cold start recovery
-    MAX_IMAGE_RETRIES = 3  # Restored from 2 - better cold start handling
-    RETRY_DELAYS = [2.0, 5.0, 10.0]  # Longer delays for cold start recovery
+    # Retry settings - fast failure, fast retry
+    MAX_IMAGE_RETRIES = 2
+    RETRY_DELAYS = [1.0, 3.0]  # Quick retries for always-on endpoint
     
-    # RunPod timeout settings - increased for cold start
-    RUNPOD_POLL_TIMEOUT = 90  # Restored from 45s - cold starts need more time
-    RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second for faster response detection
+    # RunPod timeout settings - fast for always-on endpoint
+    RUNPOD_POLL_TIMEOUT = 30  # 30 seconds max wait
+    RUNPOD_POLL_INTERVAL = 0.3  # Poll every 0.3 second for faster response
     
     def __init__(self):
         """Initialize the image library service."""
@@ -102,8 +102,11 @@ class ImageLibraryService:
         """
         Get a cached image or generate a new one.
         
+        OPTIMIZATION: Uses TITLE-based embedding for cache matching (not full prompt).
+        This gives stable cache hits even when prompt styling changes.
+        
         Args:
-            prompt: The image generation prompt
+            prompt: The action TITLE (e.g., "Salmon bowl") - used for embedding
             category: "food", "movement", or "mindfulness"
             variant_type: "hero", "tasty", "easy", "healthy", etc.
             user_id: User's UID to avoid showing same image twice
@@ -115,18 +118,19 @@ class ImageLibraryService:
         start_time = time.time()
         
         try:
-            # Step 1: Get embedding for the prompt
-            prompt_embedding = await self._get_embedding(prompt)
+            # Step 1: Get embedding for the TITLE (not full enhanced prompt!)
+            # This gives stable cache matching regardless of prompt style changes
+            title_embedding = await self._get_embedding(prompt)
             
-            if not prompt_embedding:
-                logger.error("Failed to generate embedding for prompt")
+            if not title_embedding:
+                logger.warning("Embedding failed - generating without cache")
                 return await self._generate_and_store_image(
                     prompt, category, variant_type, user_id, None, db
                 )
             
-            # Step 2: Search for semantically similar cached images
+            # Step 2: Search for semantically similar cached images by TITLE
             cached_image = await self._find_similar_image(
-                prompt_embedding, 
+                title_embedding, 
                 category, 
                 variant_type, 
                 user_id, 
@@ -137,13 +141,13 @@ class ImageLibraryService:
                 # Found a semantically similar image!
                 await self._update_image_usage(cached_image["id"], user_id, db)
                 elapsed = time.time() - start_time
-                logger.info(f"✅ Cache hit! Similarity: {cached_image['similarity']:.3f} "
-                           f"Time: {elapsed:.2f}s")
+                logger.info(f"✅ Cache HIT! Title: '{prompt[:30]}...' Sim: {cached_image['similarity']:.3f} Time: {elapsed:.2f}s")
                 return (cached_image["image_url"], True, 0.0)
             
             # Step 3: No cache hit - generate new image
+            logger.info(f"🎨 Cache MISS for '{prompt[:30]}...' - generating new image")
             return await self._generate_and_store_image(
-                prompt, category, variant_type, user_id, prompt_embedding, db
+                prompt, category, variant_type, user_id, title_embedding, db
             )
             
         except Exception as e:
@@ -493,8 +497,8 @@ class ImageLibraryService:
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 8,      # Restored from 4 - better quality with original prompts
-                    "guidance": 5,                  # Kept from known-working integration
+                    "num_inference_steps": 4,       # FLUX Schnell optimal: 4 steps (fast!)
+                    "guidance": 3.5,                 # Lower = more natural, faster
                     "seed": -1,
                     "negative_prompt": negative_prompt,
                     "image_format": "png"
@@ -635,73 +639,71 @@ class ImageLibraryService:
     
     def _enhance_prompt(self, prompt: str, category: str = "food") -> Tuple[str, str]:
         """
-        Enhance the prompt for FLUX.1 Schnell with category-specific styling.
+        Enhance the prompt for FLUX.1 Schnell with illustrative wellness styling.
         
-        NOTE: These prompts were optimized for cache hits. Changing them breaks
-        semantic matching with existing cached images!
+        Optimized for:
+        - Fast generation (simple, clear prompts)
+        - App thumbnails (centered, vibrant, recognizable)
+        - Wellness aesthetic (bright, fresh, inviting)
         
         Args:
-            prompt: Base prompt from GPT
+            prompt: Action title (e.g., "Salmon bowl")
             category: "food", "movement", or "mindfulness"
             
         Returns:
             Tuple of (enhanced_prompt, negative_prompt)
         """
         if category == "food":
-            # Food-specific enhancement: appetizing, overhead photography
+            # Food: bright, appetizing, clearly identifiable ingredient
             style_suffix = (
-                "professional food photography, overhead 45-degree angle, "
-                "Canon EOS R5 35mm lens f/2.8, soft natural window light, "
-                "rustic wooden table, fresh ingredients visible, "
-                "warm inviting tones, vibrant saturated colors, "
-                "shallow depth of field, photorealistic, high quality"
+                "fresh organic ingredients, bright airy aesthetic, "
+                "overhead shot, soft natural daylight, "
+                "clean minimalist white plate, vibrant saturated colors, "
+                "light wooden background, wellness food photography"
             )
             negative = (
-                "blurry, out of focus, dark, underexposed, overexposed, "
-                "artificial lighting, plastic food, processed, "
-                "low quality, pixelated, distorted"
+                "text, watermark, logo, blurry, dark, "
+                "artificial lighting, plastic food, low quality, "
+                "cluttered background, hands, people"
             )
             
         elif category == "movement":
-            # Movement-specific: natural pose, wellness aesthetic
+            # Movement: clear pose, wellness vibe
             style_suffix = (
                 "lifestyle wellness photography, natural relaxed pose, "
-                "Canon EOS R5 50mm lens f/1.8, soft window backlighting, "
-                "serene peaceful indoor setting, warm earth tones, "
-                "calming aesthetic, atmospheric depth, "
-                "photorealistic, professional quality"
+                "full body visible, soft window backlighting, "
+                "serene indoor setting with yoga mat, earth tones, "
+                "calm aesthetic, clean background"
             )
             negative = (
-                "stiff pose, gym equipment, aggressive,intense, commercial, "
-                "stock photo, artificial, low quality, blurry, "
-                "crowded background, distorted body"
+                "text, watermark, stiff pose, gym equipment, "
+                "aggressive, commercial, low quality, blurry, "
+                "crowded background, bad anatomy"
             )
             
         elif category == "mindfulness":
-            # Mindfulness-specific: zen, minimalist, cozy
+            # Mindfulness: zen, peaceful, clear technique
             style_suffix = (
-                "lifestyle zen photography, minimalist composition, "
-                "Sony A7III 35mm lens f/2.0, soft diffused natural lighting, "
-                "cozy intimate atmosphere, warm muted tones, "
-                "peaceful calming mood, shallow focus, "
-                "photorealistic, professional quality"
+                "zen minimalist style, soft diffused lighting, "
+                "cozy intimate atmosphere, muted warm tones, "
+                "peaceful calming mood, clean background, "
+                "centered composition, meditation wellness"
             )
             negative = (
-                "cluttered, busy, bright neon colors, harsh lighting, "
-                "commercial, artificial, low quality, blurry, "
-                "messy, chaotic"
+                "text, watermark, cluttered, busy, "
+                "neon colors, harsh lighting, commercial, "
+                "low quality, blurry, chaotic"
             )
             
         else:
             # Fallback: generic wellness style
             style_suffix = (
-                "professional wellness photography, natural lighting, "
-                "calm peaceful aesthetic, warm tones, "
-                "photorealistic, high quality"
+                "wellness photography, natural lighting, "
+                "calm aesthetic, warm tones, clean background"
             )
-            negative = "blurry, low quality, artificial, commercial"
+            negative = "text, watermark, blurry, low quality, dark"
         
-        # IMPORTANT: Use comma separator (not period) to match cached image prompts!
+        # Simple comma-separated format for FLUX Schnell
         enhanced = f"{prompt}, {style_suffix}"
         
         return (enhanced, negative)
