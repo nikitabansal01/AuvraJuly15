@@ -95,6 +95,7 @@ def _default_tap_options() -> List[Dict[str, str]]:
     return [
         {"id": "want-to-change", "text": "👎 I want to change it"},
         {"id": "alternate-suggestions", "text": "🔁 I want alternate suggestions"},
+        {"id": "want-to-personalize", "text": "⚙️ I want to personalize"},
     ]
 
 
@@ -157,6 +158,31 @@ def _looks_like_alternate_suggestions_request(text: str) -> bool:
     if "🔁" in text:
         return True
 
+    return False
+
+
+def _looks_like_personalize_intent(text: str) -> bool:
+    """True when user wants to change personal settings (diet, allergies, etc.)."""
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    
+    # Tap option ID/Text
+    if t in {"want-to-personalize", "personalize", "settings", "preferences"}:
+        return True
+    if "want to personalize" in t:
+        return True
+        
+    # Natural language
+    if "diet" in t or "allergy" in t or "allergies" in t or "cuisine" in t:
+        return True
+    if "change my settings" in t or "update my profile" in t:
+        return True
+        
+    # Emoji
+    if "⚙️" in text:
+        return True
+        
     return False
 
 
@@ -434,6 +460,78 @@ async def respond_care_plan_checkin(
                     "actionable_insights": thread.actionable_insights or {},
                     "ui_blocks": [_open_plan_manager_block()],
                 }
+
+                }
+
+        # 2. Personalization Intent Handling
+        # Intercept before AI to check rewards status deterministically
+        if _looks_like_personalize_intent(payload.message_text):
+            # Save user message first
+            raw = list(thread.raw_messages or [])
+            raw.append({
+                "id": str(uuid4()),
+                "role": "user",
+                "content": payload.message_text,
+                "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+            })
+            thread.raw_messages = raw
+            db.add(thread)
+            db.commit()
+
+            # Check rewards
+            from app.services.reward_service import RewardService
+            reward_service = RewardService(db)
+            rewards_status = reward_service.get_all_rewards_status(uid)
+            rewards = rewards_status.get("rewards", [])
+            
+            # Filter for personalization rewards
+            personalization_rewards = [r for r in rewards if r.get("effect") == "personalization"]
+            unlocked = [r for r in personalization_rewards if r.get("state") in ("claimed", "available")]
+            locked = [r for r in personalization_rewards if r.get("state") == "locked"]
+
+            response_lines = []
+            
+            if unlocked:
+                options_list = "\n".join([f"• {r['title']}" for r in unlocked])
+                response_lines.append(f"✅ **Unlocked Settings:**\n{options_list}")
+                response_lines.append(f"\nWhat would you like to update? (e.g., 'I'm now vegetarian' or 'Update allergies')")
+                # Add instruction for AI context in FUTURE messages
+                # (We don't do it here because we are bypassing AI for this turn)
+            else:
+                response_lines.append(f"🔒 **Personalization is locked!**")
+                if locked:
+                    next_reward = min(locked, key=lambda x: x["required_streak"])
+                    days_left = next_reward.get("days_remaining", 0)
+                    response_lines.append(f"Keep your streak for **{days_left} more days** to unlock **{next_reward['title']}**!")
+                else:
+                    response_lines.append("Check the Rewards tab to see what you can unlock.")
+
+            bot_text = "\n\n".join(response_lines)
+
+            # Append bot message
+            raw = list(thread.raw_messages or [])
+            raw.append({
+                "id": str(uuid4()),
+                "role": "bot",
+                "content": bot_text,
+                "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+            })
+            thread.raw_messages = raw
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+            
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": _default_ui_blocks_for_start(), # Reset UI blocks
+            }
 
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
