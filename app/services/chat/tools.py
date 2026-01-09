@@ -1285,16 +1285,35 @@ async def update_user_preference(
             reward_service = RewardService(db_session)
 
             if not reward_service.is_reward_unlocked(user_id, required_reward):
+                # Get streak info for better messaging
+                from app.services.streak_service import StreakService, REWARDS_CONFIG
+                streak_service = StreakService(db_session)
+                streak_data = streak_service.get_streak(user_id)
+                current_streak = streak_data.get("current_streak", 0)
+                
+                # Find required days for this reward
+                reward_config = next((r for r in REWARDS_CONFIG if r["id"] == required_reward), None)
+                required_days = reward_config["days"] if reward_config else 0
+                days_remaining = max(0, required_days - current_streak)
+                
                 return {
                     "success": False,
+                    "locked": True,
                     "message": (
-                        f"That personalisation is locked right now. "
-                        f"Unlock it by claiming the '{required_reward}' reward first."
+                        f"I'd love to save your {canonical_key.replace('_', ' ')}! 💜 "
+                        f"You'll unlock this at Day {required_days}. "
+                        f"You're at Day {current_streak} — just {days_remaining} more day{'s' if days_remaining != 1 else ''}! "
+                        f"For now, I'll keep this in mind during our chats."
                     ),
                     "updated_field": canonical_key,
                     "required_reward": required_reward,
+                    "current_streak": current_streak,
+                    "required_days": required_days,
+                    "days_remaining": days_remaining,
                     "action_taken": "blocked_locked_preference",
+                    "temp_store_hint": "Store as low-confidence inferred fact instead"
                 }
+
 
             profile = db_session.query(UserProfile).filter(UserProfile.uid == user_id).first()
             if not profile:
@@ -1550,7 +1569,138 @@ async def store_inferred_profile_fact(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 11. NAVIGATION TOOLS
+# 11. FEATURE ACCESS TOOLS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@tool
+async def check_feature_access(
+    user_id: str,
+    feature: str,
+    db_session: Any
+) -> Dict[str, Any]:
+    """
+    Check if user has access to a feature. Use before attempting to use gated features.
+    
+    Features include:
+    - Streak-gated preferences: diet_preference, food_allergies, cuisine_preference, etc.
+    - Pro-only features: blood_report, advanced_analytics
+    
+    Args:
+        user_id: The user's ID
+        feature: Feature to check (e.g., "blood_report", "diet_preference")
+        db_session: Database session
+        
+    Returns:
+        Dict with: accessible (bool), reason (str), unlock_info (dict)
+    """
+    from app.core.database import UserProfile
+    from app.api.v1.endpoints.preferences import PREFERENCE_REWARD_MAP
+    from app.services.reward_service import RewardService
+    from app.services.streak_service import StreakService, REWARDS_CONFIG
+    
+    # Pro-only features
+    PRO_FEATURES = {
+        "blood_report": {
+            "title": "Blood Report Analysis",
+            "description": "Analyze your lab results to personalize recommendations based on actual hormone levels",
+            "upsell": "Blood report analysis is part of AUVRA Pro! 🧬 With Pro, I can read your labs and personalize your plan based on your actual hormone levels."
+        },
+        "advanced_analytics": {
+            "title": "Advanced Analytics",
+            "description": "Deep pattern analysis and predictive insights",
+            "upsell": "Advanced analytics is part of AUVRA Pro! 📊"
+        }
+    }
+    
+    try:
+        profile = db_session.query(UserProfile).filter(UserProfile.uid == user_id).first()
+        
+        # Check if it's a Pro feature
+        if feature in PRO_FEATURES:
+            is_pro = profile.is_pro if profile and hasattr(profile, 'is_pro') else False
+            
+            if is_pro:
+                return {
+                    "accessible": True,
+                    "feature": feature,
+                    "type": "pro_feature",
+                    "message": f"You have access to {PRO_FEATURES[feature]['title']}! 🎉",
+                    "ui_block": {"type": "blood_uploader"} if feature == "blood_report" else None
+                }
+            else:
+                return {
+                    "accessible": False,
+                    "feature": feature,
+                    "type": "pro_feature",
+                    "reason": "requires_pro",
+                    "message": PRO_FEATURES[feature]["upsell"],
+                    "ui_block": {
+                        "type": "paywall_prompt",
+                        "feature": feature,
+                        "title": PRO_FEATURES[feature]["title"],
+                        "cta": "Learn about Pro"
+                    }
+                }
+        
+        # Check if it's a streak-gated preference
+        if feature in PREFERENCE_REWARD_MAP:
+            required_reward = PREFERENCE_REWARD_MAP[feature]
+            reward_service = RewardService(db_session)
+            
+            if reward_service.is_reward_unlocked(user_id, required_reward):
+                return {
+                    "accessible": True,
+                    "feature": feature,
+                    "type": "streak_preference",
+                    "message": f"You can set your {feature.replace('_', ' ')}! 💜"
+                }
+            else:
+                # Get streak info
+                streak_service = StreakService(db_session)
+                streak_data = streak_service.get_streak(user_id)
+                current_streak = streak_data.get("current_streak", 0)
+                
+                reward_config = next((r for r in REWARDS_CONFIG if r["id"] == required_reward), None)
+                required_days = reward_config["days"] if reward_config else 0
+                days_remaining = max(0, required_days - current_streak)
+                
+                return {
+                    "accessible": False,
+                    "feature": feature,
+                    "type": "streak_preference",
+                    "reason": "requires_streak",
+                    "current_streak": current_streak,
+                    "required_days": required_days,
+                    "days_remaining": days_remaining,
+                    "message": (
+                        f"You'll unlock {feature.replace('_', ' ')} at Day {required_days}. "
+                        f"You're at Day {current_streak} — just {days_remaining} more day{'s' if days_remaining != 1 else ''}!"
+                    ),
+                    "ui_block": {
+                        "type": "unlock_countdown",
+                        "feature": feature,
+                        "days_remaining": days_remaining
+                    }
+                }
+        
+        # Unknown feature - assume accessible
+        return {
+            "accessible": True,
+            "feature": feature,
+            "type": "unknown",
+            "message": "Feature access check not applicable"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking feature access: {e}")
+        return {
+            "accessible": False,
+            "error": str(e)
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 12. NAVIGATION TOOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -1640,6 +1790,9 @@ def get_all_tools():
         # Deep Profiling
         store_inferred_profile_fact,
         
+        # Feature Access
+        check_feature_access,
+        
         # Navigation
         navigate_to_screen,
     ]
@@ -1670,9 +1823,11 @@ def get_tools_by_context(context: str) -> List:
             get_patient_profile,
             update_user_preference,  # Critical: Save explicit user preferences
             store_inferred_profile_fact,  # Deep Profiling: Save inferred insights
+            check_feature_access,  # Check unlock status for gated features
             get_cycle_info,
             get_hormone_analysis,
             search_health_knowledge,
+            navigate_to_screen,  # Navigate to PaywallScreen for Pro features
         ],
         "know_body": [
             search_health_knowledge,

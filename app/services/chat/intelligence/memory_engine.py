@@ -61,6 +61,20 @@ class ConversationInsight:
     related_symptoms: List[str] = field(default_factory=list)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEEP PROFILING SCHEMA (Module-level for import)
+# ═══════════════════════════════════════════════════════════════════════════════
+IDEAL_PROFILE_FIELDS = {
+    "fitness_habits": {"name": "Fitness Habits", "description": "Current movement level and comfort with exercise"},
+    "stress_landscape": {"name": "Stress Landscape", "description": "Common stressors and coping mechanisms"},
+    "circadian_rhythm": {"name": "Circadian Rhythm", "description": "Natural energy peaks and morning/evening habits"},
+    "sleep_profile": {"name": "Sleep Profile", "description": "Typical sleep duration and quality issues"},
+    "long_term_goals": {"name": "Long-Term Goals", "description": "Deep motivations (e.g., managing symptoms, fertility)"},
+    "advice_style": {"name": "Advice Style", "description": "Response style (data-driven vs supportive vs direct)"},
+    "life_archetype": {"name": "Life Archetype", "description": "Busy professional, student, parent, fitness enthusiast, etc."}
+}
+
+
 class MemoryEngine:
     """
     The memory system that makes AUVRA remember like a doctor.
@@ -71,6 +85,9 @@ class MemoryEngine:
     - Patterns they've observed
     - What to watch out for
     """
+    
+    # Reference to module-level schema
+    IDEAL_PROFILE_FIELDS = IDEAL_PROFILE_FIELDS
     
     def __init__(self, db: Session):
         self.db = db
@@ -84,18 +101,6 @@ class MemoryEngine:
         # Extracted insights
         self.insights: Dict[str, ConversationInsight] = {}
 
-    # ═══════════════════════════════════════════════════════════════════════════════
-    # DEEP PROFILING SCHEMA
-    # ═══════════════════════════════════════════════════════════════════════════════
-    IDEAL_PROFILE_FIELDS = {
-        "fitness_habits": "Current movement level and comfort with exercise",
-        "stress_landscape": "Common stressors and coping mechanisms",
-        "circadian_rhythm": "Natural energy peaks and morning/evening habits",
-        "sleep_profile": "Typical sleep duration and quality issues",
-        "long_term_goals": "Deep motivations (e.g., managing symptoms, fertility, athletic performance)",
-        "advice_style": "Response style (data-driven vs supportive vs direct)",
-        "life_archetype": "Busy professional, student, parent, fitness enthusiast, etc."
-    }
     
     async def load_full_memory(self, user_id: str, current_session_id: Optional[str] = None) -> Dict[str, Any]:
         """

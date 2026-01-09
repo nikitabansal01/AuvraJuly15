@@ -14,6 +14,7 @@ from app.api.v1.endpoints import timezone  # Timezone management
 from app.api.v1.endpoints import weekly_checkin  # Weekly check-in system
 from app.api.v1.endpoints import care_plan_checkin  # Daily care plan check-in
 from app.api.v1.endpoints import symptom_checkin  # Daily symptom check-in
+from app.api.v1.endpoints import personalization  # 2026 Personalization Vision
 
 api_router = APIRouter()
 
@@ -68,3 +69,6 @@ api_router.include_router(care_plan_checkin.router, prefix="/care-plan-checkin",
 
 # Symptom Check-in router (daily threaded chat)
 api_router.include_router(symptom_checkin.router, prefix="/symptom-checkin", tags=["symptom-checkin"])
+
+# Personalization router (2026 Vision - profile summary, discovery prompts)
+api_router.include_router(personalization.router, prefix="/personalization", tags=["personalization"])
