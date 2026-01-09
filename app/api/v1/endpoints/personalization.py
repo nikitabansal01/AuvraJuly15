@@ -130,7 +130,7 @@ async def get_profile_summary(
     
     # Get streak info
     streak_service = StreakService(db)
-    streak_data = streak_service.get_streak(uid)
+    streak_data = streak_service.get_full_streak_status(uid)
     current_streak = streak_data.get("current_streak", 0)
     
     # Get reward service for unlock checks

@@ -299,8 +299,8 @@ class MemoryEngine:
         
         symptom_by_phase = defaultdict(list)
         for log in symptoms:
-            if log.cycle_phase:
-                symptom_by_phase[log.cycle_phase].append({
+            if log.phase:
+                symptom_by_phase[log.phase].append({
                     "type": log.symptom_type,
                     "severity": log.severity
                 })
@@ -487,7 +487,7 @@ class MemoryEngine:
             if upcoming_phase_name:
                 phase_symptoms = defaultdict(list)
                 for symptom in symptoms:
-                    if symptom.cycle_phase and upcoming_phase_name.lower() in symptom.cycle_phase.lower():
+                    if symptom.phase and upcoming_phase_name.lower() in symptom.phase.lower():
                         phase_symptoms[symptom.symptom_type].append(symptom.severity)
                 
                 for symptom_type, severities in phase_symptoms.items():
