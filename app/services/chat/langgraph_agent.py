@@ -1030,20 +1030,22 @@ NEVER just acknowledge preferences without saving them. The user expects their i
             # Execute each tool call
             for tool_call in response.tool_calls:
                 tool_name = tool_call['name']
-                tool_args = tool_call['args']
+                # Create a copy of args to avoid polluting history with non-serializable objects (like db_session)
+                execution_args = tool_call['args'].copy() if tool_call.get('args') else {}
                 
-                # Inject user_id and db_session
-                tool_args['user_id'] = user_id
-                tool_args['db_session'] = db_session
+                # Inject user_id and db_session into execution args
+                execution_args['user_id'] = user_id
+                execution_args['db_session'] = db_session
                 
                 # Find and execute the tool
                 for tool in tools:
                     if tool.name == tool_name:
                         try:
-                            tool_result = await tool.ainvoke(tool_args)
+                            # Use execution_args for calling the tool
+                            tool_result = await tool.ainvoke(execution_args)
                             tool_calls_made.append({
                                 "tool": tool_name,
-                                "args": {k: v for k, v in tool_args.items() if k != 'db_session'},
+                                "args": {k: v for k, v in execution_args.items() if k != 'db_session'},
                                 "result": tool_result
                             })
                             logger.info(f"✅ Tool {tool_name} executed: {tool_result.get('success', 'completed')}")
