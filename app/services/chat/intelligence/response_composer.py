@@ -236,7 +236,17 @@ class ResponseComposer:
         """Generate smart, contextual, engaging choice buttons."""
         content_lower = content.lower()
         
-        # Get context-specific choices
+        # 1. Check for dynamic [OPTIONS: ...] tag first
+        import re
+        options_match = re.search(r'\[OPTIONS:\s*(.*?)\]', content, re.IGNORECASE)
+        if options_match:
+            options_text = options_match.group(1)
+            # Split by | and clean up
+            dynamic_choices = [opt.strip() for opt in options_text.split('|') if opt.strip()]
+            if dynamic_choices:
+                return dynamic_choices
+        
+        # 2. Get context-specific choices
         context_choices = self.CONTEXTUAL_CHOICES.get(conversation_context, {})
         
         # Check for specific situations
@@ -286,6 +296,10 @@ class ResponseComposer:
     ) -> str:
         """Polish the response content for optimal delivery."""
         polished = content.strip()
+        
+        # Remove [OPTIONS: ...] tag
+        import re
+        polished = re.sub(r'\[OPTIONS:.*?\]', '', polished, flags=re.IGNORECASE).strip()
         
         # Ensure not too many emojis
         emoji_count = sum(1 for c in polished if ord(c) > 127000)
