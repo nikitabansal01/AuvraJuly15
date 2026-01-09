@@ -516,18 +516,25 @@ class QuestionService:
                     guest_plan.uid = uid
                     guest_plan.session_id = None # Clear session owner
 
-                    # CRITICAL FIX: If this guest plan is from the past (e.g. user started yesterday as guest,
-                    # signed up today), mark it as reviewed immediately to prevent "New User Review" bug.
+                    # CRITICAL FIX: Update plan_date to user's current local date
+                    # Guest plans are generated with UTC timezone, but user may be in a different timezone
+                    # e.g., Guest plan created at 19:16 UTC on Jan 9 → UTC date is Jan 9
+                    # But user in Asia/Kolkata (UTC+5:30) → local date is Jan 10
+                    # If we don't update the date, HomeScreen will generate a NEW plan for "today"
                     try:
                         from app.utils.timezone_utils import ZoneInfo
                         from datetime import date
                         tz = ZoneInfo(current_timezone)
                         today = datetime.now(tz).date()
-                        if guest_plan.plan_date < today:
-                            logger.info(f"⚠️ Migrated guest plan {guest_plan.id} is from the past ({guest_plan.plan_date} < {today}). Marking as reviewed.")
-                            guest_plan.review_completed = True
+                        
+                        if guest_plan.plan_date != today:
+                            logger.info(f"🔄 Updating guest plan {guest_plan.id} date from {guest_plan.plan_date} to {today} (user timezone: {current_timezone})")
+                            guest_plan.plan_date = today
+                            # Also mark as NOT needing review since it's effectively "today's" plan
+                            guest_plan.review_completed = False
+                        
                     except Exception as e:
-                        logger.error(f"Failed to check date for guest plan migration: {e}")
+                        logger.error(f"Failed to update plan date for guest plan migration: {e}")
                     
                     # 2. Link all ActionPlanItems
                     guest_plan_items = self.db.query(ActionPlanItem).filter(
