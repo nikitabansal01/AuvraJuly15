@@ -864,6 +864,8 @@ async def get_pending_review(
     2. That plan has at least one incomplete item
     
     Also handles frozen days - still offers review for GPT learning but no streak penalty.
+    
+    CRITICAL: Skip review for user's FIRST EVER plan (new signup protection).
     """
     try:
         uid = current_user.get("uid")
@@ -875,6 +877,14 @@ async def get_pending_review(
         from datetime import timedelta
         
         today = get_user_current_date(uid, db)
+        
+        # CRITICAL FIX: Check how many plans this user has
+        # If user only has ONE plan ever, skip review (it's their first day / signup)
+        total_plan_count = db.query(ActionPlan).filter(ActionPlan.uid == uid).count()
+        
+        if total_plan_count <= 1:
+            logger.info(f"Skipping review for {uid} - user only has {total_plan_count} plan(s) (new user protection)")
+            return PendingReviewResponse(needs_review=False)
         
         # Find the most recent plan that needs review (plan_date < today AND review_completed = False)
         # NO TIME LIMIT - user must review their last plan even if they come back after weeks
