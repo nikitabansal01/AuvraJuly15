@@ -1632,96 +1632,98 @@ class ActionPlanGenerator:
             
             # Generate images in parallel using proper image service call
             if image_mode != "none":
-                async def generate_hero_image(item):
+                all_image_tasks = []
+                
+                async def generate_hero_image(item_id, item_title, item_category):
                     """Generate hero image for an item using proper image service."""
                     task_session = None
                     try:
-                        if not item.title:
-                            return None
-                        
                         async with self.db_semaphore:
                             task_session = await _create_async_session(self.async_session_maker)
-                            # Use TITLE for image generation (title-based cache matching)
-                            logger.info(f"[SESSION_CONVERT] Generating hero for: '{item.title[:40]}' ({item.category})")
+                            logger.info(f"[SESSION_CONVERT] Generating hero for: '{item_title[:40]}' ({item_category})")
                             url, was_cached, cost = await self.image_service.get_or_generate_image(
-                                prompt=item.title,  # Use TITLE, not hero_image_prompt
-                                category=item.category or "food",
+                                prompt=item_title,
+                                category=item_category or "food",
                                 variant_type="hero",
                                 user_id=user_id,
                                 db=task_session
                             )
                         
                         if url:
-                            item.hero_image_url = url
-                            cache_status = "CACHE HIT" if was_cached else "GENERATED"
-                            logger.info(f"[SESSION_CONVERT]  {cache_status}: '{item.title[:30]}...'")
+                            # Update in a separate session to avoid conflicts
+                            async with self.async_session_maker() as update_session:
+                                await update_session.execute(
+                                    update(ActionPlanItem)
+                                    .where(ActionPlanItem.id == item_id)
+                                    .values(hero_image_url=url)
+                                )
+                                await update_session.commit()
                             return url
                         return None
                     except Exception as e:
-                        logger.warning(f"[SESSION_CONVERT] Image generation failed for {item.title}: {e}")
+                        logger.warning(f"[SESSION_CONVERT] Image generation failed for item {item_id}: {e}")
                         return None
                     finally:
                         if task_session:
                             await task_session.close()
-                
-                # Generate all hero images in parallel
-                await asyncio.gather(*[generate_hero_image(item) for item in items], return_exceptions=True)
-                
-                # Commit hero image URLs
-                await db.commit()
-                
-                # Step 7b: Generate variant images in parallel
-                logger.info(f"[SESSION_CONVERT] Generating variant images...")
-                
-                from app.core.database import ActionPlanItemVariant
-                
-                async def generate_variant_image(variant, item_category):
+
+                async def generate_variant_image(variant_id, variant_title, item_category, variant_type):
                     """Generate image for a variant."""
                     task_session = None
                     try:
-                        if not variant.title:
-                            return None
-                        
                         async with self.db_semaphore:
                             task_session = await _create_async_session(self.async_session_maker)
-                            # Use variant title for cache matching
                             url, was_cached, cost = await self.image_service.get_or_generate_image(
-                                prompt=variant.title,
+                                prompt=variant_title,
                                 category=item_category or "food",
-                                variant_type=variant.variant_type,
+                                variant_type=variant_type,
                                 user_id=user_id,
                                 db=task_session
                             )
                         
                         if url:
-                            variant.image_url = url
-                            logger.debug(f"[SESSION_CONVERT] Variant image: '{variant.title[:25]}...'")
+                            async with self.async_session_maker() as update_session:
+                                await update_session.execute(
+                                    update(ActionPlanItemVariant)
+                                    .where(ActionPlanItemVariant.id == variant_id)
+                                    .values(image_url=url)
+                                )
+                                await update_session.commit()
                             return url
                         return None
                     except Exception as e:
-                        logger.warning(f"[SESSION_CONVERT] Variant image failed for {variant.title}: {e}")
+                        logger.warning(f"[SESSION_CONVERT] Variant image failed for variant {variant_id}: {e}")
                         return None
                     finally:
                         if task_session:
                             await task_session.close()
-                
-                # Collect all variants and generate images
-                variant_tasks = []
+
+                # Collect all tasks
                 for item in items:
+                    if item.title:
+                        all_image_tasks.append(generate_hero_image(item.id, item.title, item.category))
+                    
                     variants_result = await db.execute(
                         select(ActionPlanItemVariant).where(ActionPlanItemVariant.item_id == item.id)
                     )
                     variants = variants_result.scalars().all()
                     for variant in variants:
-                        variant_tasks.append(generate_variant_image(variant, item.category))
+                        if variant.title:
+                            all_image_tasks.append(generate_variant_image(variant.id, variant.title, item.category, variant.variant_type))
                 
-                if variant_tasks:
-                    await asyncio.gather(*variant_tasks, return_exceptions=True)
-                    await db.commit()
-                    logger.info(f"[SESSION_CONVERT]  Generated {len(variant_tasks)} variant images")
+                # Execute all 16+ image generations in a single parallel burst!
+                if all_image_tasks:
+                    logger.info(f"[SESSION_CONVERT] Launching {len(all_image_tasks)} image generations in parallel...")
+                    await asyncio.gather(*all_image_tasks, return_exceptions=True)
+                    
+                # Finally reload items in the main session to ensure we have the URLs
+                await db.commit()
+                # Refresh items to see changes from other sessions
+                for item in items:
+                    await db.refresh(item)
             
             total_time_ms = int((time.time() - start_time) * 1000)
-            logger.info(f"[SESSION_CONVERT]  Plan conversion complete in {total_time_ms}ms (saved ~100s)")
+            logger.info(f"[SESSION_CONVERT] Plan conversion complete in {total_time_ms}ms (saved ~100s)")
             
             # Step 8: Format and return response
             return await self._format_plan_response(plan, db)
@@ -4122,7 +4124,13 @@ JSON ONLY:
         - Now: ~15-30 seconds (parallel)
         """
         
-        async def _generate_single_image(prompt: str, category: str, variant_type: str, user_id: str):
+        async def _generate_single_image(
+            prompt: str, 
+            category: str, 
+            variant_type: str, 
+            user_id: str,
+            title_embedding: Optional[List[float]] = None
+        ):
             """Wrapper that creates its own session from shared pool for each image task."""
             task_session = None
             try:
@@ -4137,7 +4145,8 @@ JSON ONLY:
                         category=category,
                         variant_type=variant_type,
                         user_id=user_id,
-                        db=task_session
+                        db=task_session,
+                        title_embedding=title_embedding
                     )
                 
                 if not url:
@@ -4161,51 +4170,60 @@ JSON ONLY:
             # Safety: caller should have short-circuited, but keep this defensive.
             return (actions, 0.0)
 
-        # Build list of all image generation tasks
-        image_tasks = []
-        task_metadata = []  # Track which action/variant each task belongs to
+        # Build list of all image generation task data
+        task_data_list = []
         
         for action_idx, action in enumerate(actions):
             action_title = action.get("title", "Wellness Action")
             action_category = action.get("category", "food")
-            # Use TITLE for image generation (not image_prompt)
-            # Title-based matching gives better cache hits
-            # Prompt enhancement in image_library_service adds the styling
             
-            # Hero image task (with its own session) - Only if NOT "variants_only"
+            # Hero image task data
             if image_mode != "variants_only":
-                logger.info(f"[IMAGES] Queue hero image: '{action_title[:40]}' ({action_category})")
-                image_tasks.append(
-                    _generate_single_image(
-                        prompt=action_title,  # Use TITLE, not image_prompt
-                        category=action_category,
-                        variant_type="hero",
-                        user_id=user_id
-                    )
-                )
-                task_metadata.append({"action_idx": action_idx, "variant_idx": None})
+                task_data_list.append({
+                    "prompt": action_title,
+                    "category": action_category,
+                    "variant_type": "hero",
+                    "meta": {"action_idx": action_idx, "variant_idx": None}
+                })
             
-            # Variant image tasks (each with its own session)
+            # Variant image tasks data
             if image_mode in ["full", "variants_only"]:
                 variants = action.get("variants", [])
                 for variant_idx, variant in enumerate(variants):
                     if not isinstance(variant, dict):
                         continue
-                    # Use variant TITLE for cache matching (fall back to type + action title)
                     variant_title = variant.get("title", f"{variant.get('variant_type', 'variant')} {action_title}")
-                    logger.info(f"[IMAGES] Queue variant image: '{variant_title[:40]}' ({action_category})")
-                    image_tasks.append(
-                        _generate_single_image(
-                            prompt=variant_title,  # Use TITLE for cache matching
-                            category=action_category,
-                            variant_type=variant.get("variant_type", f"variant_{variant_idx}"),
-                            user_id=user_id
-                        )
-                    )
-                    task_metadata.append({"action_idx": action_idx, "variant_idx": variant_idx})
+                    task_data_list.append({
+                        "prompt": variant_title,
+                        "category": action_category,
+                        "variant_type": variant.get("variant_type", f"variant_{variant_idx}"),
+                        "meta": {"action_idx": action_idx, "variant_idx": variant_idx}
+                    })
 
+        if not task_data_list:
+            return (actions, 0.0)
+
+        # 🚀 STEP 1: Fetch ALL embeddings in ONE batch call
+        logger.info(f" [IMAGES] Fetching {len(task_data_list)} embeddings in batch...")
+        all_prompts = [t["prompt"] for t in task_data_list]
+        all_embeddings = await self.image_service._get_batch_embeddings(all_prompts)
         
-        # Execute all image tasks in parallel (each with its own isolated session)
+        # 🚀 STEP 2: Queue all image generation tasks using pre-fetched embeddings
+        image_tasks = []
+        task_metadata = []
+        for i, task_data in enumerate(task_data_list):
+            image_tasks.append(
+                _generate_single_image(
+                    prompt=task_data["prompt"],
+                    category=task_data["category"],
+                    variant_type=task_data["variant_type"],
+                    user_id=user_id,
+                    title_embedding=all_embeddings[i]
+                )
+            )
+            task_metadata.append(task_data["meta"])
+
+        # Execute all image tasks in parallel
         logger.info(f" Generating {len(image_tasks)} images in PARALLEL with isolated sessions... (image_mode={image_mode})")
         start_time = time.time()
         
@@ -6367,6 +6385,7 @@ OUTPUT FORMAT (JSON Array):
                         v_type = defaults[raw_variants.index(variant) % len(defaults)]
                     
                     # Use variant TITLE for cache matching
+                    replacement_title = replacement_action.get("title", "Action")
                     variant_title = variant.get("title", f"{v_type} {replacement_title}")
                     logger.info(f"[BATCH_REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
                     

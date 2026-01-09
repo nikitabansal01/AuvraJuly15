@@ -39,10 +39,8 @@ class ImageLibraryService:
     Stores all images with embeddings for semantic reuse.
     """
     
-    # Similarity threshold for reusing cached images
-    # Using TITLE-based embedding now (not full prompt), so 0.95 works well
-    # Title "Salmon bowl" matches "Salmon with avocado" precisely
-    SIMILARITY_THRESHOLD = 0.95
+    # SIMILARITY_THRESHOLD lowered from 0.95 to 0.85 to increase cache reuse
+    SIMILARITY_THRESHOLD = 0.85
     
     # RunPod pricing
     COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
@@ -55,7 +53,8 @@ class ImageLibraryService:
     MAX_IMAGE_RETRIES = 3  # 3 retries for shared endpoint variability
     RETRY_DELAYS = [1.0, 2.0, 4.0]  # Progressive delays for retries
     
-    # RunPod timeout settings - longer for shared endpoint (can have queue delays)
+    # RunPod timeout settings - synchronous call is much faster
+    RUNPOD_SYNC_TIMEOUT = 60.0  # 60s for sync call (includes cold start)
     RUNPOD_POLL_TIMEOUT = 120  # 120 seconds (2 min) max wait - shared endpoint can be slow
     RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second
     
@@ -97,7 +96,8 @@ class ImageLibraryService:
         category: str,
         variant_type: Optional[str],
         user_id: str,
-        db: AsyncSession
+        db: AsyncSession,
+        title_embedding: Optional[List[float]] = None
     ) -> Tuple[str, bool, float]:
         """
         Get a cached image or generate a new one.
@@ -111,6 +111,7 @@ class ImageLibraryService:
             variant_type: "hero", "tasty", "easy", "healthy", etc.
             user_id: User's UID to avoid showing same image twice
             db: Database session
+            title_embedding: Optional pre-calculated embedding for the title
         
         Returns:
             Tuple of (image_url, was_cached, cost)
@@ -121,10 +122,11 @@ class ImageLibraryService:
         logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
         
         try:
-            # Step 1: Get embedding for the TITLE (not full enhanced prompt!)
+            # Step 1: Get embedding for the TITLE (if not provided)
             # This gives stable cache matching regardless of prompt style changes
-            logger.info(f"[IMAGE] Step 1: Getting embedding for title '{prompt[:30]}...'")
-            title_embedding = await self._get_embedding(prompt)
+            if title_embedding is None:
+                logger.info(f"[IMAGE] Step 1: Getting embedding for title '{prompt[:30]}...'")
+                title_embedding = await self._get_embedding(prompt)
             
             if not title_embedding:
                 logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{prompt[:30]}...' - generating without cache")
@@ -312,8 +314,15 @@ class ImageLibraryService:
         from app.core.database import ImageLibrary
         
         try:
-            # Query all images in this category
-            query = select(ImageLibrary).where(
+            # Query ONLY the columns we need for similarity matching and basic identification
+            from sqlalchemy import select
+            query = select(
+                ImageLibrary.id, 
+                ImageLibrary.image_url, 
+                ImageLibrary.prompt_text, 
+                ImageLibrary.prompt_embedding, 
+                ImageLibrary.used_by_users
+            ).where(
                 ImageLibrary.category == category
             )
             
@@ -321,23 +330,24 @@ class ImageLibraryService:
                 query = query.where(ImageLibrary.variant_type == variant_type)
             
             result = await db.execute(query)
-            images = result.scalars().all()
+            # Result contains tuples due to specific column selection
+            rows = result.all()
             
-            if not images:
+            if not rows:
                 return None
             
             # Find best match that user hasn't seen
             best_match = None
             best_similarity = 0.0
             
-            for image in images:
-                # Check if user has already seen this image
-                used_by = image.used_by_users or []
+            for row in rows:
+                # row structure: (id, image_url, prompt_text, prompt_embedding, used_by_users)
+                used_by = row.used_by_users or []
                 if user_id in used_by:
                     continue
                 
                 # Calculate cosine similarity
-                stored_embedding = image.prompt_embedding
+                stored_embedding = row.prompt_embedding
                 if not stored_embedding:
                     continue
                 
@@ -346,9 +356,9 @@ class ImageLibraryService:
                 if similarity > self.SIMILARITY_THRESHOLD and similarity > best_similarity:
                     best_similarity = similarity
                     best_match = {
-                        "id": image.id,
-                        "image_url": image.image_url,
-                        "prompt_text": image.prompt_text,
+                        "id": row.id,
+                        "image_url": row.image_url,
+                        "prompt_text": row.prompt_text,
                         "similarity": similarity
                     }
             
@@ -488,15 +498,8 @@ class ImageLibraryService:
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod Flux Schnell serverless endpoint.
-        
-        Args:
-            prompt: Base image prompt
-            category: "food", "movement", or "mindfulness" for category-specific styling
-        
-        Returns (image_url_or_bytes, generation_time_ms)
-        - Returns URL string if RunPod provides image_url
-        - Returns bytes if RunPod provides base64 image
+        Call RunPod Flux Schnell synchronous endpoint (Fix #18: Performance).
+        Uses /runsync for faster response without polling overhead.
         """
         if not self.runpod_api_key:
             logger.warning("RunPod API key not configured, using placeholder")
@@ -505,10 +508,7 @@ class ImageLibraryService:
         start_time = time.time()
         
         try:
-            # RunPod Serverless API - use async run endpoint
-            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
-            
-            # Enhance prompt with category-specific styling (no negative prompt - Schnell doesn't use it)
+            # Enhanced prompt with category-specific styling
             enhanced_prompt = self._enhance_prompt(prompt, category)
             
             payload = {
@@ -516,8 +516,8 @@ class ImageLibraryService:
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 4,       # FLUX Schnell optimal: 4 steps (fast!)
-                    "guidance": 3.5,                 # Lower = more natural, faster
+                    "num_inference_steps": 4,
+                    "guidance": 3.5,
                     "seed": -1,
                     "image_format": "png"
                 }
@@ -528,34 +528,99 @@ class ImageLibraryService:
                 "Content-Type": "application/json"
             }
             
-            # Submit the job
+            # Use /runsync for single-call execution
+            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/runsync"
+            
+            logger.debug(f"[IMAGE] Sycnhronous request to RunPod: {self.runpod_endpoint}")
+            
             response = await self.client.post(
                 endpoint_url,
                 json=payload,
                 headers=headers,
-                timeout=30.0
+                timeout=self.RUNPOD_SYNC_TIMEOUT
             )
             
             if response.status_code != 200:
-                logger.error(f"RunPod submit returned {response.status_code}: {response.text}")
+                logger.error(f"RunPod runsync returned {response.status_code}: {response.text}")
                 return await self._generate_placeholder_image(prompt)
             
             result = response.json()
-            job_id = result.get("id")
+            status = result.get("status")
             
-            if not job_id:
-                logger.error(f"No job ID in RunPod response: {result}")
+            if status == "COMPLETED":
+                output = result.get("output", {})
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                
+                # Handle output (URL or base64)
+                if isinstance(output, dict):
+                    if output.get("image_url"):
+                        return (output["image_url"], elapsed_ms)
+                    
+                    image_base64 = output.get("image") or output.get("image_base64")
+                    if image_base64:
+                        if image_base64.startswith("data:"):
+                            image_base64 = image_base64.split(",")[1]
+                        return (base64.b64decode(image_base64), elapsed_ms)
+                
+                elif isinstance(output, str):
+                    if output.startswith("data:"):
+                        output = output.split(",")[1]
+                    return (base64.b64decode(output), elapsed_ms)
+            
+            # If not completed (e.g. timeout on RunPod side), fall back to original polling logic for 
+            # safety or return None for retry
+            if status in ["IN_QUEUE", "IN_PROGRESS"]:
+                # The runsync might have returned early due to queue length
+                # We could fall back to polling, but usually we just want to retry
+                logger.warning(f"RunPod runsync returned {status} - trying legacy polling")
+                return await self._call_runpod_flux_legacy(prompt, category)
+
+            return await self._generate_placeholder_image(prompt)
+            
+        except Exception as e:
+            logger.error(f"Error calling RunPod runsync: {e}")
+            return await self._generate_placeholder_image(prompt)
+
+    async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
+        """
+        Legacy polling logic for RunPod (used as fallback).
+        """
+        start_time = time.time()
+        try:
+            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
+            enhanced_prompt = self._enhance_prompt(prompt, category)
+            
+            payload = {
+                "input": {
+                    "prompt": enhanced_prompt,
+                    "width": 512,
+                    "height": 512,
+                    "num_inference_steps": 4,
+                    "guidance": 3.5,
+                    "seed": -1,
+                    "image_format": "png"
+                }
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {self.runpod_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            response = await self.client.post(endpoint_url, json=payload, headers=headers, timeout=30.0)
+            if response.status_code != 200:
                 return await self._generate_placeholder_image(prompt)
             
-            # Poll for completion - use longer timeout for cold start
+            job_id = response.json().get("id")
+            if not job_id:
+                return await self._generate_placeholder_image(prompt)
+            
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
-            max_wait_seconds = self.RUNPOD_POLL_TIMEOUT  # 120 seconds for cold start
             poll_interval = self.RUNPOD_POLL_INTERVAL
-            max_polls = int(max_wait_seconds / poll_interval)
+            max_polls = int(self.RUNPOD_POLL_TIMEOUT / poll_interval)
             
             for poll_num in range(max_polls):
                 await asyncio.sleep(poll_interval)
-                
                 status_response = await self.client.get(status_url, headers=headers)
                 if status_response.status_code != 200:
                     continue
@@ -567,53 +632,30 @@ class ImageLibraryService:
                     output = status_result.get("output", {})
                     elapsed_ms = int((time.time() - start_time) * 1000)
                     
-                    # Handle different output formats
                     if isinstance(output, dict):
-                        # Prefer image_url (returns URL string directly)
                         if output.get("image_url"):
-                            image_url = output["image_url"]
-                            logger.info(f"RunPod image generated in {elapsed_ms}ms: {image_url}")
-                            return (image_url, elapsed_ms)
-                        
-                        # Fallback to base64 image
+                            return (output["image_url"], elapsed_ms)
                         image_base64 = output.get("image") or output.get("image_base64")
                         if image_base64:
                             if image_base64.startswith("data:"):
                                 image_base64 = image_base64.split(",")[1]
-                            image_data = base64.b64decode(image_base64)
-                            logger.info(f"RunPod image generated in {elapsed_ms}ms (base64)")
-                            return (image_data, elapsed_ms)
-                    
+                            return (base64.b64decode(image_base64), elapsed_ms)
                     elif isinstance(output, str):
-                        # Output is direct base64 string
                         if output.startswith("data:"):
                             output = output.split(",")[1]
-                        image_data = base64.b64decode(output)
-                        logger.info(f"RunPod image generated in {elapsed_ms}ms (base64 string)")
-                        return (image_data, elapsed_ms)
-                    
-                    logger.error(f"Could not extract image from output: {output}")
+                        return (base64.b64decode(output), elapsed_ms)
                     return await self._generate_placeholder_image(prompt)
                 
                 elif status == "FAILED":
-                    error = status_result.get("error", "Unknown error")
-                    logger.error(f"RunPod job failed: {error}")
                     return await self._generate_placeholder_image(prompt)
                 
                 elif status in ["IN_QUEUE", "IN_PROGRESS"]:
-                    # Log progress every 30 seconds
-                    elapsed = (poll_num + 1) * poll_interval
-                    if elapsed % 30 < poll_interval:
-                        logger.info(f"⏳ RunPod job {job_id[-8:]} still {status} after {elapsed:.0f}s (cold start possible)")
                     continue
             
-            elapsed_total = int((time.time() - start_time) * 1000)
-            logger.error(f"🚨 RunPod job {job_id[-8:]} timed out after {elapsed_total/1000:.1f}s - will retry")
-            # Return None to trigger retry logic instead of placeholder
-            return (None, elapsed_total)
+            return (None, int((time.time() - start_time) * 1000))
             
         except Exception as e:
-            logger.error(f"Error calling RunPod: {e}")
+            logger.error(f"Error in legacy polling: {e}")
             return await self._generate_placeholder_image(prompt)
     
     async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
@@ -795,8 +837,9 @@ class ImageLibraryService:
             variant_str = f"_{variant_type}" if variant_type else ""
             public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
             
-            # Upload image bytes
-            result = cloudinary.uploader.upload(
+            # Upload image bytes in a separate thread to avoid blocking the event loop
+            result = await asyncio.to_thread(
+                cloudinary.uploader.upload,
                 image_data,
                 public_id=public_id,
                 folder="action-plan-images",
@@ -845,8 +888,9 @@ class ImageLibraryService:
             variant_str = f"_{variant_type}" if variant_type else ""
             public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
             
-            # Upload from URL
-            result = cloudinary.uploader.upload(
+            # Upload from URL in a separate thread to avoid blocking the event loop
+            result = await asyncio.to_thread(
+                cloudinary.uploader.upload,
                 image_url,
                 public_id=public_id,
                 folder="action-plan-images",
