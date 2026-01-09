@@ -104,8 +104,12 @@ class ResponseComposer:
             "feeling_good": ["⚡ Track energy level", "📝 Note what's working", "👋 Just checking in"]
         },
         "personalise": {
-            "general": ["⚙️ Update my preferences", "👤 See my profile", "🔔 Change notifications"],
-            "making_change": ["💾 Save changes", "↩️ Actually, nevermind", "🔧 What else can I change?"]
+            "general": ["🥗 Personalize my diet", "💪 Personalize my exercise", "😴 Personalize my sleep", "🎯 Personalize my goals"],
+            "question_asked": ["🥗 Personalize my diet", "💪 Personalize my exercise", "😴 Personalize my sleep", "🎯 Personalize my goals"],
+            "making_change": ["💾 Save changes", "↩️ Actually, nevermind", "🔧 What else can I change?"],
+            "diet": ["🥬 I'm vegetarian", "🥩 High protein", "🥗 No restrictions", "🤔 Not sure"],
+            "exercise": ["🏃 Moderate exercise", "🚶 Sedentary", "💪 Very active", "🧘 Yoga/Pilates"],
+            "sleep": ["😴 7-8 hours", "🌙 5-6 hours", "☕ Less than 5h", "🛌 8+ hours"]
         },
         "know_body": {
             "general": ["❓ Ask a question", "🌙 Explain my cycle", "🧬 Hormone basics"],
@@ -249,6 +253,20 @@ class ResponseComposer:
         # 2. Get context-specific choices
         context_choices = self.CONTEXTUAL_CHOICES.get(conversation_context, {})
         
+        # Personalize deep-dives (diet, exercise, etc)
+        if conversation_context == "personalise":
+            # If AI asks about specific lifestyle aspects
+            if any(w in content_lower for w in ["diet", "food", "eat"]):
+                return context_choices.get("diet")
+            if any(w in content_lower for w in ["exercise", "workout", "active", "routine"]):
+                return context_choices.get("exercise")
+            if any(w in content_lower for w in ["sleep", "rest", "night"]):
+                return context_choices.get("sleep")
+            
+            # If AI asks a general "how to personalize" question
+            if "?" in content_lower or "let me know" in content_lower or "aspects" in content_lower:
+                return context_choices.get("question_asked")
+
         # Check for specific situations
         
         # Question asked pattern

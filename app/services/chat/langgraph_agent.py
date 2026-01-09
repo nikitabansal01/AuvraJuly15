@@ -697,15 +697,17 @@ def generate_choices(content: str, context: str, user_message: str = "", tool_re
                         return [f"Update my {most_common}", "Track something new", "Show my trends 📊"]
     
     # Question patterns - make choices feel conversational and relevant
-    if "what would you like to" in content_lower or "what specific" in content_lower:
+    if "what would you like to" in content_lower or "what specific" in content_lower or "let me know what" in content_lower:
         if context == "care_plan_modal":
             return ["Change the timing", "Try different activities", "Reduce the number of tasks"]
         elif context == "personalise":
-            return ["🥗 My diet preferences", "💪 My exercise routine", "😴 My sleep schedule"]
+            return ["🥗 Personalize my diet", "💪 Personalize my exercise", "😴 Personalize my sleep", "🎯 Personalize my goals"]
         elif context == "symptom_checkin":
             return ["📊 Track a symptom", "🔍 See my patterns", "❓ Ask about a symptom"]
     
-    if "would you like" in content_lower or "want me to" in content_lower:
+    if "would you like" in content_lower or "want me to" in content_lower or "aspects" in content_lower:
+        if context == "personalise":
+             return ["🥗 Personalize my diet", "💪 Personalize my exercise", "😴 Personalize my sleep", "🎯 Personalize my goals"]
         return ["Yes please! 💜", "Not right now", "Tell me more first"]
     
     if "how are you feeling" in content_lower or "how do you feel" in content_lower:
@@ -745,7 +747,7 @@ def generate_choices(content: str, context: str, user_message: str = "", tool_re
         "symptom_checkin": ["📊 Track a symptom", "🔍 Show my patterns", "✨ I'm feeling good today!"],
         "care_plan_modal": ["✅ Mark something done", "⏰ Adjust my schedule", "📋 Show today's plan"],
         "know_body": ["📚 Tell me more!", "🌸 Explain another topic", "❓ I have a question"],
-        "personalise": ["🥗 My diet", "💪 My exercise", "😴 My sleep", "🎯 My goals"]
+        "personalise": ["🥗 Personalize my diet", "💪 Personalize my exercise", "😴 Personalize my sleep", "🎯 Personalize my goals"]
     }
     
     return defaults.get(context, ["Yes please! 💜", "No thanks", "Tell me more 🤔"])
