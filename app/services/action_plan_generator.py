@@ -5957,25 +5957,47 @@ OUTPUT FORMAT (JSON Array):
                             if message.get("tool_calls"):
                                 logger.info(f" GPT requested {len(message['tool_calls'])} tool calls for replacement citations")
                                 
-                                tool_results = []
-                                for tool_call in message["tool_calls"]:
-                                    if tool_call["function"]["name"] == "search_research_paper":
-                                        args = json.loads(tool_call["function"]["arguments"])
-                                        logger.info(f"   Searching for: {args.get('action_title', 'unknown')}")
-                                        
-                                        # Execute the tool with db for caching
-                                        paper = await execute_pubmed_tool(args, db=db)
-                                        
-                                        if paper and paper.get("title"):
-                                            logger.info(f"   Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                                logger.info(f" GPT requested {len(message['tool_calls'])} tool calls for replacement citations")
+                                
+                                async def process_tool_call(tool_call):
+                                    """Helper to process a single tool call in parallel."""
+                                    try:
+                                        if tool_call["function"]["name"] == "search_research_paper":
+                                            args = json.loads(tool_call["function"]["arguments"])
+                                            # logger.info(f"   Searching for: {args.get('action_title', 'unknown')}")
+                                            
+                                            # CRITICAL: Pass db=None to safe-guard against SQLAlchemy AsyncSession race conditions
+                                            # We rely on Memory Cache + Parallel API fetching here.
+                                            paper = await execute_pubmed_tool(args, db=None)
+                                            
+                                            if paper and paper.get("title"):
+                                                logger.info(f"   Found: {paper.get('title', '')[:50]}... (PMID: {paper.get('pmid', 'N/A')})")
+                                            else:
+                                                logger.warning(f"   No paper found for: {args.get('action_title', 'unknown')}")
+                                            
+                                            return {
+                                                "tool_call_id": tool_call["id"],
+                                                "role": "tool",
+                                                "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
+                                            }
                                         else:
-                                            logger.warning(f"   No paper found for: {args.get('action_title', 'unknown')}")
-                                        
-                                        tool_results.append({
+                                            # Unknown tool
+                                            return {
+                                                "tool_call_id": tool_call["id"],
+                                                "role": "tool",
+                                                "content": json.dumps({"error": "Unknown tool"})
+                                            }
+                                    except Exception as e:
+                                        logger.error(f"Error processing tool call {tool_call['id']}: {e}")
+                                        return {
                                             "tool_call_id": tool_call["id"],
                                             "role": "tool",
-                                            "content": json.dumps(paper) if paper else json.dumps({"error": "No papers found"})
-                                        })
+                                            "content": json.dumps({"error": f"Error: {str(e)}"})
+                                        }
+
+                                # Execute all tool calls in parallel
+                                tasks = [process_tool_call(tc) for tc in message["tool_calls"]]
+                                tool_results = await asyncio.gather(*tasks)
                                 
                                 # Send tool results back to GPT
                                 assistant_message = {

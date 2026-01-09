@@ -117,20 +117,36 @@ class PubMedService:
     5. Semantic Scholar (tertiary - AI-powered relevance)
     """
     
-    # Class-level semaphore for rate limiting - allow 4 concurrent to match our queries
-    _api_semaphore = asyncio.Semaphore(4)  # Allow 4 concurrent API calls for parallel research
-    _MAX_RETRIES = 2  # Reduced from 3 for faster failure
-    _RETRY_DELAYS = [0.5, 1.0]  # Shorter delays
+    # Class-level semaphores for rate limiting per provider
+    # PubMed: 3 req/s without key, 10 req/s with key. We'll set to 5 (or 10 if key present).
+    _pubmed_semaphore = asyncio.Semaphore(3) 
     
-    # IN-MEMORY CACHE: Research rarely changes, cache common queries for instant results
-    # Key: cache_key, Value: (paper_dict, timestamp)
-    # TTL: 24 hours (research papers don't change)
+    # OpenAlex: 10 req/s (polite pool).
+    _openalex_semaphore = asyncio.Semaphore(8)
+    
+    # Semantic Scholar: 1 req/s (unauthenticated).
+    _semantic_semaphore = asyncio.Semaphore(1)
+
+    _MAX_RETRIES = 2 
+    _RETRY_DELAYS = [0.5, 1.0]
+    
+    # IN-MEMORY CACHE
     _memory_cache: Dict[str, Tuple[Dict, float]] = {}
-    _CACHE_TTL = 86400  # 24 hours in seconds
+    _CACHE_TTL = 86400  # 24 hours
     
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=10.0)  # Reduced from 15s
-        self._rate_limit_delay = 0.2  # Reduced from 0.5 seconds
+        self.client = httpx.AsyncClient(timeout=10.0)
+        self._rate_limit_delay = 0.2
+        
+        # Check for PubMed API Key (increases rate limit to 10/s)
+        # We can dynamically adjust the semaphore capacity if needed, 
+        # but for now we'll just check it to add to requests.
+        from app.core.config import settings
+        self.pubmed_api_key = getattr(settings, "PUBMED_API_KEY", None)
+        
+        # If API Key exists, we could theoretically bump the semaphore,
+        # but changing a class-level asyncio.Semaphore is tricky safely.
+        # We'll rely on the API key to reduce 429s.
     
     async def find_citation(
         self,
@@ -272,7 +288,7 @@ class PubMedService:
     async def _search_pubmed(self, query: str, max_results: int = 5) -> Optional[Dict]:
         """Search PubMed for papers, with relevance filtering and rate limiting."""
         # Use semaphore to serialize API calls (Fix #1 - prevents 429)
-        async with self._api_semaphore:
+        async with self._pubmed_semaphore:
             for attempt in range(self._MAX_RETRIES):
                 try:
                     # Exclude clinical guidelines, non-original research, and non-matching populations
@@ -292,6 +308,9 @@ class PubMedService:
                         "mindate": "2010",
                         "maxdate": "2025"
                     }
+                    
+                    if self.pubmed_api_key:
+                        params["api_key"] = self.pubmed_api_key
                     
                     await asyncio.sleep(self._rate_limit_delay)  # Pre-request delay
                     response = await self.client.get(PUBMED_SEARCH_URL, params=params)
@@ -444,6 +463,9 @@ class PubMedService:
                 "retmode": "xml"
             }
             
+            if self.pubmed_api_key:
+                params["api_key"] = self.pubmed_api_key
+            
             response = await self.client.get(PUBMED_FETCH_URL, params=params)
             response.raise_for_status()
             
@@ -591,56 +613,57 @@ class PubMedService:
     
     async def _search_openalex(self, query: str) -> Optional[Dict]:
         """Search OpenAlex for papers (100k/day free)."""
-        try:
-            # Remove boolean operators for OpenAlex
-            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
-            clean_query = re.sub(r'[()]', '', clean_query)
-            
-            params = {
-                "search": clean_query,
-                "filter": "type:article,from_publication_date:2010-01-01",
-                "per-page": 1,
-                "mailto": "auvra@app.com"  # Polite pool for faster responses
-            }
-            
-            response = await self.client.get(OPENALEX_SEARCH_URL, params=params)
-            response.raise_for_status()
-            
-            data = response.json()
-            results = data.get("results", [])
-            
-            if not results:
+        async with self._openalex_semaphore:
+            try:
+                # Remove boolean operators for OpenAlex
+                clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+                clean_query = re.sub(r'[()]', '', clean_query)
+                
+                params = {
+                    "search": clean_query,
+                    "filter": "type:article,from_publication_date:2010-01-01",
+                    "per-page": 1,
+                    "mailto": "auvra@app.com"  # Polite pool for faster responses
+                }
+                
+                response = await self.client.get(OPENALEX_SEARCH_URL, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                results = data.get("results", [])
+                
+                if not results:
+                    return None
+                
+                paper = results[0]
+                
+                # Extract abstract (OpenAlex provides inverted index)
+                abstract = self._reconstruct_openalex_abstract(paper.get("abstract_inverted_index", {}))
+                
+                # Get PMID if available
+                pmid = ""
+                ids = paper.get("ids", {})
+                pmid_url = ids.get("pmid", "")
+                if pmid_url:
+                    pmid = pmid_url.replace("https://pubmed.ncbi.nlm.nih.gov/", "").rstrip("/")
+                
+                doi = paper.get("doi", "").replace("https://doi.org/", "") if paper.get("doi") else ""
+                
+                return {
+                    "title": paper.get("title", "Unknown"),
+                    "journal": paper.get("primary_location", {}).get("source", {}).get("display_name", "Unknown"),
+                    "year": paper.get("publication_year", 2020),
+                    "participants": self._extract_participant_count(abstract),
+                    "finding": self._extract_finding(abstract, paper.get("title", "")),
+                    "pmid": pmid,
+                    "doi": doi,
+                    "verification_link": paper.get("doi", paper.get("id", "")),
+                    "source": "openalex"
+                }
+                
+            except Exception as e:
+                logger.error(f"OpenAlex search error: {e}")
                 return None
-            
-            paper = results[0]
-            
-            # Extract abstract (OpenAlex provides inverted index)
-            abstract = self._reconstruct_openalex_abstract(paper.get("abstract_inverted_index", {}))
-            
-            # Get PMID if available
-            pmid = ""
-            ids = paper.get("ids", {})
-            pmid_url = ids.get("pmid", "")
-            if pmid_url:
-                pmid = pmid_url.replace("https://pubmed.ncbi.nlm.nih.gov/", "").rstrip("/")
-            
-            doi = paper.get("doi", "").replace("https://doi.org/", "") if paper.get("doi") else ""
-            
-            return {
-                "title": paper.get("title", "Unknown"),
-                "journal": paper.get("primary_location", {}).get("source", {}).get("display_name", "Unknown"),
-                "year": paper.get("publication_year", 2020),
-                "participants": self._extract_participant_count(abstract),
-                "finding": self._extract_finding(abstract, paper.get("title", "")),
-                "pmid": pmid,
-                "doi": doi,
-                "verification_link": paper.get("doi", paper.get("id", "")),
-                "source": "openalex"
-            }
-            
-        except Exception as e:
-            logger.error(f"OpenAlex search error: {e}")
-            return None
     
     def _reconstruct_openalex_abstract(self, inverted_index: Dict) -> str:
         """Reconstruct abstract from OpenAlex inverted index format."""
@@ -661,23 +684,24 @@ class PubMedService:
     
     async def _search_semantic_scholar(self, query: str) -> Optional[Dict]:
         """Search Semantic Scholar for papers."""
-        try:
-            # Clean query
-            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
-            clean_query = re.sub(r'[()]', '', clean_query)
-            
-            params = {
-                "query": clean_query,
-                "limit": 1,
-                "fields": "title,abstract,year,venue,externalIds,citationCount"
-            }
-            
-            response = await self.client.get(SEMANTIC_SCHOLAR_URL, params=params)
-            
-            # Handle rate limiting gracefully
-            if response.status_code == 429:
-                logger.warning("Semantic Scholar rate limited, skipping")
-                return None
+        async with self._semantic_semaphore:
+            try:
+                # Clean query
+                clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+                clean_query = re.sub(r'[()]', '', clean_query)
+                
+                params = {
+                    "query": clean_query,
+                    "limit": 1,
+                    "fields": "title,abstract,year,venue,externalIds,citationCount"
+                }
+                
+                response = await self.client.get(SEMANTIC_SCHOLAR_URL, params=params)
+                
+                # Handle rate limiting gracefully
+                if response.status_code == 429:
+                    logger.warning("Semantic Scholar rate limited, skipping")
+                    return None
             
             response.raise_for_status()
             
