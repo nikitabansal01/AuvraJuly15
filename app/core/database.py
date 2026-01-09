@@ -171,7 +171,9 @@ class UserProfile(Base):
     email = Column(String(255), nullable=True)  # Retrieved from Firebase Auth
     current_timezone = Column(String(50), default="Asia/Seoul")  # Current user timezone
     lifestyle_focus = Column(ARRAY(String), nullable=True)  # User's preferred focus areas: ["eat", "move", "pause"]
-    chatbot_memory = Column(JSONB, nullable=True)  # Permanent memory for chatbot (preferences, facts)
+    # NOTE: keep nullable=True for backwards compatibility with existing rows,
+    # but default new rows to an empty dict so reads never see NULL unless legacy data.
+    chatbot_memory = Column(JSONB, nullable=True, default=dict)  # Permanent memory for chatbot (preferences, facts)
     
     # Feedback summarization fields
     feedback_summary = Column(Text, nullable=True)  # GPT-generated summary of historical feedback

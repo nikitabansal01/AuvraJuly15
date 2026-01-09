@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from collections.abc import Mapping
 
 from app.core.database import get_db, UserProfile
 from app.api.v1.endpoints.auth import get_current_user
@@ -125,7 +126,10 @@ async def get_profile_summary(
     
     # Get user profile
     profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
-    memory = profile.chatbot_memory if profile else {}
+    raw_memory = profile.chatbot_memory if profile else None
+    # `chatbot_memory` is nullable; it can be NULL/None for existing users.
+    # Normalize to a real dict so we never call `.get()` on None.
+    memory: Dict[str, Any] = dict(raw_memory) if isinstance(raw_memory, Mapping) else {}
     is_pro = profile.is_pro if profile and hasattr(profile, 'is_pro') else False
     
     # Get streak info
@@ -138,7 +142,7 @@ async def get_profile_summary(
     
     # Build known traits
     known_traits: List[TraitChip] = []
-    inferred = memory.get("inferred_profile", {})
+    inferred = memory.get("inferred_profile") or {}
     
     # Add inferred traits
     for field, data in inferred.items():
