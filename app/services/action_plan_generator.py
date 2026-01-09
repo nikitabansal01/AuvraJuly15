@@ -3558,11 +3558,11 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
 {research_summary}
 """
             
-            # ================================================================
             # API CALL: OpenAI PRIMARY, Groq FALLBACK on ANY error
             # ================================================================
             use_groq = False
             openai_error = None
+            response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
             openai_payload = {
@@ -3608,11 +3608,11 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     logger.warning(f" OpenAI failed: {openai_error}")
                     
             except Exception as e:
-                openai_error = str(e)
+                openai_error = str(e) or "Unknown OpenAI Error" # Ensure not empty string
                 logger.warning(f" OpenAI exception: {openai_error[:200]}")
             
             # Fallback to Groq if OpenAI failed for ANY reason
-            if openai_error and GROQ_API_KEY:
+            if openai_error is not None and GROQ_API_KEY:
                 logger.info(f" Falling back to Groq with model: {GROQ_FALLBACK_MODEL}")
                 use_groq = True
                 is_groq = True
@@ -3678,8 +3678,13 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                     logger.error(f" Groq exception: {e}")
                     return (None, total_cost)
                     
-            elif openai_error:
-                logger.error(f" OpenAI failed and no Groq API key for fallback")
+            elif openai_error is not None:
+                logger.error(f" OpenAI failed and no Groq API key for fallback: {openai_error}")
+                return (None, total_cost)
+            
+            # Final safety check before processing
+            if response is None:
+                logger.error("Critical Error: response is None after all API attempts")
                 return (None, total_cost)
             
             data = response.json()
