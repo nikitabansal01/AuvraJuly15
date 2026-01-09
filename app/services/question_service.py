@@ -515,6 +515,19 @@ class QuestionService:
                     # 1. Link the ActionPlan to the user
                     guest_plan.uid = uid
                     guest_plan.session_id = None # Clear session owner
+
+                    # CRITICAL FIX: If this guest plan is from the past (e.g. user started yesterday as guest,
+                    # signed up today), mark it as reviewed immediately to prevent "New User Review" bug.
+                    try:
+                        from app.utils.timezone_utils import ZoneInfo
+                        from datetime import date
+                        tz = ZoneInfo(current_timezone)
+                        today = datetime.now(tz).date()
+                        if guest_plan.plan_date < today:
+                            logger.info(f"⚠️ Migrated guest plan {guest_plan.id} is from the past ({guest_plan.plan_date} < {today}). Marking as reviewed.")
+                            guest_plan.review_completed = True
+                    except Exception as e:
+                        logger.error(f"Failed to check date for guest plan migration: {e}")
                     
                     # 2. Link all ActionPlanItems
                     guest_plan_items = self.db.query(ActionPlanItem).filter(
@@ -625,6 +638,25 @@ class QuestionService:
                                     image_mode="full",  # Generate all 16 images in parallel
                                     skip_quality_check=False  # Run full quality checks
                                 )
+                                
+                                # CRITICAL FIX: Mark new plan as reviewed if it's from the past
+                                try:
+                                    # Since generate_new_plan returns a dict, we need to find the plan object
+                                    # But generate_new_plan already commits. Let's find it by id.
+                                    if result and result.get("success") and result.get("plan_id"):
+                                        from app.core.database import ActionPlan
+                                        plan_id = result.get("plan_id")
+                                        # Use a fresh query within the same session
+                                        from sqlalchemy import select
+                                        stmt = select(ActionPlan).where(ActionPlan.id == plan_id)
+                                        db_plan = (await db.execute(stmt)).scalar_one_or_none()
+                                        if db_plan and db_plan.plan_date < today:
+                                            logger.info(f"⚠️ Newly generated plan {db_plan.id} is from the past ({db_plan.plan_date} < {today}). Marking as reviewed.")
+                                            db_plan.review_completed = True
+                                            await db.commit()
+                                except Exception as e:
+                                    logger.error(f"Failed to auto-review past plan: {e}")
+                                    
                                 return result
                         
                         # Run in event loop
