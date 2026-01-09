@@ -1288,7 +1288,7 @@ async def update_user_preference(
                 # Get streak info for better messaging
                 from app.services.streak_service import StreakService, REWARDS_CONFIG
                 streak_service = StreakService(db_session)
-                streak_data = streak_service.get_streak(user_id)
+                streak_data = streak_service.get_full_streak_status(user_id)
                 current_streak = streak_data.get("current_streak", 0)
                 
                 # Find required days for this reward
@@ -1657,7 +1657,7 @@ async def check_feature_access(
             else:
                 # Get streak info
                 streak_service = StreakService(db_session)
-                streak_data = streak_service.get_streak(user_id)
+                streak_data = streak_service.get_full_streak_status(user_id)
                 current_streak = streak_data.get("current_streak", 0)
                 
                 reward_config = next((r for r in REWARDS_CONFIG if r["id"] == required_reward), None)
