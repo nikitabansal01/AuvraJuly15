@@ -160,20 +160,28 @@ class ContextEngine:
     async def build_full_context(
         self,
         user_id: str,
-        timezone: str = "UTC"
+        timezone: str = "UTC",
+        profile_gaps: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Build comprehensive context for deeply personalized responses.
+        
+        Args:
+            user_id: The user's ID
+            timezone: User's timezone
+            profile_gaps: Optional gaps from MemoryEngine._load_profile_gaps()
         """
         context = {
             "cycle": await self._build_cycle_context(user_id),
             "time": self._build_time_context(timezone),
             "streak": await self._build_streak_context(user_id),
             "personalization": await self._build_personalization_context(user_id),
-            "moment": self._assess_current_moment(user_id)
+            "moment": await self._assess_current_moment(user_id),
+            "profiling": self._build_profiling_context(profile_gaps) if profile_gaps else None
         }
         
         return context
+
     
     async def _build_cycle_context(self, user_id: str) -> CycleContext:
         """Build deep cycle awareness."""
@@ -612,14 +620,154 @@ class ContextEngine:
             is_new_to_tracking=is_new
         )
     
-    def _assess_current_moment(self, user_id: str) -> Dict[str, Any]:
-        """Assess what this moment means for the user."""
-        # This synthesizes all context into actionable moment awareness
-        return {
-            "relevance_focus": [],  # What's most relevant right now
-            "conversation_hints": [],  # Hints for what to discuss
-            "avoid_topics": []  # What not to bring up
+    async def _assess_current_moment(self, user_id: str) -> Dict[str, Any]:
+        """
+        Assess user engagement state for calibrating conversation depth.
+        
+        Detects:
+        - Flow State: User is engaged, giving detailed responses
+        - Resistance State: User is brief, dismissive, or off-topic
+        - Celebration State: User just hit a milestone
+        """
+        from app.core.database import ChatSession, ChatMessage
+        
+        # Analyze recent messages to determine engagement state
+        try:
+            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            recent_sessions = self.db.query(ChatSession).filter(
+                and_(
+                    ChatSession.user_id == user_id,
+                    ChatSession.created_at >= one_hour_ago
+                )
+            ).all()
+            
+            if not recent_sessions:
+                return {
+                    "engagement_state": "neutral",
+                    "profiling_depth": "exploratory",
+                    "relevance_focus": [],
+                    "conversation_hints": ["Start with a warm check-in"],
+                    "avoid_topics": []
+                }
+            
+            # Get user messages from recent sessions
+            user_messages = []
+            for session in recent_sessions:
+                msgs = self.db.query(ChatMessage).filter(
+                    and_(
+                        ChatMessage.session_id == session.id,
+                        ChatMessage.role == "user"
+                    )
+                ).order_by(ChatMessage.created_at.desc()).limit(10).all()
+                user_messages.extend(msgs)
+            
+            if not user_messages:
+                return {
+                    "engagement_state": "neutral",
+                    "profiling_depth": "exploratory",
+                    "relevance_focus": [],
+                    "conversation_hints": [],
+                    "avoid_topics": []
+                }
+            
+            # Calculate average message length
+            avg_length = sum(len(m.content) for m in user_messages) / len(user_messages)
+            
+            # Determine engagement state
+            if avg_length > 80:
+                engagement_state = "flow"
+                profiling_depth = "deep"  # User is engaged, ask deeper questions
+            elif avg_length < 20:
+                engagement_state = "resistance"
+                profiling_depth = "minimal"  # User is brief, back off
+            else:
+                engagement_state = "neutral"
+                profiling_depth = "exploratory"
+            
+            return {
+                "engagement_state": engagement_state,
+                "profiling_depth": profiling_depth,
+                "avg_message_length": round(avg_length),
+                "relevance_focus": [],
+                "conversation_hints": ["Match user's energy level"],
+                "avoid_topics": []
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error assessing current moment: {e}")
+            return {
+                "engagement_state": "neutral",
+                "profiling_depth": "exploratory",
+                "relevance_focus": [],
+                "conversation_hints": [],
+                "avoid_topics": []
+            }
+    
+    def _build_profiling_context(self, profile_gaps: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform profile gaps into actionable session goals for the LLM.
+        
+        This enables the Deep Profiling Protocol by giving the LLM
+        specific areas to explore conversationally.
+        """
+        if not profile_gaps:
+            return None
+        
+        missing_fields = profile_gaps.get("missing_fields", {})
+        priority_gap = profile_gaps.get("priority_gap")
+        profile_density = profile_gaps.get("profile_density", 0)
+        
+        # Generate natural question hints for each gap
+        question_strategies = {
+            "fitness_habits": {
+                "observation": "Notice their activity completion patterns",
+                "question_hint": "How does movement feel for you during different phases of your cycle?"
+            },
+            "stress_landscape": {
+                "observation": "Look for mentions of work, deadlines, or overwhelm",
+                "question_hint": "What tends to trigger stress for you most?"
+            },
+            "circadian_rhythm": {
+                "observation": "Note when they're most active vs. tired",
+                "question_hint": "Are you more of a morning person or night owl?"
+            },
+            "sleep_profile": {
+                "observation": "Listen for mentions of tiredness or sleep issues",
+                "question_hint": "How has your sleep been lately?"
+            },
+            "long_term_goals": {
+                "observation": "Understand their deeper motivation for using AUVRA",
+                "question_hint": "What's your biggest hope from tracking your cycle?"
+            },
+            "advice_style": {
+                "observation": "See if they prefer data, encouragement, or direct advice",
+                "question_hint": "Do you prefer I give you the science behind things, or keep it simple?"
+            },
+            "life_archetype": {
+                "observation": "Infer their lifestyle from context clues",
+                "question_hint": "Tell me about a typical day for you."
+            }
         }
+        
+        # Build profiling goals
+        profiling_goals = []
+        for gap_key in list(missing_fields.keys())[:2]:  # Focus on top 2 gaps
+            strategy = question_strategies.get(gap_key, {
+                "observation": f"Explore {gap_key.replace('_', ' ')}",
+                "question_hint": f"Can you tell me about your {gap_key.replace('_', ' ')}?"
+            })
+            profiling_goals.append({
+                "target_field": gap_key,
+                **strategy
+            })
+        
+        return {
+            "profile_density": profile_density,
+            "priority_focus": priority_gap,
+            "session_goals": profiling_goals,
+            "approach": "observational" if profile_density > 0.5 else "exploratory"
+        }
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -676,4 +824,24 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
         if person.diagnosed_conditions:
             lines.append(f"   Conditions: {', '.join(person.diagnosed_conditions[:2])}")
     
+    # Moment Assessment (Engagement State)
+    moment = context.get("moment", {})
+    if moment and moment.get("engagement_state"):
+        engagement = moment["engagement_state"]
+        if engagement == "flow":
+            lines.append("\n💬 ENGAGEMENT: User is in FLOW state - go deeper!")
+        elif engagement == "resistance":
+            lines.append("\n💬 ENGAGEMENT: User is BRIEF - back off, be supportive")
+    
+    # Deep Profiling Goals (for personalise context)
+    profiling = context.get("profiling")
+    if profiling and profiling.get("session_goals"):
+        lines.append("\n🎯 PROFILING SESSION GOALS:")
+        lines.append(f"   Profile density: {profiling.get('profile_density', 0):.0%}")
+        lines.append(f"   Approach: {profiling.get('approach', 'exploratory')}")
+        for goal in profiling.get("session_goals", [])[:2]:
+            lines.append(f"   → {goal.get('target_field', 'unknown')}: {goal.get('observation', '')}")
+            lines.append(f"      Hint: \"{goal.get('question_hint', '')}\"")
+    
     return "\n".join(lines) if lines else ""
+

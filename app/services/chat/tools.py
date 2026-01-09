@@ -1451,8 +1451,108 @@ async def get_user_symptoms(user_id: str, db_session: Any, days: int = 30) -> Di
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 10. NAVIGATION TOOLS
+# 10. DEEP PROFILING TOOLS
 # ═══════════════════════════════════════════════════════════════════════════════
+
+@tool
+async def store_inferred_profile_fact(
+    user_id: str,
+    db_session: Any,
+    fact_type: str,
+    fact_value: str,
+    confidence: str = "medium",
+    context: str = ""
+) -> Dict[str, Any]:
+    """
+    Store an inferred user trait or preference based on conversation.
+    
+    Use this when you learn something about the user without them explicitly saying it.
+    This enables AUVRA to build a deep understanding over time.
+    
+    Args:
+        user_id: The user's ID
+        db_session: Database session
+        fact_type: Category of the insight (fitness_habits, stress_landscape, 
+                   circadian_rhythm, sleep_profile, long_term_goals, 
+                   advice_style, life_archetype)
+        fact_value: What you learned (e.g., "Prefers gentle movement during luteal phase")
+        confidence: How confident you are (low, medium, high)
+        context: Why you believe this / what evidence supports it
+        
+    Returns:
+        Confirmation that the insight was stored
+    """
+    from app.core.database import UserProfile
+    from sqlalchemy.orm.attributes import flag_modified
+    from datetime import datetime
+    
+    try:
+        # Valid fact types (matching MemoryEngine.IDEAL_PROFILE_FIELDS)
+        valid_types = [
+            "fitness_habits", "stress_landscape", "circadian_rhythm",
+            "sleep_profile", "long_term_goals", "advice_style", "life_archetype"
+        ]
+        
+        if fact_type not in valid_types:
+            return {
+                "success": False,
+                "error": f"Invalid fact_type: {fact_type}. Must be one of: {', '.join(valid_types)}"
+            }
+        
+        if confidence not in ["low", "medium", "high"]:
+            confidence = "medium"
+        
+        # Get user profile
+        profile = db_session.query(UserProfile).filter(UserProfile.uid == user_id).first()
+        if not profile:
+            profile = UserProfile(uid=user_id, chatbot_memory={})
+            db_session.add(profile)
+        
+        # Initialize chatbot_memory if needed
+        memory = profile.chatbot_memory or {}
+        
+        # Store under inferred_profile namespace to distinguish from explicit preferences
+        if "inferred_profile" not in memory:
+            memory["inferred_profile"] = {}
+        
+        # Store the fact with metadata
+        memory["inferred_profile"][fact_type] = {
+            "value": fact_value,
+            "confidence": confidence,
+            "context": context,
+            "inferred_at": datetime.utcnow().isoformat(),
+            "source": "deep_profiling_conversation"
+        }
+        
+        # Also set the top-level field so MemoryEngine._load_profile_gaps detects it
+        memory[fact_type] = fact_value
+        
+        profile.chatbot_memory = memory
+        flag_modified(profile, "chatbot_memory")
+        db_session.commit()
+        
+        logger.info(f"[DeepProfile] Stored {fact_type}={fact_value} for user {user_id} (confidence: {confidence})")
+        
+        return {
+            "success": True,
+            "fact_type": fact_type,
+            "fact_value": fact_value,
+            "confidence": confidence,
+            "message": f"I've noted that about you! This will help personalize your experience."
+        }
+        
+    except Exception as e:
+        logger.error(f"Error storing inferred profile fact: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 11. NAVIGATION TOOLS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 
 @tool
 def navigate_to_screen(screen_name: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1537,6 +1637,9 @@ def get_all_tools():
         update_user_preference,
         get_user_symptoms,
         
+        # Deep Profiling
+        store_inferred_profile_fact,
+        
         # Navigation
         navigate_to_screen,
     ]
@@ -1565,7 +1668,8 @@ def get_tools_by_context(context: str) -> List:
         ],
         "personalise": [
             get_patient_profile,
-            update_user_preference,  # Critical: Save user preferences
+            update_user_preference,  # Critical: Save explicit user preferences
+            store_inferred_profile_fact,  # Deep Profiling: Save inferred insights
             get_cycle_info,
             get_hormone_analysis,
             search_health_knowledge,

@@ -461,8 +461,6 @@ async def respond_care_plan_checkin(
                     "ui_blocks": [_open_plan_manager_block()],
                 }
 
-                }
-
         # 2. Personalization Intent Handling
         # Intercept before AI to check rewards status deterministically
         if _looks_like_personalize_intent(payload.message_text):

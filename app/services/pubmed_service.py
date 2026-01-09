@@ -703,42 +703,42 @@ class PubMedService:
                     logger.warning("Semantic Scholar rate limited, skipping")
                     return None
             
-            response.raise_for_status()
-            
-            data = response.json()
-            papers = data.get("data", [])
-            
-            if not papers:
+                response.raise_for_status()
+                
+                data = response.json()
+                papers = data.get("data", [])
+                
+                if not papers:
+                    return None
+                
+                paper = papers[0]
+                abstract = paper.get("abstract", "") or ""
+                
+                external_ids = paper.get("externalIds", {}) or {}
+                pmid = external_ids.get("PubMed", "") or ""
+                doi = external_ids.get("DOI", "") or ""
+                
+                return {
+                    "title": paper.get("title", "Unknown"),
+                    "journal": paper.get("venue", "Unknown") or "Unknown",
+                    "year": paper.get("year", 2020) or 2020,
+                    "participants": self._extract_participant_count(abstract),
+                    "finding": self._extract_finding(abstract, paper.get("title", "")),
+                    "pmid": pmid,
+                    "doi": doi,
+                    "verification_link": f"https://doi.org/{doi}" if doi else "",
+                    "source": "semantic_scholar"
+                }
+                
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    logger.warning("Semantic Scholar rate limited")
+                else:
+                    logger.error(f"Semantic Scholar HTTP error: {e.response.status_code}")
                 return None
-            
-            paper = papers[0]
-            abstract = paper.get("abstract", "") or ""
-            
-            external_ids = paper.get("externalIds", {}) or {}
-            pmid = external_ids.get("PubMed", "") or ""
-            doi = external_ids.get("DOI", "") or ""
-            
-            return {
-                "title": paper.get("title", "Unknown"),
-                "journal": paper.get("venue", "Unknown") or "Unknown",
-                "year": paper.get("year", 2020) or 2020,
-                "participants": self._extract_participant_count(abstract),
-                "finding": self._extract_finding(abstract, paper.get("title", "")),
-                "pmid": pmid,
-                "doi": doi,
-                "verification_link": f"https://doi.org/{doi}" if doi else "",
-                "source": "semantic_scholar"
-            }
-            
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                logger.warning("Semantic Scholar rate limited")
-            else:
-                logger.error(f"Semantic Scholar HTTP error: {e.response.status_code}")
-            return None
-        except Exception as e:
-            logger.error(f"Semantic Scholar search error: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"Semantic Scholar search error: {e}")
+                return None
     
     # ═══════════════════════════════════════════════════════════════════════════
     # CACHE LAYER

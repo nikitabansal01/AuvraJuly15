@@ -879,12 +879,19 @@ async def run_chat_agent(
                 except Exception as e:
                     logger.warning(f"Could not load deep memory: {e}")
                 
-                # Load rich context
+                # Load rich context (pass profile gaps for Deep Profiling in personalise mode)
                 timezone = patient_profile.get("timezone", "UTC")
                 try:
-                    rich_context = await context_engine.build_full_context(user_id, timezone)
+                    profile_gaps = deep_memory.get("profile_gaps") if deep_memory else None
+                    if conversation_context == "personalise" and profile_gaps:
+                        rich_context = await context_engine.build_full_context(
+                            user_id, timezone, profile_gaps=profile_gaps
+                        )
+                    else:
+                        rich_context = await context_engine.build_full_context(user_id, timezone)
                 except Exception as e:
                     logger.warning(f"Could not load rich context: {e}")
+
                 
                 # Analyze emotional state
                 emotional_memory = deep_memory.get("emotional", {}) if deep_memory else {}

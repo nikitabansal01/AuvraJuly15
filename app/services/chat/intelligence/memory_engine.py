@@ -83,6 +83,19 @@ class MemoryEngine:
         
         # Extracted insights
         self.insights: Dict[str, ConversationInsight] = {}
+
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # DEEP PROFILING SCHEMA
+    # ═══════════════════════════════════════════════════════════════════════════════
+    IDEAL_PROFILE_FIELDS = {
+        "fitness_habits": "Current movement level and comfort with exercise",
+        "stress_landscape": "Common stressors and coping mechanisms",
+        "circadian_rhythm": "Natural energy peaks and morning/evening habits",
+        "sleep_profile": "Typical sleep duration and quality issues",
+        "long_term_goals": "Deep motivations (e.g., managing symptoms, fertility, athletic performance)",
+        "advice_style": "Response style (data-driven vs supportive vs direct)",
+        "life_archetype": "Busy professional, student, parent, fitness enthusiast, etc."
+    }
     
     async def load_full_memory(self, user_id: str, current_session_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -99,7 +112,8 @@ class MemoryEngine:
                 "predictive": await self._load_predictive_memory(user_id),
                 "weekly_checkins": await self._load_weekly_checkin_memory(user_id),
                 "insights": await self._extract_insights(user_id),
-                "relationship": await self._load_relationship_context(user_id)
+                "relationship": await self._load_relationship_context(user_id),
+                "profile_gaps": await self._load_profile_gaps(user_id)
             }
             
             return memory
@@ -523,6 +537,28 @@ class MemoryEngine:
             })
         
         return insights
+
+    async def _load_profile_gaps(self, user_id: str) -> Dict[str, Any]:
+        """
+        Identify what we DON'T know about the user yet.
+        This drives the Deep Profiling diagnostic protocol.
+        """
+        from app.core.database import UserProfile
+        
+        profile = self.db.query(UserProfile).filter(UserProfile.uid == user_id).first()
+        chatbot_memory = profile.chatbot_memory or {} if profile else {}
+        
+        gaps = {}
+        for field_key, description in self.IDEAL_PROFILE_FIELDS.items():
+            # Check if we have an explicit or inferred value for this
+            if field_key not in chatbot_memory:
+                gaps[field_key] = description
+        
+        return {
+            "missing_fields": gaps,
+            "profile_density": round(1 - (len(gaps) / len(self.IDEAL_PROFILE_FIELDS)), 2),
+            "priority_gap": list(gaps.keys())[0] if gaps else None
+        }
     
     async def _load_relationship_context(self, user_id: str) -> Dict[str, Any]:
         """
@@ -797,8 +833,13 @@ def format_memory_for_prompt(memory: Dict[str, Any]) -> str:
     emotional = memory.get("emotional", {})
     if emotional.get("needs_extra_care"):
         sections.append("\n💝 NEEDS EXTRA CARE - Use gentler tone, more empathy")
-    elif emotional.get("recent_mood_trend") == "positive":
-        sections.append("\n😊 POSITIVE MOOD TREND - Can celebrate wins!")
+        
+    # Profile Gaps (The Deep Profiling Goals)
+    gaps = memory.get("profile_gaps", {})
+    if gaps and gaps.get("missing_fields"):
+        sections.append("\n🔍 PROFILING OPPORTUNITIES (What we don't know yet):")
+        for field, desc in list(gaps["missing_fields"].items())[:3]:  # Limit to top 3 gaps
+            sections.append(f"   - {field}: {desc}")
     
     # Predictive insights
     predictive = memory.get("predictive", {})
@@ -820,3 +861,4 @@ def format_memory_for_prompt(memory: Dict[str, Any]) -> str:
             sections.append(f"   - {insight['content']}")
     
     return "\n".join(sections) if sections else "First interaction with user"
+
