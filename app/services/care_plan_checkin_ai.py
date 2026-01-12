@@ -172,28 +172,65 @@ USER MESSAGE:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LLM-Based Semantic Matching for Care Plan Check-in
+# LLM-Based Semantic Matching with TOOL CALLING
+# Uses OpenAI function calling for reliable structured output
 # ═══════════════════════════════════════════════════════════════════════════════
+
+from openai import AsyncOpenAI
+import os
+
+# OpenAI client for tool calling
+_openai_client = None
+
+def _get_openai_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
+
+
+# Tool definitions for intent classification
+INTENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "classify_user_intent",
+            "description": "Classify the user's intent and optionally select an item from the available options",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "intent": {
+                        "type": "string",
+                        "enum": ["select_item", "select_candidate", "confirm", "cancel", "want_change", "want_alternates", "general_chat"],
+                        "description": "User's primary intent"
+                    },
+                    "selected_index": {
+                        "type": ["integer", "null"],
+                        "description": "0-based index of selected item/candidate if user is selecting one, null otherwise"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "description": "Confidence in the classification (0.0 to 1.0)"
+                    }
+                },
+                "required": ["intent", "confidence"]
+            }
+        }
+    }
+]
 
 
 class UserIntentClassification(BaseModel):
     """LLM-classified user intent from their message."""
-    # What the user wants to do
-    intent: str = Field(
-        default="general_chat",
-        description="User's primary intent: 'select_item', 'select_candidate', 'confirm', 'cancel', 'want_change', 'want_alternates', 'general_chat'"
-    )
-    # If intent is select_item or select_candidate, which one (by index, 0-based)
-    selected_index: Optional[int] = Field(
-        default=None,
-        description="0-based index of the selected item/candidate, or null if no clear selection"
-    )
-    # Confidence in the classification (0.0 to 1.0)
+    intent: str = Field(default="general_chat")
+    selected_index: Optional[int] = Field(default=None)
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class CarePlanSemanticMatcher:
-    """Uses LLM to semantically match user input to available options."""
+    """Uses LLM TOOL CALLING to semantically match user input to available options."""
     
     @staticmethod
     async def classify_intent(
@@ -203,16 +240,10 @@ class CarePlanSemanticMatcher:
         current_context: str = "general"
     ) -> UserIntentClassification:
         """
-        Use LLM to classify user's intent and match to available options.
+        Use LLM FUNCTION CALLING to classify user's intent and match to available options.
         
-        Args:
-            user_message: The user's typed message
-            available_items: List of plan items (with 'title' and 'item_id')
-            available_candidates: List of replacement candidates (with 'title')
-            current_context: What stage the user is in ('choose_item', 'choose_candidate', 'general')
-        
-        Returns:
-            UserIntentClassification with intent and optional selected index
+        Uses OpenAI's tool_choice="required" to force the model to call our function,
+        ensuring we always get structured, typed output.
         """
         items_list = ""
         if available_items:
@@ -228,53 +259,57 @@ class CarePlanSemanticMatcher:
                 for i, c in enumerate(available_candidates)
             ])
         
-        prompt = f"""You are classifying a user's intent in a care plan check-in conversation.
+        system_prompt = """You are an intent classifier for a wellness app. 
+Analyze the user's message and call the classify_user_intent function with the appropriate parameters.
 
-USER MESSAGE: "{user_message}"
-
-CURRENT CONTEXT: {current_context}
-
-{f"AVAILABLE PLAN ITEMS (user may be selecting one):{chr(10)}{items_list}" if items_list else ""}
-
-{f"AVAILABLE REPLACEMENT OPTIONS (user may be choosing one):{chr(10)}{candidates_list}" if candidates_list else ""}
-
-Analyze the user's message and classify their intent. Return STRICT JSON:
-{{
-  "intent": "select_item|select_candidate|confirm|cancel|want_change|want_alternates|general_chat",
-  "selected_index": null or 0-based index of selected item/candidate,
-  "confidence": 0.0-1.0
-}}
-
-INTENT DEFINITIONS:
-- "select_item": User is selecting/referring to a specific action from their plan
-- "select_candidate": User is choosing a replacement option from the suggestions
-- "confirm": User is agreeing/confirming (yes, ok, sure, sounds good, do it, etc.)
-- "cancel": User is declining/canceling (no, nevermind, forget it, skip, etc.)
-- "want_change": User wants to change/replace/swap something in their plan
-- "want_alternates": User wants to see alternative suggestions
-- "general_chat": User is just chatting, not making a specific action
+INTENT MEANINGS:
+- select_item: User is selecting a specific action from their plan (set selected_index to the item number)
+- select_candidate: User is choosing a replacement option (set selected_index to the option number)
+- confirm: User is agreeing (yes, ok, sure, sounds good, do it, perfect, etc.)
+- cancel: User is declining (no, nevermind, forget it, skip, cancel, etc.)
+- want_change: User wants to change/replace something in their plan
+- want_alternates: User wants to see alternatives/suggestions
+- general_chat: User is just chatting, not making a specific action
 
 MATCHING RULES:
-- Match semantically, not literally. "I'll go with the salmon one" → select the salmon item
-- "First one", "the first", "option 1", "I'll take that" → select index 0
-- "Second", "the second option", "number 2" → select index 1
-- "Last one", "the bottom one" → select the last available option
-- If the user mentions ANY word that appears in an item title, consider it a match
-- Be generous with matching - if there's any reasonable connection, make the match
-- Only return general_chat if you're truly uncertain
+- "first", "1", "the first one", "option 1" → selected_index: 0
+- "second", "2", "the second one" → selected_index: 1
+- "last one", "the bottom" → selected_index: (last available index)
+- If user mentions a word from an item title, match that item
+- Be generous - if there's any reasonable connection, make the match
+- Only use general_chat if truly uncertain"""
 
-Return JSON only, no other text."""
-
+        context_msg = f"Current context: {current_context}"
+        if items_list:
+            context_msg += f"\n\nAvailable plan items:\n{items_list}"
+        if candidates_list:
+            context_msg += f"\n\nAvailable replacement options:\n{candidates_list}"
+        
         try:
-            raw, _ = await AIService.call_ai_model(prompt, with_fallback=True)
-            raw = (raw or "").strip()
+            client = _get_openai_client()
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"{context_msg}\n\nUser message: \"{user_message}\""}
+                ],
+                tools=INTENT_TOOLS,
+                tool_choice={"type": "function", "function": {"name": "classify_user_intent"}}
+            )
             
-            extracted = _extract_json_object(raw)
-            if extracted:
-                data = json.loads(extracted)
-                return UserIntentClassification.model_validate(data)
+            # Extract tool call result
+            if response.choices and response.choices[0].message.tool_calls:
+                tool_call = response.choices[0].message.tool_calls[0]
+                if tool_call.function.name == "classify_user_intent":
+                    args = json.loads(tool_call.function.arguments)
+                    logger.info(f"[CarePlanSemanticMatcher] Tool call result: {args}")
+                    return UserIntentClassification(
+                        intent=args.get("intent", "general_chat"),
+                        selected_index=args.get("selected_index"),
+                        confidence=args.get("confidence", 0.8)
+                    )
         except Exception as e:
-            logger.warning(f"[CarePlanSemanticMatcher] Failed to classify intent: {e}")
+            logger.warning(f"[CarePlanSemanticMatcher] Tool calling failed: {e}")
         
         # Fallback: return uncertain classification
         return UserIntentClassification(intent="general_chat", selected_index=None, confidence=0.3)
