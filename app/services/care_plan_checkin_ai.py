@@ -564,3 +564,157 @@ MATCHING RULES:
         )
         return classification.intent == "want_alternates" and classification.confidence > 0.5
 
+
+async def generate_contextual_bot_response(
+    user_message: str,
+    situation: str,
+    context_data: Dict[str, Any],
+    conversation_history: Optional[List[Dict[str, str]]] = None
+) -> str:
+    """
+    Generate natural, contextual bot responses using LLM.
+    
+    Args:
+        user_message: What the user just said
+        situation: Current situation code (showing_alternatives, replacement_complete, no_match_item, no_match_candidate)
+        context_data: Dict with situation-specific data (matched_title, category, candidates, etc.)
+        conversation_history: Recent conversation messages
+        
+    Returns:
+        Natural, contextual bot response string
+    """
+    import asyncio
+    from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
+    import os
+    
+    # Build situation-specific prompts
+    situation_prompts = {
+        "showing_alternatives": """The user wants to change an item in their wellness plan. You matched their request to a specific item and now have alternatives ready.
+
+User said: "{user_message}"
+Matched item: {matched_title} (Category: {category})
+Number of alternatives: {num_alternatives}
+
+Generate a warm, natural response that:
+- Acknowledges what they want to change
+- Confirms you found the right item
+- Introduces the alternatives in a conversational way
+- Ends with inviting them to pick one
+
+Keep it SHORT (1-2 sentences). Be warm, not robotic.""",
+
+        "replacement_complete": """The user just selected a replacement for their wellness plan item, and it has been successfully replaced.
+
+User said: "{user_message}"
+Old item: {old_title}
+New item: {new_title}
+Category: {category}
+
+Generate an enthusiastic, confirming response that:
+- Celebrates the change
+- Confirms what was replaced
+- Makes them feel good about personalizing their plan
+
+Keep it SHORT (1 sentence). Add an emoji if appropriate.""",
+
+        "no_match_item": """The user tried to select an item to change, but you couldn't match what they said to any item in their plan.
+
+User said: "{user_message}"
+Available items: {num_items}
+
+Generate a helpful, friendly response that:
+- Acknowledges you didn't catch that
+- Asks them to pick from the visible options or rephrase
+- Stays encouraging, not frustrating
+
+Keep it SHORT (1 sentence).""",
+
+        "no_match_candidate": """The user tried to pick a replacement option, but you couldn't match what they said to the available candidates.
+
+User said: "{user_message}"
+Available candidates: {num_candidates}
+
+Generate a helpful, gentle response that:
+- Says you didn't catch their choice
+- Guides them to tap an option or rephrase
+- Keeps the tone light
+
+Keep it SHORT (1 sentence)."""
+    }
+    
+    # Get situation-specific prompt
+    prompt_template = situation_prompts.get(situation, "")
+    if not prompt_template:
+        # Fallback to generic response
+        return "I'm here to help! What would you like to do?"
+    
+    # Fill in template with context data
+    try:
+        prompt = prompt_template.format(
+            user_message=user_message,
+            **context_data
+        )
+    except KeyError as e:
+        logger.warning(f"Missing context data for situation {situation}: {e}")
+        return "Let me know what you'd like to do!"
+    
+    # Build conversation context if available
+    context_msg = ""
+    if conversation_history and len(conversation_history) > 0:
+        recent = conversation_history[-3:]  # Last 3 messages
+        context_msg = "\n\nRecent conversation:\n" + "\n".join([
+            f"{msg.get('role', 'unknown')}: {msg.get('content', '')[:80]}"
+            for msg in recent
+        ])
+    
+    system_prompt = """You are Auvra, a warm, empathetic wellness assistant helping women with their personalized action plans.
+
+Your tone is:
+- Warm and encouraging
+- Natural and conversational (like a supportive friend, not a robot)
+- Brief and to-the-point
+- Celebratory when they make changes
+
+CRITICAL: Keep responses SHORT (1-2 sentences max). No long explanations."""
+    
+    try:
+        client = AsyncOpenAI(
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            timeout=8.0,
+            max_retries=2
+        )
+        
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt + context_msg}
+                ],
+                temperature=0.7,  # Slightly higher for natural variation
+                max_tokens=60  # Force brevity
+            ),
+            timeout=10.0
+        )
+        
+        if response.choices and response.choices[0].message.content:
+            generated = response.choices[0].message.content.strip()
+            logger.info(f"[ContextualResponse] Generated for {situation}: {generated[:80]}")
+            return generated
+        
+    except asyncio.TimeoutError:
+        logger.warning(f"[ContextualResponse] Timeout generating response for {situation}")
+    except (APIError, APITimeoutError, RateLimitError) as e:
+        logger.warning(f"[ContextualResponse] API error: {e}")
+    except Exception as e:
+        logger.error(f"[ContextualResponse] Unexpected error: {e}")
+    
+    # Fallback responses if LLM fails
+    fallbacks = {
+        "showing_alternatives": f"Here are some alternatives for {context_data.get('matched_title', 'that item')}. Pick the one you like!",
+        "replacement_complete": f"Done! Your plan now has {context_data.get('new_title', 'the new option')} 🎉",
+        "no_match_item": "I didn't catch that. Could you pick from the options shown or rephrase?",
+        "no_match_candidate": "Hmm, I didn't get that. Please tap one of the choices below!"
+    }
+    
+    return fallbacks.get(situation, "Let me know what you'd like to do!")

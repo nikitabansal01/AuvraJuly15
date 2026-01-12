@@ -21,7 +21,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
 from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.care_plan_checkin_service import CarePlanCheckInService
-from app.services.care_plan_checkin_ai import CarePlanSemanticMatcher
+from app.services.care_plan_checkin_ai import CarePlanSemanticMatcher, generate_contextual_bot_response
 
 router = APIRouter()
 
@@ -554,11 +554,24 @@ async def respond_care_plan_checkin(
                         ai_data["alternate_candidates"] = candidates_result.get("candidates_by_id") or {}
                         thread.actionable_insights = ai_data
                         
+                        # Generate contextual response
+                        matched_item = next((it for it in items if it.get("item_id") == matched_item_id), {})
+                        bot_response = await generate_contextual_bot_response(
+                            user_message=payload.message_text,
+                            situation="showing_alternatives",
+                            context_data={
+                                "matched_title": matched_title,
+                                "category": matched_item.get("category", "wellness"),
+                                "num_alternatives": len(candidates_result.get("candidates_by_id", {}))
+                            },
+                            conversation_history=thread.raw_messages
+                        )
+                        
                         raw = list(thread.raw_messages or [])
                         raw.append({
                             "id": str(uuid4()),
                             "role": "bot",
-                            "content": f"Great! Here are some alternatives for {matched_title}. Which one would you like?",
+                            "content": bot_response,
                             "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                         })
                         thread.raw_messages = raw
@@ -588,10 +601,16 @@ async def respond_care_plan_checkin(
                         "content": payload.message_text,
                         "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                     })
+                    bot_response = await generate_contextual_bot_response(
+                        user_message=payload.message_text,
+                        situation="no_match_item",
+                        context_data={"num_items": len(items)},
+                        conversation_history=thread.raw_messages
+                    )
                     raw.append({
                         "id": str(uuid4()),
                         "role": "bot",
-                        "content": "I couldn't find that item in your plan. Please tap one of the options below, or say 'cancel' to exit.",
+                        "content": bot_response,
                         "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                     })
                     thread.raw_messages = raw
@@ -645,10 +664,21 @@ async def respond_care_plan_checkin(
                         raw = list(thread.raw_messages or [])
                         if result.get("success"):
                             repl_title = matched_candidate.get("title") or matched_candidate.get("specific_action") or "the new option"
+                            old_item = next((it for it in items if it.get("item_id") == item_id), {})
+                            bot_response = await generate_contextual_bot_response(
+                                user_message=payload.message_text,
+                                situation="replacement_complete",
+                                context_data={
+                                    "old_title": old_item.get("title", "the previous item"),
+                                    "new_title": repl_title,
+                                    "category": matched_candidate.get("category", "wellness")
+                                },
+                                conversation_history=thread.raw_messages
+                            )
                             raw.append({
                                 "id": str(uuid4()),
                                 "role": "bot",
-                                "content": f"Done! I replaced it with: {repl_title}. Your plan is updated! 🎉",
+                                "content": bot_response,
                                 "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                             })
                         else:
@@ -687,10 +717,16 @@ async def respond_care_plan_checkin(
                         "content": payload.message_text,
                         "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                     })
+                    bot_response = await generate_contextual_bot_response(
+                        user_message=payload.message_text,
+                        situation="no_match_candidate",
+                        context_data={"num_candidates": len(candidates_by_id)},
+                        conversation_history=thread.raw_messages
+                    )
                     raw.append({
                         "id": str(uuid4()),
                         "role": "bot",
-                        "content": "I couldn't match that option. Please tap one of the choices below, or say 'cancel' to exit.",
+                        "content": bot_response,
                         "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                     })
                     thread.raw_messages = raw
