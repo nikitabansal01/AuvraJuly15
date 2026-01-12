@@ -124,13 +124,18 @@ async def get_today_assignments(
         is_first_plan_for_user = not has_any_plan_ever
         
         # Find the LAST plan that hasn't been reviewed (regardless of how old)
-        pending_review = db.query(ActionPlan).filter(
-            and_(
-                ActionPlan.uid == uid,
-                ActionPlan.plan_date < today_date,
-                ActionPlan.review_completed == False
-            )
-        ).order_by(ActionPlan.plan_date.desc()).first()
+        # CRITICAL: Skip blocking for new users (only 1 plan ever = signup day)
+        total_plan_count = db.query(ActionPlan).filter(ActionPlan.uid == uid).count()
+        
+        pending_review = None
+        if total_plan_count > 1:
+            pending_review = db.query(ActionPlan).filter(
+                and_(
+                    ActionPlan.uid == uid,
+                    ActionPlan.plan_date < today_date,
+                    ActionPlan.review_completed == False
+                )
+            ).order_by(ActionPlan.plan_date.desc()).first()
         
         if pending_review:
             logger.info(f"Blocking plan generation for {uid} due to pending review for {pending_review.plan_date}")
