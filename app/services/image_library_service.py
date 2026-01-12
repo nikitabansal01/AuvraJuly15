@@ -39,8 +39,10 @@ class ImageLibraryService:
     Stores all images with embeddings for semantic reuse.
     """
     
-    # SIMILARITY_THRESHOLD lowered from 0.95 to 0.85 to increase cache reuse
-    SIMILARITY_THRESHOLD = 0.85
+    # SIMILARITY_THRESHOLD increased from 0.85 to 0.92 to prevent
+    # false matches between different food items (e.g., spinach vs salmon)
+    # Higher threshold requires more specific semantic match
+    SIMILARITY_THRESHOLD = 0.92
     
     # RunPod pricing
     COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
