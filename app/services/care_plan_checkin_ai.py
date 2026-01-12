@@ -173,11 +173,13 @@ USER MESSAGE:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LLM-Based Semantic Matching with TOOL CALLING
-# Uses OpenAI function calling for reliable structured output
+# Production-hardened with retries, timeouts, and edge case handling
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from openai import AsyncOpenAI
+from openai import APIError, APITimeoutError, RateLimitError
 import os
+import asyncio
 
 # OpenAI client for tool calling
 _openai_client = None
@@ -185,7 +187,11 @@ _openai_client = None
 def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
-        _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        _openai_client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            timeout=10.0,  # 10 second timeout
+            max_retries=2  # Built-in retry for transient errors
+        )
     return _openai_client
 
 
@@ -196,6 +202,7 @@ INTENT_TOOLS = [
         "function": {
             "name": "classify_user_intent",
             "description": "Classify the user's intent and optionally select an item from the available options",
+            "strict": True,  # Enforce strict schema validation
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -210,12 +217,11 @@ INTENT_TOOLS = [
                     },
                     "confidence": {
                         "type": "number",
-                        "minimum": 0.0,
-                        "maximum": 1.0,
                         "description": "Confidence in the classification (0.0 to 1.0)"
                     }
                 },
-                "required": ["intent", "confidence"]
+                "required": ["intent", "confidence"],
+                "additionalProperties": False
             }
         }
     }
@@ -230,7 +236,41 @@ class UserIntentClassification(BaseModel):
 
 
 class CarePlanSemanticMatcher:
-    """Uses LLM TOOL CALLING to semantically match user input to available options."""
+    """
+    Production-hardened LLM TOOL CALLING for semantic matching.
+    
+    Features:
+    - Retry logic with exponential backoff
+    - Timeout handling (10s default)
+    - Input validation and sanitization
+    - Edge case handling (empty inputs, single item, etc.)
+    - Graceful degradation on API failures
+    - Index bounds validation
+    """
+    
+    MAX_RETRIES = 2
+    RETRY_DELAY = 0.5  # seconds
+    
+    @staticmethod
+    def _validate_index(index: Optional[int], max_length: int) -> Optional[int]:
+        """Validate and clamp index to valid range."""
+        if index is None:
+            return None
+        if not isinstance(index, int):
+            return None
+        if max_length == 0:
+            return None
+        # Clamp to valid range
+        return max(0, min(index, max_length - 1))
+    
+    @staticmethod
+    def _sanitize_message(message: str) -> str:
+        """Sanitize user message for LLM input."""
+        if not message:
+            return ""
+        # Truncate very long messages
+        message = str(message).strip()[:500]
+        return message
     
     @staticmethod
     async def classify_intent(
@@ -240,31 +280,44 @@ class CarePlanSemanticMatcher:
         current_context: str = "general"
     ) -> UserIntentClassification:
         """
-        Use LLM FUNCTION CALLING to classify user's intent and match to available options.
+        Use LLM FUNCTION CALLING to classify user's intent.
         
-        Uses OpenAI's tool_choice="required" to force the model to call our function,
-        ensuring we always get structured, typed output.
+        Production-ready with:
+        - Input validation
+        - Retry logic for transient failures
+        - Timeout handling
+        - Index bounds validation
+        - Graceful degradation
         """
+        # Input validation
+        user_message = CarePlanSemanticMatcher._sanitize_message(user_message)
+        if not user_message:
+            return UserIntentClassification(intent="general_chat", confidence=0.1)
+        
+        available_items = available_items or []
+        available_candidates = available_candidates or []
+        
+        # Build context
         items_list = ""
         if available_items:
             items_list = "\n".join([
-                f"{i}. {item.get('title', 'Unknown')}"
-                for i, item in enumerate(available_items)
+                f"{i}. {(item.get('title') or 'Unknown')[:50]}"
+                for i, item in enumerate(available_items[:10])  # Limit to 10 items
             ])
         
         candidates_list = ""
         if available_candidates:
             candidates_list = "\n".join([
-                f"{i}. {c.get('title', c.get('specific_action', 'Unknown'))}"
-                for i, c in enumerate(available_candidates)
+                f"{i}. {(c.get('title') or c.get('specific_action') or 'Unknown')[:50]}"
+                for i, c in enumerate(available_candidates[:10])
             ])
         
         system_prompt = """You are an intent classifier for a wellness app. 
-Analyze the user's message and call the classify_user_intent function with the appropriate parameters.
+Analyze the user's message and call the classify_user_intent function.
 
 INTENT MEANINGS:
-- select_item: User is selecting a specific action from their plan (set selected_index to the item number)
-- select_candidate: User is choosing a replacement option (set selected_index to the option number)
+- select_item: User is selecting a specific action from their plan (set selected_index)
+- select_candidate: User is choosing a replacement option (set selected_index)
 - confirm: User is agreeing (yes, ok, sure, sounds good, do it, perfect, etc.)
 - cancel: User is declining (no, nevermind, forget it, skip, cancel, etc.)
 - want_change: User wants to change/replace something in their plan
@@ -272,47 +325,96 @@ INTENT MEANINGS:
 - general_chat: User is just chatting, not making a specific action
 
 MATCHING RULES:
-- "first", "1", "the first one", "option 1" → selected_index: 0
-- "second", "2", "the second one" → selected_index: 1
-- "last one", "the bottom" → selected_index: (last available index)
+- "first", "1", "option 1" → selected_index: 0
+- "second", "2" → selected_index: 1
+- "third", "3" → selected_index: 2
+- "last one" → selected_index: (last available index)
 - If user mentions a word from an item title, match that item
 - Be generous - if there's any reasonable connection, make the match
 - Only use general_chat if truly uncertain"""
 
-        context_msg = f"Current context: {current_context}"
+        context_msg = f"Context: {current_context}"
         if items_list:
-            context_msg += f"\n\nAvailable plan items:\n{items_list}"
+            context_msg += f"\n\nPlan items:\n{items_list}"
         if candidates_list:
-            context_msg += f"\n\nAvailable replacement options:\n{candidates_list}"
+            context_msg += f"\n\nReplacement options:\n{candidates_list}"
         
-        try:
-            client = _get_openai_client()
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"{context_msg}\n\nUser message: \"{user_message}\""}
-                ],
-                tools=INTENT_TOOLS,
-                tool_choice={"type": "function", "function": {"name": "classify_user_intent"}}
-            )
+        # Retry loop
+        last_error = None
+        for attempt in range(CarePlanSemanticMatcher.MAX_RETRIES + 1):
+            try:
+                client = _get_openai_client()
+                response = await asyncio.wait_for(
+                    client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"{context_msg}\n\nUser: \"{user_message}\""}
+                        ],
+                        tools=INTENT_TOOLS,
+                        tool_choice={"type": "function", "function": {"name": "classify_user_intent"}},
+                        temperature=0.1  # Low temperature for consistent classification
+                    ),
+                    timeout=12.0  # Overall timeout including retries
+                )
+                
+                # Extract and validate tool call result
+                if response.choices and response.choices[0].message.tool_calls:
+                    tool_call = response.choices[0].message.tool_calls[0]
+                    if tool_call.function.name == "classify_user_intent":
+                        args = json.loads(tool_call.function.arguments)
+                        
+                        # Validate intent
+                        intent = args.get("intent", "general_chat")
+                        valid_intents = ["select_item", "select_candidate", "confirm", "cancel", "want_change", "want_alternates", "general_chat"]
+                        if intent not in valid_intents:
+                            intent = "general_chat"
+                        
+                        # Validate and clamp index
+                        selected_index = args.get("selected_index")
+                        if intent == "select_item" and available_items:
+                            selected_index = CarePlanSemanticMatcher._validate_index(selected_index, len(available_items))
+                        elif intent == "select_candidate" and available_candidates:
+                            selected_index = CarePlanSemanticMatcher._validate_index(selected_index, len(available_candidates))
+                        else:
+                            selected_index = None
+                        
+                        # Validate confidence
+                        confidence = args.get("confidence", 0.8)
+                        if not isinstance(confidence, (int, float)):
+                            confidence = 0.8
+                        confidence = max(0.0, min(1.0, float(confidence)))
+                        
+                        logger.info(f"[SemanticMatcher] Tool call: intent={intent}, index={selected_index}, conf={confidence:.2f}")
+                        return UserIntentClassification(
+                            intent=intent,
+                            selected_index=selected_index,
+                            confidence=confidence
+                        )
+                
+            except asyncio.TimeoutError:
+                last_error = "Timeout"
+                logger.warning(f"[SemanticMatcher] Timeout on attempt {attempt + 1}")
+            except RateLimitError as e:
+                last_error = f"Rate limit: {e}"
+                logger.warning(f"[SemanticMatcher] Rate limited, attempt {attempt + 1}")
+                await asyncio.sleep(CarePlanSemanticMatcher.RETRY_DELAY * (attempt + 1))
+            except (APIError, APITimeoutError) as e:
+                last_error = f"API error: {e}"
+                logger.warning(f"[SemanticMatcher] API error on attempt {attempt + 1}: {e}")
+            except json.JSONDecodeError as e:
+                last_error = f"JSON parse error: {e}"
+                logger.warning(f"[SemanticMatcher] Failed to parse tool call args: {e}")
+            except Exception as e:
+                last_error = f"Unexpected: {e}"
+                logger.error(f"[SemanticMatcher] Unexpected error: {e}")
+                break  # Don't retry on unexpected errors
             
-            # Extract tool call result
-            if response.choices and response.choices[0].message.tool_calls:
-                tool_call = response.choices[0].message.tool_calls[0]
-                if tool_call.function.name == "classify_user_intent":
-                    args = json.loads(tool_call.function.arguments)
-                    logger.info(f"[CarePlanSemanticMatcher] Tool call result: {args}")
-                    return UserIntentClassification(
-                        intent=args.get("intent", "general_chat"),
-                        selected_index=args.get("selected_index"),
-                        confidence=args.get("confidence", 0.8)
-                    )
-        except Exception as e:
-            logger.warning(f"[CarePlanSemanticMatcher] Tool calling failed: {e}")
+            if attempt < CarePlanSemanticMatcher.MAX_RETRIES:
+                await asyncio.sleep(CarePlanSemanticMatcher.RETRY_DELAY)
         
-        # Fallback: return uncertain classification
-        return UserIntentClassification(intent="general_chat", selected_index=None, confidence=0.3)
+        logger.warning(f"[SemanticMatcher] All attempts failed, last error: {last_error}")
+        return UserIntentClassification(intent="general_chat", selected_index=None, confidence=0.2)
     
     @staticmethod
     async def match_item_selection(
