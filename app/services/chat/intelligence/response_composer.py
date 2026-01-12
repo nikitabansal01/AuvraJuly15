@@ -324,11 +324,16 @@ class ResponseComposer:
         polished = re.sub(r'\[OPTIONS:.*?\]', '', polished, flags=re.IGNORECASE).strip()
         
         # Strip markdown formatting (mobile doesn't render it, shows literally)
-        # Remove **bold**, *italic*, __underline__
-        polished = re.sub(r'\*\*([^\*]+)\*\*', r'\1', polished)  # **text** → text
-        polished = re.sub(r'__([^_]+)__', r'\1', polished)      # __text__ → text  
-        polished = re.sub(r'\*([^\*]+)\*', r'\1', polished)     # *text* → text
-        polished = re.sub(r'_([^_]+)_', r'\1', polished)        # _text_ → text
+        # Strip markdown formatting (mobile doesn't render it, shows literally)
+        # Robustly remove ** and __ and * wrappers
+        # Replace **text** with text (DOTALL to handle newlines)
+        polished = re.sub(r'\*\*(.*?)\*\*', r'\1', polished, flags=re.DOTALL)
+        polished = re.sub(r'__(.*?)__', r'\1', polished, flags=re.DOTALL)
+        
+        # Handle italics *text* or _text_ but be careful not to break bullet points
+        # Only replace if not at start of line (bullets)
+        polished = re.sub(r' (?<!^)\*(.*?)\*', r' \1', polished) # *text* inside line
+        polished = re.sub(r' _(.*?)_', r' \1', polished)
         
         # Ensure not too many emojis
         emoji_count = sum(1 for c in polished if ord(c) > 127000)
