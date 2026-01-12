@@ -52,6 +52,8 @@ class WeeklyCheckInService:
         - client records audio (expo-av)
         - uploads here
         - we return transcript text so user can edit before sending
+        
+        Uses gpt-4o-transcribe for better accuracy with women's health context.
         """
         settings = Settings()
         if not settings.OPENAI_API_KEY:
@@ -70,10 +72,32 @@ class WeeklyCheckInService:
         audio.name = file.filename or "yap.m4a"
 
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        transcript = await client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio,
-        )
+        
+        # Health context prompt for better transcription accuracy
+        health_context = """Women's health app check-in conversation.
+Common terms: cycle, period, hormone, progesterone, estrogen, testosterone,
+cramps, bloating, mood, energy, sleep, cortisol, PCOS, endometriosis,
+fatigue, headache, anxiety, stress, period pain, menstrual."""
+        
+        try:
+            # Try gpt-4o-transcribe first (better accuracy)
+            transcript = await client.audio.transcriptions.create(
+                model="gpt-4o-transcribe",
+                file=audio,
+                language="en",
+                prompt=health_context,
+                response_format="verbose_json"
+            )
+        except Exception as e:
+            logger.warning(f"gpt-4o-transcribe failed, falling back to whisper-1: {e}")
+            # Fallback to whisper-1
+            audio.seek(0)  # Reset BytesIO position
+            transcript = await client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio,
+                language="en",
+                prompt=health_context
+            )
 
         text = getattr(transcript, "text", None) or ""
         return text.strip()

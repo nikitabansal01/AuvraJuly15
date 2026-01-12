@@ -115,6 +115,10 @@ class ResponseComposer:
             "general": ["❓ Ask a question", "🌙 Explain my cycle", "🧬 Hormone basics"],
             "answered_question": ["🙋 I have another question", "💡 That makes sense", "📚 Can you explain more?"],
             "learning": ["📖 What else should I know?", "🎯 How does this affect me?", "👍 Got it, thanks!"]
+        },
+        "weekly_checkin": {
+             "general": ["📝 Log a symptom", "📊 Check my trends", "✨ I'm feeling good today!"],
+             "protein_update": ["👍 Sounds good", "🥩 I'll eat more protein", "🤔 Why tomorrow?"]
         }
     }
     
@@ -339,6 +343,13 @@ class ResponseComposer:
             if emotional_reading.get("needs_support") and '💜' not in polished:
                 if not any(e in polished for e in ['😊', '🎉', '❤️', '💪']):
                     polished = polished.rstrip('.!?') + ' 💜'
+        
+        # Add "tomorrow onwards" note for protein/diet changes in weekly check-in
+        if conversation_context == "weekly_checkin":
+             if any(w in polished.lower() for w in ["protein", "diet", "eating", "food"]) and "tomorrow" not in polished.lower():
+                 polished += " (Your action plan will update from tomorrow onwards! 📅)"
+
+        return polished
         
         return polished
     

@@ -694,12 +694,14 @@ EXAMPLE BAD RESPONSE (TOO LONG):
 }}
 
 COMPLETION (after 2-3 questions):
-When is_complete: true, provide a SHORT summary (2-3 sentences max):
+When is_complete: true, provide a WARM, HIGHLY PERSONALIZED summary (max 3 short messages):
+- Reference SPECIFIC triggers/relief factors the user mentioned
+- Tell them EXACTLY how their action plan will change tomorrow
 {{
     "messages": [
-        "Thanks for sharing, {user_name}! 💜",
-        "I've noted that [trigger] affected your {symptom} this week.",
-        "I'll use this to personalize your next action plan."
+        "Thank you for sharing about your {symptom} this week, {user_name}! 💜",
+        "I noted that [specific trigger they mentioned] affected you, and [specific relief they mentioned] really helped.",
+        "Starting tomorrow, I'll adjust your action plan to include more [relief-related activities] and help you manage [trigger]. You're doing great!"
     ],
     "tap_options": [],
     "is_complete": true,
@@ -899,33 +901,38 @@ You are Dr. Auvra completing a weekly check-in with {user_name} about their {sym
 CONVERSATION:
 {history_text}
 
-Generate a JSON response with:
-1. "messages": Array of 2-3 SHORT messages (1 sentence each) for the completion
-2. "insights": Extracted actionable insights from the conversation
+Generate a JSON response with a WARM, HIGHLY PERSONALIZED completion message that:
+1. Acknowledges SPECIFICALLY what the user shared (triggers, relief factors, severity changes)
+2. Makes them feel deeply understood and validated - reference their exact words
+3. CRITICALLY: Tell them EXACTLY how their action plan will change tomorrow based on this check-in
+4. Use their name and symptom naturally throughout
 
-Example output:
+EXAMPLE OUTPUT (notice how specific it is about action plan changes):
 {{
     "messages": [
-        "Thanks for sharing, {user_name}! 💜",
-        "I've noted that work stress has been affecting your {symptom}.",
-        "I'll use this to adjust your action plan."
+        "Thank you for sharing about your {symptom} this week, {user_name}! 💜",
+        "I noted that [specific trigger they mentioned] has been making things harder, and that [specific relief they mentioned] has really helped you.",
+        "Starting tomorrow, I'll adjust your action plan to include more [relief-related activities] and help you avoid [trigger-related situations]. You're doing great!"
     ],
     "insights": {{
         "triggers_identified": ["work stress", "poor sleep"],
-        "relief_factors_identified": ["morning meditation"],
+        "relief_factors_identified": ["morning meditation", "herbal tea"],
         "severity_trend": "worsening",
-        "suggested_additions": ["evening relaxation routine", "stress management"],
-        "suggested_removals": [],
-        "key_insight": "Work stress is the main trigger this week"
+        "suggested_additions": ["evening relaxation routine", "stress-reducing movement"],
+        "suggested_removals": ["high-intensity exercise"],
+        "key_insight": "Work stress is the main trigger - needs calming activities"
     }}
 }}
 
-RULES:
-- Messages must be SHORT (1 sentence each)
-- Extract SPECIFIC triggers and relief factors from conversation
+CRITICAL RULES:
+- Messages MUST be personalized with SPECIFIC details from conversation (not generic "stress affected you")
+- ALWAYS explain HOW the action plan will change based on their specific insights
+- Messages must be SHORT (1 sentence each, max 3 messages)
 - severity_trend: "improving" | "worsening" | "stable"
-- suggested_additions: Actions to add to next action plan
-- key_insight: One sentence summary for action plan generator
+- suggested_additions: Specific actions to add based on what HELPED them
+- suggested_removals: Actions to remove based on what TRIGGERED symptoms
+- key_insight: One sentence summary that captures the main takeaway
+- Make the user feel TRULY UNDERSTOOD and CARED FOR
 """
         
         try:
