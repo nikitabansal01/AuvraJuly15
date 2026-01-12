@@ -429,30 +429,39 @@ MATCHING RULES:
         """
         if not items:
             return None
+            
+        user_text_lower = (user_message or "").strip().lower()
         
-        # Try LLM-based classification first
+        # 1. TEXT MATCHING FIRST (Deterministic & Fast)
+        # If user types the name of an item, match it immediately without LLM
+        if len(user_text_lower) > 2:
+            # Check for exact matches first
+            for item in items:
+                item_title = (item.get("title") or "").strip().lower()
+                if item_title == user_text_lower:
+                    logger.info(f"[CarePlanSemanticMatcher] Exact match found: '{item.get('title')}'")
+                    return item.get("item_id")
+            
+            # Check for substring matches
+            for item in items:
+                item_title = (item.get("title") or "").strip().lower()
+                if user_text_lower in item_title or item_title in user_text_lower:
+                    logger.info(f"[CarePlanSemanticMatcher] Substring match found: '{user_message}' -> '{item.get('title')}'")
+                    return item.get("item_id")
+        
+        # 2. Try LLM-based classification if text match failed
         classification = await CarePlanSemanticMatcher.classify_intent(
             user_message=user_message,
             available_items=items,
             current_context="choose_item"
         )
         
-        if classification.intent in ("select_item", "confirm") and classification.selected_index is not None:
-            if 0 <= classification.selected_index < len(items):
+        # Relaxed intent check: If ANY valid index was returned, trust it.
+        # The user might say "replace Pilates" (intent=want_change) but we know it refers to item 3
+        if classification.selected_index is not None:
+             if 0 <= classification.selected_index < len(items):
+                logger.info(f"[CarePlanSemanticMatcher] LLM selected index {classification.selected_index} (intent={classification.intent})")
                 return items[classification.selected_index].get("item_id")
-        
-        # FALLBACK: Simple text matching if LLM didn't match
-        # This ensures the flow works even if LLM is uncertain
-        user_text_lower = (user_message or "").strip().lower()
-        if len(user_text_lower) > 2:
-            for item in items:
-                item_title = (item.get("title") or "").strip().lower()
-                # Match if: user text is in title, or title is in user text, or any word matches
-                if (user_text_lower in item_title or 
-                    item_title in user_text_lower or
-                    any(word in item_title for word in user_text_lower.split() if len(word) > 2)):
-                    logger.info(f"[CarePlanSemanticMatcher] Fallback match: '{user_message}' -> '{item.get('title')}'")
-                    return item.get("item_id")
         
         return None
     
@@ -475,34 +484,44 @@ MATCHING RULES:
             for cid, candidate in candidates_by_id.items()
         ]
         
-        # Try LLM-based classification first
+        user_text_lower = (user_message or "").strip().lower()
+        
+        # 1. TEXT MATCHING FIRST (Deterministic & Fast)
+        if len(user_text_lower) > 2:
+            # Check for exact matches first
+            for candidate in candidates_list:
+                candidate_title = (candidate.get("title") or candidate.get("specific_action") or "").strip().lower()
+                if candidate_title and candidate_title == user_text_lower:
+                    logger.info(f"[CarePlanSemanticMatcher] Candidate exact match: '{candidate_title}'")
+                    return candidate["id"]
+            
+            # Check for substring matches
+            for candidate in candidates_list:
+                candidate_title = (candidate.get("title") or candidate.get("specific_action") or "").strip().lower()
+                if candidate_title and (user_text_lower in candidate_title or candidate_title in user_text_lower):
+                    logger.info(f"[CarePlanSemanticMatcher] Candidate substring match: '{user_message}' -> '{candidate_title}'")
+                    return candidate["id"]
+        
+        # 2. Try LLM-based classification if text match failed
         classification = await CarePlanSemanticMatcher.classify_intent(
             user_message=user_message,
             available_candidates=candidates_list,
             current_context="choose_candidate"
         )
         
-        if classification.intent in ("select_candidate", "confirm") and classification.selected_index is not None:
+        # Relaxed intent check: If ANY valid index was returned, trust it.
+        if classification.selected_index is not None:
             if 0 <= classification.selected_index < len(candidates_list):
+                logger.info(f"[CarePlanSemanticMatcher] LLM selected candidate index {classification.selected_index} (intent={classification.intent})")
                 return candidates_list[classification.selected_index]["id"]
         
         # If user confirms without selection, use first candidate
         if classification.intent == "confirm" and classification.confidence > 0.6:
             if candidates_list:
+                logger.info(f"[CarePlanSemanticMatcher] User confirmed, selecting first candidate")
                 return candidates_list[0]["id"]
         
-        # FALLBACK: Simple text matching if LLM didn't match
-        user_text_lower = (user_message or "").strip().lower()
-        if len(user_text_lower) > 2:
-            for candidate in candidates_list:
-                candidate_title = (candidate.get("title") or candidate.get("specific_action") or "").strip().lower()
-                if candidate_title and (
-                    user_text_lower in candidate_title or 
-                    candidate_title in user_text_lower or
-                    any(word in candidate_title for word in user_text_lower.split() if len(word) > 2)
-                ):
-                    logger.info(f"[CarePlanSemanticMatcher] Fallback candidate match: '{user_message}' -> '{candidate.get('title')}'")
-                    return candidate["id"]
+        return None
         
         return None
     
