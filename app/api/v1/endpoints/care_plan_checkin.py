@@ -836,17 +836,15 @@ async def respond_care_plan_checkin(
         items = service.get_plan_items_for_ui(uid, limit=8)
         
         # Try to match user's text directly to a plan item (for typed responses to pickers)
-        user_text_lower = (payload.message_text or "").strip().lower()
-        matched_item_id = None
-        if items and len(user_text_lower) > 2:  # Only try matching for meaningful text
-            for item in items:
-                item_title = (item.get("title") or "").strip().lower()
-                # Match: exact, user text is substring of item, or item is substring of user text
-                if (item_title == user_text_lower or 
-                    user_text_lower in item_title or 
-                    item_title in user_text_lower):
-                    matched_item_id = item.get("item_id")
-                    break
+        # Use the robust SemanticMatcher which now prioritizes text matching FIRST
+        matched_item_id = await CarePlanSemanticMatcher.match_item_selection(
+            user_message=payload.message_text,
+            items=items
+        )
+        if matched_item_id:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[CarePlanCheckIn] Direct match at bottom of flow: '{payload.message_text}' -> item {matched_item_id}")
         # Use directly matched item, or try AI-extracted item title
         selected_item_id = matched_item_id
         if not selected_item_id and ai_response.insights:
