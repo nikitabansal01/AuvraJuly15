@@ -323,6 +323,13 @@ class ResponseComposer:
         import re
         polished = re.sub(r'\[OPTIONS:.*?\]', '', polished, flags=re.IGNORECASE).strip()
         
+        # Strip markdown formatting (mobile doesn't render it, shows literally)
+        # Remove **bold**, *italic*, __underline__
+        polished = re.sub(r'\*\*([^\*]+)\*\*', r'\1', polished)  # **text** → text
+        polished = re.sub(r'__([^_]+)__', r'\1', polished)      # __text__ → text  
+        polished = re.sub(r'\*([^\*]+)\*', r'\1', polished)     # *text* → text
+        polished = re.sub(r'_([^_]+)_', r'\1', polished)        # _text_ → text
+        
         # Ensure not too many emojis
         emoji_count = sum(1 for c in polished if ord(c) > 127000)
         if emoji_count > 2:
