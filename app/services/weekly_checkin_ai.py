@@ -269,6 +269,10 @@ class WeeklyCheckInAI:
                 "text": text,
             })
 
+        # Add "Something else" option for the user to type if they want
+        if cleaned and not any(o["id"] == "something_else" for o in cleaned):
+            cleaned.append({"id": "something_else", "text": "Something else..."})
+
         # If empty, provide category-specific defaults
         if not cleaned:
             return self._default_tap_options_for_category(category)
@@ -701,7 +705,7 @@ When is_complete: true, provide a WARM, HIGHLY PERSONALIZED summary (max 3 short
     "messages": [
         "Thank you for sharing about your {symptom} this week, {user_name}! 💜",
         "I noted that [specific trigger they mentioned] affected you, and [specific relief they mentioned] really helped.",
-        "Starting tomorrow, I'll adjust your action plan to include more [relief-related activities] and help you manage [trigger]. You're doing great!"
+        "Starting tomorrow onwards, I'll adjust your action plan to include more [relief-related activities] and help you manage [trigger]. You're doing great!"
     ],
     "tap_options": [],
     "is_complete": true,
@@ -912,7 +916,7 @@ EXAMPLE OUTPUT (notice how specific it is about action plan changes):
     "messages": [
         "Thank you for sharing about your {symptom} this week, {user_name}! 💜",
         "I noted that [specific trigger they mentioned] has been making things harder, and that [specific relief they mentioned] has really helped you.",
-        "Starting tomorrow, I'll adjust your action plan to include more [relief-related activities] and help you avoid [trigger-related situations]. You're doing great!"
+        "Starting tomorrow onwards, I'll adjust your action plan to include more [relief-related activities] and help you avoid [trigger-related situations]. You're doing great!"
     ],
     "insights": {{
         "triggers_identified": ["work stress", "poor sleep"],

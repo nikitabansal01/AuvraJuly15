@@ -80,24 +80,17 @@ cramps, bloating, mood, energy, sleep, cortisol, PCOS, endometriosis,
 fatigue, headache, anxiety, stress, period pain, menstrual."""
         
         try:
-            # Try gpt-4o-transcribe first (better accuracy)
+            # Use whisper-1 for reliable transcription
             transcript = await client.audio.transcriptions.create(
-                model="gpt-4o-transcribe",
+                model="whisper-1",
                 file=audio,
                 language="en",
                 prompt=health_context,
                 response_format="verbose_json"
             )
         except Exception as e:
-            logger.warning(f"gpt-4o-transcribe failed, falling back to whisper-1: {e}")
-            # Fallback to whisper-1
-            audio.seek(0)  # Reset BytesIO position
-            transcript = await client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio,
-                language="en",
-                prompt=health_context
-            )
+            logger.error(f"Transcription failed: {e}")
+            raise ValueError(f"Transcription failed: {str(e)}")
 
         text = getattr(transcript, "text", None) or ""
         return text.strip()

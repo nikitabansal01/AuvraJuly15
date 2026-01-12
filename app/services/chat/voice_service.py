@@ -68,25 +68,7 @@ class VoiceService:
                 temp_path = temp_file.name
             
             try:
-                # Use GPT-4o-transcribe (best accuracy, same price as whisper-1)
-                result = await self._transcribe_with_gpt4o(
-                    temp_path,
-                    language,
-                    prompt_context
-                )
-                
-                return {
-                    "success": True,
-                    "text": result["text"],
-                    "model": "gpt-4o-transcribe",
-                    "language": language,
-                    "confidence": result.get("confidence", 0.98)
-                }
-                
-            except Exception as e:
-                logger.warning(f"GPT-4o-transcribe failed, trying whisper-1: {str(e)}")
-                
-                # Fallback to whisper-1
+                # Use whisper-1 (proven reliability)
                 result = await self._transcribe_with_whisper(
                     temp_path,
                     language,
@@ -98,7 +80,7 @@ class VoiceService:
                     "text": result["text"],
                     "model": "whisper-1",
                     "language": language,
-                    "confidence": result.get("confidence", 0.85)
+                    "confidence": result.get("confidence", 0.95)
                 }
                 
             finally:
@@ -149,46 +131,6 @@ class VoiceService:
                 "text": None
             }
     
-    async def _transcribe_with_gpt4o(
-        self,
-        file_path: str,
-        language: str,
-        prompt_context: Optional[str]
-    ) -> Dict[str, Any]:
-        """
-        Use GPT-4o audio for transcription (higher accuracy).
-        Note: As of late 2024, use 'gpt-4o-audio-preview' for audio capabilities.
-        """
-        try:
-            with open(file_path, "rb") as audio_file:
-                # Build the prompt for health context
-                system_prompt = """You are transcribing voice input for a women's health app. 
-                Common terms include: cycle, period, hormone, progesterone, estrogen, testosterone,
-                cramps, bloating, mood, energy, sleep, cortisol, PCOS, endometriosis.
-                Transcribe accurately, preserving natural speech patterns."""
-                
-                if prompt_context:
-                    system_prompt += f"\nContext: {prompt_context}"
-                
-                # Use GPT-4o-transcribe for best accuracy
-                transcript = await self.client.audio.transcriptions.create(
-                    model="gpt-4o-transcribe",
-                    file=audio_file,
-                    language=language if language != "auto" else None,
-                    prompt=system_prompt,
-                    response_format="verbose_json"
-                )
-                
-                return {
-                    "text": transcript.text,
-                    "confidence": 0.95,  # GPT-4o typically higher confidence
-                    "duration": getattr(transcript, 'duration', None),
-                    "language": getattr(transcript, 'language', language)
-                }
-                
-        except Exception as e:
-            logger.error(f"GPT-4o transcription error: {str(e)}")
-            raise
     
     async def _transcribe_with_whisper(
         self,
