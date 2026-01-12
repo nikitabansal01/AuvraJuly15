@@ -905,9 +905,11 @@ async def get_pending_review(
         if not plan_needing_review:
             return PendingReviewResponse(needs_review=False)
         
-        # Get ALL items for this plan (including replaced ones for complete review)
+        # Get only active items (exclude replaced ones)
+        # Users should only review actions they actually had, not replaced ones
         items = db.query(ActionPlanItem).filter(
-            ActionPlanItem.plan_id == plan_needing_review.id
+            ActionPlanItem.plan_id == plan_needing_review.id,
+            ActionPlanItem.is_replaced != True  # noqa: E712
         ).order_by(ActionPlanItem.slot).all()
         
         if not items:
