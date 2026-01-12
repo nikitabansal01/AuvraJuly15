@@ -65,7 +65,13 @@ class ChatMemoryService:
                     ChatSession.user_id == user_id,
                     ChatSession.conversation_context == conversation_context.value,
                     ChatSession.status == "active",
-                    ChatSession.created_at > datetime.utcnow() - timedelta(hours=1)  # 1 hour timeout
+                    # Context-specific timeouts
+                    # - Symptom Check-in: 1 hour (ephemeral)
+                    # - Others (Know Body, Personalise): 24 hours (resume interaction)
+                    ChatSession.last_message_at > datetime.utcnow() - (
+                        timedelta(hours=1) if conversation_context == ConversationContext.SYMPTOM_CHECKIN 
+                        else timedelta(hours=24)
+                    )
                 )
             ).order_by(desc(ChatSession.created_at)).first()
             
