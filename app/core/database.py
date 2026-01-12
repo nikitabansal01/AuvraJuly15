@@ -881,8 +881,7 @@ class ImageLibrary(Base):
     
     # Generation info
     prompt_text = Column(Text, nullable=False)  # The prompt used to generate
-    cache_key = Column(String(32), nullable=True, index=True)  # MD5 hash of prompt+category+variant for instant lookups
-    prompt_embedding = Column(JSONB, nullable=True)  # DEPRECATED: 1536-dim embedding (kept for backward compat)
+    prompt_embedding = Column(JSONB, nullable=True)  # 1536-dim embedding as JSON array (for pgvector migration later)
     
     # Categorization
     category = Column(String(20), nullable=False)  # food, movement, mindfulness
