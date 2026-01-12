@@ -287,10 +287,12 @@ Return JSON only, no other text."""
         """
         Use LLM to match user's message to a plan item.
         Returns the item_id if matched, None otherwise.
+        Falls back to simple text matching if LLM fails.
         """
         if not items:
             return None
         
+        # Try LLM-based classification first
         classification = await CarePlanSemanticMatcher.classify_intent(
             user_message=user_message,
             available_items=items,
@@ -300,6 +302,19 @@ Return JSON only, no other text."""
         if classification.intent in ("select_item", "confirm") and classification.selected_index is not None:
             if 0 <= classification.selected_index < len(items):
                 return items[classification.selected_index].get("item_id")
+        
+        # FALLBACK: Simple text matching if LLM didn't match
+        # This ensures the flow works even if LLM is uncertain
+        user_text_lower = (user_message or "").strip().lower()
+        if len(user_text_lower) > 2:
+            for item in items:
+                item_title = (item.get("title") or "").strip().lower()
+                # Match if: user text is in title, or title is in user text, or any word matches
+                if (user_text_lower in item_title or 
+                    item_title in user_text_lower or
+                    any(word in item_title for word in user_text_lower.split() if len(word) > 2)):
+                    logger.info(f"[CarePlanSemanticMatcher] Fallback match: '{user_message}' -> '{item.get('title')}'")
+                    return item.get("item_id")
         
         return None
     
@@ -311,6 +326,7 @@ Return JSON only, no other text."""
         """
         Use LLM to match user's message to a replacement candidate.
         Returns the candidate_id if matched, None otherwise.
+        Falls back to simple text matching if LLM fails.
         """
         if not candidates_by_id:
             return None
@@ -321,6 +337,7 @@ Return JSON only, no other text."""
             for cid, candidate in candidates_by_id.items()
         ]
         
+        # Try LLM-based classification first
         classification = await CarePlanSemanticMatcher.classify_intent(
             user_message=user_message,
             available_candidates=candidates_list,
@@ -335,6 +352,19 @@ Return JSON only, no other text."""
         if classification.intent == "confirm" and classification.confidence > 0.6:
             if candidates_list:
                 return candidates_list[0]["id"]
+        
+        # FALLBACK: Simple text matching if LLM didn't match
+        user_text_lower = (user_message or "").strip().lower()
+        if len(user_text_lower) > 2:
+            for candidate in candidates_list:
+                candidate_title = (candidate.get("title") or candidate.get("specific_action") or "").strip().lower()
+                if candidate_title and (
+                    user_text_lower in candidate_title or 
+                    candidate_title in user_text_lower or
+                    any(word in candidate_title for word in user_text_lower.split() if len(word) > 2)
+                ):
+                    logger.info(f"[CarePlanSemanticMatcher] Fallback candidate match: '{user_message}' -> '{candidate.get('title')}'")
+                    return candidate["id"]
         
         return None
     
