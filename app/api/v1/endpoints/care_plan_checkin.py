@@ -517,14 +517,21 @@ async def respond_care_plan_checkin(
             
             # Stage: User needs to pick which item to get alternates for
             if stage == "choose_item" or stage is None:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[PENDING_ALT] Stage: choose_item, user_message: '{payload.message_text}', items: {[it.get('title') for it in items]}")
+                
                 # Use LLM to match typed text to an item
                 matched_item_id = await CarePlanSemanticMatcher.match_item_selection(
                     user_message=payload.message_text,
                     items=items
                 )
                 
+                logger.info(f"[PENDING_ALT] match_item_selection returned: {matched_item_id}")
+                
                 if matched_item_id:
                     matched_title = next((it.get("title") for it in items if it.get("item_id") == matched_item_id), "the item")
+                    logger.info(f"[PENDING_ALT] Matched item: {matched_title} (id={matched_item_id})")
                     
                     raw = list(thread.raw_messages or [])
                     raw.append({
@@ -538,6 +545,8 @@ async def respond_care_plan_checkin(
                     candidates_result = await service.generate_alternate_candidates(
                         uid, item_id=matched_item_id, reason="User selected via text"
                     )
+                    
+                    logger.info(f"[PENDING_ALT] generate_alternate_candidates result: success={candidates_result.get('success')}")
                     
                     if candidates_result.get("success"):
                         ai_data = dict(thread.actionable_insights or {})
@@ -559,6 +568,7 @@ async def respond_care_plan_checkin(
                         
                         history = service.format_history_for_mobile(thread)
                         tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                        logger.info(f"[PENDING_ALT] Returning candidate picker for item {matched_item_id}")
                         return {
                             "thread_id": thread.id,
                             "local_date": thread.local_date.isoformat(),
@@ -567,6 +577,8 @@ async def respond_care_plan_checkin(
                             "actionable_insights": thread.actionable_insights or {},
                             "ui_blocks": [_pick_alternate_candidate_block(matched_item_id, candidates_result.get("candidates_ui") or [])],
                         }
+                else:
+                    logger.info(f"[PENDING_ALT] No match found, falling through to AI response")
             
             # Stage: User needs to pick which candidate to use
             elif stage == "choose_candidate":
