@@ -60,6 +60,14 @@ class ImageLibraryService:
     RUNPOD_POLL_TIMEOUT = 120  # 120 seconds (2 min) max wait - shared endpoint can be slow
     RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second
     
+    # Fallback images when generation fails - prevents empty image URLs in database
+    # These are hosted on Cloudinary and match the app's visual style
+    FALLBACK_IMAGE_URLS = {
+        "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
+        "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
+        "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+    }
+    
     def __init__(self):
         """Initialize the image library service."""
         # RunPod configuration - uses serverless Flux Schnell endpoint
@@ -442,8 +450,9 @@ class ImageLibraryService:
             result, generation_time_ms = await self._call_runpod_flux_with_retry(prompt, category)
             
             if not result:
-                logger.error("Failed to generate image via RunPod")
-                return ("", False, 0.0)
+                logger.error(f"Failed to generate image via RunPod, using fallback for {category}")
+                fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
+                return (fallback_url, False, 0.0)
             
             # Check if result is already a URL (from RunPod) or bytes
             if isinstance(result, str) and result.startswith("http"):
@@ -471,8 +480,9 @@ class ImageLibraryService:
                 if not image_url:
                     image_url = await self._upload_to_supabase(result, category, variant_type)
                 if not image_url:
-                    logger.error("Failed to upload image to any storage")
-                    return ("", False, 0.0)
+                    logger.error(f"Failed to upload image to any storage, using fallback for {category}")
+                    fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
+                    return (fallback_url, False, 0.0)
 
                 # Store in image library for future semantic matching
                 await self._store_in_library(
@@ -486,8 +496,9 @@ class ImageLibraryService:
                     db=db
                 )
             else:
-                logger.error(f"Unexpected result type: {type(result)}")
-                return ("", False, 0.0)
+                logger.error(f"Unexpected result type: {type(result)}, using fallback for {category}")
+                fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
+                return (fallback_url, False, 0.0)
             
             elapsed = time.time() - start_time
             logger.info(f"🎨 New image generated. Time: {elapsed:.2f}s, Cost: ${self.COST_PER_IMAGE}")
@@ -495,8 +506,9 @@ class ImageLibraryService:
             return (image_url, False, self.COST_PER_IMAGE)
             
         except Exception as e:
-            logger.error(f"Error generating and storing image: {e}")
-            return ("", False, 0.0)
+            logger.error(f"Error generating and storing image: {e}, using fallback for {category}")
+            fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
+            return (fallback_url, False, 0.0)
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """

@@ -5175,6 +5175,15 @@ Respond with valid JSON object only."""
                 user_id=user_id,
                 db=db
             )
+            
+            # Defensive check: ensure hero_url is never empty (fallback already handled by image service)
+            if not hero_url:
+                logger.warning(f"[REPLACE] hero_url empty after generation, using emergency fallback for {replacement_category}")
+                hero_url = self.image_service.FALLBACK_IMAGE_URLS.get(
+                    replacement_category, 
+                    self.image_service.FALLBACK_IMAGE_URLS["food"]
+                )
+            
             cache_status = "CACHE HIT" if was_cached else "GENERATED"
             logger.info(f"[REPLACE]  Image {cache_status}: '{replacement_title[:30]}...'")
             
@@ -5672,6 +5681,15 @@ Respond with valid JSON only."""
                 user_id=user_id,
                 db=db,
             )
+            
+            # Defensive check: ensure hero_url is never empty (fallback already handled by image service)
+            if not hero_url:
+                logger.warning(f"[REPLACE] hero_url empty after generation, using emergency fallback for {category}")
+                hero_url = self.image_service.FALLBACK_IMAGE_URLS.get(
+                    category, 
+                    self.image_service.FALLBACK_IMAGE_URLS["food"]
+                )
+            
             logger.info(f"[REPLACE]  Image {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
 
             from app.core.database import ActionPlanItemVariant
