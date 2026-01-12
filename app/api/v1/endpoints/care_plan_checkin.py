@@ -677,7 +677,7 @@ async def respond_care_plan_checkin(
                 else:
                     # User typed something that didn't match any candidate
                     candidates_ui = [
-                        {"id": cid, "title": c.get("title") or c.get("specific_action") or "Option", "category": c.get("category")}
+                        {"candidate_id": cid, "title": c.get("title") or c.get("specific_action") or "Option", "category": c.get("category")}
                         for cid, c in candidates_by_id.items()
                     ]
                     raw = list(thread.raw_messages or [])
