@@ -68,6 +68,8 @@ class StartCheckInResponse(BaseModel):
     week_number: int
     year: int
     question: QuestionResponse
+    is_already_completed: bool = False  # True if viewing completed check-in in read-only mode
+    next_due_date: Optional[str] = None  # When the next check-in is available
 
 
 class SubmitResponseRequest(BaseModel):
@@ -198,6 +200,8 @@ async def start_checkin(
         checkin_id=checkin.id,
         week_number=checkin.week_number,
         year=checkin.year,
+        is_already_completed=question_data.get("is_already_completed", False),
+        next_due_date=question_data.get("next_due_date"),
         question=QuestionResponse(
             is_complete=question_data.get("is_complete", False),
             question_key=question_data.get("question_key"),

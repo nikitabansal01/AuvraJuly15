@@ -289,9 +289,10 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
     def start_checkin(self, uid: str) -> Tuple[WeeklyCheckIn, Dict[str, Any]]:
         """
         Start a new check-in session or resume incomplete one.
+        If already completed this week, returns the completed check-in in read-only mode.
         
         Returns:
-            (checkin: WeeklyCheckIn, first_question: Dict)
+            (checkin: WeeklyCheckIn, question_or_completion: Dict)
         """
         user_today = get_user_current_date(uid, self.db)
         iso_week = user_today.isocalendar()
@@ -308,6 +309,35 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
             logger.info(f"Resuming existing check-in {existing.id} for user {uid}")
             current_question = self.get_question_at_index(existing.current_question_index)
             return existing, self._format_question(current_question, existing)
+        
+        # Check if there's already a COMPLETED check-in for the current week
+        # (i.e., the next due date hasn't arrived yet)
+        profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+        if profile and profile.weekly_checkin_due_date:
+            # If today is before the next due date, the check-in is already done
+            if user_today < profile.weekly_checkin_due_date:
+                # Find the completed check-in
+                completed = self.db.query(WeeklyCheckIn).filter(
+                    and_(
+                        WeeklyCheckIn.uid == uid,
+                        WeeklyCheckIn.is_complete == True
+                    )
+                ).order_by(desc(WeeklyCheckIn.completed_at)).first()
+                
+                if completed:
+                    logger.info(f"Returning already-completed check-in {completed.id} for user {uid}")
+                    history = self._get_chat_history(completed)
+                    return completed, {
+                        "is_complete": True,
+                        "is_already_completed": True,
+                        "question_key": None,
+                        "message": f"✅ Weekly check-in completed! Next check-in available on {profile.weekly_checkin_due_date.strftime('%A, %b %d')}.",
+                        "messages": [f"✅ Weekly check-in completed!", f"Next check-in available on {profile.weekly_checkin_due_date.strftime('%A, %b %d')}."],
+                        "history": history,
+                        "next_due_date": profile.weekly_checkin_due_date.isoformat(),
+                        "summary": completed.conversation_summary
+                    }
+        
         
         # Get cycle context
         from app.services.cycle_service import CycleService
