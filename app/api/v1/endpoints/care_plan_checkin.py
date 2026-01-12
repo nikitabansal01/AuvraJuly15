@@ -460,8 +460,215 @@ async def respond_care_plan_checkin(
                     "ui_blocks": [_open_plan_manager_block()],
                 }
 
-        # 2. Personalization Intent Handling
-        # Intercept before AI to check rewards status deterministically
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2. PENDING ALTERNATE FLOW HANDLERS (typed input support)
+        # ═══════════════════════════════════════════════════════════════════════
+        pending_alternate = (thread.actionable_insights or {}).get("pending_alternate") if thread else None
+        
+        if pending_alternate:
+            stage = pending_alternate.get("stage")
+            items = service.get_plan_items_for_ui(uid, limit=8)
+            
+            # Stage: User needs to pick which item to get alternates for
+            if stage == "choose_item" or stage is None:
+                # Try to match typed text to an item
+                user_text_lower = (payload.message_text or "").strip().lower()
+                matched_item_id = None
+                matched_title = None
+                
+                for item in items:
+                    item_title = (item.get("title") or "").strip().lower()
+                    # Flexible matching: exact, substring either way
+                    if (item_title == user_text_lower or 
+                        user_text_lower in item_title or 
+                        item_title in user_text_lower or
+                        # Also check for key words (e.g., "salmon" matches "Grilled Salmon Bowl")
+                        any(word in item_title for word in user_text_lower.split() if len(word) > 2)):
+                        matched_item_id = item.get("item_id")
+                        matched_title = item.get("title")
+                        break
+                
+                if matched_item_id:
+                    # Append user message
+                    raw = list(thread.raw_messages or [])
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": payload.message_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    thread.raw_messages = raw
+                    
+                    # Generate candidates for this item
+                    candidates_result = await service.generate_alternate_candidates(
+                        uid, item_id=matched_item_id, reason="User selected via text"
+                    )
+                    
+                    if candidates_result.get("success"):
+                        # Update pending state to choose_candidate
+                        ai_data = dict(thread.actionable_insights or {})
+                        ai_data["pending_alternate"] = {"stage": "choose_candidate", "item_id": matched_item_id, "reason": "User selected via text"}
+                        ai_data["alternate_candidates"] = candidates_result.get("candidates_by_id") or {}
+                        thread.actionable_insights = ai_data
+                        
+                        # Add bot response
+                        raw = list(thread.raw_messages or [])
+                        raw.append({
+                            "id": str(uuid4()),
+                            "role": "bot",
+                            "content": f"Great! Here are some alternatives for {matched_title}. Which one would you like?",
+                            "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                        })
+                        thread.raw_messages = raw
+                        db.add(thread)
+                        db.commit()
+                        db.refresh(thread)
+                        
+                        history = service.format_history_for_mobile(thread)
+                        tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                        return {
+                            "thread_id": thread.id,
+                            "local_date": thread.local_date.isoformat(),
+                            "history": history,
+                            "tap_options": tap_options,
+                            "actionable_insights": thread.actionable_insights or {},
+                            "ui_blocks": [_pick_alternate_candidate_block(matched_item_id, candidates_result.get("candidates_ui") or [])],
+                        }
+            
+            # Stage: User needs to pick which candidate to use
+            elif stage == "choose_candidate":
+                item_id = pending_alternate.get("item_id")
+                candidates_by_id = (thread.actionable_insights or {}).get("alternate_candidates") or {}
+                user_text_lower = (payload.message_text or "").strip().lower()
+                
+                # Check for cancellation first
+                if any(word in user_text_lower for word in ["cancel", "nevermind", "never mind", "no", "forget", "skip"]):
+                    # Clear pending state
+                    ai_data = dict(thread.actionable_insights or {})
+                    ai_data.pop("pending_alternate", None)
+                    ai_data.pop("alternate_candidates", None)
+                    thread.actionable_insights = ai_data
+                    
+                    raw = list(thread.raw_messages or [])
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": payload.message_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": "No problem! Let me know if you'd like to change anything else.",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    thread.raw_messages = raw
+                    db.add(thread)
+                    db.commit()
+                    db.refresh(thread)
+                    
+                    history = service.format_history_for_mobile(thread)
+                    tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                    return {
+                        "thread_id": thread.id,
+                        "local_date": thread.local_date.isoformat(),
+                        "history": history,
+                        "tap_options": tap_options,
+                        "actionable_insights": thread.actionable_insights or {},
+                        "ui_blocks": [],  # Clear UI blocks
+                    }
+                
+                # Try to match typed text to a candidate
+                matched_candidate_id = None
+                matched_candidate = None
+                
+                # Check for ordinal selection (first, second, 1, 2, etc.)
+                ordinal_map = {"first": 0, "1": 0, "one": 0, "second": 1, "2": 1, "two": 1, "third": 2, "3": 2, "three": 2}
+                for ordinal, idx in ordinal_map.items():
+                    if ordinal in user_text_lower:
+                        candidate_keys = list(candidates_by_id.keys())
+                        if idx < len(candidate_keys):
+                            matched_candidate_id = candidate_keys[idx]
+                            matched_candidate = candidates_by_id[matched_candidate_id]
+                            break
+                
+                # Also try to match by candidate title
+                if not matched_candidate_id:
+                    for cid, candidate in candidates_by_id.items():
+                        candidate_title = (candidate.get("title") or candidate.get("specific_action") or "").strip().lower()
+                        if candidate_title and (
+                            candidate_title in user_text_lower or 
+                            user_text_lower in candidate_title or
+                            any(word in candidate_title for word in user_text_lower.split() if len(word) > 2)
+                        ):
+                            matched_candidate_id = cid
+                            matched_candidate = candidate
+                            break
+                
+                # Check for confirmation (ok, yes, sure) - use first candidate
+                if not matched_candidate_id and any(word in user_text_lower for word in ["ok", "okay", "yes", "sure", "sounds good", "do it", "go ahead"]):
+                    candidate_keys = list(candidates_by_id.keys())
+                    if candidate_keys:
+                        matched_candidate_id = candidate_keys[0]
+                        matched_candidate = candidates_by_id[matched_candidate_id]
+                
+                if matched_candidate_id and matched_candidate and item_id:
+                    # Execute the replacement
+                    raw = list(thread.raw_messages or [])
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": payload.message_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    thread.raw_messages = raw
+                    
+                    result = await service.replace_action_item_with_candidate(
+                        uid, item_id, matched_candidate, "User selected via text"
+                    )
+                    
+                    # Clear pending state
+                    ai_data = dict(thread.actionable_insights or {})
+                    ai_data.pop("pending_alternate", None)
+                    ai_data.pop("alternate_candidates", None)
+                    thread.actionable_insights = ai_data
+                    
+                    raw = list(thread.raw_messages or [])
+                    if result.get("success"):
+                        repl_title = matched_candidate.get("title") or matched_candidate.get("specific_action") or "the new option"
+                        raw.append({
+                            "id": str(uuid4()),
+                            "role": "bot",
+                            "content": f"Done! I replaced it with: {repl_title}. Your plan is updated! 🎉",
+                            "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                        })
+                    else:
+                        raw.append({
+                            "id": str(uuid4()),
+                            "role": "bot",
+                            "content": result.get("error") or "Sorry, I couldn't make that change right now.",
+                            "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                        })
+                    
+                    thread.raw_messages = raw
+                    db.add(thread)
+                    db.commit()
+                    db.refresh(thread)
+                    
+                    history = service.format_history_for_mobile(thread)
+                    tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                    return {
+                        "thread_id": thread.id,
+                        "local_date": thread.local_date.isoformat(),
+                        "history": history,
+                        "tap_options": tap_options,
+                        "actionable_insights": thread.actionable_insights or {},
+                        "ui_blocks": [],  # Clear UI blocks after completion
+                    }
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 3. Personalization Intent Handling
+        # ═══════════════════════════════════════════════════════════════════════
         if _looks_like_personalize_intent(payload.message_text):
             # Save user message first
             raw = list(thread.raw_messages or [])
@@ -542,6 +749,46 @@ async def respond_care_plan_checkin(
 
         ui_blocks: List[UIBlock] = []
         
+        # ═══════════════════════════════════════════════════════════════════════
+        # Check if user is doing general chat or completed a previous flow
+        # If so, clear any stale pending states
+        # ═══════════════════════════════════════════════════════════════════════
+        user_action = getattr(ai_response.insights, "user_action", None) if ai_response.insights else None
+        pending_alternate = (thread.actionable_insights or {}).get("pending_alternate")
+        pending_replace = (thread.actionable_insights or {}).get("pending_replace")
+        
+        # Clear stale pending states if:
+        # 1. User is doing general chat (not making a selection)
+        # 2. User explicitly confirmed/cancelled (action already handled above)
+        # 3. Neither alternate suggestions nor change intent is detected
+        should_clear_pending = False
+        if user_action in ("general_chat", "confirm", "cancel"):
+            should_clear_pending = True
+        elif not _looks_like_change_intent(payload.message_text) and not _looks_like_alternate_suggestions_request(payload.message_text):
+            # User is not expressing change/alternate intent, likely moved on
+            has_selected_item = bool(getattr(ai_response.insights, "selected_item_title", None))
+            if not has_selected_item:
+                should_clear_pending = True
+        
+        if should_clear_pending and (pending_alternate or pending_replace):
+            ai_data = dict(thread.actionable_insights or {})
+            ai_data.pop("pending_alternate", None)
+            ai_data.pop("pending_replace", None)
+            ai_data.pop("alternate_candidates", None)
+            thread.actionable_insights = ai_data
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+            # Don't generate new UI blocks - just return the clean state
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [],  # Clear UI blocks
+            }
+        
         # Get plan items for matching
         items = service.get_plan_items_for_ui(uid, limit=8)
         
@@ -603,9 +850,16 @@ async def respond_care_plan_checkin(
             )
             
             if is_explicit_change:
+                # Set pending state for the change flow
+                ai_data = dict(thread.actionable_insights or {})
+                ai_data["pending_alternate"] = {"stage": "choose_item", "reason": "User wants to change"}
+                thread.actionable_insights = ai_data
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
                 # Direct replace flow - show which item to replace
                 if items:
-                    ui_blocks.append(_pick_replace_block(items))
+                    ui_blocks.append(_pick_alternate_item_block(items))
             else:
                 # Check for alternate suggestions request
                 wants_alternates = bool(getattr(ai_response.insights, "alternate_suggestions_requested", False))
@@ -613,6 +867,14 @@ async def respond_care_plan_checkin(
                     wants_alternates = _looks_like_alternate_suggestions_request(payload.message_text)
 
                 if wants_alternates:
+                    # Set pending state for the alternate flow
+                    ai_data = dict(thread.actionable_insights or {})
+                    ai_data["pending_alternate"] = {"stage": "choose_item", "reason": "User wants alternates"}
+                    thread.actionable_insights = ai_data
+                    db.add(thread)
+                    db.commit()
+                    db.refresh(thread)
+                    
                     if items:
                         ui_blocks.append(_pick_alternate_item_block(items))
                     else:
@@ -621,8 +883,16 @@ async def respond_care_plan_checkin(
                     if _looks_like_change_intent(payload.message_text) or (
                         ai_response.insights and ai_response.insights.plan_changes_requested
                     ):
+                        # Set pending state for the change flow
+                        ai_data = dict(thread.actionable_insights or {})
+                        ai_data["pending_alternate"] = {"stage": "choose_item", "reason": "User wants to change"}
+                        thread.actionable_insights = ai_data
+                        db.add(thread)
+                        db.commit()
+                        db.refresh(thread)
+                        
                         if items:
-                            ui_blocks.append(_pick_replace_block(items))
+                            ui_blocks.append(_pick_alternate_item_block(items))
 
         return {
             "thread_id": thread.id,

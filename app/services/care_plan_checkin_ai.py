@@ -38,6 +38,10 @@ class CarePlanInsights(BaseModel):
     # Specific item user is referring to (extracted from their message)
     # Should match exactly one of the item titles from the action plan
     selected_item_title: Optional[str] = None
+    
+    # User action intent detected from message
+    # Values: "confirm" (yes/ok), "cancel" (no/nevermind), "select_item", "general_chat"
+    user_action: Optional[str] = None
 
     # Conversation extraction
     wins: List[str] = Field(default_factory=list)
@@ -108,6 +112,7 @@ Return STRICT JSON only with this schema:
     "actions_to_skip": ["string"],
     "alternate_suggestions_requested": true|false,
     "selected_item_title": "string|null",
+    "user_action": "confirm|cancel|select_item|general_chat|null",
     "wins": ["string"],
     "blockers": ["string"],
     "preferences": ["string"],
@@ -115,8 +120,14 @@ Return STRICT JSON only with this schema:
   }}
 }}
 
-IMPORTANT: If the user mentions a SPECIFIC action item from their plan (like "walking", "strength training", "broccoli", etc), 
-set "selected_item_title" to the EXACT title from TODAY'S ACTION PLAN above. This helps auto-select the item for replacement.
+IMPORTANT RULES:
+1. If the user mentions a SPECIFIC action item from their plan (like "walking", "salmon", "broccoli", etc), 
+   set "selected_item_title" to the EXACT title from TODAY'S ACTION PLAN above.
+2. Set "user_action" based on user's intent:
+   - "confirm": user says yes, ok, sure, do it, go ahead, sounds good, I'll take it
+   - "cancel": user says no, nevermind, cancel, skip, forget it
+   - "select_item": user is selecting/mentioning a specific action item
+   - "general_chat": user is just chatting, not making a specific selection
 
 USER PROFILE CONTEXT:
 {user_profile_context}
