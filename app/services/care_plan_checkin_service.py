@@ -369,7 +369,11 @@ NEW MESSAGES (JSON list in order):
         if not plan:
             return "No action plan found."
 
-        items = self.db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).all()
+        # Filter out replaced items - only show active items to AI
+        items = self.db.query(ActionPlanItem).filter(
+            ActionPlanItem.plan_id == plan.id,
+            ActionPlanItem.is_replaced != True  # noqa: E712
+        ).all()
         if not items:
             return "Action plan exists, but has no items."
 
@@ -410,7 +414,11 @@ NEW MESSAGES (JSON list in order):
         if not plan:
             return []
 
-        q = self.db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id)
+        # Filter out replaced items - they should not appear in pickers
+        q = self.db.query(ActionPlanItem).filter(
+            ActionPlanItem.plan_id == plan.id,
+            ActionPlanItem.is_replaced != True  # noqa: E712
+        )
         items = q.order_by(ActionPlanItem.slot).all()
         out: List[Dict[str, Any]] = []
         for it in items:
