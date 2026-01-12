@@ -370,14 +370,15 @@ MATCHING RULES:
                         if intent not in valid_intents:
                             intent = "general_chat"
                         
-                        # Validate and clamp index
+                        # Validate and clamp index - keep it if provided for any selection-related intent
                         selected_index = args.get("selected_index")
-                        if intent == "select_item" and available_items:
-                            selected_index = CarePlanSemanticMatcher._validate_index(selected_index, len(available_items))
-                        elif intent == "select_candidate" and available_candidates:
-                            selected_index = CarePlanSemanticMatcher._validate_index(selected_index, len(available_candidates))
-                        else:
-                            selected_index = None
+                        if selected_index is not None:
+                            if available_items:
+                                selected_index = CarePlanSemanticMatcher._validate_index(selected_index, len(available_items))
+                            elif available_candidates:
+                                selected_index = CarePlanSemanticMatcher._validate_index(selected_index, len(available_candidates))
+                            else:
+                                selected_index = None
                         
                         # Validate confidence
                         confidence = args.get("confidence", 0.8)
