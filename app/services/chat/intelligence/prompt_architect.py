@@ -239,6 +239,22 @@ EXAMPLE GREAT RESPONSES:
 ALWAYS INCLUDE:
 - "For anything specific to you, your doctor is your best resource"
 - "This is general info - your body might work a bit differently"
+
+🎯 DYNAMIC TAP OPTIONS - VERY IMPORTANT:
+At the END of EVERY response, include a line with 3 contextual follow-up options the user might want to ask next.
+Use this exact format: [OPTIONS: option1 | option2 | option3]
+
+The options should be:
+- CONTEXTUAL to what you just explained (not generic)
+- Phrased as natural questions or actions with emojis
+- Related to the topic they asked about
+
+EXAMPLES:
+- If explaining estrogen: [OPTIONS: 🤔 How does it affect my skin? | 📊 What happens when it drops? | 💪 How can I boost it naturally?]
+- If explaining luteal phase: [OPTIONS: 😴 Why am I so tired? | 🍫 Why do I crave chocolate? | 📅 When does this phase end?]
+- If explaining PMS: [OPTIONS: 💊 What helps with symptoms? | 🧘 Natural remedies? | 🩺 When should I see a doctor?]
+
+NEVER use the same generic options. ALWAYS make them specific to what you just taught.
 """,
 }
 
