@@ -169,3 +169,208 @@ USER MESSAGE:
         except (json.JSONDecodeError, ValidationError) as e:
             logger.warning(f"[CarePlanCheckInAI] Failed to parse structured output: {e}")
             return CarePlanAIResponse(messages=[raw or "Got it — what would you like to adjust about today?"], tap_options=[]), model_used
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LLM-Based Semantic Matching for Care Plan Check-in
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class UserIntentClassification(BaseModel):
+    """LLM-classified user intent from their message."""
+    # What the user wants to do
+    intent: str = Field(
+        default="general_chat",
+        description="User's primary intent: 'select_item', 'select_candidate', 'confirm', 'cancel', 'want_change', 'want_alternates', 'general_chat'"
+    )
+    # If intent is select_item or select_candidate, which one (by index, 0-based)
+    selected_index: Optional[int] = Field(
+        default=None,
+        description="0-based index of the selected item/candidate, or null if no clear selection"
+    )
+    # Confidence in the classification (0.0 to 1.0)
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class CarePlanSemanticMatcher:
+    """Uses LLM to semantically match user input to available options."""
+    
+    @staticmethod
+    async def classify_intent(
+        user_message: str,
+        available_items: List[Dict[str, Any]] = None,
+        available_candidates: List[Dict[str, Any]] = None,
+        current_context: str = "general"
+    ) -> UserIntentClassification:
+        """
+        Use LLM to classify user's intent and match to available options.
+        
+        Args:
+            user_message: The user's typed message
+            available_items: List of plan items (with 'title' and 'item_id')
+            available_candidates: List of replacement candidates (with 'title')
+            current_context: What stage the user is in ('choose_item', 'choose_candidate', 'general')
+        
+        Returns:
+            UserIntentClassification with intent and optional selected index
+        """
+        items_list = ""
+        if available_items:
+            items_list = "\n".join([
+                f"{i}. {item.get('title', 'Unknown')}"
+                for i, item in enumerate(available_items)
+            ])
+        
+        candidates_list = ""
+        if available_candidates:
+            candidates_list = "\n".join([
+                f"{i}. {c.get('title', c.get('specific_action', 'Unknown'))}"
+                for i, c in enumerate(available_candidates)
+            ])
+        
+        prompt = f"""You are classifying a user's intent in a care plan check-in conversation.
+
+USER MESSAGE: "{user_message}"
+
+CURRENT CONTEXT: {current_context}
+
+{f"AVAILABLE PLAN ITEMS (user may be selecting one):{chr(10)}{items_list}" if items_list else ""}
+
+{f"AVAILABLE REPLACEMENT OPTIONS (user may be choosing one):{chr(10)}{candidates_list}" if candidates_list else ""}
+
+Analyze the user's message and classify their intent. Return STRICT JSON:
+{{
+  "intent": "select_item|select_candidate|confirm|cancel|want_change|want_alternates|general_chat",
+  "selected_index": null or 0-based index of selected item/candidate,
+  "confidence": 0.0-1.0
+}}
+
+INTENT DEFINITIONS:
+- "select_item": User is selecting/referring to a specific action from their plan
+- "select_candidate": User is choosing a replacement option from the suggestions
+- "confirm": User is agreeing/confirming (yes, ok, sure, sounds good, do it, etc.)
+- "cancel": User is declining/canceling (no, nevermind, forget it, skip, etc.)
+- "want_change": User wants to change/replace/swap something in their plan
+- "want_alternates": User wants to see alternative suggestions
+- "general_chat": User is just chatting, not making a specific action
+
+MATCHING RULES:
+- Match semantically, not literally. "I'll go with the salmon one" → select the salmon item
+- "First one", "the first", "option 1", "I'll take that" → select index 0
+- "Second", "the second option", "number 2" → select index 1
+- "Last one", "the bottom one" → select the last available option
+- If the user mentions ANY word that appears in an item title, consider it a match
+- Be generous with matching - if there's any reasonable connection, make the match
+- Only return general_chat if you're truly uncertain
+
+Return JSON only, no other text."""
+
+        try:
+            raw, _ = await AIService.call_ai_model(prompt, with_fallback=True)
+            raw = (raw or "").strip()
+            
+            extracted = _extract_json_object(raw)
+            if extracted:
+                data = json.loads(extracted)
+                return UserIntentClassification.model_validate(data)
+        except Exception as e:
+            logger.warning(f"[CarePlanSemanticMatcher] Failed to classify intent: {e}")
+        
+        # Fallback: return uncertain classification
+        return UserIntentClassification(intent="general_chat", selected_index=None, confidence=0.3)
+    
+    @staticmethod
+    async def match_item_selection(
+        user_message: str,
+        items: List[Dict[str, Any]]
+    ) -> Optional[int]:
+        """
+        Use LLM to match user's message to a plan item.
+        Returns the item_id if matched, None otherwise.
+        """
+        if not items:
+            return None
+        
+        classification = await CarePlanSemanticMatcher.classify_intent(
+            user_message=user_message,
+            available_items=items,
+            current_context="choose_item"
+        )
+        
+        if classification.intent in ("select_item", "confirm") and classification.selected_index is not None:
+            if 0 <= classification.selected_index < len(items):
+                return items[classification.selected_index].get("item_id")
+        
+        return None
+    
+    @staticmethod
+    async def match_candidate_selection(
+        user_message: str,
+        candidates_by_id: Dict[str, Any]
+    ) -> Optional[str]:
+        """
+        Use LLM to match user's message to a replacement candidate.
+        Returns the candidate_id if matched, None otherwise.
+        """
+        if not candidates_by_id:
+            return None
+        
+        # Convert to list for indexing
+        candidates_list = [
+            {"id": cid, **candidate}
+            for cid, candidate in candidates_by_id.items()
+        ]
+        
+        classification = await CarePlanSemanticMatcher.classify_intent(
+            user_message=user_message,
+            available_candidates=candidates_list,
+            current_context="choose_candidate"
+        )
+        
+        if classification.intent in ("select_candidate", "confirm") and classification.selected_index is not None:
+            if 0 <= classification.selected_index < len(candidates_list):
+                return candidates_list[classification.selected_index]["id"]
+        
+        # If user confirms without selection, use first candidate
+        if classification.intent == "confirm" and classification.confidence > 0.6:
+            if candidates_list:
+                return candidates_list[0]["id"]
+        
+        return None
+    
+    @staticmethod
+    async def is_cancellation(user_message: str) -> bool:
+        """Check if user wants to cancel the current flow."""
+        classification = await CarePlanSemanticMatcher.classify_intent(
+            user_message=user_message,
+            current_context="general"
+        )
+        return classification.intent == "cancel" and classification.confidence > 0.5
+    
+    @staticmethod
+    async def is_confirmation(user_message: str) -> bool:
+        """Check if user is confirming."""
+        classification = await CarePlanSemanticMatcher.classify_intent(
+            user_message=user_message,
+            current_context="general"
+        )
+        return classification.intent == "confirm" and classification.confidence > 0.5
+    
+    @staticmethod
+    async def wants_change(user_message: str) -> bool:
+        """Check if user wants to change something in their plan."""
+        classification = await CarePlanSemanticMatcher.classify_intent(
+            user_message=user_message,
+            current_context="general"
+        )
+        return classification.intent == "want_change" and classification.confidence > 0.5
+    
+    @staticmethod
+    async def wants_alternates(user_message: str) -> bool:
+        """Check if user wants to see alternative suggestions."""
+        classification = await CarePlanSemanticMatcher.classify_intent(
+            user_message=user_message,
+            current_context="general"
+        )
+        return classification.intent == "want_alternates" and classification.confidence > 0.5
+

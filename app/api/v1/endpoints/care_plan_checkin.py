@@ -21,6 +21,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
 from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.care_plan_checkin_service import CarePlanCheckInService
+from app.services.care_plan_checkin_ai import CarePlanSemanticMatcher
 
 router = APIRouter()
 
@@ -461,7 +462,7 @@ async def respond_care_plan_checkin(
                 }
 
         # ═══════════════════════════════════════════════════════════════════════
-        # 2. PENDING ALTERNATE FLOW HANDLERS (typed input support)
+        # 2. PENDING ALTERNATE FLOW HANDLERS (LLM-based semantic matching)
         # ═══════════════════════════════════════════════════════════════════════
         pending_alternate = (thread.actionable_insights or {}).get("pending_alternate") if thread else None
         
@@ -469,27 +470,62 @@ async def respond_care_plan_checkin(
             stage = pending_alternate.get("stage")
             items = service.get_plan_items_for_ui(uid, limit=8)
             
+            # Use LLM to classify user's intent
+            candidates_by_id = (thread.actionable_insights or {}).get("alternate_candidates") or {}
+            classification = await CarePlanSemanticMatcher.classify_intent(
+                user_message=payload.message_text,
+                available_items=items if stage in ("choose_item", None) else None,
+                available_candidates=[{"id": k, **v} for k, v in candidates_by_id.items()] if stage == "choose_candidate" else None,
+                current_context=stage or "choose_item"
+            )
+            
+            # Handle cancellation (works in any stage)
+            if classification.intent == "cancel" and classification.confidence > 0.4:
+                ai_data = dict(thread.actionable_insights or {})
+                ai_data.pop("pending_alternate", None)
+                ai_data.pop("alternate_candidates", None)
+                thread.actionable_insights = ai_data
+                
+                raw = list(thread.raw_messages or [])
+                raw.append({
+                    "id": str(uuid4()),
+                    "role": "user",
+                    "content": payload.message_text,
+                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                })
+                raw.append({
+                    "id": str(uuid4()),
+                    "role": "bot",
+                    "content": "No problem! Let me know if you'd like to change anything else.",
+                    "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                })
+                thread.raw_messages = raw
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
+                
+                history = service.format_history_for_mobile(thread)
+                tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                return {
+                    "thread_id": thread.id,
+                    "local_date": thread.local_date.isoformat(),
+                    "history": history,
+                    "tap_options": tap_options,
+                    "actionable_insights": thread.actionable_insights or {},
+                    "ui_blocks": [],
+                }
+            
             # Stage: User needs to pick which item to get alternates for
             if stage == "choose_item" or stage is None:
-                # Try to match typed text to an item
-                user_text_lower = (payload.message_text or "").strip().lower()
-                matched_item_id = None
-                matched_title = None
-                
-                for item in items:
-                    item_title = (item.get("title") or "").strip().lower()
-                    # Flexible matching: exact, substring either way
-                    if (item_title == user_text_lower or 
-                        user_text_lower in item_title or 
-                        item_title in user_text_lower or
-                        # Also check for key words (e.g., "salmon" matches "Grilled Salmon Bowl")
-                        any(word in item_title for word in user_text_lower.split() if len(word) > 2)):
-                        matched_item_id = item.get("item_id")
-                        matched_title = item.get("title")
-                        break
+                # Use LLM to match typed text to an item
+                matched_item_id = await CarePlanSemanticMatcher.match_item_selection(
+                    user_message=payload.message_text,
+                    items=items
+                )
                 
                 if matched_item_id:
-                    # Append user message
+                    matched_title = next((it.get("title") for it in items if it.get("item_id") == matched_item_id), "the item")
+                    
                     raw = list(thread.raw_messages or [])
                     raw.append({
                         "id": str(uuid4()),
@@ -499,19 +535,16 @@ async def respond_care_plan_checkin(
                     })
                     thread.raw_messages = raw
                     
-                    # Generate candidates for this item
                     candidates_result = await service.generate_alternate_candidates(
                         uid, item_id=matched_item_id, reason="User selected via text"
                     )
                     
                     if candidates_result.get("success"):
-                        # Update pending state to choose_candidate
                         ai_data = dict(thread.actionable_insights or {})
                         ai_data["pending_alternate"] = {"stage": "choose_candidate", "item_id": matched_item_id, "reason": "User selected via text"}
                         ai_data["alternate_candidates"] = candidates_result.get("candidates_by_id") or {}
                         thread.actionable_insights = ai_data
                         
-                        # Add bot response
                         raw = list(thread.raw_messages or [])
                         raw.append({
                             "id": str(uuid4()),
@@ -538,133 +571,67 @@ async def respond_care_plan_checkin(
             # Stage: User needs to pick which candidate to use
             elif stage == "choose_candidate":
                 item_id = pending_alternate.get("item_id")
-                candidates_by_id = (thread.actionable_insights or {}).get("alternate_candidates") or {}
-                user_text_lower = (payload.message_text or "").strip().lower()
                 
-                # Check for cancellation first
-                if any(word in user_text_lower for word in ["cancel", "nevermind", "never mind", "no", "forget", "skip"]):
-                    # Clear pending state
-                    ai_data = dict(thread.actionable_insights or {})
-                    ai_data.pop("pending_alternate", None)
-                    ai_data.pop("alternate_candidates", None)
-                    thread.actionable_insights = ai_data
-                    
-                    raw = list(thread.raw_messages or [])
-                    raw.append({
-                        "id": str(uuid4()),
-                        "role": "user",
-                        "content": payload.message_text,
-                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                    })
-                    raw.append({
-                        "id": str(uuid4()),
-                        "role": "bot",
-                        "content": "No problem! Let me know if you'd like to change anything else.",
-                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                    })
-                    thread.raw_messages = raw
-                    db.add(thread)
-                    db.commit()
-                    db.refresh(thread)
-                    
-                    history = service.format_history_for_mobile(thread)
-                    tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
-                    return {
-                        "thread_id": thread.id,
-                        "local_date": thread.local_date.isoformat(),
-                        "history": history,
-                        "tap_options": tap_options,
-                        "actionable_insights": thread.actionable_insights or {},
-                        "ui_blocks": [],  # Clear UI blocks
-                    }
+                # Use LLM to match typed text to a candidate
+                matched_candidate_id = await CarePlanSemanticMatcher.match_candidate_selection(
+                    user_message=payload.message_text,
+                    candidates_by_id=candidates_by_id
+                )
                 
-                # Try to match typed text to a candidate
-                matched_candidate_id = None
-                matched_candidate = None
-                
-                # Check for ordinal selection (first, second, 1, 2, etc.)
-                ordinal_map = {"first": 0, "1": 0, "one": 0, "second": 1, "2": 1, "two": 1, "third": 2, "3": 2, "three": 2}
-                for ordinal, idx in ordinal_map.items():
-                    if ordinal in user_text_lower:
-                        candidate_keys = list(candidates_by_id.keys())
-                        if idx < len(candidate_keys):
-                            matched_candidate_id = candidate_keys[idx]
-                            matched_candidate = candidates_by_id[matched_candidate_id]
-                            break
-                
-                # Also try to match by candidate title
-                if not matched_candidate_id:
-                    for cid, candidate in candidates_by_id.items():
-                        candidate_title = (candidate.get("title") or candidate.get("specific_action") or "").strip().lower()
-                        if candidate_title and (
-                            candidate_title in user_text_lower or 
-                            user_text_lower in candidate_title or
-                            any(word in candidate_title for word in user_text_lower.split() if len(word) > 2)
-                        ):
-                            matched_candidate_id = cid
-                            matched_candidate = candidate
-                            break
-                
-                # Check for confirmation (ok, yes, sure) - use first candidate
-                if not matched_candidate_id and any(word in user_text_lower for word in ["ok", "okay", "yes", "sure", "sounds good", "do it", "go ahead"]):
-                    candidate_keys = list(candidates_by_id.keys())
-                    if candidate_keys:
-                        matched_candidate_id = candidate_keys[0]
-                        matched_candidate = candidates_by_id[matched_candidate_id]
-                
-                if matched_candidate_id and matched_candidate and item_id:
-                    # Execute the replacement
-                    raw = list(thread.raw_messages or [])
-                    raw.append({
-                        "id": str(uuid4()),
-                        "role": "user",
-                        "content": payload.message_text,
-                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                    })
-                    thread.raw_messages = raw
-                    
-                    result = await service.replace_action_item_with_candidate(
-                        uid, item_id, matched_candidate, "User selected via text"
-                    )
-                    
-                    # Clear pending state
-                    ai_data = dict(thread.actionable_insights or {})
-                    ai_data.pop("pending_alternate", None)
-                    ai_data.pop("alternate_candidates", None)
-                    thread.actionable_insights = ai_data
-                    
-                    raw = list(thread.raw_messages or [])
-                    if result.get("success"):
-                        repl_title = matched_candidate.get("title") or matched_candidate.get("specific_action") or "the new option"
+                if matched_candidate_id and item_id:
+                    matched_candidate = candidates_by_id.get(matched_candidate_id)
+                    if matched_candidate:
+                        raw = list(thread.raw_messages or [])
                         raw.append({
                             "id": str(uuid4()),
-                            "role": "bot",
-                            "content": f"Done! I replaced it with: {repl_title}. Your plan is updated! 🎉",
+                            "role": "user",
+                            "content": payload.message_text,
                             "created_at": __import__("datetime").datetime.utcnow().isoformat(),
                         })
-                    else:
-                        raw.append({
-                            "id": str(uuid4()),
-                            "role": "bot",
-                            "content": result.get("error") or "Sorry, I couldn't make that change right now.",
-                            "created_at": __import__("datetime").datetime.utcnow().isoformat(),
-                        })
-                    
-                    thread.raw_messages = raw
-                    db.add(thread)
-                    db.commit()
-                    db.refresh(thread)
-                    
-                    history = service.format_history_for_mobile(thread)
-                    tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
-                    return {
-                        "thread_id": thread.id,
-                        "local_date": thread.local_date.isoformat(),
-                        "history": history,
-                        "tap_options": tap_options,
-                        "actionable_insights": thread.actionable_insights or {},
-                        "ui_blocks": [],  # Clear UI blocks after completion
-                    }
+                        thread.raw_messages = raw
+                        
+                        result = await service.replace_action_item_with_candidate(
+                            uid, item_id, matched_candidate, "User selected via text"
+                        )
+                        
+                        # Clear pending state
+                        ai_data = dict(thread.actionable_insights or {})
+                        ai_data.pop("pending_alternate", None)
+                        ai_data.pop("alternate_candidates", None)
+                        thread.actionable_insights = ai_data
+                        
+                        raw = list(thread.raw_messages or [])
+                        if result.get("success"):
+                            repl_title = matched_candidate.get("title") or matched_candidate.get("specific_action") or "the new option"
+                            raw.append({
+                                "id": str(uuid4()),
+                                "role": "bot",
+                                "content": f"Done! I replaced it with: {repl_title}. Your plan is updated! 🎉",
+                                "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                            })
+                        else:
+                            raw.append({
+                                "id": str(uuid4()),
+                                "role": "bot",
+                                "content": result.get("error") or "Sorry, I couldn't make that change right now.",
+                                "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                            })
+                        
+                        thread.raw_messages = raw
+                        db.add(thread)
+                        db.commit()
+                        db.refresh(thread)
+                        
+                        history = service.format_history_for_mobile(thread)
+                        tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                        return {
+                            "thread_id": thread.id,
+                            "local_date": thread.local_date.isoformat(),
+                            "history": history,
+                            "tap_options": tap_options,
+                            "actionable_insights": thread.actionable_insights or {},
+                            "ui_blocks": [],
+                        }
 
         # ═══════════════════════════════════════════════════════════════════════
         # 3. Personalization Intent Handling
