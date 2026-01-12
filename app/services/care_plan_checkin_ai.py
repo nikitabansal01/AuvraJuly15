@@ -297,18 +297,18 @@ class CarePlanSemanticMatcher:
         available_items = available_items or []
         available_candidates = available_candidates or []
         
-        # Build context
+        # Build context with categories for better semantic matching
         items_list = ""
         if available_items:
             items_list = "\n".join([
-                f"{i}. {(item.get('title') or 'Unknown')[:50]}"
+                f"{i}. [{item.get('category', 'general').upper()}] {(item.get('title') or 'Unknown')[:60]}"
                 for i, item in enumerate(available_items[:10])  # Limit to 10 items
             ])
         
         candidates_list = ""
         if available_candidates:
             candidates_list = "\n".join([
-                f"{i}. {(c.get('title') or c.get('specific_action') or 'Unknown')[:50]}"
+                f"{i}. {(c.get('title') or c.get('specific_action') or 'Unknown')[:60]}"
                 for i, c in enumerate(available_candidates[:10])
             ])
         
@@ -320,7 +320,7 @@ INTENT MEANINGS:
 - select_candidate: User is choosing a replacement option (set selected_index)
 - confirm: User is agreeing (yes, ok, sure, sounds good, do it, perfect, etc.)
 - cancel: User is declining (no, nevermind, forget it, skip, cancel, etc.)
-- want_change: User wants to change/replace something in their plan
+- want_change: User wants to change/replace something in their plan (e.g., "change food", "don't like this")
 - want_alternates: User wants to see alternatives/suggestions
 - general_chat: User is just chatting, not making a specific action
 
@@ -329,9 +329,12 @@ MATCHING RULES:
 - "second", "2" → selected_index: 1
 - "third", "3" → selected_index: 2
 - "last one" → selected_index: (last available index)
-- If user mentions a word from an item title, match that item
-- Be generous - if there's any reasonable connection, make the match
-- Only use general_chat if truly uncertain"""
+- USE CATEGORIES: If user says "food" or "diet", match with [FOOD] items.
+- If user says "movement", "exercise", "workout", match with [MOVEMENT] items.
+- If user mentions a word from an item title, match that item.
+- Be generous/smart - match "food" to "Eat protein", "run" to "Movement".
+- If user says "change [item]", use intent: want_change + selected_index of that item.
+- Only use general_chat if truly uncertain."""
 
         context_msg = f"Context: {current_context}"
         if items_list:
