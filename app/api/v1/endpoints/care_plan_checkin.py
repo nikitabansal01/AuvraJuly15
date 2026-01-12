@@ -578,7 +578,37 @@ async def respond_care_plan_checkin(
                             "ui_blocks": [_pick_alternate_candidate_block(matched_item_id, candidates_result.get("candidates_ui") or [])],
                         }
                 else:
-                    logger.info(f"[PENDING_ALT] No match found, falling through to AI response")
+                    logger.info(f"[PENDING_ALT] No match found, showing helpful message")
+                    # User typed something that didn't match any item
+                    # Return early with the picker and a helpful message
+                    raw = list(thread.raw_messages or [])
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": payload.message_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": "I couldn't find that item in your plan. Please tap one of the options below, or say 'cancel' to exit.",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    thread.raw_messages = raw
+                    db.add(thread)
+                    db.commit()
+                    db.refresh(thread)
+                    
+                    history = service.format_history_for_mobile(thread)
+                    tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                    return {
+                        "thread_id": thread.id,
+                        "local_date": thread.local_date.isoformat(),
+                        "history": history,
+                        "tap_options": tap_options,
+                        "actionable_insights": thread.actionable_insights or {},
+                        "ui_blocks": [_pick_alternate_item_block(items)],  # Show picker again with guidance
+                    }
             
             # Stage: User needs to pick which candidate to use
             elif stage == "choose_candidate":
@@ -644,6 +674,40 @@ async def respond_care_plan_checkin(
                             "actionable_insights": thread.actionable_insights or {},
                             "ui_blocks": [],
                         }
+                else:
+                    # User typed something that didn't match any candidate
+                    candidates_ui = [
+                        {"id": cid, "title": c.get("title") or c.get("specific_action") or "Option", "category": c.get("category")}
+                        for cid, c in candidates_by_id.items()
+                    ]
+                    raw = list(thread.raw_messages or [])
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": payload.message_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": "I couldn't match that option. Please tap one of the choices below, or say 'cancel' to exit.",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    thread.raw_messages = raw
+                    db.add(thread)
+                    db.commit()
+                    db.refresh(thread)
+                    
+                    history = service.format_history_for_mobile(thread)
+                    tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                    return {
+                        "thread_id": thread.id,
+                        "local_date": thread.local_date.isoformat(),
+                        "history": history,
+                        "tap_options": tap_options,
+                        "actionable_insights": thread.actionable_insights or {},
+                        "ui_blocks": [_pick_alternate_candidate_block(item_id, candidates_ui)],
+                    }
 
         # ═══════════════════════════════════════════════════════════════════════
         # 3. Personalization Intent Handling
