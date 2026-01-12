@@ -512,12 +512,9 @@ class ImageLibraryService:
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod Flux Schnell serverless endpoint using proper /run + /status async pattern.
+        Call RunPod Flux Schnell serverless PUBLIC endpoint using /run + /status async pattern.
         
-        PUBLIC SERVERLESS ENDPOINTS (like black-forest-labs-flux-1-schnell) ONLY support /run, NOT /runsync.
-        Must submit job to /run, get job_id, then poll /status/{job_id}.
-        
-        Handles cold starts (10-15 min for first request) and warm starts (3-4s).
+        PUBLIC ENDPOINTS are always warm (no cold starts), expect 3-4s generation time.
         """
         if not self.runpod_api_key:
             logger.warning("RunPod API key not configured, using placeholder")
@@ -539,7 +536,7 @@ class ImageLibraryService:
                     "seed": -1,
                     "image_format": "png"
                 },
-                "executionTimeout": 300  # 5 minutes max execution time
+                "executionTimeout": 60  # 1 minute max (public endpoint is fast)
             }
             
             headers = {
@@ -547,46 +544,47 @@ class ImageLibraryService:
                 "Content-Type": "application/json"
             }
             
-            # Step 1: Submit job to /run endpoint (async job submission)
+            # Step 1: Submit job to /run endpoint
             run_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
             
-            logger.info(f"🎨 [RunPod] Submitting job to {self.runpod_endpoint}")
+            logger.info(f"🎨 [RunPod] Submitting job: {prompt[:50]}...")
             
             response = await self.client.post(
                 run_url,
                 json=payload,
                 headers=headers,
-                timeout=30.0  # 30s timeout for job submission
+                timeout=10.0  # 10s timeout for job submission
             )
             
             if response.status_code != 200:
-                logger.error(f"❌ [RunPod] Job submission failed: {response.status_code} - {response.text}")
+                logger.error(f"❌ [RunPod] Submission failed: {response.status_code} - {response.text[:200]}")
                 return await self._generate_placeholder_image(prompt)
             
             result = response.json()
             job_id = result.get("id")
             
             if not job_id:
-                logger.error(f"❌ [RunPod] No job_id in response: {result}")
+                logger.error(f"❌ [RunPod] No job_id in response")
                 return await self._generate_placeholder_image(prompt)
             
-            logger.info(f"✅ [RunPod] Job submitted: {job_id}")
+            logger.debug(f"[RunPod] Job ID: {job_id}")
             
-            # Step 2: Poll /status/{job_id} until complete
+            # Step 2: Poll /status/{job_id} - aggressive for warm endpoint
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
             
-            # Smart polling intervals: faster initially, slower later (handles both cold and warm starts)
-            poll_intervals = [2, 2, 2, 5, 5, 5, 10, 10, 10, 15, 15, 15]  # Total: ~2 minutes
-            max_polls = len(poll_intervals)
+            # Fast polling for warm endpoint (should complete in 3-4s)
+            # Poll every 1s for 30s max
+            max_polls = 30
+            poll_interval = 1.0
             
-            for poll_num, interval in enumerate(poll_intervals):
-                await asyncio.sleep(interval)
+            for poll_num in range(max_polls):
+                await asyncio.sleep(poll_interval)
                 
                 try:
                     status_response = await self.client.get(
                         status_url,
                         headers=headers,
-                        timeout=10.0
+                        timeout=5.0
                     )
                     
                     if status_response.status_code != 200:
@@ -596,13 +594,11 @@ class ImageLibraryService:
                     status_result = status_response.json()
                     status = status_result.get("status")
                     
-                    logger.debug(f"[RunPod] Poll {poll_num + 1}/{max_polls}: status={status}")
-                    
                     if status == "COMPLETED":
                         output = status_result.get("output", {})
                         elapsed_ms = int((time.time() - start_time) * 1000)
                         
-                        logger.info(f"✅ [RunPod] Job completed in {elapsed_ms}ms")
+                        logger.info(f"✅ [RunPod] Completed in {elapsed_ms}ms")
                         
                         # Handle output (URL or base64)
                         if isinstance(output, dict):
@@ -630,6 +626,8 @@ class ImageLibraryService:
                     
                     elif status in ["IN_QUEUE", "IN_PROGRESS"]:
                         # Continue polling
+                        if poll_num % 5 == 0:  # Log every 5 polls
+                            logger.debug(f"[RunPod] Poll {poll_num + 1}/{max_polls}: {status}")
                         continue
                     
                     else:
@@ -640,9 +638,9 @@ class ImageLibraryService:
                     logger.warning(f"⚠️ [RunPod] Poll error: {poll_error}")
                     continue
             
-            # Timeout after all poll attempts
+            # Timeout after 30s
             elapsed = time.time() - start_time
-            logger.error(f"❌ [RunPod] Job timeout after {elapsed:.1f}s (job_id: {job_id})")
+            logger.error(f"❌ [RunPod] Timeout after {elapsed:.1f}s (job: {job_id})")
             return await self._generate_placeholder_image(prompt)
             
         except Exception as e:
@@ -1074,7 +1072,7 @@ class ImageLibraryService:
         db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """
-        Generate multiple images efficiently.
+        Generate multiple images IN PARALLEL for maximum performance.
         
         Args:
             prompts: List of {"prompt": str, "category": str, "variant_type": str}
@@ -1084,34 +1082,59 @@ class ImageLibraryService:
         Returns:
             List of {"image_url": str, "was_cached": bool, "cost": float}
         """
-        results = []
-        total_cost = 0.0
-        cache_hits = 0
+        logger.info(f"📸 Starting PARALLEL batch: {len(prompts)} images")
         
-        for prompt_info in prompts:
-            image_url, was_cached, cost = await self.get_or_generate_image(
+        # Generate all images in parallel
+        tasks = [
+            self.get_or_generate_image(
                 prompt=prompt_info["prompt"],
                 category=prompt_info["category"],
                 variant_type=prompt_info.get("variant_type"),
                 user_id=user_id,
                 db=db
             )
-            
-            results.append({
-                "prompt": prompt_info["prompt"],
-                "category": prompt_info["category"],
-                "variant_type": prompt_info.get("variant_type"),
-                "image_url": image_url,
-                "was_cached": was_cached,
-                "cost": cost
-            })
-            
-            total_cost += cost
-            if was_cached:
-                cache_hits += 1
+            for prompt_info in prompts
+        ]
         
-        logger.info(f"📸 Batch complete: {len(prompts)} images, "
-                   f"{cache_hits} cached, ${total_cost:.4f} total cost")
+        # Wait for all to complete in parallel
+        image_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        results = []
+        total_cost = 0.0
+        cache_hits = 0
+        errors = 0
+        
+        for prompt_info, result in zip(prompts, image_results):
+            if isinstance(result, Exception):
+                logger.error(f"❌ Batch error for {prompt_info['prompt'][:30]}: {result}")
+                errors += 1
+                results.append({
+                    "prompt": prompt_info["prompt"],
+                    "category": prompt_info["category"],
+                    "variant_type": prompt_info.get("variant_type"),
+                    "image_url": "",
+                    "was_cached": False,
+                    "cost": 0.0,
+                    "error": str(result)
+                })
+            else:
+                image_url, was_cached, cost = result
+                results.append({
+                    "prompt": prompt_info["prompt"],
+                    "category": prompt_info["category"],
+                    "variant_type": prompt_info.get("variant_type"),
+                    "image_url": image_url,
+                    "was_cached": was_cached,
+                    "cost": cost
+                })
+                
+                total_cost += cost
+                if was_cached:
+                    cache_hits += 1
+        
+        logger.info(f"✅ Batch complete: {len(prompts)} images, "
+                   f"{cache_hits} cached, {errors} errors, ${total_cost:.4f} total")
         
         return results
     
