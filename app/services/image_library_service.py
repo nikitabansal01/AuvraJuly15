@@ -42,7 +42,7 @@ class ImageLibraryService:
     # SIMILARITY_THRESHOLD increased from 0.85 to 0.92 to prevent
     # false matches between different food items (e.g., spinach vs salmon)
     # Higher threshold requires more specific semantic match
-    SIMILARITY_THRESHOLD = 0.92
+    SIMILARITY_THRESHOLD = 0.95  # Cosine similarity threshold for semantic image matching
     
     # RunPod pricing
     COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
@@ -512,8 +512,12 @@ class ImageLibraryService:
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod Flux Schnell synchronous endpoint (Fix #18: Performance).
-        Uses /runsync for faster response without polling overhead.
+        Call RunPod Flux Schnell serverless endpoint using proper /run + /status async pattern.
+        
+        PUBLIC SERVERLESS ENDPOINTS (like black-forest-labs-flux-1-schnell) ONLY support /run, NOT /runsync.
+        Must submit job to /run, get job_id, then poll /status/{job_id}.
+        
+        Handles cold starts (10-15 min for first request) and warm starts (3-4s).
         """
         if not self.runpod_api_key:
             logger.warning("RunPod API key not configured, using placeholder")
@@ -534,7 +538,8 @@ class ImageLibraryService:
                     "guidance": 3.5,
                     "seed": -1,
                     "image_format": "png"
-                }
+                },
+                "executionTimeout": 300  # 5 minutes max execution time
             }
             
             headers = {
@@ -542,57 +547,106 @@ class ImageLibraryService:
                 "Content-Type": "application/json"
             }
             
-            # Use /runsync for single-call execution
-            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/runsync"
+            # Step 1: Submit job to /run endpoint (async job submission)
+            run_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
             
-            logger.debug(f"[IMAGE] Sycnhronous request to RunPod: {self.runpod_endpoint}")
+            logger.info(f"🎨 [RunPod] Submitting job to {self.runpod_endpoint}")
             
             response = await self.client.post(
-                endpoint_url,
+                run_url,
                 json=payload,
                 headers=headers,
-                timeout=self.RUNPOD_SYNC_TIMEOUT
+                timeout=30.0  # 30s timeout for job submission
             )
             
             if response.status_code != 200:
-                logger.error(f"RunPod runsync returned {response.status_code}: {response.text}")
+                logger.error(f"❌ [RunPod] Job submission failed: {response.status_code} - {response.text}")
                 return await self._generate_placeholder_image(prompt)
             
             result = response.json()
-            status = result.get("status")
+            job_id = result.get("id")
             
-            if status == "COMPLETED":
-                output = result.get("output", {})
-                elapsed_ms = int((time.time() - start_time) * 1000)
+            if not job_id:
+                logger.error(f"❌ [RunPod] No job_id in response: {result}")
+                return await self._generate_placeholder_image(prompt)
+            
+            logger.info(f"✅ [RunPod] Job submitted: {job_id}")
+            
+            # Step 2: Poll /status/{job_id} until complete
+            status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
+            
+            # Smart polling intervals: faster initially, slower later (handles both cold and warm starts)
+            poll_intervals = [2, 2, 2, 5, 5, 5, 10, 10, 10, 15, 15, 15]  # Total: ~2 minutes
+            max_polls = len(poll_intervals)
+            
+            for poll_num, interval in enumerate(poll_intervals):
+                await asyncio.sleep(interval)
                 
-                # Handle output (URL or base64)
-                if isinstance(output, dict):
-                    if output.get("image_url"):
-                        return (output["image_url"], elapsed_ms)
+                try:
+                    status_response = await self.client.get(
+                        status_url,
+                        headers=headers,
+                        timeout=10.0
+                    )
                     
-                    image_base64 = output.get("image") or output.get("image_base64")
-                    if image_base64:
-                        if image_base64.startswith("data:"):
-                            image_base64 = image_base64.split(",")[1]
-                        return (base64.b64decode(image_base64), elapsed_ms)
+                    if status_response.status_code != 200:
+                        logger.warning(f"⚠️ [RunPod] Status check failed: {status_response.status_code}")
+                        continue
+                    
+                    status_result = status_response.json()
+                    status = status_result.get("status")
+                    
+                    logger.debug(f"[RunPod] Poll {poll_num + 1}/{max_polls}: status={status}")
+                    
+                    if status == "COMPLETED":
+                        output = status_result.get("output", {})
+                        elapsed_ms = int((time.time() - start_time) * 1000)
+                        
+                        logger.info(f"✅ [RunPod] Job completed in {elapsed_ms}ms")
+                        
+                        # Handle output (URL or base64)
+                        if isinstance(output, dict):
+                            if output.get("image_url"):
+                                return (output["image_url"], elapsed_ms)
+                            
+                            image_base64 = output.get("image") or output.get("image_base64")
+                            if image_base64:
+                                if image_base64.startswith("data:"):
+                                    image_base64 = image_base64.split(",")[1]
+                                return (base64.b64decode(image_base64), elapsed_ms)
+                        
+                        elif isinstance(output, str):
+                            if output.startswith("data:"):
+                                output = output.split(",")[1]
+                            return (base64.b64decode(output), elapsed_ms)
+                        
+                        logger.error(f"❌ [RunPod] Unexpected output format: {type(output)}")
+                        return await self._generate_placeholder_image(prompt)
+                    
+                    elif status == "FAILED":
+                        error = status_result.get("error", "Unknown error")
+                        logger.error(f"❌ [RunPod] Job failed: {error}")
+                        return await self._generate_placeholder_image(prompt)
+                    
+                    elif status in ["IN_QUEUE", "IN_PROGRESS"]:
+                        # Continue polling
+                        continue
+                    
+                    else:
+                        logger.warning(f"⚠️ [RunPod] Unknown status: {status}")
+                        continue
                 
-                elif isinstance(output, str):
-                    if output.startswith("data:"):
-                        output = output.split(",")[1]
-                    return (base64.b64decode(output), elapsed_ms)
+                except Exception as poll_error:
+                    logger.warning(f"⚠️ [RunPod] Poll error: {poll_error}")
+                    continue
             
-            # If not completed (e.g. timeout on RunPod side), fall back to original polling logic for 
-            # safety or return None for retry
-            if status in ["IN_QUEUE", "IN_PROGRESS"]:
-                # The runsync might have returned early due to queue length
-                # We could fall back to polling, but usually we just want to retry
-                logger.warning(f"RunPod runsync returned {status} - trying legacy polling")
-                return await self._call_runpod_flux_legacy(prompt, category)
-
+            # Timeout after all poll attempts
+            elapsed = time.time() - start_time
+            logger.error(f"❌ [RunPod] Job timeout after {elapsed:.1f}s (job_id: {job_id})")
             return await self._generate_placeholder_image(prompt)
             
         except Exception as e:
-            logger.error(f"Error calling RunPod runsync: {e}")
+            logger.error(f"❌ [RunPod] Error: {type(e).__name__}: {e}")
             return await self._generate_placeholder_image(prompt)
 
     async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
