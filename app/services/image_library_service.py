@@ -56,17 +56,9 @@ class ImageLibraryService:
     RETRY_DELAYS = [1.0, 2.0, 4.0]  # Progressive delays for retries
     
     # RunPod timeout settings - synchronous call is much faster
-    RUNPOD_SYNC_TIMEOUT = 60.0  # 60s for sync call (includes cold start)
+    RUNPOD_SYNC_TIMEOUT = 10.0  # 10s for sync call - fail fast, retry works better
     RUNPOD_POLL_TIMEOUT = 120  # 120 seconds (2 min) max wait - shared endpoint can be slow
     RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second
-    
-    # Fallback images when generation fails - prevents empty image URLs in database
-    # These are hosted on Cloudinary and match the app's visual style
-    FALLBACK_IMAGE_URLS = {
-        "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
-        "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
-        "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
-    }
     
     def __init__(self):
         """Initialize the image library service."""
@@ -88,8 +80,15 @@ class ImageLibraryService:
         self.supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
         self.storage_bucket = "action-plan-images"
         
-        # HTTP clients
-        self.client = httpx.AsyncClient(timeout=120.0)
+        # HTTP clients with proper timeout configuration
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=5.0,    # 5s to establish connection
+                read=15.0,      # 15s to receive response
+                write=10.0,     # 10s to send request
+                pool=5.0        # 5s to get connection from pool
+            )
+        )
         
         # In-memory cache for embeddings (avoid repeated API calls)
         self._embedding_cache: Dict[str, List[float]] = {}
@@ -107,21 +106,21 @@ class ImageLibraryService:
         variant_type: Optional[str],
         user_id: str,
         db: AsyncSession,
-        title_embedding: Optional[List[float]] = None
+        title_embedding: Optional[List[float]] = None  # Keep parameter for backward compatibility, but ignore
     ) -> Tuple[str, bool, float]:
         """
         Get a cached image or generate a new one.
         
-        TITLE-BASED EMBEDDING: We embed the TITLE (not full prompt) for cache matching.
-        This gives stable cache hits even when prompt styling changes.
+        HASH-BASED CACHE: Simple MD5 hash of prompt+category+variant for instant lookups.
+        This is much faster than embedding-based search (0ms vs 410ms).
         
         Args:
-            prompt: The action TITLE (e.g., "Salmon bowl") - used for BOTH embedding AND generation
+            prompt: The action TITLE (e.g., "Salmon bowl")
             category: "food", "movement", or "mindfulness"
             variant_type: "hero", "tasty", "easy", "healthy", etc.
             user_id: User's UID to avoid showing same image twice
             db: Database session
-            title_embedding: Optional pre-calculated embedding for the title
+            title_embedding: Ignored (kept for backward compatibility)
         
         Returns:
             Tuple of (image_url, was_cached, cost)
@@ -132,38 +131,26 @@ class ImageLibraryService:
         logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
         
         try:
-            # Step 1: Get embedding for the TITLE (if not provided)
-            # This gives stable cache matching regardless of prompt style changes
-            if title_embedding is None:
-                logger.info(f"[IMAGE] Step 1: Getting embedding for title '{prompt[:30]}...'")
-                title_embedding = await self._get_embedding(prompt)
+            # Step 1: Generate cache key from prompt
+            cache_key = hashlib.md5(
+                f"{prompt}_{category}_{variant_type}".encode()
+            ).hexdigest()
+            logger.info(f"[IMAGE] Step 1: Generated cache key from prompt (instant)")
             
-            if not title_embedding:
-                logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{prompt[:30]}...' - generating without cache")
-                return await self._generate_and_store_image(
-                    prompt, category, variant_type, user_id, None, db
-                )
-            
-            logger.info(f"[IMAGE] Step 1: ✅ Got embedding (dim={len(title_embedding)})")
-            
-            # Step 2: Search for semantically similar cached images by TITLE
-            logger.info(f"[IMAGE] Step 2: Searching cache with threshold {self.SIMILARITY_THRESHOLD}")
-            cached_image = await self._find_similar_image(
-                title_embedding, 
-                category, 
-                variant_type, 
+            # Step 2: Check cache using hash
+            logger.info(f"[IMAGE] Step 2: Searching cache by hash")
+            cached_image = await self._find_cached_image_by_hash(
+                cache_key, 
                 user_id, 
                 db
             )
             
             if cached_image:
-                # Found a semantically similar image!
+                # Found cached image!
                 await self._update_image_usage(cached_image["id"], user_id, db)
                 elapsed = time.time() - start_time
                 logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
                 logger.info(f"[IMAGE]   Title: '{prompt[:40]}...'")
-                logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
-                logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
                 logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
                 return (cached_image["image_url"], True, 0.0)
             
@@ -173,7 +160,7 @@ class ImageLibraryService:
             logger.info(f"[IMAGE] Step 3: 🎨 Generating new image for '{prompt[:40]}...'")
             
             result = await self._generate_and_store_image(
-                prompt, category, variant_type, user_id, title_embedding, db
+                prompt, category, variant_type, user_id, cache_key, db
             )
             
             elapsed = time.time() - start_time
@@ -184,8 +171,9 @@ class ImageLibraryService:
         except Exception as e:
             logger.error(f"[IMAGE] ❌ Error: {e}")
             # Fallback: try to generate without caching
+            cache_key = hashlib.md5(f"{prompt}_{category}_{variant_type}".encode()).hexdigest()
             return await self._generate_and_store_image(
-                prompt, category, variant_type, user_id, None, db
+                prompt, category, variant_type, user_id, cache_key, db
             )
     
     async def _get_embedding(self, text: str) -> Optional[List[float]]:
@@ -308,6 +296,45 @@ class ImageLibraryService:
             # Silently skip - embeddings are optional
             return results  # Return partial results (cached ones)
     
+    async def _find_cached_image_by_hash(
+        self,
+        cache_key: str,
+        user_id: str,
+        db: AsyncSession
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find a cached image by its hash key (instant lookup).
+        """
+        from app.core.database import ImageLibrary
+        from sqlalchemy import select
+        
+        try:
+            query = select(ImageLibrary).where(
+                ImageLibrary.cache_key == cache_key
+            )
+            
+            result = await db.execute(query)
+            cached_image = result.scalar_one_or_none()
+            
+            if not cached_image:
+                return None
+            
+            # Check if user has already seen this image
+            used_by = cached_image.used_by_users or []
+            if user_id in used_by:
+                logger.info(f"  User has already seen this image, treating as cache miss")
+                return None
+            
+            return {
+                "id": cached_image.id,
+                "image_url": cached_image.image_url,
+                "prompt_text": cached_image.prompt_text
+            }
+            
+        except Exception as e:
+            logger.error(f"Error finding cached image: {e}")
+            return None
+    
     async def _find_similar_image(
         self,
         prompt_embedding: List[float],
@@ -317,8 +344,9 @@ class ImageLibraryService:
         db: AsyncSession
     ) -> Optional[Dict[str, Any]]:
         """
-        Find a semantically similar image that hasn't been shown to this user.
+        DEPRECATED: Find a semantically similar image that hasn't been shown to this user.
         
+        NOTE: This function is kept for backward compatibility but is no longer used.
         Uses cosine similarity on stored embeddings.
         """
         from app.core.database import ImageLibrary
@@ -439,7 +467,7 @@ class ImageLibraryService:
         category: str,
         variant_type: Optional[str],
         user_id: str,
-        prompt_embedding: Optional[List[float]],
+        cache_key: str,
         db: AsyncSession
     ) -> Tuple[str, bool, float]:
         """Generate a new image using RunPod Flux Schnell and store it."""
@@ -450,9 +478,8 @@ class ImageLibraryService:
             result, generation_time_ms = await self._call_runpod_flux_with_retry(prompt, category)
             
             if not result:
-                logger.error(f"Failed to generate image via RunPod, using fallback for {category}")
-                fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-                return (fallback_url, False, 0.0)
+                logger.error(f"❌ Failed to generate image via RunPod after all retries")
+                return ("", False, 0.0)  # Return empty, caller must handle
             
             # Check if result is already a URL (from RunPod) or bytes
             if isinstance(result, str) and result.startswith("http"):
@@ -462,11 +489,11 @@ class ImageLibraryService:
                     # Fallback: use RunPod URL directly (may expire)
                     image_url = result
 
-                # Store in image library for future semantic matching
+                # Store in image library for future hash-based cache lookups
                 await self._store_in_library(
                     image_url=image_url,
                     prompt_text=prompt,
-                    prompt_embedding=prompt_embedding,
+                    cache_key=cache_key,
                     category=category,
                     variant_type=variant_type,
                     user_id=user_id,
@@ -480,15 +507,14 @@ class ImageLibraryService:
                 if not image_url:
                     image_url = await self._upload_to_supabase(result, category, variant_type)
                 if not image_url:
-                    logger.error(f"Failed to upload image to any storage, using fallback for {category}")
-                    fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-                    return (fallback_url, False, 0.0)
+                    logger.error(f"❌ Failed to upload image to any storage")
+                    return ("", False, 0.0)  # Return empty, caller must handle
 
-                # Store in image library for future semantic matching
+                # Store in image library for future hash-based cache lookups
                 await self._store_in_library(
                     image_url=image_url,
                     prompt_text=prompt,
-                    prompt_embedding=prompt_embedding,
+                    cache_key=cache_key,
                     category=category,
                     variant_type=variant_type,
                     user_id=user_id,
@@ -496,9 +522,8 @@ class ImageLibraryService:
                     db=db
                 )
             else:
-                logger.error(f"Unexpected result type: {type(result)}, using fallback for {category}")
-                fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-                return (fallback_url, False, 0.0)
+                logger.error(f"❌ Unexpected result type from RunPod: {type(result)}")
+                return ("", False, 0.0)  # Return empty, caller must handle
             
             elapsed = time.time() - start_time
             logger.info(f"🎨 New image generated. Time: {elapsed:.2f}s, Cost: ${self.COST_PER_IMAGE}")
@@ -506,9 +531,8 @@ class ImageLibraryService:
             return (image_url, False, self.COST_PER_IMAGE)
             
         except Exception as e:
-            logger.error(f"Error generating and storing image: {e}, using fallback for {category}")
-            fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-            return (fallback_url, False, 0.0)
+            logger.error(f"❌ Error generating and storing image: {type(e).__name__}: {e}")
+            return ("", False, 0.0)  # Return empty, caller must handle
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
@@ -581,19 +605,23 @@ class ImageLibraryService:
                         output = output.split(",")[1]
                     return (base64.b64decode(output), elapsed_ms)
             
-            # If not completed (e.g. timeout on RunPod side), fall back to original polling logic for 
-            # safety or return None for retry
+            # If not completed, log error and return None for retry
             if status in ["IN_QUEUE", "IN_PROGRESS"]:
-                # The runsync might have returned early due to queue length
-                # We could fall back to polling, but usually we just want to retry
-                logger.warning(f"RunPod runsync returned {status} - trying legacy polling")
-                return await self._call_runpod_flux_legacy(prompt, category)
+                logger.error(f"❌ RunPod runsync timed out after {self.RUNPOD_SYNC_TIMEOUT}s, status={status}")
+                return (None, 0)  # Let retry logic handle it
 
-            return await self._generate_placeholder_image(prompt)
+            logger.error(f"❌ RunPod runsync unexpected status: {status}")
+            return (None, 0)
             
+        except httpx.TimeoutException as e:
+            logger.error(f"❌ RunPod timeout after {self.RUNPOD_SYNC_TIMEOUT}s: {e}")
+            return (None, 0)
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ RunPod HTTP error {e.response.status_code}: {e}")
+            return (None, 0)
         except Exception as e:
-            logger.error(f"Error calling RunPod runsync: {e}")
-            return await self._generate_placeholder_image(prompt)
+            logger.error(f"❌ RunPod error: {type(e).__name__}: {e}")
+            return (None, 0)
 
     async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
@@ -706,10 +734,10 @@ class ImageLibraryService:
                     await asyncio.sleep(delay)
                 else:
                     logger.error(f"❌ Image generation failed after {self.MAX_IMAGE_RETRIES} retries: {e}")
-                    return await self._generate_placeholder_image(prompt)
+                    return ("", 0)  # Return empty, let caller handle it
         
-        logger.error(f"❌ All {self.MAX_IMAGE_RETRIES} retry attempts exhausted, using placeholder")
-        return await self._generate_placeholder_image(prompt)
+        logger.error(f"❌ All {self.MAX_IMAGE_RETRIES} retry attempts exhausted")
+        return ("", 0)  # Return empty, let caller handle it
     
     def _enhance_prompt(self, prompt: str, category: str = "food") -> str:
         """
@@ -971,14 +999,14 @@ class ImageLibraryService:
         self,
         image_url: str,
         prompt_text: str,
-        prompt_embedding: Optional[List[float]],
+        cache_key: str,
         category: str,
         variant_type: Optional[str],
         user_id: str,
         generation_time_ms: int,
         db: AsyncSession
     ) -> None:
-        """Store generated image in the library for future semantic matching.
+        """Store generated image in the library for future hash-based cache lookups.
         
         Note: Does NOT commit - parent transaction will handle commit.
         This avoids "can't commit during flush" errors when called from replace_action.
@@ -989,7 +1017,7 @@ class ImageLibraryService:
             new_image = ImageLibrary(
                 image_url=image_url,
                 prompt_text=prompt_text,
-                prompt_embedding=prompt_embedding,
+                cache_key=cache_key,
                 category=category,
                 variant_type=variant_type,
                 generation_model="flux-schnell",
