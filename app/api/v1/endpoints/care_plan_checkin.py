@@ -95,7 +95,6 @@ def _default_tap_options() -> List[Dict[str, str]]:
     return [
         {"id": "want-to-change", "text": "👎 I want to change it"},
         {"id": "alternate-suggestions", "text": "🔁 I want alternate suggestions"},
-        {"id": "want-to-personalize", "text": "⚙️ I want to personalize"},
     ]
 
 
