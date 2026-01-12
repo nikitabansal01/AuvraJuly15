@@ -220,7 +220,7 @@ INTENT_TOOLS = [
                         "description": "Confidence in the classification (0.0 to 1.0)"
                     }
                 },
-                "required": ["intent", "confidence"],
+                "required": ["intent", "selected_index", "confidence"],
                 "additionalProperties": False
             }
         }
