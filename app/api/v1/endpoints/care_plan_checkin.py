@@ -783,11 +783,18 @@ async def respond_care_plan_checkin(
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
         history = service.format_history_for_mobile(thread)
 
-        tap_options = _default_tap_options()
+        # Prioritize LLM-generated tap options, only use defaults as fallback
+        tap_options = []
         for t in (ai_response.tap_options or []):
             if _should_exclude_tap_option(t.id, t.text):
                 continue
-            tap_options = _ensure_tap_option(tap_options, t.id, t.text)
+            tap_options.append({"id": t.id, "text": t.text})
+        
+        # Only add defaults if LLM didn't provide any contextual options
+        if not tap_options:
+            tap_options = _default_tap_options()
+        
+        # Always ensure manage_plan is available
         tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
 
         ui_blocks: List[UIBlock] = []
