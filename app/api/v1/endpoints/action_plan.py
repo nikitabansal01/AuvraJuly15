@@ -1585,12 +1585,26 @@ def _build_plan_response(plan, db) -> dict:
     """Build response dictionary from plan object."""
     from app.core.database import ActionPlanItem, ActionPlanItemVariant
     
+    # Query ALL items first for debugging
+    all_items = db.query(ActionPlanItem).filter(
+        ActionPlanItem.plan_id == plan.id
+    ).order_by(ActionPlanItem.slot).all()
+    
+    # Query non-replaced items
     items = db.query(ActionPlanItem).filter(
         and_(
             ActionPlanItem.plan_id == plan.id,
             ActionPlanItem.is_replaced.isnot(True)
         )
     ).order_by(ActionPlanItem.slot).all()
+    
+    # Debug logging
+    logger.info(f"🔍 _build_plan_response for plan_id={plan.id}:")
+    logger.info(f"   Total items in DB: {len(all_items)}")
+    logger.info(f"   Non-replaced items: {len(items)}")
+    for item in all_items:
+        logger.info(f"   - Item {item.id}: '{item.title}' | is_replaced={item.is_replaced} | target_hormone={item.target_hormone}")
+
     
 
     actions = []
