@@ -3985,7 +3985,27 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                            f"conditions={action.get('conditions')}, "
                            f"hormone_persona_intro={bool(action.get('hormone_persona_intro'))}")
             
-            return (actions, total_cost)
+            # ================================================================
+            # POST-GENERATION DEDUPLICATION FOR INITIAL PLAN
+            # Validate generated actions against each other to catch duplicates
+            # (e.g., same action targeting different hormones)
+            # ================================================================
+            deduped_actions = []
+            duplicates_found = 0
+            for action in actions:
+                if is_duplicate(action, deduped_actions):
+                    duplicates_found += 1
+                    logger.warning(f"⚠️ Duplicate detected in initial generation: '{action.get('title')}' - removing")
+                    continue
+                deduped_actions.append(action)
+            
+            if duplicates_found > 0:
+                logger.warning(f"🔍 Deduplication: removed {duplicates_found} duplicate action(s) from initial generation")
+                # If we removed duplicates, we should have fewer than 4 actions
+                # This will be handled by the caller who may request regeneration
+            
+            logger.info(f"✅ Generated {len(deduped_actions)} unique actions (cost: ${total_cost:.4f})")
+            return (deduped_actions, total_cost)
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse GPT response as JSON: {e}")
