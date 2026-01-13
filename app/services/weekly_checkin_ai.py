@@ -263,7 +263,9 @@ class WeeklyCheckInAI:
                 "text": text,
             })
 
-        # NOTE: Do NOT add "Something else" here - the frontend has a fixed button for this
+        # Add ONE fixed "Something else..." option - LLM is instructed not to generate this
+        if cleaned:
+            cleaned.append({"id": "something_else", "text": "Something else..."})
 
         # If empty, provide category-specific defaults
         if not cleaned:
