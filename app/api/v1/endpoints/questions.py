@@ -735,73 +735,131 @@ async def get_hormone_analysis(
                 detail="Session not found or expired"
             )
         
-        # Hormone display metadata
+        # Hormone display metadata (base info without static descriptions)
         HORMONE_METADATA = {
             "estrogen": {
                 "name": "Estrogen",
                 "subtitle": "The energizer",
-                "high": {
-                    "description": "Higher levels may be contributing to heavy bleeding, breast tenderness, and mood swings.",
-                    "icon": "🔺",
-                    "symptoms": ["heavy bleeding", "breast tenderness", "mood swings"]
-                },
-                "low": {
-                    "description": "Lower levels may be contributing to hot flashes, vaginal dryness, and low libido.",
-                    "icon": "🔻",
-                    "symptoms": ["hot flashes", "vaginal dryness", "low libido"]
-                }
+                "high": {"icon": "🔺"},
+                "low": {"icon": "🔻"}
             },
             "progesterone": {
                 "name": "Progesterone",
                 "subtitle": "The calmer",
-                "low": {
-                    "description": "Lower levels may be contributing to painful periods and mood changes.",
-                    "icon": "🔻",
-                    "symptoms": ["painful periods", "mood changes"]
-                }
+                "low": {"icon": "🔻"},
+                "high": {"icon": "🔺"}
             },
             "androgens": {
                 "name": "Testosterone",
                 "subtitle": "The titan",
-                "high": {
-                    "description": "Higher levels may be contributing to acne, excess hair, and mood swings, common in PCOS.",
-                    "icon": "🔺",
-                    "symptoms": ["acne", "excess hair", "mood swings", "PCOS"]
-                }
+                "high": {"icon": "🔺"},
+                "low": {"icon": "🔻"}
             },
             "insulin": {
                 "name": "Insulin",
                 "subtitle": "The regulator",
-                "high": {
-                    "description": "Higher levels may be contributing to weight gain, sugar cravings, and PCOS symptoms.",
-                    "icon": "🔺",
-                    "symptoms": ["weight gain", "sugar cravings", "PCOS symptoms"]
-                }
+                "high": {"icon": "🔺"},
+                "low": {"icon": "🔻"}
             },
             "cortisol": {
                 "name": "Cortisol",
                 "subtitle": "The stress hormone",
-                "high": {
-                    "description": "Higher levels may be contributing to anxiety, weight gain, and sleep issues.",
-                    "icon": "🔺",
-                    "symptoms": ["anxiety", "weight gain", "sleep issues"]
-                },
-                "low": {
-                    "description": "Lower levels may be contributing to fatigue, low energy, and difficulty handling stress.",
-                    "icon": "🔻",
-                    "symptoms": ["fatigue", "low energy", "difficulty handling stress"]
-                }
+                "high": {"icon": "🔺"},
+                "low": {"icon": "🔻"}
             },
             "thyroid": {
                 "name": "Thyroid",
                 "subtitle": "The metabolism master",
-                "low": {
-                    "description": "Lower levels may be contributing to fatigue, weight gain, and hair loss.",
-                    "icon": "🔻",
-                    "symptoms": ["fatigue", "weight gain", "hair loss"]
-                }
+                "low": {"icon": "🔻"},
+                "high": {"icon": "🔺"}
             }
         }
+        
+        # Map: symptom -> [(hormone, level)]
+        # Based on root_cause_engine.py scoring tables
+        SYMPTOM_TO_HORMONE_MAP = {
+            # Period concerns
+            "Irregular Periods": [("androgens", "high"), ("thyroid", "low")],
+            "Painful Periods": [("estrogen", "high"), ("progesterone", "low")],
+            "Light periods / Spotting": [("estrogen", "low"), ("progesterone", "low")],
+            "Heavy periods": [("estrogen", "high"), ("progesterone", "low")],
+            # Body concerns
+            "Bloating": [("estrogen", "high"), ("insulin", "high")],
+            "Hot Flashes": [("estrogen", "low")],
+            "Nausea": [("estrogen", "high"), ("cortisol", "low")],
+            "Difficulty losing weight / stubborn belly fat": [("insulin", "high"), ("cortisol", "high"), ("thyroid", "low")],
+            "Recent weight gain": [("insulin", "high"), ("thyroid", "low"), ("cortisol", "high")],
+            "Menstrual headaches": [("estrogen", "high"), ("progesterone", "low")],
+            # Skin/hair concerns
+            "Hirsutism (hair growth on chin, nipples etc)": [("androgens", "high")],
+            "Thinning of hair": [("thyroid", "low"), ("androgens", "high")],
+            "Adult Acne": [("androgens", "high"), ("insulin", "high")],
+            # Mental health
+            "Mood swings": [("progesterone", "low"), ("estrogen", "high")],
+            "Stress": [("cortisol", "high")],
+            "Fatigue": [("thyroid", "low"), ("cortisol", "low"), ("insulin", "high")],
+            # Diagnosed conditions
+            "PCOS": [("androgens", "high"), ("insulin", "high")],
+            "PCOD": [("androgens", "high"), ("insulin", "high")],
+            "Endometriosis": [("estrogen", "high")],
+            "PMDD": [("progesterone", "low"), ("cortisol", "high")],
+            "Premenstrual Syndrome": [("progesterone", "low"), ("estrogen", "high")],
+            "Diabetes": [("insulin", "high")],
+            "Hypothyroidism": [("thyroid", "low")],
+            "Hashimoto's": [("thyroid", "low")],
+        }
+        
+        def get_user_symptoms_for_hormone(temp_profile: dict, hormone: str, level: str) -> list:
+            """Get user's actual symptoms that contributed to this hormone imbalance"""
+            matched_symptoms = []
+            hormone_key = (hormone, level)
+            
+            # Collect all user symptoms from all categories
+            all_user_symptoms = []
+            for field in ["period_concerns", "body_concerns", "skin_hair_concerns", 
+                          "mental_health_concerns", "diagnosed_conditions"]:
+                field_data = temp_profile.get(field) or []
+                if isinstance(field_data, dict):
+                    field_data = field_data.get("concerns", [])
+                if isinstance(field_data, list):
+                    all_user_symptoms.extend(field_data)
+            
+            # Filter out "None of the above"
+            all_user_symptoms = [s for s in all_user_symptoms 
+                                 if s and s.lower() != "none of the above"]
+            
+            # Find which symptoms map to this hormone+level
+            for symptom in all_user_symptoms:
+                if symptom in SYMPTOM_TO_HORMONE_MAP:
+                    if hormone_key in SYMPTOM_TO_HORMONE_MAP[symptom]:
+                        # Convert to readable format
+                        readable = symptom.lower()
+                        matched_symptoms.append(readable)
+            
+            return matched_symptoms[:3]  # Max 3 symptoms for readability
+        
+        def build_personalized_description(hormone: str, level: str, symptoms: list) -> str:
+            """Build personalized description based on user's actual symptoms"""
+            level_word = "Higher" if level == "high" else "Lower"
+            
+            if symptoms:
+                symptom_text = ", ".join(symptoms[:-1]) + f", and {symptoms[-1]}" if len(symptoms) > 1 else symptoms[0]
+                return f"{level_word} levels may be contributing to {symptom_text}."
+            else:
+                # Fallback generic descriptions when no specific match
+                fallbacks = {
+                    ("estrogen", "high"): "Higher levels may be contributing to hormonal imbalances.",
+                    ("estrogen", "low"): "Lower levels may be contributing to energy and mood changes.",
+                    ("progesterone", "low"): "Lower levels may be contributing to cycle irregularities.",
+                    ("progesterone", "high"): "Higher levels may be affecting your cycle.",
+                    ("androgens", "high"): "Higher levels may be contributing to hormonal symptoms.",
+                    ("insulin", "high"): "Higher levels may be affecting your metabolism.",
+                    ("cortisol", "high"): "Higher levels may be contributing to stress-related symptoms.",
+                    ("cortisol", "low"): "Lower levels may be affecting your energy.",
+                    ("thyroid", "low"): "Lower levels may be affecting your metabolism and energy.",
+                }
+                return fallbacks.get((hormone, level), f"{level_word} levels detected.")
+        
         
         # Get session data to re-run analysis with levels
         session_data = service.get_session_data(session_id)
@@ -855,6 +913,10 @@ async def get_hormone_analysis(
             score_key = f"{primary_hormone}_{primary_level}" if primary_level else primary_hormone
             primary_score = all_scores.get(score_key, 0)
             
+            # Get personalized symptoms and description
+            user_symptoms = get_user_symptoms_for_hormone(temp_user_profile, primary_hormone, primary_level)
+            personalized_desc = build_personalized_description(primary_hormone, primary_level, user_symptoms)
+            
             hormone_cards.append({
                 "hormone": primary_hormone,
                 "name": meta["name"],
@@ -862,8 +924,8 @@ async def get_hormone_analysis(
                 "level": primary_level,
                 "score": primary_score,
                 "icon": level_data.get("icon", ""),
-                "description": level_data.get("description", ""),
-                "symptoms": level_data.get("symptoms", []),
+                "description": personalized_desc,
+                "symptoms": user_symptoms,
                 "priority": "High Priority",
                 "is_primary": True
             })
@@ -881,6 +943,10 @@ async def get_hormone_analysis(
                 score_key = f"{hormone}_{level}" if level else hormone
                 hormone_score = all_scores.get(score_key, 0)
                 
+                # Get personalized symptoms and description
+                user_symptoms = get_user_symptoms_for_hormone(temp_user_profile, hormone, level)
+                personalized_desc = build_personalized_description(hormone, level, user_symptoms)
+                
                 hormone_cards.append({
                     "hormone": hormone,
                     "name": meta["name"],
@@ -888,8 +954,8 @@ async def get_hormone_analysis(
                     "level": level,
                     "score": hormone_score,
                     "icon": level_data.get("icon", ""),
-                    "description": level_data.get("description", ""),
-                    "symptoms": level_data.get("symptoms", []),
+                    "description": personalized_desc,
+                    "symptoms": user_symptoms,
                     "priority": "Moderate",
                     "is_primary": False
                 })
