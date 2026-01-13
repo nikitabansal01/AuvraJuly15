@@ -303,10 +303,18 @@ class WeeklyCheckInAI:
                 cleaned = self._default_tap_options_for_category(category)
 
         # De-duplicate (case-insensitive) and cap count
+        # Normalize "something else" variations to prevent duplicates
+        def _normalize_key(text: str) -> str:
+            key = text.strip().lower()
+            # Normalize all "something else" variants to canonical form
+            if key.replace(".", "").replace("…", "").strip() in ("something else", "other"):
+                return "something_else_canonical"
+            return key
+        
         seen = set()
         deduped: List[Dict[str, str]] = []
         for o in cleaned:
-            key = o["text"].strip().lower()
+            key = _normalize_key(o["text"])
             if key in seen:
                 continue
             seen.add(key)
