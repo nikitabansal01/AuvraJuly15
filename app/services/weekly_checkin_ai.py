@@ -675,6 +675,7 @@ CRITICAL RESPONSE RULES:
 6. Tap options MUST be plausible *patient answers* to the question you asked (message 2).
     - They must be direct responses, not advice.
     - They must match the topic of your question (e.g., if you ask about diet changes, all options should be diet changes).
+    - Do NOT include "Something else" or "Other" as an option. The system adds this automatically.
 
 EXAMPLE GOOD RESPONSE:
 {{
