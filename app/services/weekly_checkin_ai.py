@@ -194,14 +194,13 @@ class WeeklyCheckInAI:
 
     def _default_tap_options_for_category(self, category: Optional[str]) -> List[Dict[str, str]]:
         # Defaults are meant to be *direct answers* to the question category.
-        # Always include "Something else" so users can type their own answer
+        # NOTE: Do NOT include "Something else" - frontend has a fixed button for this
         if category == "diet":
             texts = [
                 "Ate out more / takeout",
                 "More sugar / desserts",
                 "More carbs (bread/pasta)",
                 "Skipped meals / irregular meals",
-                "Something else",
             ]
         elif category == "sleep":
             texts = [
@@ -209,7 +208,6 @@ class WeeklyCheckInAI:
                 "Woke up a lot at night",
                 "Less total sleep",
                 "More screen time at night",
-                "Something else",
             ]
         elif category == "stress":
             texts = [
@@ -217,7 +215,6 @@ class WeeklyCheckInAI:
                 "Personal / family stress",
                 "Mental load / overwhelm",
                 "Stress about the same",
-                "Something else",
             ]
         elif category == "exercise":
             texts = [
@@ -225,7 +222,6 @@ class WeeklyCheckInAI:
                 "Worked out less",
                 "More walking",
                 "No change",
-                "Something else",
             ]
         elif category == "supplements":
             texts = [
@@ -233,14 +229,12 @@ class WeeklyCheckInAI:
                 "Stopped a supplement",
                 "Took them inconsistently",
                 "No supplements",
-                "Something else",
             ]
         else:
             texts = [
                 "Not sure",
                 "Nothing changed",
                 "A few small changes",
-                "Something else",
             ]
 
         opts: List[Dict[str, str]] = []
@@ -269,9 +263,7 @@ class WeeklyCheckInAI:
                 "text": text,
             })
 
-        # Add "Something else" option for the user to type if they want
-        if cleaned and not any(o["id"] == "something_else" for o in cleaned):
-            cleaned.append({"id": "something_else", "text": "Something else..."})
+        # NOTE: Do NOT add "Something else" here - the frontend has a fixed button for this
 
         # If empty, provide category-specific defaults
         if not cleaned:
