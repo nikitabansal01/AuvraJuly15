@@ -173,6 +173,110 @@ async def _create_async_session(engine_maker=None) -> AsyncSession:
 
 
 # ============================================================================
+# ACTION DEDUPLICATION HELPERS
+# Multi-layer approach: title normalization, similarity scoring, validation
+# ============================================================================
+
+import re
+from difflib import SequenceMatcher
+
+def normalize_title(title: str) -> str:
+    """
+    Normalize action title for duplicate comparison.
+    Removes punctuation, extra spaces, and lowercases.
+    """
+    if not title:
+        return ""
+    # Remove all non-alphanumeric characters except spaces
+    normalized = re.sub(r'[^a-z0-9\s]+', '', title.lower().strip())
+    # Collapse multiple spaces to single space
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    return normalized
+
+
+def calculate_similarity(action1: Dict[str, Any], action2: Dict[str, Any]) -> float:
+    """
+    Calculate similarity score between two actions.
+    
+    Uses weighted combination of:
+    - Title similarity (40%)
+    - Content/specific_action similarity (40%)
+    - Category match (10%)
+    - Target hormone match (10%)
+    
+    Returns: float between 0.0 and 1.0
+    """
+    # Title similarity using SequenceMatcher (built-in, no fuzzywuzzy needed)
+    title1 = normalize_title(action1.get('title', ''))
+    title2 = normalize_title(action2.get('title', ''))
+    title_sim = SequenceMatcher(None, title1, title2).ratio()
+    
+    # Content similarity
+    content1 = (action1.get('specific_action', '') or '').lower().strip()
+    content2 = (action2.get('specific_action', '') or '').lower().strip()
+    content_sim = SequenceMatcher(None, content1, content2).ratio() if content1 and content2 else 0.0
+    
+    # Category match (boolean -> 1.0 or 0.0)
+    cat1 = (action1.get('category', '') or '').lower()
+    cat2 = (action2.get('category', '') or '').lower()
+    category_match = 1.0 if cat1 and cat2 and cat1 == cat2 else 0.0
+    
+    # Hormone match (boolean -> 1.0 or 0.0)
+    hormone1 = (action1.get('target_hormone', '') or '').lower()
+    hormone2 = (action2.get('target_hormone', '') or '').lower()
+    hormone_match = 1.0 if hormone1 and hormone2 and hormone1 == hormone2 else 0.0
+    
+    # Weighted score
+    score = (title_sim * 0.4) + (content_sim * 0.4) + (category_match * 0.1) + (hormone_match * 0.1)
+    return score
+
+
+def is_duplicate(
+    new_action: Dict[str, Any], 
+    existing_actions: List[Dict[str, Any]], 
+    threshold: float = 0.70
+) -> bool:
+    """
+    Check if new_action is a duplicate of any existing action.
+    
+    Args:
+        new_action: The action to check
+        existing_actions: List of existing actions to compare against
+        threshold: Similarity threshold (0.0-1.0). Default 0.70 = 70% similar
+        
+    Returns: True if duplicate found, False otherwise
+    """
+    if not existing_actions:
+        return False
+    
+    new_title_normalized = normalize_title(new_action.get('title', ''))
+    
+    for existing in existing_actions:
+        # Quick check: exact title match (normalized)
+        existing_title_normalized = normalize_title(existing.get('title', ''))
+        if new_title_normalized and existing_title_normalized:
+            if new_title_normalized == existing_title_normalized:
+                logger.debug(f"Duplicate: exact title match '{new_action.get('title')}' == '{existing.get('title')}'")
+                return True
+        
+        # Full similarity check
+        similarity = calculate_similarity(new_action, existing)
+        if similarity >= threshold:
+            logger.debug(f"Duplicate: similarity {similarity:.2f} >= {threshold} for '{new_action.get('title')}' vs '{existing.get('title')}'")
+            return True
+    
+    return False
+
+
+def is_title_in_exclusion_set(title: str, exclusion_set: set) -> bool:
+    """Check if normalized title is in the exclusion set."""
+    if not title or not exclusion_set:
+        return False
+    normalized = normalize_title(title)
+    return normalized in exclusion_set
+
+
+# ============================================================================
 # HORMONE PERSONAS - Used for personalized introductions
 # ============================================================================
 
@@ -2271,8 +2375,26 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             if not isinstance(actions, list):
                 actions = [actions]
             
-            logger.info(f"Generated {len(actions)} partial actions for carryforward plan")
-            return (actions[:num_actions], cost)
+            # ================================================================
+            # POST-GENERATION DEDUPLICATION
+            # Validate each action against existing_actions to prevent duplicates
+            # ================================================================
+            validated_actions = []
+            existing_for_dedup = list(existing_actions) if existing_actions else []
+            
+            for action in actions[:num_actions]:
+                if is_duplicate(action, existing_for_dedup + validated_actions):
+                    logger.warning(f"⚠️ Duplicate detected in generated action: '{action.get('title')}' - skipping")
+                    continue
+                validated_actions.append(action)
+            
+            # Log deduplication results
+            if len(validated_actions) < len(actions[:num_actions]):
+                removed_count = len(actions[:num_actions]) - len(validated_actions)
+                logger.info(f"🔍 Deduplication: removed {removed_count} duplicate action(s)")
+            
+            logger.info(f"✅ Generated {len(validated_actions)} partial actions for carryforward plan (requested: {num_actions})")
+            return (validated_actions, cost)
             
         except Exception as e:
             logger.error(f"Failed to generate partial actions: {e}")
@@ -6239,8 +6361,22 @@ OUTPUT FORMAT (JSON Array):
             if not replacement_actions:
                 return {"success": False, "error": "Failed to generate replacement actions"}
             
+            # ================================================================
+            # POST-GENERATION DEDUPLICATION FOR BATCH REPLACEMENT
+            # Validate each replacement against other_current_actions (not being replaced)
+            # ================================================================
+            validated_replacements = []
+            for replacement in replacement_actions:
+                if is_duplicate(replacement, other_current_actions + validated_replacements):
+                    logger.warning(f"⚠️ Duplicate replacement detected: '{replacement.get('title')}' - keeping but flagging")
+                    # Note: We keep it because batch replacement must return same count as requested
+                    # The LLM should have generated unique ones if prompted correctly
+                validated_replacements.append(replacement)
+            
+            replacement_actions = validated_replacements
+            
             # Debug: Log all fields for each replacement action to verify GPT response
-            logger.info(f" GPT returned {len(replacement_actions)} replacement actions")
+            logger.info(f"✅ GPT returned {len(replacement_actions)} replacement actions (dedup validated)")
             for i, replacement_action in enumerate(replacement_actions):
                 research = replacement_action.get("research_studies", [])
                 category = replacement_action.get("category", "unknown")
