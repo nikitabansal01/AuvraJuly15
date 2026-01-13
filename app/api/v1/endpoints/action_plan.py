@@ -1767,8 +1767,8 @@ def _convert_to_legacy_format(result: dict, weekly_checkin_status: dict = None) 
             else:
                 assignments["morning"].append(legacy_item)
         
-        # Track hormone stats
-        hormone = action["target_hormone"]
+        # Track hormone stats - normalize to lowercase to prevent duplicates
+        hormone = (action.get("target_hormone") or "unknown").lower()
         if hormone not in hormone_stats:
             hormone_stats[hormone] = {"total": 0, "completed": 0}
         hormone_stats[hormone]["total"] += 1
