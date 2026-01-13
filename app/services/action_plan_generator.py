@@ -5284,6 +5284,33 @@ Respond with valid JSON object only."""
             elif not isinstance(rs, list):
                 replacement_action["research_studies"] = []
 
+            # ================================================================
+            # POST-GENERATION DEDUPLICATION FOR SINGLE REPLACEMENT
+            # Check if replacement duplicates any other plan item
+            # ================================================================
+            other_plan_items = []
+            try:
+                all_items_result = await db.execute(
+                    select(ActionPlanItem).where(
+                        ActionPlanItem.plan_id == original.plan_id,
+                        ActionPlanItem.uid == user_id,
+                        ActionPlanItem.id != item_id,  # Exclude the one being replaced
+                        ActionPlanItem.is_replaced != True  # Only active items
+                    )
+                )
+                for item in all_items_result.scalars().all():
+                    other_plan_items.append({
+                        "title": item.title,
+                        "category": item.category,
+                        "specific_action": item.specific_action,
+                        "target_hormone": item.target_hormone
+                    })
+            except Exception as e:
+                logger.warning(f"Could not load other plan items for dedup: {e}")
+            
+            if is_duplicate(replacement_action, other_plan_items):
+                logger.warning(f"⚠️ Replacement duplicates existing plan item: '{replacement_action.get('title')}' - proceeding but flagging")
+                # We proceed anyway since user requested a replacement, but log this
             
             # Generate images for replacement using TITLE for cache matching
             replacement_title = replacement_action.get("title", "Wellness Action")
@@ -5717,7 +5744,44 @@ Respond with valid JSON only."""
             if not valid_actions:
                 return {"success": False, "error": "Generated candidates were missing required fields"}
 
-            return {"success": True, "actions": valid_actions[:n]}
+            # ================================================================
+            # POST-GENERATION DEDUPLICATION FOR CANDIDATES
+            # Get other items in the plan and filter out duplicate candidates
+            # ================================================================
+            other_plan_items = []
+            try:
+                all_items_result = await db.execute(
+                    select(ActionPlanItem).where(
+                        ActionPlanItem.plan_id == original.plan_id,
+                        ActionPlanItem.uid == user_id,
+                        ActionPlanItem.id != item_id,  # Exclude the one being replaced
+                        ActionPlanItem.is_replaced != True  # Only active items
+                    )
+                )
+                for item in all_items_result.scalars().all():
+                    other_plan_items.append({
+                        "title": item.title,
+                        "category": item.category,
+                        "specific_action": item.specific_action,
+                        "target_hormone": item.target_hormone
+                    })
+            except Exception as e:
+                logger.warning(f"Could not load other plan items for dedup: {e}")
+            
+            # Filter candidates that duplicate other plan items or each other
+            deduped_candidates = []
+            for candidate in valid_actions:
+                if is_duplicate(candidate, other_plan_items + deduped_candidates):
+                    logger.warning(f"⚠️ Candidate duplicate detected: '{candidate.get('title')}' - skipping")
+                    continue
+                deduped_candidates.append(candidate)
+            
+            if not deduped_candidates:
+                # If all were filtered, return originals with warning
+                logger.warning("All candidates were duplicates - returning originals anyway")
+                return {"success": True, "actions": valid_actions[:n]}
+
+            return {"success": True, "actions": deduped_candidates[:n]}
 
         except Exception as e:
             import traceback
@@ -5765,6 +5829,33 @@ Respond with valid JSON only."""
                 replacement_action["research_studies"] = [rs]
             elif not isinstance(rs, list):
                 replacement_action["research_studies"] = []
+
+            # ================================================================
+            # POST-GENERATION DEDUPLICATION FOR CANDIDATE REPLACEMENT
+            # Check if the selected candidate duplicates any other plan item
+            # ================================================================
+            other_plan_items = []
+            try:
+                all_items_result = await db.execute(
+                    select(ActionPlanItem).where(
+                        ActionPlanItem.plan_id == original.plan_id,
+                        ActionPlanItem.uid == user_id,
+                        ActionPlanItem.id != item_id,  # Exclude the one being replaced
+                        ActionPlanItem.is_replaced != True  # Only active items
+                    )
+                )
+                for item in all_items_result.scalars().all():
+                    other_plan_items.append({
+                        "title": item.title,
+                        "category": item.category,
+                        "specific_action": item.specific_action,
+                        "target_hormone": item.target_hormone
+                    })
+            except Exception as e:
+                logger.warning(f"Could not load other plan items for dedup: {e}")
+            
+            if is_duplicate(replacement_action, other_plan_items):
+                logger.warning(f"⚠️ Selected candidate duplicates existing plan item: '{replacement_action.get('title')}' - proceeding but flagging")
 
             # Record feedback
             feedback = ActionPlanFeedback(
