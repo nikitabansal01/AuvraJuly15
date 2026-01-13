@@ -263,13 +263,9 @@ class WeeklyCheckInAI:
                 "text": text,
             })
 
-        # Add ONE fixed "Something else..." option - LLM is instructed not to generate this
-        if cleaned:
-            cleaned.append({"id": "something_else", "text": "Something else..."})
-
         # If empty, provide category-specific defaults
         if not cleaned:
-            return self._default_tap_options_for_category(category)
+            cleaned = self._default_tap_options_for_category(category)
 
         # If we can infer a category, make sure options actually relate to it.
         # This prevents cases like a diet question getting sleep/stress options.
@@ -314,6 +310,11 @@ class WeeklyCheckInAI:
             seen.add(key)
             o["id"] = o.get("id") or self._slugify_option_id(o["text"])
             deduped.append(o)
+        
+        # ALWAYS add "Something else..." at the end (LLM is instructed not to generate this)
+        if "something_else_canonical" not in seen:
+            deduped.append({"id": "something_else", "text": "Something else..."})
+        
         return deduped[:6]
     
     # ═══════════════════════════════════════════════════════════════════════════
