@@ -47,6 +47,7 @@ async def get_my_profile(
             )
         
         # Get latest user response (onboarding data)
+        logger.info(f"[PROFILE] Request from uid={uid}")
         user_response = db.query(DBUserResponse).filter(
             DBUserResponse.uid == uid
         ).order_by(desc(DBUserResponse.created_at)).first()

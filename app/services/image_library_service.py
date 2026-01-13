@@ -894,7 +894,8 @@ class ImageLibraryService:
             cloudinary.config(
                 cloud_name=self.cloudinary_cloud_name,
                 api_key=self.cloudinary_api_key,
-                api_secret=self.cloudinary_api_secret
+                api_secret=self.cloudinary_api_secret,
+                connection_pool_maxsize=20  # Handle parallel uploads without pool warnings
             )
             
             # Generate unique public_id
@@ -945,7 +946,8 @@ class ImageLibraryService:
             cloudinary.config(
                 cloud_name=self.cloudinary_cloud_name,
                 api_key=self.cloudinary_api_key,
-                api_secret=self.cloudinary_api_secret
+                api_secret=self.cloudinary_api_secret,
+                connection_pool_maxsize=20  # Handle parallel uploads without pool warnings
             )
             
             # Generate unique public_id
