@@ -345,7 +345,15 @@ class ImageLibraryService:
             rows = result.all()
             
             if not rows:
+                logger.debug(f"[IMAGE-CACHE] No candidates in library for {category}/{variant_type}")
                 return None
+            
+            # Diagnostic counters
+            total_candidates = len(rows)
+            skipped_by_user = 0
+            no_embedding = 0
+            below_threshold = 0
+            similarities = []
             
             # Find best match that user hasn't seen
             best_match = None
@@ -355,14 +363,17 @@ class ImageLibraryService:
                 # row structure: (id, image_url, prompt_text, prompt_embedding, used_by_users)
                 used_by = row.used_by_users or []
                 if user_id in used_by:
+                    skipped_by_user += 1
                     continue
                 
                 # Calculate cosine similarity
                 stored_embedding = row.prompt_embedding
                 if not stored_embedding:
+                    no_embedding += 1
                     continue
                 
                 similarity = self._cosine_similarity(prompt_embedding, stored_embedding)
+                similarities.append((similarity, row.prompt_text[:30] if row.prompt_text else "???"))
                 
                 if similarity > self.SIMILARITY_THRESHOLD and similarity > best_similarity:
                     best_similarity = similarity
@@ -372,6 +383,20 @@ class ImageLibraryService:
                         "prompt_text": row.prompt_text,
                         "similarity": similarity
                     }
+                else:
+                    below_threshold += 1
+            
+            # Log diagnostic info
+            top_similarities = sorted(similarities, key=lambda x: -x[0])[:3] if similarities else []
+            if best_match:
+                logger.info(f"[IMAGE-CACHE] MATCH FOUND!")
+            else:
+                logger.info(f"[IMAGE-CACHE] NO MATCH - {category}/{variant_type}: "
+                           f"candidates={total_candidates}, no_embed={no_embedding}, "
+                           f"user_seen={skipped_by_user}, below_thresh={below_threshold}")
+                if top_similarities:
+                    logger.info(f"[IMAGE-CACHE] Top similarities (threshold={self.SIMILARITY_THRESHOLD}): "
+                               f"{[(f'{s:.3f}', t) for s, t in top_similarities]}")
             
             return best_match
             
@@ -1038,7 +1063,7 @@ class ImageLibraryService:
                 prompt_embedding=prompt_embedding,
                 category=category,
                 variant_type=variant_type,
-                generation_model="flux-schnell",
+                generation_model="pruna-p-image",
                 generation_cost=str(self.COST_PER_IMAGE),
                 generation_time_ms=generation_time_ms,
                 image_width=512,
