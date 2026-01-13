@@ -829,25 +829,30 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
             primary_hormone = primary_hormone_key
             primary_level = "unknown"
         
-        # Secondary: ALWAYS return the 2nd highest scoring hormone
-        # (No threshold - ensures users always see 2 hormones in UI)
+        # Secondary: ALWAYS return the 2nd highest scoring hormone that is DIFFERENT from primary
+        # (Skip any hormone with the same base name as primary - prevents estrogen_high + estrogen_low)
         secondary_imbalances = []
         secondary_levels = []
         
-        # Get the 2nd highest hormone (skip the primary)
-        if len(sorted_scores) > 1:
-            second_hormone_key, second_score = sorted_scores[1]
-            
-            if "_" in second_hormone_key:
-                parts = second_hormone_key.rsplit("_", 1)
+        # Find the next highest hormone that is NOT the same base hormone as primary
+        for hormone_key, score in sorted_scores[1:]:  # Skip the primary (index 0)
+            if "_" in hormone_key:
+                parts = hormone_key.rsplit("_", 1)
                 h_name = parts[0]
                 h_level = parts[1]
             else:
-                h_name = second_hormone_key
+                h_name = hormone_key
                 h_level = "unknown"
             
+            # Skip if same base hormone as primary (e.g., skip estrogen_low if estrogen_high is primary)
+            if h_name == primary_hormone:
+                logger.debug(f"Skipping {hormone_key} - same base hormone as primary ({primary_hormone})")
+                continue
+            
+            # Found a valid secondary hormone
             secondary_imbalances.append(h_name)
             secondary_levels.append(h_level)
+            break  # Only take the first valid secondary
         
         logger.info(f"🧬 Hormone Analysis Complete:")
         logger.info(f"   Primary: {primary_hormone} ({primary_level}) - Score: {primary_score}")
