@@ -73,8 +73,8 @@ class ImageLibraryService:
         """Initialize the image library service."""
         # RunPod configuration - uses Pruna P-Image for ultra-fast generation
         self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
-        # Use the Pruna P-Image public endpoint for ultra-fast T2I
-        self.runpod_endpoint = "pruna-p-image"  # Pruna P-Image endpoint
+        # Use the correct Pruna P-Image endpoint (was pruna-p-image, now p-image-t2i)
+        self.runpod_endpoint = "p-image-t2i"
         
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -558,12 +558,12 @@ class ImageLibraryService:
             # Note: Pruna has automatic prompt enhancement, but we still add style hints
             enhanced_prompt = self._enhance_prompt(prompt, category)
             
-            # Pruna P-Image payload format
+            # Pruna P-Image payload format (correct endpoint: p-image-t2i)
             payload = {
                 "input": {
                     "prompt": enhanced_prompt,
                     "aspect_ratio": "1:1",  # Square images for action cards
-                    "disable_safety_checker": False  # Keep safety on
+                    "enable_safety_checker": True  # Keep safety on
                 }
             }
             
