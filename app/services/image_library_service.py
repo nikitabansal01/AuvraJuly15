@@ -627,8 +627,14 @@ class ImageLibraryService:
                         
                         logger.info(f"✅ [Pruna] Completed in {elapsed_ms}ms")
                         
-                        # Pruna returns image_url directly
+                        # Pruna returns 'result' with the image URL
                         if isinstance(output, dict):
+                            # Primary: check 'result' key (Pruna's actual format)
+                            image_url = output.get("result")
+                            if image_url and image_url.startswith("http"):
+                                return (image_url, elapsed_ms)
+                            
+                            # Fallback: check 'image_url' key
                             image_url = output.get("image_url")
                             if image_url:
                                 return (image_url, elapsed_ms)
