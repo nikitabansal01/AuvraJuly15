@@ -2,15 +2,16 @@
 AUVRA Image Library Service
 
 Semantic image caching and generation using:
-- RunPod Flux Schnell for image generation ($0.0006/image)
+- RunPod Pruna P-Image for ultra-fast image generation ($0.005/image)
 - OpenAI ada-002 for embeddings ($0.0001/call)  
-- Supabase Storage for image hosting
+- Cloudinary for image hosting
 - PostgreSQL for semantic matching
 
 Features:
 - Semantic embedding matching (cosine similarity > 0.85)
 - Cross-user image reuse (never same image for same user)
 - All 16 images generated per day (4 actions × 4 variants)
+- Ultra-fast generation with automatic prompt enhancement
 """
 
 import os
@@ -35,7 +36,7 @@ class ImageLibraryService:
     """
     Image generation and semantic caching service.
     
-    Uses RunPod Flux Schnell for fast, high-quality images.
+    Uses RunPod Pruna P-Image for ultra-fast, high-quality images.
     Stores all images with embeddings for semantic reuse.
     """
     
@@ -44,8 +45,8 @@ class ImageLibraryService:
     # Higher threshold requires more specific semantic match
     SIMILARITY_THRESHOLD = 0.95  # Cosine similarity threshold for semantic image matching
     
-    # RunPod pricing
-    COST_PER_IMAGE = 0.0006  # $0.0006 per image with Flux Schnell
+    # RunPod Pruna P-Image pricing
+    COST_PER_IMAGE = 0.005  # $0.005 per image with Pruna P-Image
     
     # Embedding model
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
@@ -70,10 +71,10 @@ class ImageLibraryService:
     
     def __init__(self):
         """Initialize the image library service."""
-        # RunPod configuration - uses serverless Flux Schnell endpoint
+        # RunPod configuration - uses Pruna P-Image for ultra-fast generation
         self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
-        # Use the official serverless Flux Schnell endpoint
-        self.runpod_endpoint = "black-forest-labs-flux-1-schnell"
+        # Use the Pruna P-Image public endpoint for ultra-fast T2I
+        self.runpod_endpoint = "pruna-p-image"  # Pruna P-Image endpoint
         
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -512,9 +513,14 @@ class ImageLibraryService:
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod Flux Schnell serverless PUBLIC endpoint using /run + /status async pattern.
+        Call RunPod Pruna P-Image serverless PUBLIC endpoint using /run + /status async pattern.
         
-        PUBLIC ENDPOINTS are always warm (no cold starts), expect 3-4s generation time.
+        Pruna P-Image features:
+        - Ultra-fast generation
+        - Automatic prompt enhancement (built-in)
+        - 2-stage refinement for quality
+        - Returns direct image_url (no base64 decoding needed)
+        - $0.005 per image, 250 req/min rate limit
         """
         if not self.runpod_api_key:
             logger.warning("RunPod API key not configured, using placeholder")
@@ -524,19 +530,16 @@ class ImageLibraryService:
         
         try:
             # Enhanced prompt with category-specific styling
+            # Note: Pruna has automatic prompt enhancement, but we still add style hints
             enhanced_prompt = self._enhance_prompt(prompt, category)
             
+            # Pruna P-Image payload format
             payload = {
                 "input": {
                     "prompt": enhanced_prompt,
-                    "width": 512,
-                    "height": 512,
-                    "num_inference_steps": 4,
-                    "guidance": 3.5,
-                    "seed": -1,
-                    "image_format": "png"
-                },
-                "executionTimeout": 60  # 1 minute max (public endpoint is fast)
+                    "aspect_ratio": "1:1",  # Square images for action cards
+                    "disable_safety_checker": False  # Keep safety on
+                }
             }
             
             headers = {
@@ -547,7 +550,7 @@ class ImageLibraryService:
             # Step 1: Submit job to /run endpoint
             run_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
             
-            logger.info(f"🎨 [RunPod] Submitting job: {prompt[:50]}...")
+            logger.info(f"🎨 [Pruna] Submitting job: {prompt[:50]}...")
             
             response = await self.client.post(
                 run_url,
@@ -557,25 +560,24 @@ class ImageLibraryService:
             )
             
             if response.status_code != 200:
-                logger.error(f"❌ [RunPod] Submission failed: {response.status_code} - {response.text[:200]}")
+                logger.error(f"❌ [Pruna] Submission failed: {response.status_code} - {response.text[:200]}")
                 return await self._generate_placeholder_image(prompt)
             
             result = response.json()
             job_id = result.get("id")
             
             if not job_id:
-                logger.error(f"❌ [RunPod] No job_id in response")
+                logger.error(f"❌ [Pruna] No job_id in response")
                 return await self._generate_placeholder_image(prompt)
             
-            logger.debug(f"[RunPod] Job ID: {job_id}")
+            logger.debug(f"[Pruna] Job ID: {job_id}")
             
-            # Step 2: Poll /status/{job_id} - aggressive for warm endpoint
+            # Step 2: Poll /status/{job_id} - Pruna is ultra-fast
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
             
-            # Fast polling for warm endpoint (should complete in 3-4s)
-            # Poll every 1s for 60s max (increased from 30s to handle cold starts/high load)
-            max_polls = 60
-            poll_interval = 1.0
+            # Fast polling - Pruna should complete in 1-3s typically
+            max_polls = 30  # 30 seconds max
+            poll_interval = 0.5  # Poll every 0.5s for faster response
             
             for poll_num in range(max_polls):
                 await asyncio.sleep(poll_interval)
@@ -588,7 +590,7 @@ class ImageLibraryService:
                     )
                     
                     if status_response.status_code != 200:
-                        logger.warning(f"⚠️ [RunPod] Status check failed: {status_response.status_code}")
+                        logger.warning(f"⚠️ [Pruna] Status check failed: {status_response.status_code}")
                         continue
                     
                     status_result = status_response.json()
@@ -598,53 +600,48 @@ class ImageLibraryService:
                         output = status_result.get("output", {})
                         elapsed_ms = int((time.time() - start_time) * 1000)
                         
-                        logger.info(f"✅ [RunPod] Completed in {elapsed_ms}ms")
+                        logger.info(f"✅ [Pruna] Completed in {elapsed_ms}ms")
                         
-                        # Handle output (URL or base64)
+                        # Pruna returns image_url directly
                         if isinstance(output, dict):
-                            if output.get("image_url"):
-                                return (output["image_url"], elapsed_ms)
+                            image_url = output.get("image_url")
+                            if image_url:
+                                return (image_url, elapsed_ms)
                             
-                            image_base64 = output.get("image") or output.get("image_base64")
-                            if image_base64:
-                                if image_base64.startswith("data:"):
-                                    image_base64 = image_base64.split(",")[1]
-                                return (base64.b64decode(image_base64), elapsed_ms)
+                            # Also check for generation_url as backup
+                            generation_url = output.get("generation_url")
+                            if generation_url:
+                                return (generation_url, elapsed_ms)
                         
-                        elif isinstance(output, str):
-                            if output.startswith("data:"):
-                                output = output.split(",")[1]
-                            return (base64.b64decode(output), elapsed_ms)
-                        
-                        logger.error(f"❌ [RunPod] Unexpected output format: {type(output)}")
+                        logger.error(f"❌ [Pruna] Unexpected output format: {output}")
                         return await self._generate_placeholder_image(prompt)
                     
                     elif status == "FAILED":
                         error = status_result.get("error", "Unknown error")
-                        logger.error(f"❌ [RunPod] Job failed: {error}")
+                        logger.error(f"❌ [Pruna] Job failed: {error}")
                         return await self._generate_placeholder_image(prompt)
                     
                     elif status in ["IN_QUEUE", "IN_PROGRESS"]:
                         # Continue polling
-                        if poll_num % 5 == 0:  # Log every 5 polls
-                            logger.debug(f"[RunPod] Poll {poll_num + 1}/{max_polls}: {status}")
+                        if poll_num % 10 == 0:  # Log every 5 seconds
+                            logger.debug(f"[Pruna] Poll {poll_num + 1}/{max_polls}: {status}")
                         continue
                     
                     else:
-                        logger.warning(f"⚠️ [RunPod] Unknown status: {status}")
+                        logger.warning(f"⚠️ [Pruna] Unknown status: {status}")
                         continue
                 
                 except Exception as poll_error:
-                    logger.warning(f"⚠️ [RunPod] Poll error: {poll_error}")
+                    logger.warning(f"⚠️ [Pruna] Poll error: {poll_error}")
                     continue
             
-            # Timeout after 60s
+            # Timeout after 15s (Pruna is fast, this shouldn't happen often)
             elapsed = time.time() - start_time
-            logger.error(f"❌ [RunPod] Timeout after {elapsed:.1f}s (job: {job_id})")
+            logger.error(f"❌ [Pruna] Timeout after {elapsed:.1f}s (job: {job_id})")
             return await self._generate_placeholder_image(prompt)
             
         except Exception as e:
-            logger.error(f"❌ [RunPod] Error: {type(e).__name__}: {e}")
+            logger.error(f"❌ [Pruna] Error: {type(e).__name__}: {e}")
             return await self._generate_placeholder_image(prompt)
 
     async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
@@ -726,29 +723,28 @@ class ImageLibraryService:
     
     async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod Flux Schnell with retry logic (Fix #14 + Cold Start Fix).
+        Call RunPod Pruna P-Image with retry logic.
         
-        Retries on timeout (cold start), 5xx errors, or connection failures.
-        After first attempt, GPUs are usually warm so retries are fast.
+        Pruna is ultra-fast so retries should be rare, but we keep retry logic
+        for robustness against transient network issues.
         """
         total_start = time.time()
         
         for attempt in range(self.MAX_IMAGE_RETRIES):
             try:
-                logger.info(f"🎨 RunPod attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES} for: {prompt[:50]}...")
+                logger.info(f"🎨 Pruna attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES} for: {prompt[:50]}...")
                 result, gen_time = await self._call_runpod_flux(prompt, category)
                 
                 if result:
                     total_time = time.time() - total_start
                     if attempt > 0:
-                        logger.info(f"✅ RunPod succeeded on retry {attempt + 1} (total time: {total_time:.1f}s)")
+                        logger.info(f"✅ Pruna succeeded on retry {attempt + 1} (total time: {total_time:.1f}s)")
                     return (result, gen_time)
                 
                 # Returned None - timeout or transient error, retry
-                # After timeout, GPU should be warm, retry immediately with short delay
                 if attempt < self.MAX_IMAGE_RETRIES - 1:
                     delay = self.RETRY_DELAYS[attempt]
-                    logger.warning(f"⚠️ Image generation timed out, GPU may be warming up. "
+                    logger.warning(f"⚠️ Image generation timed out. "
                                  f"Retrying in {delay}s (attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES})")
                     await asyncio.sleep(delay)
             except Exception as e:
@@ -765,21 +761,17 @@ class ImageLibraryService:
     
     def _enhance_prompt(self, prompt: str, category: str = "food") -> str:
         """
-        Enhance the prompt for FLUX.1 Schnell with PHOTOREALISTIC styling.
+        Enhance the prompt with category-specific PHOTOREALISTIC styling.
         
-        RESEARCH-BASED TECHNIQUES (2024):
-        - FLUX Schnell does NOT support negative prompts - removed entirely
-        - Focus on detailed descriptions, specific lighting, textures, composition
-        - Use sensory language for food (glossy, steaming, crispy)
-        - Use action words for movement (dynamic, energetic, flowing)
-        - Use atmosphere words for mindfulness (serene, peaceful, glowing)
+        Note: Pruna P-Image has automatic prompt enhancement, but we still
+        provide detailed style hints for optimal results.
         
         Args:
             prompt: Action title (e.g., "Salmon bowl", "Morning yoga stretch")
             category: "food", "movement", or "mindfulness"
             
         Returns:
-            Enhanced prompt string (no negative prompt - Schnell doesn't use them)
+            Enhanced prompt string with photorealistic style hints
         """
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
         
