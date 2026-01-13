@@ -573,8 +573,8 @@ class ImageLibraryService:
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
             
             # Fast polling for warm endpoint (should complete in 3-4s)
-            # Poll every 1s for 30s max
-            max_polls = 30
+            # Poll every 1s for 60s max (increased from 30s to handle cold starts/high load)
+            max_polls = 60
             poll_interval = 1.0
             
             for poll_num in range(max_polls):
@@ -638,7 +638,7 @@ class ImageLibraryService:
                     logger.warning(f"⚠️ [RunPod] Poll error: {poll_error}")
                     continue
             
-            # Timeout after 30s
+            # Timeout after 60s
             elapsed = time.time() - start_time
             logger.error(f"❌ [RunPod] Timeout after {elapsed:.1f}s (job: {job_id})")
             return await self._generate_placeholder_image(prompt)
