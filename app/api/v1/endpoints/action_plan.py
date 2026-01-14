@@ -123,20 +123,12 @@ async def get_today_assignments(
         )
         is_first_plan_for_user = not has_any_plan_ever
         
-        # Find the LAST plan that hasn't been reviewed (regardless of how old)
-        # CRITICAL: Skip blocking ONLY on signup day (user's only plan is from TODAY)
+        # Find the LAST plan that hasn't been reviewed
+        # Query automatically handles signup day: plan_date < today_date finds nothing on day 1
         total_plan_count = db.query(ActionPlan).filter(ActionPlan.uid == uid).count()
         
-        # Check if user's only plan is from today (actual signup day)
-        is_signup_day = False
-        if total_plan_count == 1:
-            only_plan = db.query(ActionPlan).filter(ActionPlan.uid == uid).first()
-            if only_plan and only_plan.plan_date == today_date:
-                is_signup_day = True
-                logger.info(f"Skipping review for {uid} - signup day (only plan is from today)")
-        
         pending_review = None
-        if not is_signup_day:
+        if total_plan_count > 0:
             pending_review = db.query(ActionPlan).filter(
                 and_(
                     ActionPlan.uid == uid,
