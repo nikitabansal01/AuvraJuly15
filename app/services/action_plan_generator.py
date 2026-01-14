@@ -4416,6 +4416,126 @@ JSON ONLY:
             valid_variants = [v for v in action.get("variants", []) if isinstance(v, dict)]
             action["variants"] = valid_variants
         
+        # ============================================================================
+        # RETRY LOOP: Ensure 100% image generation (all 16) before returning
+        # If any images failed, retry them up to 3 times
+        # ============================================================================
+        MAX_IMAGE_RETRIES = 3
+        FALLBACK_IMAGE_URLS = {
+            "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
+            "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
+            "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+        }
+        
+        for retry_attempt in range(MAX_IMAGE_RETRIES):
+            # Find ALL missing images (hero + variants)
+            missing_images = []  # List of (action_idx, variant_idx or None for hero)
+            
+            for action_idx, action in enumerate(actions):
+                # Check hero image
+                hero_url = action.get("hero_image_url")
+                if not hero_url or hero_url == "":
+                    missing_images.append((action_idx, None))
+                
+                # Check variant images
+                variants = action.get("variants", [])
+                for variant_idx, variant in enumerate(variants):
+                    if isinstance(variant, dict):
+                        variant_url = variant.get("image_url")
+                        if not variant_url or variant_url == "":
+                            missing_images.append((action_idx, variant_idx))
+            
+            if not missing_images:
+                total_images = len(actions) + sum(len(a.get("variants", [])) for a in actions)
+                logger.info(f"✅ All {total_images} images (hero + variants) generated successfully")
+                break
+            
+            logger.warning(f"⚠️ Image retry {retry_attempt + 1}/{MAX_IMAGE_RETRIES}: {len(missing_images)} images missing")
+            
+            # Retry failed images
+            retry_tasks = []
+            retry_metadata = []  # (action_idx, variant_idx or None)
+            
+            for action_idx, variant_idx in missing_images:
+                action = actions[action_idx]
+                action_category = action.get("category", "food")
+                
+                if variant_idx is None:
+                    # Hero image
+                    prompt = action.get("title", "Wellness Action")
+                    variant_type = "hero"
+                else:
+                    # Variant image
+                    variant = action.get("variants", [])[variant_idx]
+                    prompt = variant.get("title", f"{variant.get('variant_type', 'variant')} {action.get('title', 'Action')}")
+                    variant_type = variant.get("variant_type", f"variant_{variant_idx}")
+                
+                retry_tasks.append(
+                    _generate_single_image(
+                        prompt=prompt,
+                        category=action_category,
+                        variant_type=variant_type,
+                        user_id=user_id,
+                        title_embedding=None
+                    )
+                )
+                retry_metadata.append((action_idx, variant_idx))
+            
+            # Exponential backoff before retry
+            await asyncio.sleep(1.0 * (retry_attempt + 1))
+            
+            retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+            
+            # Update actions with retry results
+            for i, result in enumerate(retry_results):
+                action_idx, variant_idx = retry_metadata[i]
+                
+                if isinstance(result, Exception):
+                    logger.error(f"Retry failed for action {action_idx}, variant {variant_idx}: {result}")
+                    continue
+                
+                url, was_cached, cost = result
+                if url:
+                    if variant_idx is None:
+                        actions[action_idx]["hero_image_url"] = url
+                        actions[action_idx]["hero_image_cached"] = was_cached
+                    else:
+                        actions[action_idx]["variants"][variant_idx]["image_url"] = url
+                        actions[action_idx]["variants"][variant_idx]["image_cached"] = was_cached
+                    total_cost += cost
+                    img_type = "Hero" if variant_idx is None else f"Variant {variant_idx}"
+                    logger.info(f"✅ {img_type} retry succeeded for action {action_idx}")
+        
+        # Final check: Apply fallback URLs for any still-missing images
+        final_missing_hero = 0
+        final_missing_variant = 0
+        
+        for action in actions:
+            category = action.get("category", "food").lower()
+            fallback_url = FALLBACK_IMAGE_URLS.get(category, FALLBACK_IMAGE_URLS["food"])
+            
+            # Check hero
+            hero_url = action.get("hero_image_url")
+            if not hero_url or hero_url == "":
+                action["hero_image_url"] = fallback_url
+                action["hero_image_cached"] = False
+                final_missing_hero += 1
+                logger.warning(f"⚠️ Using fallback for hero: '{action.get('title', 'Unknown')}'")
+            
+            # Check variants
+            for variant in action.get("variants", []):
+                if isinstance(variant, dict):
+                    variant_url = variant.get("image_url")
+                    if not variant_url or variant_url == "":
+                        variant["image_url"] = fallback_url
+                        variant["image_cached"] = False
+                        final_missing_variant += 1
+                        logger.warning(f"⚠️ Using fallback for variant: '{variant.get('title', 'Unknown')}'")
+        
+        total_fallbacks = final_missing_hero + final_missing_variant
+        if total_fallbacks > 0:
+            logger.error(f"❌ {total_fallbacks} images ({final_missing_hero} hero, {final_missing_variant} variant) required fallback after {MAX_IMAGE_RETRIES} retries")
+        
         logger.info(f"Generated {len(image_tasks)} images (cost: ${total_cost:.4f})")
         
         return (actions, total_cost)
@@ -5332,22 +5452,36 @@ Respond with valid JSON object only."""
                 logger.warning(f"⚠️ Replacement duplicates existing plan item: '{replacement_action.get('title')}' - proceeding but flagging")
                 # We proceed anyway since user requested a replacement, but log this
             
-            # Generate images for replacement using TITLE for cache matching
+            # Generate images for replacement using TITLE for cache matching with retry
             replacement_title = replacement_action.get("title", "Wellness Action")
             replacement_category = replacement_action.get("category", "food")
             logger.info(f"[REPLACE] Generating image: '{replacement_title[:40]}' ({replacement_category})")
             
-            hero_url, was_cached, _ = await self.image_service.get_or_generate_image(
-                prompt=replacement_title,  # Use TITLE for cache matching
-                category=replacement_category,
-                variant_type="hero",
-                user_id=user_id,
-                db=db
-            )
+            # Retry loop for hero image
+            hero_url = None
+            was_cached = False
+            MAX_HERO_RETRIES = 3
+            for retry_attempt in range(MAX_HERO_RETRIES):
+                try:
+                    hero_url, was_cached, _ = await self.image_service.get_or_generate_image(
+                        prompt=replacement_title,  # Use TITLE for cache matching
+                        category=replacement_category,
+                        variant_type="hero",
+                        user_id=user_id,
+                        db=db
+                    )
+                    if hero_url:
+                        break
+                    else:
+                        logger.warning(f"⚠️ Hero retry {retry_attempt + 1}/{MAX_HERO_RETRIES}: empty URL")
+                        await asyncio.sleep(1.0 * (retry_attempt + 1))
+                except Exception as e:
+                    logger.error(f"Hero image error (attempt {retry_attempt + 1}): {e}")
+                    await asyncio.sleep(1.0 * (retry_attempt + 1))
             
-            # Defensive check: ensure hero_url is never empty (fallback already handled by image service)
+            # Defensive check: ensure hero_url is never empty (fallback after retries)
             if not hero_url:
-                logger.warning(f"[REPLACE] hero_url empty after generation, using emergency fallback for {replacement_category}")
+                logger.warning(f"[REPLACE] hero_url empty after {MAX_HERO_RETRIES} retries, using fallback for {replacement_category}")
                 hero_url = self.image_service.FALLBACK_IMAGE_URLS.get(
                     replacement_category, 
                     self.image_service.FALLBACK_IMAGE_URLS["food"]
@@ -5421,25 +5555,48 @@ Respond with valid JSON object only."""
                     v_type = defaults[i % len(defaults)]
                 variant_data.append({"variant": variant, "v_type": v_type})
             
-            # Generate variant images SEQUENTIALLY (not parallel) to avoid db session conflicts
+            # Generate variant images SEQUENTIALLY (not parallel) with retry logic
             # SQLAlchemy async sessions can't be shared across concurrent tasks
             variant_results = []
+            FALLBACK_IMAGE_URLS = {
+                "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
+                "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
+                "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+            }
+            
             for vd in variant_data:
-                try:
-                    # Use variant TITLE for cache matching
-                    variant_title = vd["variant"].get("title", f"{vd['v_type']} version")
-                    logger.info(f"[REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
-                    result = await self.image_service.get_or_generate_image(
-                        prompt=variant_title,  # Use TITLE for cache matching
-                        category=category,
-                        variant_type=vd["v_type"],
-                        user_id=user_id,
-                        db=db
-                    )
-                    variant_results.append(result)
-                except Exception as e:
-                    logger.error(f"Variant image generation failed: {e}")
-                    variant_results.append(("", False, 0.0))
+                variant_url = None
+                MAX_VARIANT_RETRIES = 3
+                
+                # Use variant TITLE for cache matching
+                variant_title = vd["variant"].get("title", f"{vd['v_type']} version")
+                logger.info(f"[REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
+                
+                for retry_attempt in range(MAX_VARIANT_RETRIES):
+                    try:
+                        result = await self.image_service.get_or_generate_image(
+                            prompt=variant_title,  # Use TITLE for cache matching
+                            category=category,
+                            variant_type=vd["v_type"],
+                            user_id=user_id,
+                            db=db
+                        )
+                        variant_url, was_cached, cost = result
+                        if variant_url:
+                            variant_results.append(result)
+                            break
+                        else:
+                            logger.warning(f"⚠️ Variant retry {retry_attempt + 1}/{MAX_VARIANT_RETRIES}: empty URL for '{variant_title[:30]}'")
+                            await asyncio.sleep(1.0 * (retry_attempt + 1))
+                    except Exception as e:
+                        logger.error(f"Variant image generation error (attempt {retry_attempt + 1}): {e}")
+                        await asyncio.sleep(1.0 * (retry_attempt + 1))
+                
+                # Apply fallback if still no URL after retries
+                if not variant_url:
+                    fallback_url = FALLBACK_IMAGE_URLS.get(category.lower(), FALLBACK_IMAGE_URLS["food"])
+                    variant_results.append((fallback_url, False, 0.0))
+                    logger.warning(f"⚠️ Using fallback for variant: '{variant_title[:30]}'")
             
             # Create variant records from results
             for i, result in enumerate(variant_results):
@@ -6512,11 +6669,18 @@ OUTPUT FORMAT (JSON Array):
             # Process each replacement
             new_actions = []
             
-            # ===== PARALLEL IMAGE GENERATION =====
+            # ===== PARALLEL IMAGE GENERATION WITH RETRY =====
             # First, generate all hero images in parallel for speed
             from app.core.database import async_engine
             from sqlalchemy.ext.asyncio import AsyncSession
             logger.info(f" Generating {len(replacement_actions)} hero images in PARALLEL...")
+            
+            # Fallback URLs
+            FALLBACK_IMAGE_URLS = {
+                "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
+                "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
+                "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+            }
             
             async def generate_hero_image(replacement_action, index):
                 """Generate hero image for a replacement action."""
@@ -6552,7 +6716,47 @@ OUTPUT FORMAT (JSON Array):
                     hero_images.append(result)
                     total_cost += result[2]  # image_cost
             
-            logger.info(f" All {len(replacement_actions)} hero images generated in parallel")
+            # RETRY LOOP: Retry failed hero images up to 3 times
+            MAX_HERO_RETRIES = 3
+            for retry_attempt in range(MAX_HERO_RETRIES):
+                # Find indices with missing hero images
+                missing_indices = [i for i, (url, _, _) in enumerate(hero_images) if not url]
+                
+                if not missing_indices:
+                    logger.info(f"✅ All {len(replacement_actions)} hero images generated successfully")
+                    break
+                
+                logger.warning(f"⚠️ Hero retry {retry_attempt + 1}/{MAX_HERO_RETRIES}: {len(missing_indices)} images missing")
+                
+                # Exponential backoff
+                await asyncio.sleep(1.0 * (retry_attempt + 1))
+                
+                # Retry failed images
+                retry_tasks = [
+                    generate_hero_image(replacement_actions[i], i)
+                    for i in missing_indices
+                ]
+                retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+                
+                # Update results
+                for idx, result in zip(missing_indices, retry_results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Retry failed for image {idx+1}: {result}")
+                    else:
+                        hero_images[idx] = result
+                        if result[0]:  # url exists
+                            total_cost += result[2]
+                            logger.info(f"✅ Hero retry succeeded for image {idx+1}")
+            
+            # Apply fallbacks for still-missing images
+            for i, (url, was_cached, cost) in enumerate(hero_images):
+                if not url:
+                    category = replacement_actions[i].get("category", "food").lower()
+                    fallback_url = FALLBACK_IMAGE_URLS.get(category, FALLBACK_IMAGE_URLS["food"])
+                    hero_images[i] = (fallback_url, False, 0)
+                    logger.warning(f"⚠️ Using fallback for hero {i+1}: '{replacement_actions[i].get('title', 'Unknown')[:30]}'")
+            
+            logger.info(f" All {len(replacement_actions)} hero images ready (with retries/fallbacks)")
             
             # ===== PROCESS EACH REPLACEMENT WITH PRE-GENERATED IMAGES =====
             for i, replacement_action in enumerate(replacement_actions):
@@ -6635,7 +6839,7 @@ OUTPUT FORMAT (JSON Array):
                 db.add(new_item)
                 await db.flush()
                 
-                # Generate variant images (up to 3)
+                # Generate variant images with retry (up to 3 variants)
                 raw_variants = replacement_action.get("variants", [])
                 # Ensure variants is a list
                 if isinstance(raw_variants, str):
@@ -6664,14 +6868,33 @@ OUTPUT FORMAT (JSON Array):
                     variant_title = variant.get("title", f"{v_type} {replacement_title}")
                     logger.info(f"[BATCH_REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
                     
-                    variant_url, was_cached, variant_cost = await self.image_service.get_or_generate_image(
-                        prompt=variant_title,  # Use TITLE for cache matching
-                        category=replacement_action.get("category", "food"),
-                        variant_type=v_type,
-                        user_id=user_id,
-                        db=db
-                    )
-                    total_cost += variant_cost
+                    # Try to generate variant image with retry
+                    variant_url = None
+                    MAX_VARIANT_RETRIES = 3
+                    for retry_attempt in range(MAX_VARIANT_RETRIES):
+                        try:
+                            variant_url, was_cached, variant_cost = await self.image_service.get_or_generate_image(
+                                prompt=variant_title,  # Use TITLE for cache matching
+                                category=replacement_action.get("category", "food"),
+                                variant_type=v_type,
+                                user_id=user_id,
+                                db=db
+                            )
+                            if variant_url:
+                                total_cost += variant_cost
+                                break
+                            else:
+                                logger.warning(f"⚠️ Variant retry {retry_attempt + 1}/{MAX_VARIANT_RETRIES}: empty URL for '{variant_title[:30]}'")
+                                await asyncio.sleep(1.0 * (retry_attempt + 1))
+                        except Exception as e:
+                            logger.error(f"Variant image error (attempt {retry_attempt + 1}): {e}")
+                            await asyncio.sleep(1.0 * (retry_attempt + 1))
+                    
+                    # Apply fallback if still no URL
+                    if not variant_url:
+                        category_lower = replacement_action.get("category", "food").lower()
+                        variant_url = FALLBACK_IMAGE_URLS.get(category_lower, FALLBACK_IMAGE_URLS["food"])
+                        logger.warning(f"⚠️ Using fallback for variant: '{variant_title[:30]}'")
                     
                     variant_record = ActionPlanItemVariant(
                         item_id=new_item.id,
