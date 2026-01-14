@@ -597,11 +597,11 @@ class ImageLibraryService:
             
             logger.debug(f"[Pruna] Job ID: {job_id}")
             
-            # Step 2: Poll /status/{job_id} - Pruna is ultra-fast
+            # Step 2: Poll /status/{job_id} - Pruna is usually fast but can be slow on cold start
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
             
-            # Fast polling - Pruna should complete in 1-3s typically
-            max_polls = 30  # 30 seconds max
+            # Increased polling - allow up to 45s for cold start scenarios
+            max_polls = 90  # 45 seconds max (90 × 0.5s)
             poll_interval = 0.5  # Poll every 0.5s for faster response
             
             for poll_num in range(max_polls):
@@ -666,14 +666,14 @@ class ImageLibraryService:
                     logger.warning(f"⚠️ [Pruna] Poll error: {poll_error}")
                     continue
             
-            # Timeout after 15s (Pruna is fast, this shouldn't happen often)
+            # Timeout - return None to trigger retry logic
             elapsed = time.time() - start_time
-            logger.error(f"❌ [Pruna] Timeout after {elapsed:.1f}s (job: {job_id})")
-            return await self._generate_placeholder_image(prompt)
+            logger.warning(f"⚠️ [Pruna] Timeout after {elapsed:.1f}s (job: {job_id}) - will retry")
+            return (None, 0)  # Return None to trigger retry in _call_runpod_flux_with_retry
             
         except Exception as e:
-            logger.error(f"❌ [Pruna] Error: {type(e).__name__}: {e}")
-            return await self._generate_placeholder_image(prompt)
+            logger.warning(f"⚠️ [Pruna] Error: {type(e).__name__}: {e} - will retry")
+            return (None, 0)  # Return None to trigger retry
 
     async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
