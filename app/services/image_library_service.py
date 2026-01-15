@@ -95,10 +95,27 @@ class ImageLibraryService:
         # In-memory cache for embeddings (avoid repeated API calls)
         self._embedding_cache: Dict[str, List[float]] = {}
         
+        # Configure Cloudinary ONCE at startup to avoid connection pool issues
+        # (Previously configured per-upload, causing "Connection pool is full" warnings)
+        self._cloudinary_configured = False
+        if self.cloudinary_cloud_name and self.cloudinary_api_key:
+            try:
+                import cloudinary
+                cloudinary.config(
+                    cloud_name=self.cloudinary_cloud_name,
+                    api_key=self.cloudinary_api_key,
+                    api_secret=self.cloudinary_api_secret,
+                    secure=True
+                )
+                self._cloudinary_configured = True
+                logger.info("✅ Cloudinary configured globally at startup")
+            except Exception as e:
+                logger.warning(f"Failed to configure Cloudinary: {e}")
+        
         logger.info(f"ImageLibraryService initialized")
         logger.info(f"  RunPod configured: {bool(self.runpod_api_key)}")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
-        logger.info(f"  Cloudinary configured: {bool(self.cloudinary_cloud_name and self.cloudinary_api_key)}")
+        logger.info(f"  Cloudinary configured: {self._cloudinary_configured}")
         logger.info(f"  Supabase configured: {bool(self.supabase_url and self.supabase_key)}")
     
     async def get_or_generate_image(
@@ -792,84 +809,71 @@ class ImageLibraryService:
     
     def _enhance_prompt(self, prompt: str, category: str) -> str:
         """
-        Enhance prompt with Pruna-optimized photorealistic style hints.
+        Create prompts that show users EXACTLY what to eat or do.
         
-        Pruna P-Image best practices:
-        1. Structured format: Subject - Appearance - Environment - Lighting - Style - Quality
-        2. Be hyper-specific with textures, features, and details
-        3. Include camera/lens specs for professional look
-        4. Add negative concepts to avoid (via positive phrasing)
-        5. Use quality cues: 8K UHD, photorealistic, high-resolution
+        AUVRA-specific approach:
+        1. Focus on the ACTUAL CONTENT - what does this food/exercise look like?
+        2. Make it actionable - user should understand what to prepare/do
+        3. Keep it simple - AI image models don't need camera specs
+        4. Be specific about the subject, not the photography
         
         Args:
-            prompt: Action title (e.g., "Salmon bowl", "Morning yoga stretch")
+            prompt: Action title (e.g., "Chickpea Salad", "Swimming", "Deep Breathing")
             category: "food", "movement", or "mindfulness"
             
         Returns:
-            Enhanced prompt string with photorealistic style hints
+            Enhanced prompt that accurately represents the action
         """
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
         
         if category == "food":
-            # FOOD: Hyper-realistic editorial food photography
-            # Structure: Subject (dish) - Specific details - Environment - Lighting - Camera - Style
+            # FOOD: Show the ACTUAL dish with visible ingredients
+            # User should be able to understand what to prepare from the image
             enhanced = (
-                f"Photorealistic 8K food photography of {prompt}, "
-                f"beautifully plated on artisan ceramic dish with visible ingredients, "
-                f"fresh herbs as garnish with water droplets, glistening sauce drizzle, "
-                f"vibrant natural colors showing freshness and ripeness, "
-                f"visible steam rising from hot elements, detailed food textures, "
-                f"rustic wooden table surface with linen napkin, "
-                f"professional studio setup with soft diffused natural window light from left side, "
-                f"shallow depth of field with creamy bokeh background, "
-                f"shot on Canon EOS R5 with 85mm f/1.4 lens, "
-                f"Michelin star restaurant presentation, editorial food magazine cover quality, "
-                f"mouthwatering, appetizing, Instagram food influencer aesthetic"
+                f"A delicious plate of {prompt}, "
+                f"showing the actual ingredients clearly visible, "
+                f"freshly prepared and appetizing, natural vibrant colors, "
+                f"beautifully arranged on a clean white plate, "
+                f"top-down or slight angle view so all ingredients are visible, "
+                f"professional food photography, bright natural lighting, "
+                f"the dish should look exactly like {prompt} with recognizable ingredients, "
+                f"healthy nutritious meal for women's wellness"
             )
             
         elif category == "movement":
-            # MOVEMENT: Dynamic fitness photography with action and energy
-            # Structure: Subject (person doing action) - Pose/Form - Location - Lighting - Camera - Style
+            # MOVEMENT: Show the ACTUAL exercise position and form
+            # User should be able to understand how to do the exercise from the image
             enhanced = (
-                f"Dynamic 8K fitness photography capturing a fit athletic woman mid-motion performing {prompt}, "
-                f"powerful athletic pose showing perfect exercise form and technique, "
-                f"determined focused expression with slight perspiration on skin, "
-                f"wearing stylish high-end athletic wear (Nike or Lululemon style), "
-                f"detailed muscle definition visible, natural skin texture with visible pores, "
-                f"modern bright gym studio with large floor-to-ceiling windows, "
-                f"golden hour sunlight streaming in creating dynamic shadows and highlights, "
-                f"subtle motion blur on extremities conveying energy and movement, "
-                f"full body visible with room to breathe in frame, "
-                f"shot on Sony A7R IV with 35mm f/1.8 lens, high shutter speed, "
-                f"professional fitness magazine cover, Nike advertisement aesthetic, "
-                f"empowering, motivational, high-energy, action shot"
+                f"A woman demonstrating {prompt} exercise, "
+                f"clear view of the body position and correct form, "
+                f"showing exactly how to perform {prompt}, "
+                f"wearing comfortable athletic clothes, "
+                f"focused calm expression, bright clean background, "
+                f"the exercise pose should be clearly recognizable as {prompt}, "
+                f"fitness photography style, full body visible, "
+                f"instructional and easy to follow, women's wellness exercise"
             )
             
         elif category == "mindfulness":
-            # MINDFULNESS: Serene wellness photography with peaceful atmosphere
-            # Structure: Subject (person meditating) - Expression/Mood - Environment - Atmosphere - Lighting - Style
+            # MINDFULNESS: Show the ACTUAL meditation or breathing practice
+            # User should understand what the practice looks like
             enhanced = (
-                f"Serene 8K wellness photography of a peaceful woman practicing {prompt}, "
-                f"eyes gently closed with calm content smile, relaxed facial muscles, "
-                f"natural makeup, loose flowing hair, detailed skin with soft glow, "
-                f"wearing comfortable earth-toned loungewear (cream, sage, or soft beige), "
-                f"perfect meditation posture with graceful hand positions, "
-                f"cozy minimalist zen space with soft textures and natural materials, "
-                f"lush green plants and crystals in soft-focus background, "
-                f"warm golden hour sunlight filtering through sheer white curtains, "
-                f"ethereal soft glow and dreamy atmosphere with floating dust particles in light, "
-                f"shot on Sony A7IV with 50mm f/1.4 lens, soft focus, "
-                f"high-end spa wellness retreat aesthetic, calm and tranquil mood, "
-                f"peaceful, zen, meditative, breathable space"
+                f"A peaceful woman practicing {prompt}, "
+                f"showing the meditation or breathing position clearly, "
+                f"eyes closed, serene relaxed expression, "
+                f"comfortable seated or resting position for {prompt}, "
+                f"wearing soft comfortable clothes, "
+                f"calm cozy setting with soft natural light, "
+                f"the practice should be recognizable as {prompt}, "
+                f"peaceful wellness moment, self-care atmosphere"
             )
             
         else:
-            # Fallback: clean wellness aesthetic
+            # Fallback: simple clear wellness image
             enhanced = (
-                f"Photorealistic 8K lifestyle photography of {prompt}, "
-                f"bright natural lighting, clean minimalist aesthetic, "
-                f"warm inviting tones, detailed textures, "
-                f"high quality editorial style, professional magazine quality"
+                f"A beautiful wellness image of {prompt}, "
+                f"clean minimalist style, bright natural lighting, "
+                f"clearly showing what {prompt} looks like"
             )
         
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")
@@ -920,13 +924,8 @@ class ImageLibraryService:
             import cloudinary
             import cloudinary.uploader
             
-            # Configure cloudinary
-            cloudinary.config(
-                cloud_name=self.cloudinary_cloud_name,
-                api_key=self.cloudinary_api_key,
-                api_secret=self.cloudinary_api_secret,
-                connection_pool_maxsize=20  # Handle parallel uploads without pool warnings
-            )
+            # Cloudinary is configured once in __init__ - no need to reconfigure here
+            # This prevents "Connection pool is full" warnings during parallel uploads
             
             # Generate unique public_id
             timestamp = int(time.time() * 1000)
@@ -972,13 +971,8 @@ class ImageLibraryService:
             import cloudinary
             import cloudinary.uploader
             
-            # Configure cloudinary
-            cloudinary.config(
-                cloud_name=self.cloudinary_cloud_name,
-                api_key=self.cloudinary_api_key,
-                api_secret=self.cloudinary_api_secret,
-                connection_pool_maxsize=20  # Handle parallel uploads without pool warnings
-            )
+            # Cloudinary is configured once in __init__ - no need to reconfigure here
+            # This prevents "Connection pool is full" warnings during parallel uploads
             
             # Generate unique public_id
             timestamp = int(time.time() * 1000)
