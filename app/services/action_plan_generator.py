@@ -5758,7 +5758,7 @@ STRICT REQUIREMENTS:
 1. Category MUST be: {original_category} (DO NOT suggest other categories!)
 2. Target hormone MUST be: {original_hormone}
 3. Must be DIFFERENT from: {original.title}
-4. Dislike reason: {reason or 'user wants alternatives'}
+4. User Request / Context: {reason or 'user wants alternatives'} (CRITICAL: If user asks for a specific activity, you MUST provide it!)
 5. MUST include category-specific fields: {required_fields}
 
 USER HEALTH PROFILE (tailor recommendations to this):

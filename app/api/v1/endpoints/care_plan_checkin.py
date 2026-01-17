@@ -572,14 +572,14 @@ async def respond_care_plan_checkin(
                     thread.raw_messages = raw
                     
                     candidates_result = await service.generate_alternate_candidates(
-                        uid, item_id=matched_item_id, reason="User selected via text"
+                        uid, item_id=matched_item_id, reason=payload.message_text
                     )
                     
                     logger.info(f"[PENDING_ALT] generate_alternate_candidates result: success={candidates_result.get('success')}")
                     
                     if candidates_result.get("success"):
                         ai_data = dict(thread.actionable_insights or {})
-                        ai_data["pending_alternate"] = {"stage": "choose_candidate", "item_id": matched_item_id, "reason": "User selected via text"}
+                        ai_data["pending_alternate"] = {"stage": "choose_candidate", "item_id": matched_item_id, "reason": payload.message_text}
                         ai_data["alternate_candidates"] = candidates_result.get("candidates_by_id") or {}
                         thread.actionable_insights = ai_data
                         
