@@ -661,8 +661,8 @@ async def respond_care_plan_checkin(
             elif stage == "choose_candidate":
                 item_id = pending_alternate.get("item_id")
                 
-                # CHECK: Does user want to change a DIFFERENT item instead?
-                if _looks_like_change_different_item(payload.message_text):
+                # CHECK: Does user want to change a DIFFERENT item instead? (LLM-detected)
+                if classification.intent == "change_different_item" and classification.confidence > 0.5:
                     # Reset pending state and show item picker
                     ai_data = dict(thread.actionable_insights or {})
                     ai_data.pop("pending_alternate", None)

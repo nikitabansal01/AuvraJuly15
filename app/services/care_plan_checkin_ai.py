@@ -216,7 +216,7 @@ INTENT_TOOLS = [
                 "properties": {
                     "intent": {
                         "type": "string",
-                        "enum": ["select_item", "select_candidate", "confirm", "cancel", "want_change", "want_alternates", "general_chat"],
+                        "enum": ["select_item", "select_candidate", "confirm", "cancel", "want_change", "want_alternates", "change_different_item", "general_chat"],
                         "description": "User's primary intent"
                     },
                     "selected_index": {
@@ -330,6 +330,9 @@ INTENT MEANINGS:
 - cancel: User is declining (no, nevermind, forget it, skip, cancel, etc.)
 - want_change: User wants to change/replace something in their plan (e.g., "change food", "don't like this")
 - want_alternates: User wants to see alternatives/suggestions
+- change_different_item: User is viewing replacement options but wants to change a DIFFERENT item instead
+  Examples: "I want to change other thing", "change different item", "not this one, something else"
+  "I don't want to change running, I want to change food", "wrong item", "different action"
 - general_chat: User is just chatting, not making a specific action
 
 MATCHING RULES:
@@ -342,6 +345,7 @@ MATCHING RULES:
 - If user mentions a word from an item title, match that item.
 - Be generous/smart - match "food" to "Eat protein", "run" to "Movement".
 - If user says "change [item]", use intent: want_change + selected_index of that item.
+- If user says "other thing", "different item", "not this", use intent: change_different_item
 - Only use general_chat if truly uncertain."""
 
         context_msg = f"Context: {current_context}"
@@ -377,7 +381,7 @@ MATCHING RULES:
                         
                         # Validate intent
                         intent = args.get("intent", "general_chat")
-                        valid_intents = ["select_item", "select_candidate", "confirm", "cancel", "want_change", "want_alternates", "general_chat"]
+                        valid_intents = ["select_item", "select_candidate", "confirm", "cancel", "want_change", "want_alternates", "change_different_item", "general_chat"]
                         if intent not in valid_intents:
                             intent = "general_chat"
                         
