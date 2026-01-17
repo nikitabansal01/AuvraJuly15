@@ -762,6 +762,124 @@ def route_after_change(state: CarePlanCheckInState) -> str:
     return "END"
 
 
+async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Generate a SINGLE specific replacement based on user request."""
+    
+    targeted_idx = state.get("targeted_action_index")
+    action_items = state.get("action_items", [])
+    
+    if targeted_idx is None:
+        return {**state, "phase": "complete"}
+    
+    original_action = action_items[targeted_idx]
+    requested_item = state.get("change_reason")  # e.g., "cashews"
+    
+    prompt = f"""User specific request: REPLACE "{original_action.get('title')}" WITH "{requested_item}".
+
+Generate valid metadata for this NEW specific action.
+- Use "{requested_item}" as the core of the new action.
+- Ensure it's a valid health action (e.g. "Eating Cashews" or "Doing Yoga").
+- Provide 1 SINGLE option.
+
+Detailed format:
+- Title: Display name (e.g., "Cashew Snack")
+- Specific Action: Actionable details (e.g., "Eat 30g of roasted cashews")
+- Target Hormone: Inference based on ingredient/activity (e.g., "Progesterone" for healthy fats)
+- Purpose: "To boost healthy fats..."
+
+Output JSON (List with 1 item):
+{{
+  "alternatives": [
+    {{
+      "title": "Title",
+      "specific_action": "...",
+      "why_better": "Requested replacement",
+      "target_hormone": "...",
+      "purpose": "..."
+    }}
+  ]
+}}
+"""
+    try:
+        data = await call_llm_structured(prompt, response_model=AlternatesList)
+        alternatives = data.alternatives[:1] # Ensure only 1
+        
+        # Build UI Block (Single Confirmation)
+        ui_blocks = [{
+            "id": "alternate_suggestions", # Reusing id logic for now
+            "type": "quick_actions", # Use quick actions for selection
+            "title": f"Switch to {alternatives[0].title}?",
+            "subtitle": "You requested this specific change.",
+            "actions": [
+                {
+                    "id": f"select_alt_0", # Index 0
+                    "title": f"Yes, confirm {alternatives[0].title}", 
+                    "action_type": "submit_event",
+                    "style": "primary"
+                }
+            ],
+            "dismissible": True
+        }]
+        
+        return {
+            **state,
+            "alternate_candidates": alternatives,
+            "ui_blocks": ui_blocks,
+            "bot_response": f"I found a match for '{requested_item}'. Shall we switch to {alternatives[0].title}?",
+            "phase": "awaiting_selection"
+        }
+    except Exception as e:
+        logger.error(f"Error generating direct replacement: {e}")
+        return {
+            **state,
+            "bot_response": "I couldn't find a specific match. Let me find some alternatives instead.",
+            "workflow_stage": "generating_alternates", # Fallback
+            "phase": "processing" # Will be re-routed if we didn't end
+        }
+
+
+async def handle_cancel_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle user cancellation."""
+    return {
+        **state,
+        "bot_response": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+        "ui_blocks": [], # Clear any previous buttons
+        "phase": "complete"
+    }
+
+
+async def handle_ask_why(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle user asking 'why' about an action."""
+    
+    targeted_idx = state.get("targeted_action_index")
+    action_items = state.get("action_items", [])
+    
+    if targeted_idx is None or not (0 <= targeted_idx < len(action_items)):
+        return {
+            **state,
+            "bot_response": "Which action are you asking about?",
+            "ui_blocks": [],
+            "phase": "complete"
+        }
+
+    action = action_items[targeted_idx]
+    
+    # Use existing purpose/hormone metadata for explanation
+    hormone = action.get('target_hormone', 'your health')
+    purpose = action.get('purpose', 'support your goals')
+    title = action.get('title', 'this action')
+    
+    explanation = f"{title} was chosen specifically to support your {hormone}. {purpose}"
+    response = f"{explanation} Does that make sense?"
+
+    return {
+        **state,
+        "bot_response": response,
+        "ui_blocks": [],
+        "phase": "complete"
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
 # GRAPH CONSTRUCTION - LOAD PLAN (Invocation 1)
 # ═══════════════════════════════════════════════════════════════════
@@ -892,129 +1010,3 @@ async def process_alternate_selection(
     updated_state = {**state, "selected_alternate_index": selected_index}
     result = await care_plan_selection_graph.ainvoke(updated_state)
     return result
-
-async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Generate a SINGLE specific replacement based on user request."""
-    
-    targeted_idx = state.get("targeted_action_index")
-    action_items = state.get("action_items", [])
-    
-    if targeted_idx is None:
-        return {**state, "phase": "complete"}
-    
-    original_action = action_items[targeted_idx]
-    requested_item = state.get("change_reason")  # e.g., "cashews"
-    
-    prompt = f"""User specific request: REPLACE "{original_action.get('title')}" WITH "{requested_item}".
-
-Generate valid metadata for this NEW specific action.
-- Use "{requested_item}" as the core of the new action.
-- Ensure it's a valid health action (e.g. "Eating Cashews" or "Doing Yoga").
-- Provide 1 SINGLE option.
-
-Detailed format:
-- Title: Display name (e.g., "Cashew Snack")
-- Specific Action: Actionable details (e.g., "Eat 30g of roasted cashews")
-- Target Hormone: Inference based on ingredient/activity (e.g., "Progesterone" for healthy fats)
-- Purpose: "To boost healthy fats..."
-
-Output JSON (List with 1 item):
-{{
-  "alternatives": [
-    {{
-      "title": "Title",
-      "specific_action": "...",
-      "why_better": "Requested replacement",
-      "target_hormone": "...",
-      "purpose": "..."
-    }}
-  ]
-}}
-"""
-    try:
-        data = await call_llm_structured(prompt, response_model=AlternatesList)
-        alternatives = data.alternatives[:1] # Ensure only 1
-        
-        # Build UI Block (Single Confirmation)
-        ui_blocks = [{
-            "id": "alternate_suggestions", # Reusing id logic for now
-            "type": "quick_actions", # Use quick actions for selection
-            "title": f"Switch to {alternatives[0].title}?",
-            "subtitle": "You requested this specific change.",
-            "actions": [
-                {
-                    "id": f"select_alt_0", # Index 0
-                    "title": f"Yes, confirm {alternatives[0].title}", 
-                    "action_type": "submit_event",
-                    "style": "primary"
-                }
-            ],
-            "dismissible": True
-        }]
-        
-        return {
-            **state,
-            "alternate_candidates": alternatives,
-            "ui_blocks": ui_blocks,
-            "bot_response": f"I found a match for '{requested_item}'. Shall we switch to {alternatives[0].title}?",
-            "phase": "awaiting_selection"
-        }
-    except Exception as e:
-        logger.error(f"Error generating direct replacement: {e}")
-        return {
-            **state,
-            "bot_response": "I couldn't find a specific match. Let me find some alternatives instead.",
-            "workflow_stage": "generating_alternates", # Fallback
-            "phase": "processing" # Will be re-routed if we didn't end
-        }
-
-async def handle_cancel_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Handle user cancellation."""
-    return {
-        **state,
-        "bot_response": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
-        "ui_blocks": [], # Clear any previous buttons
-        "phase": "complete"
-    }
-
-async def handle_ask_why(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Handle user asking 'why' about an action."""
-    
-    targeted_idx = state.get("targeted_action_index")
-    action_items = state.get("action_items", [])
-    
-    if targeted_idx is None or not (0 <= targeted_idx < len(action_items)):
-        return {
-            **state,
-            "bot_response": "Which action are you asking about?",
-            "ui_blocks": [],
-            "phase": "complete" # Or "loaded" to prompt? "complete" is fine for chat.
-        }
-
-    action = action_items[targeted_idx]
-    
-    # Use LLM to generate a helpful explanation
-    # We use the existing purpose/hormone metadata
-    prompt = f"""User asks: "{state.get('user_message')}"
-    
-Action: {action.get('title')}
-Category: {action.get('category')}
-Target Hormone: {action.get('target_hormone')}
-Purpose: {action.get('purpose')}
-
-Task: Write a short, encouraging explanation of why this action is important for them right now. 
-Keep it under 2 sentences. Mention the hormone if relevant.
-"""
-    try:
-        explanation = await call_llm_str(prompt) # Assuming simple string response
-    except:
-        explanation = f"This action helps support your {action.get('target_hormone', 'health')} and was chosen to help with {action.get('purpose', 'your goals')}."
-
-    response = f"{explanation} Does that make sense?"
-
-    return {
-        **state,
-        "bot_response": response,
-        "ui_blocks": [],
-        "phase": "complete"
-    }
