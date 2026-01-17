@@ -170,64 +170,7 @@ class SymptomCheckInService:
         self.db.commit()
         self.db.refresh(thread)
         return thread
-        except Exception as e:
-            logger.warning(f"[SymptomCheckInService] Error getting cycle phase: {e}")
-        
-        greeting = user_name or "there"
-        
-        # Dr. Auvra opening - multi-bubble style with cycle awareness
-        if yesterday_symptom:
-            symptom_type = yesterday_symptom.get("symptom_type", "symptoms")
-            severity = yesterday_symptom.get("severity", "?")
-            
-            # Personalized opening referencing yesterday
-            opening1 = {
-                "id": self._new_message_id(),
-                "role": "bot",
-                "content": f"Hey {greeting}! Your {symptom_type} was {severity}/9 yesterday. 💜",
-                "created_at": datetime.utcnow().isoformat(),
-            }
-            opening2 = {
-                "id": self._new_message_id(),
-                "role": "bot",
-                "content": "How's it feeling today - better, same, or worse?",
-                "created_at": datetime.utcnow().isoformat(),
-            }
-            thread.raw_messages = [opening1, opening2]
-        else:
-            # First-time or no recent data - ask about symptoms with cycle context
-            if cycle_phase:
-                opening1 = {
-                    "id": self._new_message_id(),
-                    "role": "bot",
-                    "content": f"Hey {greeting}! You're in {cycle_phase} right now. 💜",
-                    "created_at": datetime.utcnow().isoformat(),
-                }
-                opening2 = {
-                    "id": self._new_message_id(),
-                    "role": "bot",
-                    "content": "What's bothering you most today?",
-                    "created_at": datetime.utcnow().isoformat(),
-                }
-            else:
-                opening1 = {
-                    "id": self._new_message_id(),
-                    "role": "bot",
-                    "content": f"Hey {greeting}! 👋",
-                    "created_at": datetime.utcnow().isoformat(),
-                }
-                opening2 = {
-                    "id": self._new_message_id(),
-                    "role": "bot",
-                    "content": "What's bothering you most today?",
-                    "created_at": datetime.utcnow().isoformat(),
-                }
-            thread.raw_messages = [opening1, opening2]
 
-        self.db.add(thread)
-        self.db.commit()
-        self.db.refresh(thread)
-        return thread
     
     def _get_yesterday_symptom(self, uid: str) -> Optional[Dict[str, Any]]:
         """Get the most recent symptom log from yesterday or recent days."""
