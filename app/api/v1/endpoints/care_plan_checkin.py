@@ -556,13 +556,19 @@ async def respond_care_plan_checkin(
                         
                         # Generate contextual response
                         matched_item = next((it for it in items if it.get("item_id") == matched_item_id), {})
+                        # Extract actual candidate names for the response
+                        candidate_names = [
+                            c.get("title") or c.get("specific_action") or f"Option {i+1}"
+                            for i, c in enumerate(candidates_result.get("candidates_ui") or [])
+                        ]
                         bot_response = await generate_contextual_bot_response(
                             user_message=payload.message_text,
                             situation="showing_alternatives",
                             context_data={
                                 "matched_title": matched_title,
                                 "category": matched_item.get("category", "wellness"),
-                                "num_alternatives": len(candidates_result.get("candidates_by_id", {}))
+                                "num_alternatives": len(candidates_result.get("candidates_by_id", {})),
+                                "alternative_names": candidate_names  # Pass actual names!
                             },
                             conversation_history=thread.raw_messages
                         )

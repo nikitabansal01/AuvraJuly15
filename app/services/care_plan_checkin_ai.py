@@ -601,15 +601,16 @@ async def generate_contextual_bot_response(
 
 User said: "{user_message}"
 Matched item: {matched_title} (Category: {category})
-Number of alternatives: {num_alternatives}
+Actual alternatives generated: {alternative_names}
 
 Generate a warm, natural response that:
 - Acknowledges what they want to change
 - Confirms you found the right item
-- Introduces the alternatives in a conversational way
-- Ends with inviting them to pick one
+- DO NOT mention specific alternative names (they'll see them as buttons below)
+- Just say something like "I found some great options for you" or "Here are a few swaps"
+- Keep it SHORT (1-2 sentences). Be warm, not robotic.
 
-Keep it SHORT (1-2 sentences). Be warm, not robotic.""",
+CRITICAL: Do NOT list alternative names in your response. The user will see them as buttons.""",
 
         "replacement_complete": """The user just selected a replacement for their wellness plan item, and it has been successfully replaced.
 
