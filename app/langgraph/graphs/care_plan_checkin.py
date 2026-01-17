@@ -485,13 +485,18 @@ async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePla
     
     existing_titles = [i.get('title') for i in action_items if i.get('title')]
 
+    messages = state.get("messages", [])
+    recent_msgs = messages[-6:]
+    chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
+
     alternates_prompt = f"""Generate 3 alternatives for:
 Title: {action.get('title', 'action')}
 Category: {action.get('category', 'general')}
 Target Hormone: {action.get('target_hormone', 'general')}
 
 User's Barrier: {state.get('barrier_type', 'unspecified')} - {state.get('change_reason', '')}
-User Original Message: "{state.get('user_message', '')}"
+Recent Chat History:
+{chat_context}
 
 Requirements:
 - Same target hormone: {action.get('target_hormone', 'general')}
