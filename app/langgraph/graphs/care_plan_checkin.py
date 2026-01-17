@@ -243,6 +243,12 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
     recent_msgs = messages[-6:]
     chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
 
+    # Build action list for context
+    actions_list = "\n".join([
+        f"{i+1}. {item.get('title', 'Unknown')} ({item.get('category', 'general')})"
+        for i, item in enumerate(state.get("action_items", []))
+    ])
+
     prompt = f"""Classify the user's intent for this care plan check-in message.
 
 User Message: "{user_message}"
