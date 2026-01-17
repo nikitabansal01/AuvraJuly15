@@ -239,14 +239,16 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
         return {**state, "error": "no_user_message", "phase": "complete"}
     
     # Build action list for context
-    actions_list = "\n".join([
-        f"{i+1}. {item.get('title', 'Unknown')} ({item.get('category', 'general')})"
-        for i, item in enumerate(state.get("action_items", []))
-    ])
-    
+    messages = state.get("messages", [])
+    recent_msgs = messages[-6:]
+    chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
+
     prompt = f"""Classify the user's intent for this care plan check-in message.
 
 User Message: "{user_message}"
+
+Recent Chat History:
+{chat_context}
 
 Today's Action Items:
 {actions_list}
@@ -256,11 +258,11 @@ Intent Categories:
 2. **skip_action**: User skipping ("Skip yoga", "Can't do this", "Not today")
 3. **change_action**: User wants to replace ("Change the salmon", "I want something else")
 4. **request_alternates**: Asking for options ("Show me alternatives", "What else can I eat?")
-5. **negotiate**: Conditional/barriers ("If I can't find X, what else?", "This is too hard")
+5. **negotiate**: Conditional/barriers ("If I can't find X, what else?", "This is too hard", "Not dance")
 6. **ask_why**: Asking rationale ("Why walnuts?", "What does this help?")
 7. **general**: General chat or unclear
 
-For complete/skip/change, identify which action (1-4) if mentioned.
+For complete/skip/change, identify which action (1-4) if mentioned or implied by context.
 
 Output JSON:
 {{
@@ -274,8 +276,9 @@ Output JSON:
         classification = await call_llm_structured(prompt, response_model=IntentClassification)
         
         # Map action index to actual ID (validate bounds)
-        targeted_id = None
-        targeted_idx = None
+        targeted_id = state.get("targeted_action_id")      # Default to existing
+        targeted_idx = state.get("targeted_action_index")  # Default to existing
+
         if classification.targeted_action_index:
             idx = classification.targeted_action_index - 1  # Convert to 0-based
             if 0 <= idx < len(state.get("action_items", [])):
