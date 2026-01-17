@@ -1272,6 +1272,130 @@ class AIModelUsageLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# WEEKLY CHECK-IN SESSION - Stores weekly check-in insights and summary
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WeeklyCheckInSession(Base):
+    """
+    Stores weekly check-in session data including questions, answers, and generated insights.
+    Critical for data persistence - without this model, weekly check-in data was being lost.
+    """
+    __tablename__ = "weekly_checkin_sessions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Session timing
+    session_date = Column(Date, nullable=False, index=True)
+    timezone = Column(String(100), nullable=True)
+    
+    # Conversation data
+    questions_asked = Column(JSONB, default=[])  # [{question: str, answer: str, topic: str}]
+    question_count = Column(Integer, default=0)
+    topics_covered = Column(ARRAY(String), default=[])  # ["sleep", "stress", "mood", etc.]
+    
+    # AI-generated insights
+    weekly_summary = Column(Text, nullable=True)  # LLM-generated summary
+    insights = Column(JSONB, default={})  # {patterns: [], recommendations: [], concerns: []}
+    personalization_updates = Column(JSONB, default={})  # Profile fields that should be updated
+    
+    # Cycle context at time of check-in
+    cycle_day = Column(Integer, nullable=True)
+    cycle_phase = Column(String(50), nullable=True)
+    
+    # Session status
+    is_complete = Column(Boolean, default=False)
+    completed_at = Column(DateTime, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_weekly_session_user_date", "uid", "session_date"),
+        Index("idx_weekly_session_complete", "uid", "is_complete"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SYMPTOM LOG - Individual symptom entries with severity
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SymptomLog(Base):
+    """
+    Logs individual symptoms with severity ratings.
+    Critical for data persistence - without this model, symptom severity data was being lost.
+    Links to SymptomCheckInThread for conversation context.
+    """
+    __tablename__ = "symptom_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    thread_id = Column(String(36), ForeignKey("symptom_checkin_threads.id", ondelete="CASCADE"), nullable=True)
+    
+    # Symptom details
+    symptom_name = Column(String(100), nullable=False, index=True)  # "cramps", "headache", "fatigue", etc.
+    symptom_category = Column(String(50), nullable=True)  # "physical", "emotional", "cognitive"
+    severity = Column(Integer, nullable=False)  # 1-9 scale
+    
+    # Context
+    logged_date = Column(Date, nullable=False, index=True)
+    logged_at = Column(DateTime, default=datetime.utcnow)
+    timezone = Column(String(100), nullable=True)
+    
+    # Cycle context at time of logging
+    cycle_day = Column(Integer, nullable=True)
+    cycle_phase = Column(String(50), nullable=True)
+    
+    # User notes (optional free-text from conversation)
+    notes = Column(Text, nullable=True)
+    
+    # Tracking origin
+    source = Column(String(50), default="symptom_checkin")  # "symptom_checkin", "daily_log", "manual"
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_symptom_user_date", "uid", "logged_date"),
+        Index("idx_symptom_name_date", "symptom_name", "logged_date"),
+        Index("idx_symptom_severity", "uid", "symptom_name", "severity"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ACTION PLAN REFRESH LOG - Tracks refresh token usage
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ActionPlanRefreshLog(Base):
+    """
+    Tracks refresh token usage for action plan replacements.
+    Users get limited refreshes per day (gated by 16-day streak).
+    """
+    __tablename__ = "action_plan_refresh_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=True)
+    
+    # Refresh details
+    refresh_date = Column(Date, nullable=False, index=True)
+    refresh_count = Column(Integer, default=0)  # How many times refreshed today
+    
+    # What was replaced
+    original_action = Column(JSONB, nullable=True)  # The action that was replaced
+    replacement_action = Column(JSONB, nullable=True)  # The new action
+    replacement_reason = Column(String(50), nullable=True)  # "no_time", "dont_like", "specific_request"
+    
+    # Thread context
+    thread_id = Column(String(36), nullable=True)  # CarePlanCheckInThread.id
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_refresh_user_date", "uid", "refresh_date"),
+    )
+
 # Database table creation
 def create_tables():
     """Create tables"""
