@@ -30,6 +30,7 @@ from app.langgraph.helpers.database_helpers import (
     get_cycle_info, get_recent_symptoms, get_todays_action_plan
 )
 from app.core.database import get_db, SymptomLog
+from app.langgraph.helpers.ui_blocks_helper import create_severity_slider_block, create_confirmation_block
 
 logger = logging.getLogger(__name__)
 

@@ -33,7 +33,7 @@ from app.langgraph.helpers.ui_blocks_helper import (
     generate_intelligent_ctas, create_confirmation_block, 
     create_alternates_selection_block, clear_ui_blocks
 )
-from app.core.database import get_db, ActionPlanItem
+from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog
 
 logger = logging.getLogger(__name__)
 
@@ -690,7 +690,27 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
         )
         db.add(new_item)
         
-        # TODO: CONSUME REFRESH TOKEN - Add to ActionPlanRefreshLog
+        # CONSUME REFRESH TOKEN - Log to ActionPlanRefreshLog
+        from datetime import date as date_type
+        refresh_log = ActionPlanRefreshLog(
+            uid=state["user_id"],
+            plan_id=state.get("plan_id"),
+            refresh_date=date_type.today(),
+            refresh_count=1,
+            original_action={
+                "id": original_action_id,
+                "title": original.title if original else None,
+                "time_slot": original.time_slot if original else None
+            },
+            replacement_action={
+                "title": selected_alt["title"],
+                "specific_action": selected_alt.get("specific_action")
+            },
+            replacement_reason=state.get("change_reason", "user_request"),
+            thread_id=state.get("session_id")
+        )
+        db.add(refresh_log)
+        logger.info(f"✅ Logged refresh token usage: {state['user_id']} replaced {original.title if original else 'unknown'} with {selected_alt['title']}")
         
         db.commit()
         

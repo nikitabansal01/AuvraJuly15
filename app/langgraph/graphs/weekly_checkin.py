@@ -29,7 +29,8 @@ from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
 from app.langgraph.helpers.database_helpers import (
     get_cycle_info, get_recent_symptoms, get_action_completion_stats, get_user_profile
 )
-from app.core.database import get_db
+from app.core.database import get_db, WeeklyCheckInSession
+from app.langgraph.helpers.ui_blocks_helper import generate_intelligent_ctas, create_confirmation_block
 
 logger = logging.getLogger(__name__)
 
@@ -189,8 +190,17 @@ async def load_user_context(state: WeeklyCheckInState) -> WeeklyCheckInState:
         # Load action completion stats
         completions = get_action_completion_stats(user_id, days=7, db=db)
         
-        # TODO: Load last check-in summary from database
+        # Load last check-in summary from database
         last_checkin_summary = None
+        try:
+            last_session = db.query(WeeklyCheckInSession).filter(
+                WeeklyCheckInSession.uid == user_id,
+                WeeklyCheckInSession.is_complete == True
+            ).order_by(WeeklyCheckInSession.session_date.desc()).first()
+            if last_session:
+                last_checkin_summary = last_session.weekly_summary
+        except Exception as e:
+            logger.warning(f"Could not load last check-in: {e}")
         
         return {
             **state,
@@ -504,13 +514,30 @@ async def save_to_insights_page(state: WeeklyCheckInState) -> WeeklyCheckInState
             "created_at": datetime.utcnow().isoformat()
         }
         
-        logger.info(f"Would save check-in: {check_in_data}")
+        logger.info(f"Saving check-in to database: {check_in_data.get('check_in_id')}")
         
-        # TODO: Uncomment when WeeklyCheckInSession model exists
-        # from app.core.database import WeeklyCheckInSession
-        # weekly_check_in = WeeklyCheckInSession(**check_in_data)
-        # db.add(weekly_check_in)
-        # db.commit()
+        # Save to database using WeeklyCheckInSession model
+        from datetime import date as date_type
+        weekly_session = WeeklyCheckInSession(
+            uid=user_id,
+            session_date=date_type.today(),
+            questions_asked=state.get("answers_collected", []),
+            question_count=state.get("question_count", 0),
+            topics_covered=state.get("topics_covered", []),
+            weekly_summary=summary_text,
+            insights={
+                "severity_trend": state.get("severity_trend"),
+                "triggers": state.get("identified_triggers", []),
+                "relief_factors": state.get("identified_relief_factors", [])
+            },
+            cycle_day=state.get("cycle_day"),
+            cycle_phase=state.get("cycle_phase"),
+            is_complete=True,
+            completed_at=datetime.utcnow()
+        )
+        db.add(weekly_session)
+        db.commit()
+        logger.info(f"✅ Saved weekly check-in to DB: {weekly_session.id}")
         
         return {**state, "phase": "complete"}
         
