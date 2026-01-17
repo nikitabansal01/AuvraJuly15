@@ -602,9 +602,17 @@ Output JSON:
             ]
         }
         
+        # Serialize to dicts
+        serialized_alternates = []
+        for alt in alternates:
+            if hasattr(alt, "model_dump"):
+                serialized_alternates.append(alt.model_dump())
+            else:
+                serialized_alternates.append(alt.dict())
+
         return {
             **state,
-            "alternate_candidates": [alt.model_dump() for alt in alternates],
+            "alternate_candidates": serialized_alternates,
             "ui_blocks": [ui_block],
             "workflow_stage": "awaiting_alternate_selection",
             "bot_response": "Here are 3 options that might work better:",
@@ -777,8 +785,9 @@ async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) ->
     prompt = f"""User specific request: REPLACE "{original_action.get('title')}" WITH "{requested_item}".
 
 Generate valid metadata for this NEW specific action.
-- Use "{requested_item}" as the core of the new action.
-- Ensure it's a valid health action (e.g. "Eating Cashews" or "Doing Yoga").
+CRITICAL INSTRUCTION: You MUST use "{requested_item}" exactly.
+- If the user asks for "Cashews", you MUST output "Cashews". Do NOT suggest specific brands or generic substitutes like "Traffic Mix".
+- Ignore any previous context about allergies if the user EXPLICITLY requested this item.
 - Provide 1 SINGLE option.
 
 Detailed format:
@@ -804,10 +813,19 @@ Output JSON (List with 1 item):
         data = await call_llm_structured(prompt, response_model=AlternatesList)
         alternatives = data.alternatives[:1] # Ensure only 1
         
+        # Serialize to dicts immediately to prevent DB JSON errors
+        # Check Pydantic version compatibility
+        serialized_alternatives = []
+        for alt in alternatives:
+            if hasattr(alt, "model_dump"):
+                serialized_alternatives.append(alt.model_dump())
+            else:
+                serialized_alternatives.append(alt.dict())
+
         # Build UI Block (Single Confirmation)
         ui_blocks = [{
-            "id": "alternate_suggestions", # Reusing id logic for now
-            "type": "quick_actions", # Use quick actions for selection
+            "id": "alternate_suggestions", 
+            "type": "quick_actions", 
             "title": f"Switch to {alternatives[0].title}?",
             "subtitle": "You requested this specific change.",
             "actions": [
@@ -823,7 +841,7 @@ Output JSON (List with 1 item):
         
         return {
             **state,
-            "alternate_candidates": alternatives,
+            "alternate_candidates": serialized_alternatives, # Return DICTS not objects
             "ui_blocks": ui_blocks,
             "bot_response": f"I found a match for '{requested_item}'. Shall we switch to {alternatives[0].title}?",
             "phase": "awaiting_selection"
