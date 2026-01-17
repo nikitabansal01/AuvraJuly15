@@ -109,10 +109,12 @@ class IntentClassification(BaseModel):
 
 
 class BarrierAnalysis(BaseModel):
-    """Analysis of user's barrier to action."""
-    barrier_type: str
-    specific_barrier: str
-    urgency: str
+    """Analysis of user's barrier to action - fully LLM-powered, no heuristics."""
+    barrier_type: str  # allergy, dietary, ingredients, dislike, time, energy, etc.
+    specific_barrier: str  # Exact complaint or issue
+    urgency: str  # immediate or flexible
+    is_specific_request: bool = False  # True if user wants a SPECIFIC item (not just alternatives)
+    requested_item: Optional[str] = None  # The specific item they want (e.g., "cashews", "dance", "yoga")
 
 
 class SkipReason(BaseModel):
@@ -491,24 +493,23 @@ Output JSON: {{
         # ACTUALLY: Let's reuse BarrierAnalysis but check specific_barrier text
         barrier_data = await call_llm_structured(barrier_prompt, response_model=BarrierAnalysis)
         
-        # Heuristic: If specific_barrier is short and noun-like, or extracted_replacement was set
-        # Better: Let the LLM decide.
-        # Let's add `requested_item` to BarrierAnalysis model in a previous step? 
-        # No, let's keep it simple. If "classification.proposed_replacement" was found, we trust it.
-        
+        # FULLY LLM-POWERED: Use the model's is_specific_request field, NO heuristics!
         target_stage = "generating_alternates"
         
-        # If classifier found a replacement, use it
-        if extracted_replacement and len(extracted_replacement.split()) < 5: 
-             # Rough check: "cashews" vs "I dont like this"
-             # If classifier said "cashews", we treat as direct replacement
-             target_stage = "generating_direct_replacement"
-             
+        if barrier_data.is_specific_request and barrier_data.requested_item:
+            # User specified exactly what they want (e.g., "change to cashews", "I want yoga instead")
+            target_stage = "generating_direct_replacement"
+            # Store the requested item for direct replacement generation
+            extracted_replacement = barrier_data.requested_item
+        elif extracted_replacement and barrier_data.is_specific_request:
+            # Fallback: classifier found replacement but barrier analysis confirms specific request
+            target_stage = "generating_direct_replacement"
+              
         return {
             **state,
             "barrier_type": barrier_data.barrier_type,
-            "change_reason": barrier_data.specific_barrier, # Update with refined barrier
-            "targeted_action_id": action.get("id"), # Ensure target is set
+            "change_reason": barrier_data.requested_item or barrier_data.specific_barrier,
+            "targeted_action_id": action.get("id"),
             "workflow_stage": target_stage,
             "phase": "processing"
         }
