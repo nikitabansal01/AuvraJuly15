@@ -122,6 +122,28 @@ def _looks_like_change_intent(text: str) -> bool:
     return any(k in t for k in ["change", "replace", "swap", "skip", "alternate", "another option", "not for me"])
 
 
+def _looks_like_change_different_item(text: str) -> bool:
+    """True when user wants to change a DIFFERENT item while viewing alternatives.
+    
+    e.g., "I want to change other thing", "change different item", "not this one"
+    """
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    
+    # Explicit "different/other thing" patterns
+    different_patterns = [
+        "other thing", "other item", "other action",
+        "different thing", "different item", "different action", "different one",
+        "not this", "not that one", "wrong one", "wrong item",
+        "something else", "change something else",
+        "want to change other", "want to change different",
+        "don't want this", "don't want these",
+    ]
+    
+    return any(p in t for p in different_patterns)
+
+
 def _looks_like_alternate_suggestions_request(text: str) -> bool:
     """True when the user explicitly asks for alternate suggestions (vs generic change intent)."""
     t = (text or "").strip().lower()
@@ -638,6 +660,44 @@ async def respond_care_plan_checkin(
             # Stage: User needs to pick which candidate to use
             elif stage == "choose_candidate":
                 item_id = pending_alternate.get("item_id")
+                
+                # CHECK: Does user want to change a DIFFERENT item instead?
+                if _looks_like_change_different_item(payload.message_text):
+                    # Reset pending state and show item picker
+                    ai_data = dict(thread.actionable_insights or {})
+                    ai_data.pop("pending_alternate", None)
+                    ai_data.pop("alternate_candidates", None)
+                    ai_data["pending_alternate"] = {"stage": "choose_item"}  # Reset to item selection
+                    thread.actionable_insights = ai_data
+                    
+                    raw = list(thread.raw_messages or [])
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "content": payload.message_text,
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    raw.append({
+                        "id": str(uuid4()),
+                        "role": "bot",
+                        "content": "No problem! Which action would you like to change instead? Pick one from your plan below.",
+                        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    })
+                    thread.raw_messages = raw
+                    db.add(thread)
+                    db.commit()
+                    db.refresh(thread)
+                    
+                    history = service.format_history_for_mobile(thread)
+                    tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+                    return {
+                        "thread_id": thread.id,
+                        "local_date": thread.local_date.isoformat(),
+                        "history": history,
+                        "tap_options": tap_options,
+                        "actionable_insights": thread.actionable_insights or {},
+                        "ui_blocks": [_pick_alternate_item_block(items)],  # Show item picker
+                    }
                 
                 # Use LLM to match typed text to a candidate
                 matched_candidate_id = await CarePlanSemanticMatcher.match_candidate_selection(
