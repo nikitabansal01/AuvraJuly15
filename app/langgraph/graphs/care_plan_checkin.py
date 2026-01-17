@@ -744,7 +744,7 @@ def route_by_intent(state: CarePlanCheckInState) -> str:
         "change_action": "handle_change_action",
         "request_alternates": "handle_change_action", # Treat alternates as change request
         "negotiate": "handle_change_action",  # Treat negotiate as change
-        "ask_why": "handle_general_response",  # For now, general response
+        "ask_why": "handle_ask_why",
         "cancel_action": "handle_cancel_action",
         "general": "handle_general_response"
     }
@@ -796,6 +796,7 @@ def create_process_message_graph():
     workflow.add_node("generate_direct_replacement_suggestion", generate_direct_replacement_suggestion)
     workflow.add_node("handle_general_response", handle_general_response)
     workflow.add_node("handle_cancel_action", handle_cancel_action)
+    workflow.add_node("handle_ask_why", handle_ask_why)
     
     # Set entry point
     workflow.set_entry_point("classify_user_intent")
@@ -810,7 +811,8 @@ def create_process_message_graph():
             "handle_change_action": "handle_change_action",
             "generate_alternate_suggestions": "generate_alternate_suggestions",
             "handle_general_response": "handle_general_response",
-            "handle_cancel_action": "handle_cancel_action"
+            "handle_cancel_action": "handle_cancel_action",
+            "handle_ask_why": "handle_ask_why"
         }
     )
     
@@ -819,6 +821,7 @@ def create_process_message_graph():
     workflow.add_edge("handle_skip_action", END)
     workflow.add_edge("handle_general_response", END)
     workflow.add_edge("handle_cancel_action", END)
+    workflow.add_edge("handle_ask_why", END)
     workflow.add_edge("generate_alternate_suggestions", END)
     workflow.add_edge("generate_direct_replacement_suggestion", END)
     
@@ -970,5 +973,47 @@ async def handle_cancel_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
         **state,
         "bot_response": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
         "ui_blocks": [], # Clear any previous buttons
+        "phase": "complete"
+    }
+
+async def handle_ask_why(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle user asking 'why' about an action."""
+    
+    targeted_idx = state.get("targeted_action_index")
+    action_items = state.get("action_items", [])
+    
+    if targeted_idx is None or not (0 <= targeted_idx < len(action_items)):
+        return {
+            **state,
+            "bot_response": "Which action are you asking about?",
+            "ui_blocks": [],
+            "phase": "complete" # Or "loaded" to prompt? "complete" is fine for chat.
+        }
+
+    action = action_items[targeted_idx]
+    
+    # Use LLM to generate a helpful explanation
+    # We use the existing purpose/hormone metadata
+    prompt = f"""User asks: "{state.get('user_message')}"
+    
+Action: {action.get('title')}
+Category: {action.get('category')}
+Target Hormone: {action.get('target_hormone')}
+Purpose: {action.get('purpose')}
+
+Task: Write a short, encouraging explanation of why this action is important for them right now. 
+Keep it under 2 sentences. Mention the hormone if relevant.
+"""
+    try:
+        explanation = await call_llm_str(prompt) # Assuming simple string response
+    except:
+        explanation = f"This action helps support your {action.get('target_hormone', 'health')} and was chosen to help with {action.get('purpose', 'your goals')}."
+
+    response = f"{explanation} Does that make sense?"
+
+    return {
+        **state,
+        "bot_response": response,
+        "ui_blocks": [],
         "phase": "complete"
     }
