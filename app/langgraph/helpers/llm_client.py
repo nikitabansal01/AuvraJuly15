@@ -13,10 +13,13 @@ from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-client = AsyncOpenAI()
+# Remove global client = AsyncOpenAI()
 
-T = TypeVar('T', bound=BaseModel)
+def get_client() -> AsyncOpenAI:
+    """Lazy initialization of OpenAI client."""
+    from app.core.config import settings
+    # Initialize with settings key, falling back to env var if explicit
+    return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 async def call_llm(
@@ -27,17 +30,9 @@ async def call_llm(
 ) -> str:
     """
     Call LLM with simple text prompt, return text response.
-    
-    Args:
-        prompt: The prompt to send
-        model: OpenAI model name
-        temperature: Sampling temperature
-        max_tokens: Maximum response tokens
-        
-    Returns:
-        LLM response as string
     """
     try:
+        client = get_client()
         response = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -61,17 +56,8 @@ async def call_llm_structured(
 ) -> T:
     """
     Call LLM with structured output using Pydantic model.
-    
-    Args:
-        prompt: The prompt to send
-        response_model: Pydantic model for structured output
-        model: OpenAI model name
-        temperature: Sampling temperature
-        max_retries: Number of retry attempts
-        
-    Returns:
-        Parsed Pydantic model instance
     """
+    client = get_client()
     for attempt in range(max_retries + 1):
         try:
             response = await client.chat.completions.create(
@@ -108,15 +94,6 @@ async def call_llm_with_retry(
 ) -> str:
     """
     Call LLM with automatic retry logic and fallback.
-    
-    Args:
-        prompt: The prompt to send
-        model: OpenAI model name
-        max_retries: Maximum retry attempts
-        fallback_response: Response to return if all retries fail
-        
-    Returns:
-        LLM response or fallback
     """
     for attempt in range(max_retries):
         try:
@@ -124,7 +101,6 @@ async def call_llm_with_retry(
             
         except Exception as e:
             if attempt == max_retries - 1:
-                # Final attempt failed
                 if fallback_response:
                     logger.warning(f"All retries failed, using fallback: {e}")
                     return fallback_response
@@ -134,5 +110,4 @@ async def call_llm_with_retry(
             logger.warning(f"Retry {attempt + 1}/{max_retries}: {e}")
             await asyncio.sleep(2 ** attempt)  # Exponential backoff
     
-    # Should never reach here
     return fallback_response or ""
