@@ -516,15 +516,16 @@ Requirements:
 - MUST NOT be any of these existing actions: {', '.join(existing_titles)}
 
 USER SPECIFIC REQUEST OVERRIDE:
-If the barrier/reason mentions a SPECIFIC activity type (e.g., "I want dance", "change to swimming", "try yoga"), 
+If the barrier/reason mentions a SPECIFIC activity type OR food item (e.g., "I want dance", "replace with cashew", "try tofu"), 
 then:
-1. ALL 3 alternatives MUST be different variations of ONLY that specific activity.
-2. IGNORE "Same target hormone" or "Category" constraints if they conflict with the user's request.
-   (e.g., If user wants Dance to replace Pilates, give Dance even if it targets a different hormone).
+1. ALL 3 alternatives MUST constitute varyiations/options of ONLY that specific thing.
+2. DISREGARD "Same target hormone" or "Category" constraints if they conflict with the request.
+3. DO NOT offer "similar" items (e.g., if user asks for Cashews, DO NOT suggest Almonds).
 
 Examples:
-- Request: "change to dance" → ALL 3 must be dance types (Zumba, Hip Hop, Salsa, etc.)
-- Request: "I want swimming" → ALL 3 must be swimming types (Laps, Water Aerobics, etc.)
+- Request: "change to dance" → ALL 3 must be dance types.
+- Request: "replace with cashew" → ALL 3 must be cashew-based (e.g., Roasted Cashews, Cashew Butter, Cashew Salad).
+- Request: "I want swimming" → ALL 3 must be swimming types.
 
 Output JSON:
 {{
