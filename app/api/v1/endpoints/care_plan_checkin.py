@@ -188,12 +188,25 @@ async def respond_care_plan_checkin(
 
         # Persist context
         new_insights = dict(thread.actionable_insights or {})
+        
+        # Serialize alternates (Fix for 500 JSON error)
+        raw_candidates = final_state.get("alternate_candidates", [])
+        serialized_candidates = []
+        if raw_candidates:
+            for c in raw_candidates:
+                if hasattr(c, "model_dump"): # Pydantic V2
+                    serialized_candidates.append(c.model_dump())
+                elif hasattr(c, "dict"): # Pydantic V1
+                    serialized_candidates.append(c.dict())
+                else: 
+                    serialized_candidates.append(c)
+
         new_insights.update({
             "workflow_stage": final_state.get("workflow_stage"),
             "targeted_action_index": final_state.get("targeted_action_index"),
             "barrier_type": final_state.get("barrier_type"),
             "change_reason": final_state.get("change_reason"),
-            "alternate_candidates": final_state.get("alternate_candidates"),
+            "alternate_candidates": serialized_candidates,
         })
         thread.actionable_insights = new_insights
         
