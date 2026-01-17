@@ -5754,11 +5754,21 @@ PMID: {research_paper.get('pmid', '')}
 
 {research_context}
 
+USER SPECIFIC REQUEST OVERRIDE:
+If the user's request mentions a SPECIFIC activity type (e.g., "I want dance", "change to swimming", "try yoga"), 
+then ALL {n} alternatives MUST be different variations of ONLY that specific activity.
+Examples:
+- Request: "change to dance" → ALL {n} must be dance types (Zumba, Hip Hop, Salsa, etc.)
+- Request: "I want swimming" → ALL {n} must be swimming types (Laps, Water Aerobics, etc.)
+- Request: "try yoga" → ALL {n} must be yoga styles (Vinyasa, Hatha, Power Yoga, etc.)
+
 STRICT REQUIREMENTS:
 1. Category MUST be: {original_category} (DO NOT suggest other categories!)
 2. Target hormone MUST be: {original_hormone}
 3. Must be DIFFERENT from: {original.title}
-4. User Request / Context: {reason or 'user wants alternatives'} (CRITICAL: If user asks for a specific activity, you MUST provide it!)
+4. User Request / Context: {reason or 'user wants alternatives'}
+   ⚠️ CRITICAL: Analyze this request. If it contains a specific activity preference (e.g., "dance", "swimming", "yoga"), 
+   generate ONLY variations of that activity. DO NOT mix in unrelated activities like HIIT, strength training, etc.
 5. MUST include category-specific fields: {required_fields}
 
 USER HEALTH PROFILE (tailor recommendations to this):
