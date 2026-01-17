@@ -226,13 +226,18 @@ class SymptomOverviewResponse(BaseModel):
 
 @router.post("/start", response_model=StartSymptomCheckInResponse)
 async def start_symptom_checkin(
+    force_new: bool = False,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     try:
         uid = current_user["uid"]
         service = SymptomCheckInService(db)
-        thread = service.get_or_create_today_thread(uid)
+        
+        if force_new:
+            thread = service.create_new_thread(uid)
+        else:
+            thread = service.get_or_create_today_thread(uid)
         history = service.format_history_for_mobile(thread)
 
         # Dr. Auvra style: Context-aware tap options

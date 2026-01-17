@@ -99,6 +99,78 @@ class SymptomCheckInService:
                 elif "luteal" in phase_lower:
                     cycle_phase = "luteal phase"
         except Exception as e:
+            print(f"Error getting cycle phase for greeting: {e}")
+
+        # Construct greeting
+        greeting_text = f"Hey {user_name or 'there'}, how are you feeling today?"
+        if yesterday_symptom:
+            greeting_text = f"Hey {user_name or 'there'}, how is your {yesterday_symptom} feeling today?"
+        elif cycle_phase:
+            greeting_text = f"Hey {user_name or 'there'}, how are you feeling during {cycle_phase}?"
+
+        opening = {
+            "id": self._new_message_id(),
+            "role": "bot",
+            "content": greeting_text,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        thread.raw_messages = [opening]
+
+        self.db.add(thread)
+        self.db.commit()
+        self.db.refresh(thread)
+        return thread
+
+    def create_new_thread(self, uid: str) -> SymptomCheckInThread:
+        """Always create a new thread for symptoms (ChatGPT-like)."""
+        user_today = get_user_current_date(uid, self.db)
+        profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+        tz = getattr(profile, "timezone", None) if profile else None
+        user_name = getattr(profile, "name", None) if profile else None
+        
+        thread = SymptomCheckInThread(uid=uid, local_date=user_today, timezone=tz)
+        
+        # Get yesterday's symptom for personalized opening
+        yesterday_symptom = self._get_yesterday_symptom(uid)
+        
+        # Get current cycle phase for context
+        cycle_phase = None
+        try:
+            cycle_service = CycleService(self.db)
+            cycle_info = cycle_service.get_cycle_phase_info(uid)
+            if cycle_info and cycle_info.phase:
+                phase_lower = cycle_info.phase.lower()
+                if "menses" in phase_lower or "menstrual" in phase_lower:
+                    cycle_phase = "your period"
+                elif "follicular" in phase_lower:
+                    cycle_phase = "follicular phase"
+                elif "ovul" in phase_lower:
+                    cycle_phase = "ovulation"
+                elif "luteal" in phase_lower:
+                    cycle_phase = "luteal phase"
+        except Exception as e:
+            print(f"Error getting cycle phase for greeting: {e}")
+
+        # Construct greeting
+        greeting_text = f"Hey {user_name or 'there'}, how are you feeling today?"
+        if yesterday_symptom:
+            greeting_text = f"Hey {user_name or 'there'}, how is your {yesterday_symptom} feeling today?"
+        elif cycle_phase:
+            greeting_text = f"Hey {user_name or 'there'}, how are you feeling during {cycle_phase}?"
+
+        opening = {
+            "id": self._new_message_id(),
+            "role": "bot",
+            "content": greeting_text,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        thread.raw_messages = [opening]
+
+        self.db.add(thread)
+        self.db.commit()
+        self.db.refresh(thread)
+        return thread
+        except Exception as e:
             logger.warning(f"[SymptomCheckInService] Error getting cycle phase: {e}")
         
         greeting = user_name or "there"
