@@ -1244,7 +1244,7 @@ async def get_threads_by_flow(
     uid = current_user["uid"]
     threads = []
     
-    if flow_type == "care_plan":
+    if flow_type in ("care_plan", "care_plan_checkin"):
         # Query CarePlanCheckInThread
         rows = db.query(CarePlanCheckInThread).filter(
             CarePlanCheckInThread.uid == uid
@@ -1263,7 +1263,7 @@ async def get_threads_by_flow(
                 is_active=not row.is_closed
             ))
     
-    elif flow_type == "symptom":
+    elif flow_type in ("symptom", "symptom_checkin"):
         # Query SymptomCheckInThread
         rows = db.query(SymptomCheckInThread).filter(
             SymptomCheckInThread.uid == uid
@@ -1309,12 +1309,12 @@ async def get_thread_messages(
     """
     uid = current_user["uid"]
     
-    if flow_type == "care_plan":
+    if flow_type in ("care_plan", "care_plan_checkin"):
         thread = db.query(CarePlanCheckInThread).filter(
             CarePlanCheckInThread.id == thread_id,
             CarePlanCheckInThread.uid == uid
         ).first()
-    elif flow_type == "symptom":
+    elif flow_type in ("symptom", "symptom_checkin"):
         thread = db.query(SymptomCheckInThread).filter(
             SymptomCheckInThread.id == thread_id,
             SymptomCheckInThread.uid == uid
