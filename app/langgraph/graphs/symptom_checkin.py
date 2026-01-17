@@ -29,9 +29,48 @@ from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
 from app.langgraph.helpers.database_helpers import (
     get_cycle_info, get_recent_symptoms, get_todays_action_plan
 )
-from app.core.database import get_db
+from app.core.database import get_db, SymptomLog
 
 logger = logging.getLogger(__name__)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════
+
+def _categorize_symptom(symptom_type: str) -> str:
+    """Categorize symptom into physical, emotional, or cognitive."""
+    symptom_lower = symptom_type.lower()
+    
+    physical_symptoms = [
+        "cramps", "headache", "bloating", "fatigue", "backache", "breast",
+        "nausea", "pain", "ache", "tension", "spotting", "bleeding", "acne",
+        "weight", "appetite", "cravings", "insomnia", "sleep", "diarrhea"
+    ]
+    
+    emotional_symptoms = [
+        "mood", "anxiety", "irritability", "depression", "sadness", "anger",
+        "stress", "emotional", "crying", "sensitive", "overwhelmed", "low"
+    ]
+    
+    cognitive_symptoms = [
+        "focus", "concentration", "memory", "brain fog", "confusion",
+        "forgetful", "distracted", "foggy"
+    ]
+    
+    for keyword in physical_symptoms:
+        if keyword in symptom_lower:
+            return "physical"
+    
+    for keyword in emotional_symptoms:
+        if keyword in symptom_lower:
+            return "emotional"
+    
+    for keyword in cognitive_symptoms:
+        if keyword in symptom_lower:
+            return "cognitive"
+    
+    return "physical"  # Default
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -291,21 +330,25 @@ If no symptoms mentioned, return empty array.
         if symptom.severity is not None:
             # Complete symptom - LOG IMMEDIATELY with error handling
             try:
-                # TODO: Uncomment when SymptomLog model is available
-                # log = SymptomLog(
-                #     id=str(uuid.uuid4()),
-                #     user_id=state["user_id"],
-                #     symptom_type=symptom.symptom_type,
-                #     severity=symptom.severity,
-                #     logged_at=datetime.utcnow(),
-                #     cycle_day=state.get("cycle_day"),
-                #     phase=state.get("cycle_phase"),
-                #     notes=symptom.descriptors
-                # )
-                # db.add(log)
-                # db.commit()
+                # Save to database using new SymptomLog model
+                from datetime import date as date_type
+                log = SymptomLog(
+                    uid=state["user_id"],
+                    thread_id=state.get("session_id"),
+                    symptom_name=symptom.symptom_type,
+                    symptom_category=_categorize_symptom(symptom.symptom_type),
+                    severity=symptom.severity,
+                    logged_date=date_type.today(),
+                    cycle_day=state.get("cycle_day"),
+                    cycle_phase=state.get("cycle_phase"),
+                    notes=", ".join(symptom.descriptors) if symptom.descriptors else None,
+                    source="symptom_checkin"
+                )
+                db.add(log)
+                db.commit()
+                db.refresh(log)
                 
-                log_id = str(uuid.uuid4())  # Placeholder
+                log_id = str(log.id)
                 
                 symptoms_logged.append({
                     "type": symptom.symptom_type,
@@ -316,7 +359,7 @@ If no symptoms mentioned, return empty array.
                 })
                 logged_ids.append(log_id)
                 
-                logger.info(f"Logged symptom: {symptom.symptom_type} ({symptom.severity}/9)")
+                logger.info(f"✅ Saved symptom to DB: {symptom.symptom_type} ({symptom.severity}/9)")
                 
             except Exception as e:
                 logger.error(f"Failed to log symptom {symptom.symptom_type}: {e}")
