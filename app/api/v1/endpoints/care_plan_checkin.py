@@ -186,29 +186,27 @@ async def respond_care_plan_checkin(
                 })
             thread.raw_messages = raw
 
+from fastapi.encoders import jsonable_encoder
+
+# ... (imports)
+
+# ...
+
         # Persist context
         new_insights = dict(thread.actionable_insights or {})
         
-        # Serialize alternates (Fix for 500 JSON error)
-        raw_candidates = final_state.get("alternate_candidates", [])
-        serialized_candidates = []
-        if raw_candidates:
-            for c in raw_candidates:
-                if hasattr(c, "model_dump"): # Pydantic V2
-                    serialized_candidates.append(c.model_dump())
-                elif hasattr(c, "dict"): # Pydantic V1
-                    serialized_candidates.append(c.dict())
-                else: 
-                    serialized_candidates.append(c)
-
+        # Serialize entire state using FastAPI's encoder (Root fix for 500 JSON error)
+        # This handles Pydantic models, datetimes, and all other types automatically
         new_insights.update({
             "workflow_stage": final_state.get("workflow_stage"),
             "targeted_action_index": final_state.get("targeted_action_index"),
             "barrier_type": final_state.get("barrier_type"),
             "change_reason": final_state.get("change_reason"),
-            "alternate_candidates": serialized_candidates,
+            "alternate_candidates": final_state.get("alternate_candidates"), 
         })
-        thread.actionable_insights = new_insights
+        
+        # Ensure everything is JSON-safe primitive types
+        thread.actionable_insights = jsonable_encoder(new_insights)
         
         db.add(thread)
         db.commit()
