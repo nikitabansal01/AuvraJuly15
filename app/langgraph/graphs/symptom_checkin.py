@@ -331,19 +331,18 @@ If no symptoms mentioned, return empty array.
         if symptom.severity is not None:
             # Complete symptom - LOG IMMEDIATELY with error handling
             try:
-                # Save to database using new SymptomLog model
+                # Save to database using existing SymptomLog model
                 from datetime import date as date_type
                 log = SymptomLog(
-                    uid=state["user_id"],
-                    thread_id=state.get("session_id"),
-                    symptom_name=symptom.symptom_type,
-                    symptom_category=_categorize_symptom(symptom.symptom_type),
+                    user_id=state["user_id"],
+                    symptom_type=symptom.symptom_type,
                     severity=symptom.severity,
-                    logged_date=date_type.today(),
-                    cycle_day=state.get("cycle_day"),
-                    cycle_phase=state.get("cycle_phase"),
                     notes=", ".join(symptom.descriptors) if symptom.descriptors else None,
-                    source="symptom_checkin"
+                    factors=symptom.triggers_mentioned or [],
+                    cycle_day=state.get("cycle_day"),
+                    phase=state.get("cycle_phase"),
+                    logged_via="chatbot",
+                    logged_date=date_type.today()
                 )
                 db.add(log)
                 db.commit()

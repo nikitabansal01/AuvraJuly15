@@ -1317,50 +1317,7 @@ class WeeklyCheckInSession(Base):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SYMPTOM LOG - Individual symptom entries with severity
-# ═══════════════════════════════════════════════════════════════════════════════
 
-class SymptomLog(Base):
-    """
-    Logs individual symptoms with severity ratings.
-    Critical for data persistence - without this model, symptom severity data was being lost.
-    Links to SymptomCheckInThread for conversation context.
-    """
-    __tablename__ = "symptom_logs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    uid = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
-    thread_id = Column(String(36), ForeignKey("symptom_checkin_threads.id", ondelete="CASCADE"), nullable=True)
-    
-    # Symptom details
-    symptom_name = Column(String(100), nullable=False, index=True)  # "cramps", "headache", "fatigue", etc.
-    symptom_category = Column(String(50), nullable=True)  # "physical", "emotional", "cognitive"
-    severity = Column(Integer, nullable=False)  # 1-9 scale
-    
-    # Context
-    logged_date = Column(Date, nullable=False, index=True)
-    logged_at = Column(DateTime, default=datetime.utcnow)
-    timezone = Column(String(100), nullable=True)
-    
-    # Cycle context at time of logging
-    cycle_day = Column(Integer, nullable=True)
-    cycle_phase = Column(String(50), nullable=True)
-    
-    # User notes (optional free-text from conversation)
-    notes = Column(Text, nullable=True)
-    
-    # Tracking origin
-    source = Column(String(50), default="symptom_checkin")  # "symptom_checkin", "daily_log", "manual"
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    __table_args__ = (
-        Index("idx_symptom_user_date", "uid", "logged_date"),
-        Index("idx_symptom_name_date", "symptom_name", "logged_date"),
-        Index("idx_symptom_severity", "uid", "symptom_name", "severity"),
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
