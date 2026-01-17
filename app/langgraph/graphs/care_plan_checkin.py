@@ -29,6 +29,10 @@ from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
 from app.langgraph.helpers.database_helpers import (
     get_cycle_info, get_todays_action_plan, get_streak_info, get_reward_status
 )
+from app.langgraph.helpers.ui_blocks_helper import (
+    generate_intelligent_ctas, create_confirmation_block, 
+    create_alternates_selection_block, clear_ui_blocks
+)
 from app.core.database import get_db, ActionPlanItem
 
 logger = logging.getLogger(__name__)
@@ -414,14 +418,17 @@ Output JSON: {{
     if skip_category in ["no_time", "dont_like", "not_feeling_well"]:
         response += "Would you like me to suggest an easier or quicker alternative instead of skipping?"
         
-        ui_blocks = [{
-            "id": "skip_or_replace",
-            "type": "choice_buttons",
-            "actions": [
-                {"id": "show_alternates", "title": "Show me alternatives", "style": "primary"},
-                {"id": "confirm_skip", "title": "I understand, skip it", "style": "destructive"}
-            ]
-        }]
+        ui_blocks = [create_confirmation_block(
+            confirm_text="Show me alternatives",
+            cancel_text="I understand, skip it",
+            title=None,
+            confirm_payload={"action": "show_alternates"}
+        )]
+        # Override styles: primary for alternates, destructive for skip
+        ui_blocks[0]["actions"][0]["style"] = "primary"
+        ui_blocks[0]["actions"][0]["id"] = "show_alternates"
+        ui_blocks[0]["actions"][1]["style"] = "destructive"
+        ui_blocks[0]["actions"][1]["id"] = "confirm_skip"
         
         return {
             **state,
@@ -580,27 +587,11 @@ Output JSON:
         result = await call_llm_structured(alternates_prompt, response_model=AlternatesList)
         alternates = result.alternatives
         
-        # Create UI Block
-        ui_block = {
-            "id": "alternate_suggestions",
-            "type": "swipeable_cards",
-            "title": f"3 Alternatives for {action.get('title', 'action')}",
-            "payload": {
-                "cards": [
-                    {
-                        "id": f"alt_{i}",
-                        "title": alt.title,
-                        "description": alt.specific_action,
-                        "benefit": alt.why_better
-                    }
-                    for i, alt in enumerate(alternates)
-                ]
-            },
-            "actions": [
-                {"id": f"select_alt_{i}", "title": alt.title or f"Option {i+1}"}
-                for i, alt in enumerate(alternates)
-            ]
-        }
+        # Create UI Block using helper for consistency
+        ui_block = create_alternates_selection_block(
+            alternates=[{"title": alt.title, "specific_action": alt.specific_action, "why_better": alt.why_better} for alt in alternates],
+            title=f"3 Alternatives for {action.get('title', 'action')}"
+        )
         
         # Serialize to dicts
         serialized_alternates = []
