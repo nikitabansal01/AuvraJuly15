@@ -98,6 +98,27 @@ class CarePlanCheckInService:
         self.db.commit()
         self.db.refresh(thread)
         return thread
+    
+    def create_new_thread(self, uid: str) -> CarePlanCheckInThread:
+        """Always create a new thread (ChatGPT-like behavior)."""
+        user_today = get_user_current_date(uid, self.db)
+        profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+        tz = getattr(profile, "timezone", None) if profile else None
+
+        thread = CarePlanCheckInThread(uid=uid, local_date=user_today, timezone=tz)
+        # Seed an opening message
+        opening = {
+            "id": self._new_message_id(),
+            "role": "bot",
+            "content": "Quick care plan check-in for today — how did your actions feel so far?",
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        thread.raw_messages = [opening]
+
+        self.db.add(thread)
+        self.db.commit()
+        self.db.refresh(thread)
+        return thread
 
     def get_thread_by_id(self, uid: str, thread_id: str) -> CarePlanCheckInThread:
         thread = (

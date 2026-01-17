@@ -384,13 +384,20 @@ def _open_plan_manager_block() -> UIBlock:
 
 @router.post("/start", response_model=StartCarePlanCheckInResponse)
 async def start_care_plan_checkin(
+    force_new: bool = False,  # Set to True to create new thread (ChatGPT-like)
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     try:
         uid = current_user["uid"]
         service = CarePlanCheckInService(db)
-        thread = service.get_or_create_today_thread(uid)
+        
+        # Use create_new_thread for ChatGPT-like behavior, or get_or_create for daily thread
+        if force_new:
+            thread = service.create_new_thread(uid)
+        else:
+            thread = service.get_or_create_today_thread(uid)
+            
         history = service.format_history_for_mobile(thread)
 
         # Default tap options (LLM can override on respond)

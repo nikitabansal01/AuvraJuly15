@@ -1213,7 +1213,8 @@ class CarePlanCheckInThread(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
-        Index("idx_care_plan_thread_user_date", "uid", "local_date", unique=True),
+        # Changed from unique=True to allow multiple threads per day (ChatGPT-like)
+        Index("idx_care_plan_thread_user_date", "uid", "local_date"),
         Index("idx_care_plan_thread_user_closed", "uid", "is_closed"),
     )
 
