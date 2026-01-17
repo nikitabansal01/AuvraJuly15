@@ -1181,3 +1181,164 @@ def calculate_mood_trend(moods: List[Dict[str, Any]]) -> str:
         return "declining"
     return "stable"
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# THREAD HISTORY ENDPOINTS - Per-flow chat history
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from app.core.database import CarePlanCheckInThread, SymptomCheckInThread
+from app.api.v1.endpoints.auth import get_current_user
+
+
+class ThreadSummary(BaseModel):
+    """Summary of a chat thread for history view."""
+    id: str
+    flow_type: str
+    local_date: str
+    summary: Optional[str] = None
+    message_count: int = 0
+    created_at: str
+    updated_at: str
+    is_active: bool = True
+
+
+class ThreadListResponse(BaseModel):
+    """Response for thread listing."""
+    flow_type: str
+    threads: List[ThreadSummary]
+    total: int
+
+
+def _summarize_messages(messages: list, max_chars: int = 60) -> str:
+    """Extract a short summary from messages."""
+    if not messages:
+        return "No messages yet"
+    
+    # Find last bot message for summary
+    for msg in reversed(messages):
+        if msg.get("role") == "bot":
+            content = msg.get("content", "")
+            if len(content) > max_chars:
+                return content[:max_chars] + "..."
+            return content
+    
+    return "Conversation started"
+
+
+@router.get("/threads/{flow_type}", response_model=ThreadListResponse)
+async def get_threads_by_flow(
+    flow_type: str,
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get thread history for a specific flow type.
+    
+    flow_type options:
+    - care_plan: Care Plan Check-in threads
+    - symptom: Symptom Check-in threads
+    - personalise: Personalization threads (stored in care_plan table with context)
+    - know_body: Know My Body threads (stored in care_plan table with context)
+    """
+    uid = current_user["uid"]
+    threads = []
+    
+    if flow_type == "care_plan":
+        # Query CarePlanCheckInThread
+        rows = db.query(CarePlanCheckInThread).filter(
+            CarePlanCheckInThread.uid == uid
+        ).order_by(CarePlanCheckInThread.local_date.desc()).limit(limit).all()
+        
+        for row in rows:
+            messages = row.raw_messages or []
+            threads.append(ThreadSummary(
+                id=row.id,
+                flow_type="care_plan",
+                local_date=row.local_date.isoformat() if row.local_date else "",
+                summary=_summarize_messages(messages),
+                message_count=len(messages),
+                created_at=row.created_at.isoformat() if row.created_at else "",
+                updated_at=row.updated_at.isoformat() if row.updated_at else "",
+                is_active=not row.is_closed
+            ))
+    
+    elif flow_type == "symptom":
+        # Query SymptomCheckInThread
+        rows = db.query(SymptomCheckInThread).filter(
+            SymptomCheckInThread.uid == uid
+        ).order_by(SymptomCheckInThread.local_date.desc()).limit(limit).all()
+        
+        for row in rows:
+            messages = row.raw_messages or []
+            threads.append(ThreadSummary(
+                id=row.id,
+                flow_type="symptom",
+                local_date=row.local_date.isoformat() if row.local_date else "",
+                summary=_summarize_messages(messages),
+                message_count=len(messages),
+                created_at=row.created_at.isoformat() if row.created_at else "",
+                updated_at=row.updated_at.isoformat() if row.updated_at else "",
+                is_active=not row.is_closed
+            ))
+    
+    elif flow_type in ("personalise", "know_body"):
+        # These use the LangGraph state storage - for now return empty
+        # In production, create separate tables or use unified chat session table
+        pass
+    
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown flow_type: {flow_type}")
+    
+    return ThreadListResponse(
+        flow_type=flow_type,
+        threads=threads,
+        total=len(threads)
+    )
+
+
+@router.get("/threads/{flow_type}/{thread_id}")
+async def get_thread_messages(
+    flow_type: str,
+    thread_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get full message history for a specific thread.
+    """
+    uid = current_user["uid"]
+    
+    if flow_type == "care_plan":
+        thread = db.query(CarePlanCheckInThread).filter(
+            CarePlanCheckInThread.id == thread_id,
+            CarePlanCheckInThread.uid == uid
+        ).first()
+    elif flow_type == "symptom":
+        thread = db.query(SymptomCheckInThread).filter(
+            SymptomCheckInThread.id == thread_id,
+            SymptomCheckInThread.uid == uid
+        ).first()
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown flow_type: {flow_type}")
+    
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    
+    messages = thread.raw_messages or []
+    
+    return {
+        "thread_id": thread.id,
+        "flow_type": flow_type,
+        "local_date": thread.local_date.isoformat() if thread.local_date else "",
+        "messages": [
+            {
+                "id": msg.get("id", ""),
+                "text": msg.get("content", ""),
+                "isBot": msg.get("role") == "bot",
+                "created_at": msg.get("created_at", "")
+            }
+            for msg in messages
+        ],
+        "message_count": len(messages)
+    }
