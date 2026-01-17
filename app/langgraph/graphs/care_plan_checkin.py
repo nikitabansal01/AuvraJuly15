@@ -503,7 +503,11 @@ Requirements:
 
 USER SPECIFIC REQUEST OVERRIDE:
 If the barrier/reason mentions a SPECIFIC activity type (e.g., "I want dance", "change to swimming", "try yoga"), 
-then ALL 3 alternatives MUST be different variations of ONLY that specific activity.
+then:
+1. ALL 3 alternatives MUST be different variations of ONLY that specific activity.
+2. IGNORE "Same target hormone" or "Category" constraints if they conflict with the user's request.
+   (e.g., If user wants Dance to replace Pilates, give Dance even if it targets a different hormone).
+
 Examples:
 - Request: "change to dance" → ALL 3 must be dance types (Zumba, Hip Hop, Salsa, etc.)
 - Request: "I want swimming" → ALL 3 must be swimming types (Laps, Water Aerobics, etc.)
