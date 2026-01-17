@@ -723,6 +723,7 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
     
     response = f"I see! Is there anything specific you'd like to do with your action plan today? Your actions are: {actions_list}. You can tell me when you've completed one, if you want to skip or change something, or ask why something is in your plan."
     
+    return {
         **state,
         "bot_response": response,
         "ui_blocks": [], # Clear any previous buttons
