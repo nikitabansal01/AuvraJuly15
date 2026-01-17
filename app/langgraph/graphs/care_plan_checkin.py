@@ -483,12 +483,15 @@ async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePla
     
     action = action_items[targeted_idx]
     
+    existing_titles = [i.get('title') for i in action_items if i.get('title')]
+
     alternates_prompt = f"""Generate 3 alternatives for:
 Title: {action.get('title', 'action')}
 Category: {action.get('category', 'general')}
 Target Hormone: {action.get('target_hormone', 'general')}
 
 User's Barrier: {state.get('barrier_type', 'unspecified')} - {state.get('change_reason', '')}
+User Original Message: "{state.get('user_message', '')}"
 
 Requirements:
 - Same target hormone: {action.get('target_hormone', 'general')}
@@ -496,6 +499,14 @@ Requirements:
 - Address barrier
 - Research-backed
 - 3 alternatives total
+- MUST NOT be any of these existing actions: {', '.join(existing_titles)}
+
+USER SPECIFIC REQUEST OVERRIDE:
+If the barrier/reason mentions a SPECIFIC activity type (e.g., "I want dance", "change to swimming", "try yoga"), 
+then ALL 3 alternatives MUST be different variations of ONLY that specific activity.
+Examples:
+- Request: "change to dance" → ALL 3 must be dance types (Zumba, Hip Hop, Salsa, etc.)
+- Request: "I want swimming" → ALL 3 must be swimming types (Laps, Water Aerobics, etc.)
 
 Output JSON:
 {{
