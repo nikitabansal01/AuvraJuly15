@@ -552,8 +552,8 @@ Output JSON:
                 ]
             },
             "actions": [
-                {"id": f"select_alt_{i}", "title": f"Choose #{i+1}"}
-                for i in range(len(alternates))
+                {"id": f"select_alt_{i}", "title": alt.title or f"Option {i+1}"}
+                for i, alt in enumerate(alternates)
             ]
         }
         
