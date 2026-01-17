@@ -100,6 +100,7 @@ class IntentClassification(BaseModel):
     """LLM-powered intent classification."""
     intent: str
     targeted_action_index: Optional[int] = None  # 1-4 (user-facing)
+    proposed_replacement: Optional[str] = None   # "cashews", "dance", etc.
     confidence: float
 
 
@@ -269,11 +270,13 @@ Intent Categories:
 7. **general**: General chat or unclear
 
 For complete/skip/change, identify which action (1-4) if mentioned or implied by context.
+If the user specifies WHAT they want to change to (e.g., "replace with cashews", "change to dance"), extract that as `proposed_replacement`.
 
 Output JSON:
 {{
   "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|general",
   "targeted_action_index": 1-4 or null,
+  "proposed_replacement": "string" or null,
   "confidence": 0.0-1.0
 }}
 """
@@ -296,6 +299,7 @@ Output JSON:
             "current_intent": classification.intent,
             "targeted_action_id": targeted_id,
             "targeted_action_index": targeted_idx,
+            "change_reason": classification.proposed_replacement or state.get("change_reason"), # Store as reason if present
             "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
             "phase": "processing"
         }
@@ -446,28 +450,57 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
     
     action = action_items[targeted_idx]
     
-    # Extract barrier type
+    # If the classifier already extracted a specific replacement (e.g. "cashews"), use it
+    extracted_replacement = state.get("change_reason") 
+    # Note: classifier puts proposed_replacement into change_reason now
+    
+    # Check if this "reason" looks like a replacement item (heuristics + LLM check)
+    is_specific_replacement = False
+    
+    # Analyze barrier/intent more deeply
     try:
         barrier_prompt = f"""User wants to change: {action.get("title", "action")}
 Message: "{user_message}"
+Previous extracted intent/reason: "{extracted_replacement}"
 
-Identify barrier:
-- allergy (URGENT), dietary, cultural, ingredients, cooking,
-- intensity, time, equipment, dislike, other
+1. Identify barrier: allergy, dietary, ingredients, dislike, etc.
+2. Determine if user is requesting a SPECIFIC replacement item (e.g., "use cashews", "do yoga").
 
 Output JSON: {{
   "barrier_type": "...",
-  "specific_barrier": "user's exact complaint",
-  "urgency": "immediate|flexible"
+  "specific_barrier": "exact complaint or request",
+  "urgency": "immediate|flexible",
+  "is_specific_request": true/false,
+  "requested_item": "extracted item name if true, else null"
 }}
 """
+        # We need a slightly richer model or dynamic parsing. 
+        # For simplicity, let's stick to BarrierAnalysis but add fields if needed, 
+        # or just parse the dictionary if using basic LLM call
+        # ... Let's assume we update BarrierAnalysis model first.
+        
+        # ACTUALLY: Let's reuse BarrierAnalysis but check specific_barrier text
         barrier_data = await call_llm_structured(barrier_prompt, response_model=BarrierAnalysis)
         
+        # Heuristic: If specific_barrier is short and noun-like, or extracted_replacement was set
+        # Better: Let the LLM decide.
+        # Let's add `requested_item` to BarrierAnalysis model in a previous step? 
+        # No, let's keep it simple. If "classification.proposed_replacement" was found, we trust it.
+        
+        target_stage = "generating_alternates"
+        
+        # If classifier found a replacement, use it
+        if extracted_replacement and len(extracted_replacement.split()) < 5: 
+             # Rough check: "cashews" vs "I dont like this"
+             # If classifier said "cashews", we treat as direct replacement
+             target_stage = "generating_direct_replacement"
+             
         return {
             **state,
             "barrier_type": barrier_data.barrier_type,
-            "change_reason": barrier_data.specific_barrier,
-            "workflow_stage": "generating_alternates",
+            "change_reason": barrier_data.specific_barrier, # Update with refined barrier
+            "targeted_action_id": action.get("id"), # Ensure target is set
+            "workflow_stage": target_stage,
             "phase": "processing"
         }
     except Exception as e:
@@ -720,6 +753,8 @@ def route_after_change(state: CarePlanCheckInState) -> str:
     """Route after handle_change_action."""
     if state.get("workflow_stage") == "generating_alternates":
         return "generate_alternate_suggestions"
+    if state.get("workflow_stage") == "generating_direct_replacement":
+        return "generate_direct_replacement_suggestion"
     return "END"
 
 
@@ -755,6 +790,7 @@ def create_process_message_graph():
     workflow.add_node("handle_skip_action", handle_skip_action)
     workflow.add_node("handle_change_action", handle_change_action)
     workflow.add_node("generate_alternate_suggestions", generate_alternate_suggestions)
+    workflow.add_node("generate_direct_replacement_suggestion", generate_direct_replacement_suggestion)
     workflow.add_node("handle_general_response", handle_general_response)
     
     # Set entry point
@@ -778,6 +814,7 @@ def create_process_message_graph():
     workflow.add_edge("handle_skip_action", END)
     workflow.add_edge("handle_general_response", END)
     workflow.add_edge("generate_alternate_suggestions", END)
+    workflow.add_edge("generate_direct_replacement_suggestion", END)
     
     # Change action → alternates
     workflow.add_conditional_edges(
@@ -785,6 +822,7 @@ def create_process_message_graph():
         route_after_change,
         {
             "generate_alternate_suggestions": "generate_alternate_suggestions",
+            "generate_direct_replacement_suggestion": "generate_direct_replacement_suggestion",
             "END": END
         }
     )
@@ -844,3 +882,78 @@ async def process_alternate_selection(
     updated_state = {**state, "selected_alternate_index": selected_index}
     result = await care_plan_selection_graph.ainvoke(updated_state)
     return result
+
+async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Generate a SINGLE specific replacement based on user request."""
+    
+    targeted_idx = state.get("targeted_action_index")
+    action_items = state.get("action_items", [])
+    
+    if targeted_idx is None:
+        return {**state, "phase": "complete"}
+    
+    original_action = action_items[targeted_idx]
+    requested_item = state.get("change_reason")  # e.g., "cashews"
+    
+    prompt = f"""User specific request: REPLACE "{original_action.get('title')}" WITH "{requested_item}".
+
+Generate valid metadata for this NEW specific action.
+- Use "{requested_item}" as the core of the new action.
+- Ensure it's a valid health action (e.g. "Eating Cashews" or "Doing Yoga").
+- Provide 1 SINGLE option.
+
+Detailed format:
+- Title: Display name (e.g., "Cashew Snack")
+- Specific Action: Actionable details (e.g., "Eat 30g of roasted cashews")
+- Target Hormone: Inference based on ingredient/activity (e.g., "Progesterone" for healthy fats)
+- Purpose: "To boost healthy fats..."
+
+Output JSON (List with 1 item):
+{{
+  "alternatives": [
+    {{
+      "title": "Title",
+      "specific_action": "...",
+      "why_better": "Requested replacement",
+      "target_hormone": "...",
+      "purpose": "..."
+    }}
+  ]
+}}
+"""
+    try:
+        data = await call_llm_structured(prompt, response_model=AlternatesList)
+        alternatives = data.alternatives[:1] # Ensure only 1
+        
+        # Build UI Block (Single Confirmation)
+        ui_blocks = [{
+            "id": "alternate_suggestions", # Reusing id logic for now
+            "type": "quick_actions", # Use quick actions for selection
+            "title": f"Switch to {alternatives[0].title}?",
+            "subtitle": "You requested this specific change.",
+            "actions": [
+                {
+                    "id": f"select_alt_0", # Index 0
+                    "title": f"Yes, confirm {alternatives[0].title}", 
+                    "action_type": "submit_event",
+                    "style": "primary"
+                }
+            ],
+            "dismissible": True
+        }]
+        
+        return {
+            **state,
+            "alternate_candidates": alternatives,
+            "ui_blocks": ui_blocks,
+            "bot_response": f"I found a match for '{requested_item}'. Shall we switch to {alternatives[0].title}?",
+            "phase": "awaiting_selection"
+        }
+    except Exception as e:
+        logger.error(f"Error generating direct replacement: {e}")
+        return {
+            **state,
+            "bot_response": "I couldn't find a specific match. Let me find some alternatives instead.",
+            "workflow_stage": "generating_alternates", # Fallback
+            "phase": "processing" # Will be re-routed if we didn't end
+        }
