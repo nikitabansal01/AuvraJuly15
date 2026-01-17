@@ -267,14 +267,15 @@ Intent Categories:
 4. **request_alternates**: Asking for options ("Show me alternatives", "What else can I eat?")
 5. **negotiate**: Conditional/barriers ("If I can't find X, what else?", "This is too hard", "Not dance")
 6. **ask_why**: Asking rationale ("Why walnuts?", "What does this help?")
-7. **general**: General chat or unclear
+7. **cancel_action**: User wants to stop changing/cancel request ("Never mind", "Cancel", "Go back", "Keep as is")
+8. **general**: General chat or unclear
 
 For complete/skip/change, identify which action (1-4) if mentioned or implied by context.
 If the user specifies WHAT they want to change to (e.g., "replace with cashews", "change to dance"), extract that as `proposed_replacement`.
 
 Output JSON:
 {{
-  "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|general",
+  "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|cancel_action|general",
   "targeted_action_index": 1-4 or null,
   "proposed_replacement": "string" or null,
   "confidence": 0.0-1.0
@@ -740,9 +741,10 @@ def route_by_intent(state: CarePlanCheckInState) -> str:
         "complete_action": "handle_complete_action",
         "skip_action": "handle_skip_action",
         "change_action": "handle_change_action",
-        "request_alternates": "generate_alternate_suggestions",
+        "request_alternates": "handle_change_action", # Treat alternates as change request
         "negotiate": "handle_change_action",  # Treat negotiate as change
         "ask_why": "handle_general_response",  # For now, general response
+        "cancel_action": "handle_cancel_action",
         "general": "handle_general_response"
     }
     
@@ -792,6 +794,7 @@ def create_process_message_graph():
     workflow.add_node("generate_alternate_suggestions", generate_alternate_suggestions)
     workflow.add_node("generate_direct_replacement_suggestion", generate_direct_replacement_suggestion)
     workflow.add_node("handle_general_response", handle_general_response)
+    workflow.add_node("handle_cancel_action", handle_cancel_action)
     
     # Set entry point
     workflow.set_entry_point("classify_user_intent")
@@ -805,7 +808,8 @@ def create_process_message_graph():
             "handle_skip_action": "handle_skip_action",
             "handle_change_action": "handle_change_action",
             "generate_alternate_suggestions": "generate_alternate_suggestions",
-            "handle_general_response": "handle_general_response"
+            "handle_general_response": "handle_general_response",
+            "handle_cancel_action": "handle_cancel_action"
         }
     )
     
@@ -813,6 +817,7 @@ def create_process_message_graph():
     workflow.add_edge("handle_complete_action", END)
     workflow.add_edge("handle_skip_action", END)
     workflow.add_edge("handle_general_response", END)
+    workflow.add_edge("handle_cancel_action", END)
     workflow.add_edge("generate_alternate_suggestions", END)
     workflow.add_edge("generate_direct_replacement_suggestion", END)
     
@@ -957,3 +962,11 @@ Output JSON (List with 1 item):
             "workflow_stage": "generating_alternates", # Fallback
             "phase": "processing" # Will be re-routed if we didn't end
         }
+
+async def handle_cancel_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle user cancellation."""
+    return {
+        **state,
+        "bot_response": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+        "phase": "complete"
+    }
