@@ -785,10 +785,10 @@ async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) ->
     prompt = f"""User specific request: REPLACE "{original_action.get('title')}" WITH "{requested_item}".
 
 Generate valid metadata for this NEW specific action.
-CRITICAL INSTRUCTION: You MUST use "{requested_item}" exactly.
-- If the user asks for "Cashews", you MUST output "Cashews". Do NOT suggest specific brands or generic substitutes like "Traffic Mix".
-- Ignore any previous context about allergies if the user EXPLICITLY requested this item.
-- Provide 1 SINGLE option.
+CRITICAL INSTRUCTION: You MUST prioritize the user's specific request "{requested_item}".
+- If the user names a specific item (e.g., "Cashews", "Zumba", "Tofu"), you MUST use that exact item as the core of the action.
+- Do NOT substitute it with a generic category or a "safer" alternative unless the request is dangerously invalid.
+- If the user's request seems to conflict with a barrier (e.g. allergy), assume the user knows what they are doing for this specific override, but ensure the new action matches the *item* they requested.
 
 Detailed format:
 - Title: Display name (e.g., "Cashew Snack")
