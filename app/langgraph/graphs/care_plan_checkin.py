@@ -362,6 +362,7 @@ async def handle_complete_action(state: CarePlanCheckInState) -> CarePlanCheckIn
             "bot_response": response,
             "current_streak": current,
             "actions_to_execute": [{"type": "refresh_plan"}],
+            "ui_blocks": [], # Clear any previous buttons
             "phase": "complete"
         }
     except Exception as e:
@@ -722,9 +723,9 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
     
     response = f"I see! Is there anything specific you'd like to do with your action plan today? Your actions are: {actions_list}. You can tell me when you've completed one, if you want to skip or change something, or ask why something is in your plan."
     
-    return {
         **state,
         "bot_response": response,
+        "ui_blocks": [], # Clear any previous buttons
         "phase": "complete"
     }
 
@@ -968,5 +969,6 @@ async def handle_cancel_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
     return {
         **state,
         "bot_response": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+        "ui_blocks": [], # Clear any previous buttons
         "phase": "complete"
     }
