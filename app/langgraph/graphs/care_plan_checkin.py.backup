@@ -823,33 +823,10 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
     user_message = state.get("user_message", "")
     action_items = state.get("action_items", [])
 
-    # Check if user is asking an informational question - NO UI blocks for these
-    msg_lower = user_message.lower()
-    is_question = any(word in msg_lower for word in ["what", "which", "how many", "remaining", "left", "show", "tell me"])
-    
-    if is_question:
-        incomplete = [item for item in action_items if not item.get("is_completed")]
-        if "remaining" in msg_lower or "left" in msg_lower or "not completed" in msg_lower:
-            if not incomplete:
-                response = "Great work! You've completed all your actions for today. 🎉"
-            else:
-                titles = ", ".join([item.get("title", "action") for item in incomplete])
-                response = f"You have {len(incomplete)} action(s) remaining: {titles}."
-        else:
-            actions_list = ", ".join([item.get("title", "action") for item in action_items[:4]])
-            completed_count = len([item for item in action_items if item.get("is_completed")])
-            response = f"Today's plan: {actions_list}. You've completed {completed_count}/{len(action_items)} so far."
-        
-        return {
-            **state,
-            "bot_response": response,
-            "ui_blocks": [],
-            "phase": "complete"
-        }
-    
-    # For unclear intents, offer help
+    # Generate helpful response
     actions_list = ", ".join([item.get("title", "action") for item in action_items[:4]])
-    response = f"Got it. Want to adjust anything in today's plan? Your actions are: {actions_list}. You can mark one done, ask for a swap, or ask why it's here."
+    
+    response = f"Got it. Want to adjust anything in today’s plan? Your actions are: {actions_list}. You can mark one done, ask for a swap, or ask why it’s here."
     ui_blocks = await _maybe_add_ctas(state, response, user_message)
     
     return {
@@ -858,6 +835,37 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
         "ui_blocks": ui_blocks,
         "phase": "complete"
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CONDITIONAL EDGE ROUTING (PURE FUNCTIONS)
+# ═══════════════════════════════════════════════════════════════════
+
+def route_by_intent(state: CarePlanCheckInState) -> str:
+    """Route based on LLM-classified intent. FIXED: No fallback to non-existent nodes."""
+    intent = state.get("current_intent", "general")
+    
+    intent_routing = {
+        "complete_action": "handle_complete_action",
+        "skip_action": "handle_skip_action",
+        "change_action": "handle_change_action",
+        "request_alternates": "handle_change_action", # Treat alternates as change request
+        "negotiate": "handle_change_action",  # Treat negotiate as change
+        "ask_why": "handle_ask_why",
+        "cancel_action": "handle_cancel_action",
+        "general": "handle_general_response"
+    }
+    
+    return intent_routing.get(intent, "handle_general_response")
+
+
+def route_after_change(state: CarePlanCheckInState) -> str:
+    """Route after handle_change_action."""
+    if state.get("workflow_stage") == "generating_alternates":
+        return "generate_alternate_suggestions"
+    if state.get("workflow_stage") == "generating_direct_replacement":
+        return "generate_direct_replacement_suggestion"
+    return "END"
 
 
 async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) -> CarePlanCheckInState:
