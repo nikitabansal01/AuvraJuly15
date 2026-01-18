@@ -194,6 +194,7 @@ async def respond_care_plan_checkin(
     try:
         uid = current_user["uid"]
         service = CarePlanCheckInService(db)
+        logger.info(f"CARE_PLAN_RESPOND_V2 for uid={uid}")
         
         # 1. Load Thread
         thread = service.get_thread_by_id(uid, payload.thread_id)
@@ -294,7 +295,8 @@ async def care_plan_ui_event(
         action_id = (payload.action_id or "").strip()
         meta = payload.metadata or {}
         
-        logger.info(f"Care plan UI event: action_id={action_id}, thread={payload.thread_id}")
+        logger.info(f"CARE_PLAN_EVENT_V2: action_id={action_id}, thread={payload.thread_id}")
+        logger.info(f"THREAD_TYPE: {type(thread)}, ATTRS: {dir(thread)}")
         
         # Handle alternate selection (select_alt_0, select_alt_1, etc.)
         if action_id.startswith("select_alt_"):
