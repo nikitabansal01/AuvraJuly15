@@ -77,9 +77,11 @@ def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePla
         "action_items": [i for i in items],
         "messages": graph_messages,
         
-        # Restore persistent context
+    # Restore persistent context
         "workflow_stage": saved_context.get("workflow_stage"),
         "targeted_action_index": saved_context.get("targeted_action_index"),
+        "targeted_action_id": saved_context.get("targeted_action_id"),
+        "plan_id": saved_context.get("plan_id"),
         "barrier_type": saved_context.get("barrier_type"),
         "change_reason": saved_context.get("change_reason"),
         "alternate_candidates": saved_context.get("alternate_candidates", []),
@@ -88,8 +90,8 @@ def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePla
         "current_streak": 0, 
         "refresh_tokens_available": 2,
         "refresh_tokens_unlocked": True,
-        "plan_id": None, "plan_date": None, "cycle_day": None, "cycle_phase": None, "primary_hormone": None,
-        "current_intent": None, "user_message": None, "targeted_action_id": None,
+        "plan_date": None, "cycle_day": None, "cycle_phase": None, "primary_hormone": None,
+        "current_intent": None, "user_message": None,
         "selected_alternate_index": None, "selected_alternate": None,
         "ui_blocks": [], "bot_response": "", "actions_to_execute": [], 
         "phase": "loaded", "error": None
@@ -111,6 +113,8 @@ def _persist_state(thread: CarePlanCheckInThread, final_state: CarePlanCheckInSt
     new_insights.update({
         "workflow_stage": final_state.get("workflow_stage"),
         "targeted_action_index": final_state.get("targeted_action_index"),
+        "targeted_action_id": final_state.get("targeted_action_id"),  # CRITICAL: needed for replacement
+        "plan_id": final_state.get("plan_id"),  # Needed for DB operations
         "barrier_type": final_state.get("barrier_type"),
         "change_reason": final_state.get("change_reason"),
         "alternate_candidates": serialized_candidates,
