@@ -276,7 +276,9 @@ async def care_plan_ui_event(
             raise HTTPException(status_code=400, detail="thread_id is required")
         
         service = CarePlanCheckInService(db)
-        thread = service.get_or_create_thread(uid=uid)
+        thread = service.get_thread_by_id(uid, payload.thread_id)
+        if not thread:
+            raise HTTPException(status_code=404, detail="Thread not found")
         
         action_id = (payload.action_id or "").strip()
         meta = payload.metadata or {}
