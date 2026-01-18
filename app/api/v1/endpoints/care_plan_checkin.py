@@ -359,6 +359,33 @@ async def care_plan_ui_event(
         meta = payload.metadata or {}
         
         logger.info(f"CARE_PLAN_EVENT_V2: action_id={action_id}, thread={payload.thread_id}")
+        
+        # Helper: Add user tap action as a visible message in chat history
+        def _add_user_tap_message(thread_obj, user_text: str):
+            """Add user's tap/click action as a user message so it appears in chat."""
+            raw = list(thread_obj.raw_messages or [])
+            raw.append({
+                "id": str(uuid4()),
+                "role": "user",
+                "content": user_text,
+                "created_at": datetime.datetime.utcnow().isoformat(),
+            })
+            thread_obj.raw_messages = raw
+        
+        # Map action IDs to human-readable tap messages for chat display
+        action_display_text = {
+            "want-to-change": "I want to change my plan",
+            "alternate-suggestions": "Show me alternate suggestions", 
+            "manage_plan": "I want to manage my plan",
+            "confirm_skip": "Yes, skip it",
+            "confirm_replace": "Yes, confirm the replacement",
+            "cancel_replace": "No, keep my current plan",
+            "keep_as_is": "Keep it as is",
+            "show_alternates": "Show me alternatives",
+            "mark_done": "I completed it",
+            "swap_action": "I want to swap this action",
+            "ask_why": "Why is this action in my plan?",
+        }
         logger.info(f"THREAD_TYPE: {type(thread)}, ATTRS: {dir(thread)}")
         
         # Handle alternate selection (select_alt_0, select_alt_1, etc.)
@@ -368,6 +395,18 @@ async def care_plan_ui_event(
                 selected_idx = int(action_id.replace("select_alt_", ""))
             except ValueError:
                 selected_idx = 0
+            
+            # Get the alternate title from stored candidates for display
+            stored_state = _reconstruct_state(thread, uid, service)
+            candidates = stored_state.get("alternate_candidates", [])
+            if candidates and selected_idx < len(candidates):
+                alt_title = candidates[selected_idx].get("title", f"Option {selected_idx + 1}") if isinstance(candidates[selected_idx], dict) else f"Option {selected_idx + 1}"
+            else:
+                alt_title = f"Option {selected_idx + 1}"
+            
+            # Add user's selection as visible message
+            _add_user_tap_message(thread, f"I'll go with: {alt_title}")
+            
             logger.info(f"[SELECT_ALT] Step 2: Index={selected_idx}, reconstructing state...")
             
             # Load current state from thread
@@ -454,6 +493,9 @@ async def care_plan_ui_event(
         
         # Handle confirm_skip
         if action_id == "confirm_skip":
+            # Add user's tap as visible message
+            _add_user_tap_message(thread, action_display_text.get(action_id, "Yes, skip it"))
+            
             stored_state = _reconstruct_state(thread, uid, service)
             # Process as a skip confirmation through regular respond
             result = await process_care_plan_message(
@@ -491,6 +533,9 @@ async def care_plan_ui_event(
         
         # Handle interrupt confirmations
         if action_id in ["confirm_replace", "cancel_replace", "keep_as_is"]:
+            # Add user's tap as visible message
+            _add_user_tap_message(thread, action_display_text.get(action_id, action_id.replace("_", " ").title()))
+            
             stored_state = _reconstruct_state(thread, uid, service)
             resume_value = True if action_id == "confirm_replace" else False
             result = await process_alternate_selection(
@@ -526,6 +571,9 @@ async def care_plan_ui_event(
 
         # Handle show_alternates
         if action_id == "show_alternates":
+            # Add user's tap as visible message
+            _add_user_tap_message(thread, action_display_text.get(action_id, "Show me alternatives"))
+            
             stored_state = _reconstruct_state(thread, uid, service)
             result = await process_care_plan_message(
                 state=stored_state,
@@ -585,6 +633,9 @@ async def care_plan_ui_event(
         
         # Handle mark_done, swap_action, ask_why from choice buttons
         if action_id in ["mark_done", "swap_action", "ask_why"]:
+            # Add user's tap as visible message
+            _add_user_tap_message(thread, action_display_text.get(action_id, action_id.replace("_", " ").title()))
+            
             stored_state = _reconstruct_state(thread, uid, service)
             
             # Convert to natural language message
@@ -659,6 +710,9 @@ async def care_plan_ui_event(
         logger.info(f"[EVENT] Checking tap_to_message for action_id='{action_id}', available={list(tap_to_message.keys())}")
         
         if action_id in tap_to_message:
+            # Add user's tap as visible message
+            _add_user_tap_message(thread, action_display_text.get(action_id, tap_to_message[action_id]))
+            
             stored_state = _reconstruct_state(thread, uid, service)
             user_message = tap_to_message[action_id]
             
