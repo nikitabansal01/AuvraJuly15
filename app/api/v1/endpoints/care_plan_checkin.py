@@ -480,7 +480,7 @@ async def care_plan_ui_event(
             }
         
         # Handle interrupt confirmations
-        if action_id in ["confirm_replace", "cancel_replace"]:
+        if action_id in ["confirm_replace", "cancel_replace", "keep_as_is"]:
             stored_state = _reconstruct_state(thread, uid, service)
             resume_value = True if action_id == "confirm_replace" else False
             result = await process_alternate_selection(

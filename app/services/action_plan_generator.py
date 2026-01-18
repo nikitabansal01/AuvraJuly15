@@ -5569,8 +5569,14 @@ Respond with valid JSON object only."""
                 variant_url = None
                 MAX_VARIANT_RETRIES = 3
                 
+                # Safely extract variant dict and type with None checks
+                variant_dict = vd.get("variant") or {}
+                v_type_str = vd.get("v_type") or "alternative"
+                
                 # Use variant TITLE for cache matching
-                variant_title = vd["variant"].get("title", f"{vd['v_type']} version")
+                variant_title = variant_dict.get("title") if variant_dict else None
+                if not variant_title:
+                    variant_title = f"{v_type_str} version"
                 logger.info(f"[REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
                 
                 for retry_attempt in range(MAX_VARIANT_RETRIES):
@@ -5578,7 +5584,7 @@ Respond with valid JSON object only."""
                         result = await self.image_service.get_or_generate_image(
                             prompt=variant_title,  # Use TITLE for cache matching
                             category=category,
-                            variant_type=vd["v_type"],
+                            variant_type=v_type_str,
                             user_id=user_id,
                             db=db
                         )
@@ -5603,13 +5609,18 @@ Respond with valid JSON object only."""
             for i, result in enumerate(variant_results):
                 variant_url, _, _ = result
                 
+                # Safely extract variant data with None checks
+                vd = variant_data[i] if i < len(variant_data) else {}
+                variant_dict = vd.get("variant") or {}
+                v_type_str = vd.get("v_type") or "alternative"
+                
                 variant_record = ActionPlanItemVariant(
                     item_id=new_item.id,
-                    variant_type=variant_data[i]["v_type"],
-                    title=variant_data[i]["variant"].get("title", ""),
-                    description=variant_data[i]["variant"].get("description", ""),
+                    variant_type=v_type_str,
+                    title=variant_dict.get("title", "") if variant_dict else "",
+                    description=variant_dict.get("description", "") if variant_dict else "",
                     image_url=variant_url,
-                    image_prompt=variant_data[i]["variant"].get("image_prompt"),
+                    image_prompt=variant_dict.get("image_prompt") if variant_dict else None,
                     created_at=datetime.utcnow()
                 )
                 db.add(variant_record)
@@ -6164,10 +6175,25 @@ Respond with valid JSON only."""
 
             for vd in variant_data:
                 try:
+                    # Defensive: build variant_prompt with explicit None checks
+                    variant_dict = vd.get("variant") or {}
+                    v_type_str = vd.get("v_type") or "alternative"
+                    replacement_title = replacement_action.get("title") or "Action"
+                    
+                    variant_prompt = (
+                        variant_dict.get("image_prompt")
+                        or variant_dict.get("title")
+                        or f"{v_type_str.title()} {replacement_title}"
+                    )
+                    
+                    # Final fallback if still None
+                    if not variant_prompt:
+                        variant_prompt = f"{v_type_str.title()} {replacement_title}"
+                    
                     variant_url, _, _ = await self.image_service.get_or_generate_image(
-                        prompt=vd["variant"].get("image_prompt", vd["variant"].get("title")),
+                        prompt=variant_prompt,
                         category=category,
-                        variant_type=vd["v_type"],
+                        variant_type=v_type_str,
                         user_id=user_id,
                         db=db,
                     )
@@ -6175,13 +6201,26 @@ Respond with valid JSON only."""
                     logger.error(f"Variant image generation failed: {e}")
                     variant_url = ""
 
+                if not variant_url:
+                    variant_url = self.image_service.FALLBACK_IMAGE_URLS.get(
+                        category, self.image_service.FALLBACK_IMAGE_URLS["food"]
+                    )
+                    logger.warning(
+                        f"[REPLACE] Using fallback image for variant '{v_type_str}' ({category})"
+                    )
+
+                # Safely extract variant data with None checks
+                variant_title = variant_dict.get("title", "") if variant_dict else ""
+                variant_description = variant_dict.get("description", "") if variant_dict else ""
+                variant_image_prompt = variant_dict.get("image_prompt") if variant_dict else None
+
                 variant_record = ActionPlanItemVariant(
                     item_id=new_item.id,
-                    variant_type=vd["v_type"],
-                    title=vd["variant"].get("title", ""),
-                    description=vd["variant"].get("description", ""),
+                    variant_type=v_type_str,
+                    title=variant_title,
+                    description=variant_description,
                     image_url=variant_url,
-                    image_prompt=vd["variant"].get("image_prompt"),
+                    image_prompt=variant_image_prompt,
                     created_at=datetime.utcnow(),
                 )
                 db.add(variant_record)

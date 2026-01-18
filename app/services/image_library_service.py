@@ -101,6 +101,13 @@ class ImageLibraryService:
         if self.cloudinary_cloud_name and self.cloudinary_api_key:
             try:
                 import cloudinary
+                import urllib3
+                # Increase urllib3 connection pool size to prevent "Connection pool is full" warnings
+                # Default is 1, which causes issues with concurrent uploads
+                urllib3.util.connection.HAS_IPV6 = False  # Force IPv4 to reduce pool fragmentation
+                from urllib3 import HTTPConnectionPool
+                HTTPConnectionPool.DEFAULT_MAXSIZE = 20  # Increase from default 1
+                
                 cloudinary.config(
                     cloud_name=self.cloudinary_cloud_name,
                     api_key=self.cloudinary_api_key,
@@ -108,7 +115,7 @@ class ImageLibraryService:
                     secure=True
                 )
                 self._cloudinary_configured = True
-                logger.info("✅ Cloudinary configured globally at startup")
+                logger.info("✅ Cloudinary configured globally at startup (pool size: 20)")
             except Exception as e:
                 logger.warning(f"Failed to configure Cloudinary: {e}")
         
@@ -145,6 +152,12 @@ class ImageLibraryService:
             Tuple of (image_url, was_cached, cost)
         """
         start_time = time.time()
+        
+        # Defensive: ensure prompt is never None
+        if prompt is None:
+            logger.warning(f"[IMAGE] ⚠️ Received None prompt, using fallback for {category}/{variant_type}")
+            fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS.get("food", ""))
+            return (fallback_url, False, 0.0)
         
         # Log what we're processing
         logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")

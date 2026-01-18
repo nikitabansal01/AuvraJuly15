@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import UserReward
 from app.services.streak_service import StreakService, REWARDS_CONFIG
+from app.utils.timezone_utils import get_user_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,8 @@ class RewardService:
         Returns:
             Dictionary with streak status and all rewards with their states
         """
-        streak_status = self.streak_service.get_full_streak_status(uid, user_timezone)
+        resolved_timezone = user_timezone or get_user_timezone(uid, self.db)
+        streak_status = self.streak_service.get_full_streak_status(uid, resolved_timezone)
         current_streak = streak_status["current_streak"]
         
         # Get claimed rewards
@@ -83,6 +85,8 @@ class RewardService:
         if not reward:
             logger.warning(f"Invalid reward ID: {reward_id}")
             return {"success": False, "error": "Invalid reward ID"}
+
+        resolved_timezone = get_user_timezone(uid, self.db)
         
         # Check if already claimed
         existing = self.db.query(UserReward).filter(
@@ -101,7 +105,7 @@ class RewardService:
             logger.info(f"🧪 TEST MODE: Bypassing streak check for {uid}")
             current = 100  # Fake high streak for test mode
         else:
-            current = self.streak_service.calculate_streak_from_actions(uid)
+            current = self.streak_service.calculate_streak_from_actions(uid, resolved_timezone)
         
         if current < reward["days"]:
             return {
