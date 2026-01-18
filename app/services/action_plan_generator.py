@@ -1072,6 +1072,7 @@ class ActionPlanGenerator:
         db: AsyncSession,
         image_mode: Literal["full", "hero_only", "none"] = "full",
         skip_quality_check: bool = False,
+        carryforward_items: Optional[List[Dict[str, Any]]] = None,  # Items passed from daily review carry-forward
     ) -> Dict[str, Any]:
         """
         Get todays action plan or generate a new one.
@@ -1083,6 +1084,8 @@ class ActionPlanGenerator:
         
         Args:
             skip_quality_check: If True, skip model quality evaluation (faster for first-time users)
+            carryforward_items: Optional list of items from daily review to carry forward
+                                (source_item, source_variants, original_id)
         """
         from app.core.database import ActionPlan
         from datetime import timedelta
@@ -1155,10 +1158,28 @@ class ActionPlanGenerator:
         
         conversion_result = None  # Force skip conversion
         
-        # Generate new plan, passing skipped items to include as carry-forward
-        logger.info(f"Generating new plan for user {user_id} on {today}")
+        # Combine all carry-forward sources:
+        # 1. Items passed from daily review carry-forward (carryforward_items parameter)
+        # 2. Items skipped via care plan check-in yesterday (skipped_items)
+        all_carryforward = []
+        
+        # Add items from daily review (already in correct format)
+        if carryforward_items:
+            all_carryforward.extend(carryforward_items)
+            logger.info(f"📦 Including {len(carryforward_items)} daily-review carry-forward items")
+        
+        # Add items from chat skips (already in correct format)
         if skipped_items:
-            logger.info(f"Including {len(skipped_items)} chat-skipped items from yesterday in plan generation")
+            all_carryforward.extend(skipped_items)
+            logger.info(f"📦 Including {len(skipped_items)} chat-skipped items from yesterday")
+        
+        # Limit total carry-forward to 4 items
+        all_carryforward = all_carryforward[:4]
+        
+        # Generate new plan, passing all carry-forward items
+        logger.info(f"Generating new plan for user {user_id} on {today}")
+        if all_carryforward:
+            logger.info(f"📦 Total carry-forward items: {len(all_carryforward)} (will generate {4 - len(all_carryforward)} new actions)")
         gen_result = await self.generate_new_plan(
             user_id=user_id,
             plan_date=today,
@@ -1166,11 +1187,11 @@ class ActionPlanGenerator:
             db=db,
             image_mode=image_mode,
             skip_quality_check=skip_quality_check,
-            carryforward_items=skipped_items,  # Pass skipped items for carry-forward
+            carryforward_items=all_carryforward,  # Pass combined carry-forward items
         )
         if isinstance(gen_result, dict) and gen_result.get("success"):
             gen_result.setdefault("plan_source", "generated_new")
-            if skipped_items:
+            if all_carryforward:
                 gen_result["plan_source"] = "generated_with_carryforward"
         return gen_result
     

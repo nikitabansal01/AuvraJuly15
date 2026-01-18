@@ -1330,52 +1330,7 @@ async def _carry_forward_items_to_today(
         )
     ).first()
     
-    if not today_plan:
-        # CRITICAL FIX: Generate today's plan if it doesn't exist
-        # This prevents carried items from being lost
-        logger.info(f"No plan exists for today ({today}) - generating plan before carry forward")
-        
-        try:
-            # Get user's timezone
-            user_profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
-            user_timezone = user_profile.current_timezone if user_profile and user_profile.current_timezone else "Asia/Seoul"
-            
-            # Get async session for generator
-            async_db = await get_async_db_session()
-            
-            # Generate today's plan
-            generator = get_action_plan_generator()
-            result = await generator.get_or_generate_today_plan(
-                user_id=uid,
-                user_timezone=user_timezone,
-                db=async_db
-            )
-            
-            await async_db.close()
-            
-            if not result.get("success"):
-                logger.error(f"Failed to generate today's plan for carry forward: {result.get('error')}")
-                return False
-            
-            logger.info(f"Generated today's plan (id={result.get('plan_id')}) for carry forward")
-            
-            # Re-fetch today's plan after generation
-            today_plan = db.query(ActionPlan).filter(
-                and_(
-                    ActionPlan.uid == uid,
-                    ActionPlan.plan_date == today
-                )
-            ).first()
-            
-            if not today_plan:
-                logger.error(f"Plan still not found after generation - sync issue")
-                return False
-                
-        except Exception as gen_error:
-            logger.error(f"Failed to generate plan for carry forward: {gen_error}")
-            return False
-    
-    # Get the source items to copy
+    # Get the source items to copy FIRST (before generating)
     source_items = db.query(ActionPlanItem).filter(
         ActionPlanItem.id.in_(skipped_item_ids)
     ).all()
@@ -1386,6 +1341,59 @@ async def _carry_forward_items_to_today(
     # Limit carried items to max 4
     source_items = source_items[:TARGET_ITEMS]
     num_carried = len(source_items)
+    
+    if not today_plan:
+        # OPTIMIZED: Pass carry-forward items to generator so it only generates what's needed
+        # This saves GPT + image generation costs when all 4 items are carried forward
+        logger.info(f"No plan exists for today ({today}) - generating plan WITH {num_carried} carry-forward items")
+        
+        try:
+            # Get user's timezone
+            user_profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
+            user_timezone = user_profile.current_timezone if user_profile and user_profile.current_timezone else "Asia/Seoul"
+            
+            # Build carryforward_items list for generator
+            carryforward_items = []
+            for item in source_items:
+                # Get variants for this item
+                variants = db.query(ActionPlanItemVariant).filter(
+                    ActionPlanItemVariant.item_id == item.id
+                ).all()
+                
+                carryforward_items.append({
+                    "source_item": item,
+                    "source_variants": variants,
+                    "original_id": item.id
+                })
+            
+            # Get async session for generator
+            async_db = await get_async_db_session()
+            
+            # Generate today's plan with carry-forward items
+            # The generator will only generate (4 - len(carryforward_items)) new actions
+            generator = get_action_plan_generator()
+            result = await generator.get_or_generate_today_plan(
+                user_id=uid,
+                user_timezone=user_timezone,
+                db=async_db,
+                carryforward_items=carryforward_items  # Pass carry-forward items
+            )
+            
+            await async_db.close()
+            
+            if not result.get("success"):
+                logger.error(f"Failed to generate today's plan for carry forward: {result.get('error')}")
+                return False
+            
+            logger.info(f"Generated today's plan (id={result.get('plan_id')}) with {num_carried} carried items already included")
+            
+            # Items are already in the plan - no need to add them again
+            # Just log and return success
+            return True
+                
+        except Exception as gen_error:
+            logger.error(f"Failed to generate plan for carry forward: {gen_error}")
+            return False
     
     # CRITICAL FIX: Only carry forward from YESTERDAY (or the plan being reviewed)
     # We should not carry forward items from older plans if they were already carried forward before
