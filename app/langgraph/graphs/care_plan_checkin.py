@@ -20,6 +20,8 @@ Features:
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import interrupt, Command
 from pydantic import BaseModel
 import uuid
 import json
@@ -36,6 +38,25 @@ from app.langgraph.helpers.ui_blocks_helper import (
 from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog, SessionLocal
 
 logger = logging.getLogger(__name__)
+
+
+async def _maybe_add_ctas(
+    state: CarePlanCheckInState,
+    bot_response: str,
+    last_user_message: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Generate contextual CTAs via LLM when no explicit UI blocks are set."""
+    try:
+        suggestion = await generate_intelligent_ctas(
+            flow_type="care_plan_checkin",
+            bot_response=bot_response,
+            conversation_state=state,
+            last_user_message=last_user_message,
+        )
+        return [suggestion] if suggestion else []
+    except Exception as e:
+        logger.warning(f"CTA generation failed: {e}")
+        return []
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -266,7 +287,7 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
         for i, item in enumerate(state.get("action_items", []))
     ])
 
-    prompt = f"""Classify the user's intent for this care plan check-in message.
+    prompt = f"""Classify the user's intent for this care plan check-in message using ONLY the action list below.
 
 User Message: "{user_message}"
 
@@ -286,8 +307,21 @@ Intent Categories:
 7. **cancel_action**: User wants to stop changing/cancel request ("Never mind", "Cancel", "Go back", "Keep as is")
 8. **general**: General chat or unclear
 
-For complete/skip/change, identify which action (1-4) if mentioned or implied by context.
-If the user specifies WHAT they want to change to (e.g., "replace with cashews", "change to dance"), extract that as `proposed_replacement`.
+Rules for targeted_action_index:
+- If the user clearly refers to a plan item by name or time (e.g., "morning one"), select that item.
+- If the user mentions multiple items, pick the most directly referenced item.
+- If the user wants to change the whole plan but doesn't name an item, set targeted_action_index to null.
+
+Rules for proposed_replacement:
+- If user says "replace X with Y" or "change X to Y", set proposed_replacement to Y.
+- If user says "swap it for Y" or "I want Y instead", set proposed_replacement to Y.
+- If user is asking for alternatives without specifying a replacement, set proposed_replacement to null.
+
+Examples:
+- "Replace walnuts with cashews" → intent=change_action, targeted_action_index=1 (walnuts), proposed_replacement="cashews"
+- "Change the evening stretch" → intent=change_action, targeted_action_index=4 (evening item), proposed_replacement=null
+- "What else can I eat?" → intent=request_alternates, targeted_action_index=food item if mentioned else null
+- "Why is this here?" → intent=ask_why, targeted_action_index=most recent item referenced or null
 
 Output JSON:
 {{
@@ -309,8 +343,8 @@ Output JSON:
             idx = classification.targeted_action_index - 1  # Convert to 0-based
             if 0 <= idx < len(state.get("action_items", [])):
                 targeted_idx = idx
-                targeted_id = state["action_items"][idx].get("id")
-        
+                targeted_id = state["action_items"][idx].get("id") or state["action_items"][idx].get("item_id")
+
         return {
             **state,
             "current_intent": classification.intent,
@@ -424,11 +458,11 @@ Output JSON: {{
     
     # ⚠️ CRITICAL STREAK WARNING (USER FEEDBACK: ANY skip = streak at risk)
     current_streak = state.get("current_streak", 0)
-    response = f"⚠️ Important: Skipping {action_title} will put your {current_streak}-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. "
+    response = f"Heads up: skipping {action_title} will put your {current_streak}-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. "
     
     # Offer alternative based on reason
     if skip_category in ["no_time", "dont_like", "not_feeling_well"]:
-        response += "Would you like me to suggest an easier or quicker alternative instead of skipping?"
+        response += "Want a quicker or easier alternative instead of skipping?"
         
         ui_blocks = [create_confirmation_block(
             confirm_text="Show me alternatives",
@@ -451,7 +485,7 @@ Output JSON: {{
             "phase": "awaiting_selection"
         }
     else:
-        response += "Are you sure you want to skip it?"
+        response += "Do you still want to skip it?"
         return {**state, "bot_response": response, "phase": "complete"}
 
 
@@ -463,9 +497,12 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
     action_items = state.get("action_items", [])
     
     if targeted_idx is None or not (0 <= targeted_idx < len(action_items)):
+        response = "Which action would you like to change? You can say the name or the time slot."
+        ui_blocks = await _maybe_add_ctas(state, response, user_message)
         return {
             **state,
-            "bot_response": "Which action would you like to change?",
+            "bot_response": response,
+            "ui_blocks": ui_blocks,
             "phase": "loaded"
         }
 
@@ -524,11 +561,13 @@ Output JSON: {{
             # Fallback: classifier found replacement but barrier analysis confirms specific request
             target_stage = "generating_direct_replacement"
               
+        targeted_action_id = action.get("id") or action.get("item_id") or state.get("targeted_action_id")
+
         return {
             **state,
             "barrier_type": barrier_data.barrier_type,
             "change_reason": barrier_data.requested_item or barrier_data.specific_barrier,
-            "targeted_action_id": action.get("item_id"),
+            "targeted_action_id": targeted_action_id,
             "workflow_stage": target_stage,
             "phase": "processing"
         }
@@ -553,83 +592,43 @@ async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePla
         return {**state, "error": "no_targeted_action", "phase": "complete"}
     
     action = action_items[targeted_idx]
-    
-    existing_titles = [i.get('title') for i in action_items if i.get('title')]
+    reason = state.get('change_reason', '')
 
-    messages = state.get("messages", [])
-    recent_msgs = messages[-6:]
-    chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
-
-    alternates_prompt = f"""Generate 3 alternatives for:
-Title: {action.get('title', 'action')}
-Category: {action.get('category', 'general')}
-Target Hormone: {action.get('target_hormone', 'general')}
-
-User's Barrier: {state.get('barrier_type', 'unspecified')} - {state.get('change_reason', '')}
-Recent Chat History:
-{chat_context}
-
-Requirements:
-1. Address the user's specific barrier or request perfectly.
-2. Maintain the same target hormone goal if possible (unless request overrides it).
-3. **CRITICAL: PROVIDE RICH DETAIL**. Do not just give a title. Fill in the specific fields below.
-
-Detailed Field Requirements:
-- For FOOD: Must include `food_items` (list of ingredients), `food_amounts` (portion sizes), and `specific_action` (e.g., "Eat 30g of...").
-- For MOVEMENT: Must include `exercise_durations` (e.g., "10 mins"), `exercise_types`, and `exercise_intensities`.
-- For MINDFULNESS: Must include `mindfulness_durations` (e.g., "5 mins") and `mindfulness_techniques`.
-
-USER SPECIFIC REQUEST OVERRIDE:
-If the barrier/reason mentions a SPECIFIC activity type OR food item (e.g., "I want dance", "replace with cashew", "try tofu"), 
-then:
-1. ALL 3 alternatives MUST constitute varyiations/options of ONLY that specific thing.
-2. DISREGARD "Same target hormone" or "Category" constraints if they conflict with the request.
-3. DO NOT offer "similar" items (e.g., if user asks for Cashews, DO NOT suggest Almonds).
-
-Output JSON:
-{{
-  "alternatives": [
-    {{
-      "title": "...",
-      "specific_action": "Eat 1 cup of... / Do 10 mins of...",
-      "why_better": "How this addresses their barrier",
-      "target_hormone": "...",
-      "purpose": "...",
-      "food_amounts": ["1 cup", "2 tbsp"],
-      "food_items": ["Greek Yogurt", "Honey"],
-      "exercise_durations": ["10 mins"],
-      "exercise_types": ["Cardio"],
-      "exercise_intensities": ["Low"],
-      "mindfulness_durations": [],
-      "mindfulness_techniques": [],
-      "conditions": [],
-      "symptoms": []
-    }}
-  ]
-}}
-"""
-    
     try:
-        result = await call_llm_structured(alternates_prompt, response_model=AlternatesList)
-        alternates = result.alternatives
-        
-        # Create UI Block using helper for consistency
+        from app.services.action_plan_generator import get_action_plan_generator
+        generator = get_action_plan_generator()
+        async_db = generator.async_session_maker()
+
+        try:
+            result = await generator.generate_replacement_candidates(
+                user_id=state["user_id"],
+                item_id=action.get("id") or action.get("item_id"),
+                reason=reason,
+                n=3,
+                db=async_db,
+                enforce_same_category=True
+            )
+        finally:
+            await async_db.close()
+
+        if not result.get("success"):
+            return {
+                **state,
+                "bot_response": result.get("error") or "I couldn't generate alternatives. Please try again.",
+                "error": result.get("error") or "candidate_generation_failed",
+                "phase": "complete"
+            }
+
+        alternates = result.get("actions", [])
+
         ui_block = create_alternates_selection_block(
-            alternates=[{"title": alt.title, "specific_action": alt.specific_action, "why_better": alt.why_better} for alt in alternates],
+            alternates=[{"title": alt.get("title"), "specific_action": alt.get("specific_action"), "why_better": alt.get("purpose") or ""} for alt in alternates],
             title=f"3 Alternatives for {action.get('title', 'action')}"
         )
-        
-        # Serialize to dicts
-        serialized_alternates = []
-        for alt in alternates:
-            if hasattr(alt, "model_dump"):
-                serialized_alternates.append(alt.model_dump())
-            else:
-                serialized_alternates.append(alt.dict())
 
         return {
             **state,
-            "alternate_candidates": serialized_alternates,
+            "alternate_candidates": alternates,
             "ui_blocks": [ui_block],
             "workflow_stage": "awaiting_alternate_selection",
             "bot_response": "Here are 3 options that might work better:",
@@ -681,6 +680,28 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
     
     # Has tokens → proceed to replacement
     logger.info(f"[GRAPH_NODE] Processing replacement with tokens available")
+
+    selected_alt = alternates[selected_idx]
+    original_action_id = state.get("targeted_action_id")
+    if not original_action_id:
+        return {**state, "error": "no_original_action", "phase": "complete"}
+
+    # Interrupt for human confirmation (LangGraph interrupt)
+    approval = interrupt({
+        "type": "confirm_replace",
+        "original_action_id": original_action_id,
+        "replacement_title": selected_alt.get("title"),
+        "message": "Confirm this replacement?"
+    })
+
+    if approval is False:
+        return {
+            **state,
+            "bot_response": "No worries — we’ll keep your plan as it is.",
+            "ui_blocks": [],
+            "phase": "complete"
+        }
+
     try:
         # Use proper context manager for database session
         from app.core.database import SessionLocal
@@ -688,68 +709,38 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
         logger.info(f"[GRAPH_NODE] DB session created")
         
         try:
-            selected_alt = alternates[selected_idx]
-            original_action_id = state.get("targeted_action_id")
-            
-            if not original_action_id:
-                return {**state, "error": "no_original_action", "phase": "complete"}
-            
             logger.info(f"[GRAPH_NODE] Querying original action id={original_action_id}")
             # Mark original as replaced
             original = db.query(ActionPlanItem).get(original_action_id)
             if not original:
                 return {**state, "error": "original_not_found", "phase": "complete"}
             
-            logger.info(f"[GRAPH_NODE] Updating original action")
-            original.is_replaced = True
-            original.replaced_at = datetime.utcnow()
-            original.replacement_reason = state.get("change_reason", "")
-            
-            # Create new action - MATCHING THE EXACT FORMAT FROM action_plan_generator.py
-            logger.info(f"[GRAPH_NODE] Creating new action with plan_id={original.plan_id}")
-            
-            # Generate image prompt using EXACT SAME format as action_plan_generator.py
-            category = original.category.lower() if original.category else "food"
-            title = selected_alt["title"]
-            
-            if category == "food":
-                image_prompt = f"Professional close-up food photography of {title}, appetizing presentation, natural lighting, soft shadows, 4K quality"
-            elif category == "movement":
-                image_prompt = f"Serene photograph of a woman doing {title}, natural setting, peaceful atmosphere, soft morning light"
-            else:
-                image_prompt = f"Calming photograph representing {title}, peaceful atmosphere, soft natural lighting"
-            
-            new_item = ActionPlanItem(
-                plan_id=original.plan_id,
-                uid=state["user_id"],
-                slot=original.slot,
-                time_slot=original.time_slot,
-                category=original.category,
-                title=selected_alt["title"],
-                specific_action=selected_alt.get("specific_action", f"Try {selected_alt['title']} today"),
-                purpose=selected_alt.get("purpose", original.purpose),
-                target_hormone=original.target_hormone,
-                hormone_persona_intro=original.hormone_persona_intro,
-                # All required array fields - PRIORITIZE NEW DATA
-                food_amounts=selected_alt.get("food_amounts") or original.food_amounts or [],
-                food_items=selected_alt.get("food_items") or original.food_items or [],
-                exercise_durations=selected_alt.get("exercise_durations") or original.exercise_durations or [],
-                exercise_types=selected_alt.get("exercise_types") or original.exercise_types or [],
-                exercise_intensities=selected_alt.get("exercise_intensities") or original.exercise_intensities or [],
-                mindfulness_durations=selected_alt.get("mindfulness_durations") or original.mindfulness_durations or [],
-                mindfulness_techniques=selected_alt.get("mindfulness_techniques") or original.mindfulness_techniques or [],
-                conditions=selected_alt.get("conditions") or original.conditions or [],
-                symptoms=selected_alt.get("symptoms") or original.symptoms or [],
-                # Image fields
-                hero_image_url=None,  # Will be generated separately
-                hero_image_prompt=image_prompt,
-                # Status fields
-                is_completed=False,
-                is_replaced=False,
-                # Tracking
-                carried_forward_from=original.id
-            )
-            db.add(new_item)
+            logger.info(f"[GRAPH_NODE] Replacing via ActionPlanGenerator")
+            from app.services.action_plan_generator import get_action_plan_generator
+            generator = get_action_plan_generator()
+            async_db = generator.async_session_maker()
+
+            try:
+                replace_result = await generator.replace_action_from_action_dict(
+                    user_id=state["user_id"],
+                    item_id=original_action_id,
+                    replacement_action=selected_alt,
+                    reason=state.get("change_reason"),
+                    db=async_db
+                )
+            finally:
+                await async_db.close()
+
+            if not replace_result.get("success"):
+                return {
+                    **state,
+                    "bot_response": replace_result.get("error") or "Sorry, I couldn't process the replacement. Please try again.",
+                    "error": replace_result.get("error") or "replacement_failed",
+                    "phase": "complete"
+                }
+
+            replacement_action = replace_result.get("replacement_action") or {}
+            replacement_title = replacement_action.get("title") or selected_alt.get("title") or "the new action"
             
             # CONSUME REFRESH TOKEN - Log to ActionPlanRefreshLog
             logger.info(f"[GRAPH_NODE] Creating refresh log")
@@ -765,8 +756,8 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
                     "time_slot": original.time_slot if original else None
                 },
                 replacement_action={
-                    "title": selected_alt["title"],
-                    "specific_action": selected_alt.get("specific_action")
+                    "title": replacement_title,
+                    "specific_action": replacement_action.get("specific_action") or selected_alt.get("specific_action")
                 },
                 replacement_reason=state.get("change_reason", "user_request"),
                 thread_id=state.get("thread_id"),
@@ -783,27 +774,18 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
             
             if not refresh_result.get("success"):
                 logger.warning(f"[GRAPH_NODE] Refresh failed: {refresh_result.get('error')}")
-                # CRITICAL: Rollback the new action creation if token consumption failed!
-                db.rollback()
-                
-                # Update state to reflect reality (0 tokens)
-                current_streak = state.get("current_streak", 0)
-                remaining_needed = max(0, 16 - current_streak)
-                
-                return {
-                    **state,
-                    "bot_response": f"I couldn't complete the replacement because you're out of refreshes for today! You need a {16}-day streak to unlock more. (Current streak: {current_streak})",
-                    "error": "insufficient_refresh_tokens",
-                    "ui_blocks": [],
-                    "phase": "complete"
-                }
+                tokens_remaining = max(0, (state.get("refresh_tokens_available", 0) - 1))
+                response = (
+                    f"Perfect! I've replaced {original.title} with {replacement_title}. "
+                    "Your refresh count will sync shortly."
+                )
+            else:
+                tokens_remaining = refresh_result.get("remaining", 0)
+                response = f"Perfect! I've replaced {original.title} with {replacement_title}. You have {tokens_remaining} refresh(es) left today."
 
             logger.info(f"[GRAPH_NODE] Committing to database")
             db.commit()
             logger.info(f"[GRAPH_NODE] Database commit successful")
-            
-            tokens_remaining = refresh_result.get("remaining", 0)
-            response = f"Perfect! I've replaced {original.title} with {selected_alt['title']}. You have {tokens_remaining} refresh(es) left today."
             return {
                 **state,
                 "bot_response": response,
@@ -838,16 +820,17 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
     
     user_message = state.get("user_message", "")
     action_items = state.get("action_items", [])
-    
+
     # Generate helpful response
     actions_list = ", ".join([item.get("title", "action") for item in action_items[:4]])
     
-    response = f"I see! Is there anything specific you'd like to do with your action plan today? Your actions are: {actions_list}. You can tell me when you've completed one, if you want to skip or change something, or ask why something is in your plan."
+    response = f"Got it. Want to adjust anything in today’s plan? Your actions are: {actions_list}. You can mark one done, ask for a swap, or ask why it’s here."
+    ui_blocks = await _maybe_add_ctas(state, response, user_message)
     
     return {
         **state,
         "bot_response": response,
-        "ui_blocks": [], # Clear any previous buttons
+        "ui_blocks": ui_blocks,
         "phase": "complete"
     }
 
@@ -895,80 +878,56 @@ async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) ->
     original_action = action_items[targeted_idx]
     requested_item = state.get("change_reason")  # e.g., "cashews"
     
-    prompt = f"""User specific request: REPLACE "{original_action.get('title')}" WITH "{requested_item}".
-
-Generate valid metadata for this NEW specific action.
-CRITICAL INSTRUCTION: You MUST prioritize the user's specific request "{requested_item}".
-- If the user names a specific item (e.g., "Cashews", "Zumba", "Tofu"), you MUST use that exact item as the core of the action.
-- Do NOT substitute it with a generic category or a "safer" alternative unless the request is dangerously invalid.
-- If the user's request seems to conflict with a barrier (e.g. allergy), assume the user knows what they are doing for this specific override, but ensure the new action matches the *item* they requested.
-
-Detailed Format Requirements (RICH DATA):
-- Title: Display name (e.g., "Cashew Snack")
-- Specific Action: Actionable details (e.g., "Eat 30g of roasted cashews")
-- Target Hormone: Inference based on ingredient/activity
-- Purpose: "To boost healthy fats..."
-- FOOD items: Must include `food_items` (list of ingredients), `food_amounts` (portion sizes)
-- MOVEMENT: Must include `exercise_durations`, `exercise_types`
-- MINDFULNESS: Must include `mindfulness_durations`
-
-Output JSON (List with 1 item):
-{{
-  "alternatives": [
-    {{
-      "title": "Title",
-      "specific_action": "Eat 1 cup of... / Do 10 mins of...",
-      "why_better": "Requested replacement",
-      "target_hormone": "...",
-      "purpose": "...",
-      "food_amounts": ["1 cup", "2 tbsp"],
-      "food_items": ["Greek Yogurt", "Honey"],
-      "exercise_durations": ["10 mins"],
-      "exercise_types": ["Cardio"],
-      "exercise_intensities": ["Low"],
-      "mindfulness_durations": [],
-      "mindfulness_techniques": [],
-      "conditions": [],
-      "symptoms": []
-    }}
-  ]
-}}
-"""
     try:
-        data = await call_llm_structured(prompt, response_model=AlternatesList)
-        alternatives = data.alternatives[:1] # Ensure only 1
-        
-        # Serialize to dicts immediately to prevent DB JSON errors
-        # Check Pydantic version compatibility
-        serialized_alternatives = []
-        for alt in alternatives:
-            if hasattr(alt, "model_dump"):
-                serialized_alternatives.append(alt.model_dump())
-            else:
-                serialized_alternatives.append(alt.dict())
+        from app.services.action_plan_generator import get_action_plan_generator
+        generator = get_action_plan_generator()
+        async_db = generator.async_session_maker()
 
-        # Build UI Block (Single Confirmation)
+        try:
+            result = await generator.generate_replacement_candidates(
+                user_id=state["user_id"],
+                item_id=original_action.get("id") or original_action.get("item_id"),
+                reason=f"User requested: replace with {requested_item}",
+                n=1,
+                db=async_db,
+                enforce_same_category=True
+            )
+        finally:
+            await async_db.close()
+
+        if not result.get("success") or not result.get("actions"):
+            return {
+                **state,
+                "bot_response": "I couldn't find a specific match. Let me find some alternatives instead.",
+                "workflow_stage": "generating_alternates",
+                "phase": "processing"
+            }
+
+        alternatives = result.get("actions")[:1]
+        alt = alternatives[0]
+
         ui_blocks = [{
-            "id": "alternate_suggestions", 
-            "type": "quick_actions", 
-            "title": f"Switch to {alternatives[0].title}?",
+            "id": "alternate_suggestions",
+            "type": "quick_actions",
+            "title": f"Switch to {alt.get('title')}?",
             "subtitle": "You requested this specific change.",
             "actions": [
                 {
-                    "id": f"select_alt_0", # Index 0
-                    "title": f"Yes, confirm {alternatives[0].title}", 
+                    "id": "select_alt_0",
+                    "title": f"Yes, confirm {alt.get('title')}",
                     "action_type": "submit_event",
                     "style": "primary"
                 }
             ],
             "dismissible": True
         }]
-        
+
         return {
             **state,
-            "alternate_candidates": serialized_alternatives, # Return DICTS not objects
+            "alternate_candidates": alternatives,
             "ui_blocks": ui_blocks,
-            "bot_response": f"I found a match for '{requested_item}'. Shall we switch to {alternatives[0].title}?",
+            "bot_response": f"I found a match for '{requested_item}'. Shall we switch to {alt.get('title')}?",
+            "workflow_stage": "awaiting_direct_replacement_selection",
             "phase": "awaiting_selection"
         }
     except Exception as e:
@@ -1012,13 +971,14 @@ async def handle_ask_why(state: CarePlanCheckInState) -> CarePlanCheckInState:
     purpose = action.get('purpose', 'support your goals')
     title = action.get('title', 'this action')
     
-    explanation = f"{title} was chosen specifically to support your {hormone}. {purpose}"
-    response = f"{explanation} Does that make sense?"
+    explanation = f"{title} was chosen to support your {hormone}. {purpose}"
+    response = f"{explanation} Want a simpler alternative or keep it as is?"
+    ui_blocks = await _maybe_add_ctas(state, response, state.get("user_message"))
 
     return {
         **state,
         "bot_response": response,
-        "ui_blocks": [],
+        "ui_blocks": ui_blocks,
         "phase": "complete"
     }
 
@@ -1118,38 +1078,48 @@ def create_process_selection_graph():
     return workflow.compile()
 
 
-# Compile graphs
-care_plan_load_graph = create_load_plan_graph()
-care_plan_process_graph = create_process_message_graph()
-care_plan_selection_graph = create_process_selection_graph()
+# Compile graphs with checkpointer for interrupts and resumable state
+_checkpointer = InMemorySaver()
+care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
+care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
+care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_checkpointer)
 
 
 # ═══════════════════════════════════════════════════════════════════
 # PUBLIC API
 # ═══════════════════════════════════════════════════════════════════
 
-async def load_care_plan(user_id: str) -> CarePlanCheckInState:
+async def load_care_plan(user_id: str, thread_id: Optional[str] = None) -> CarePlanCheckInState:
     """Load today's care plan."""
     state = create_initial_state(user_id)
-    result = await care_plan_load_graph.ainvoke(state)
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    result = await care_plan_load_graph.ainvoke(state, config=config) if config else await care_plan_load_graph.ainvoke(state)
     return result
 
 
 async def process_care_plan_message(
     state: CarePlanCheckInState,
-    user_message: str
+    user_message: str,
+    thread_id: Optional[str] = None
 ) -> CarePlanCheckInState:
     """Process user message about care plan."""
     updated_state = {**state, "user_message": user_message}
-    result = await care_plan_process_graph.ainvoke(updated_state)
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    result = await care_plan_process_graph.ainvoke(updated_state, config=config) if config else await care_plan_process_graph.ainvoke(updated_state)
     return result
 
 
 async def process_alternate_selection(
     state: CarePlanCheckInState,
-    selected_index: int
+    selected_index: Optional[int] = None,
+    thread_id: Optional[str] = None,
+    resume: Optional[bool] = None
 ) -> CarePlanCheckInState:
     """Process alternate selection and check tokens."""
     updated_state = {**state, "selected_alternate_index": selected_index}
-    result = await care_plan_selection_graph.ainvoke(updated_state)
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    if resume is not None:
+        result = await care_plan_selection_graph.ainvoke(Command(resume=resume), config=config) if config else await care_plan_selection_graph.ainvoke(Command(resume=resume))
+    else:
+        result = await care_plan_selection_graph.ainvoke(updated_state, config=config) if config else await care_plan_selection_graph.ainvoke(updated_state)
     return result

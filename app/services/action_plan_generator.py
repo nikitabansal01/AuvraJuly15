@@ -5180,6 +5180,7 @@ REQUIREMENTS:
 - Must target hormone: {original.target_hormone}
 - Should be DIFFERENT from: {original.title} (user disliked this)
 - Dislike reason: {reason or 'not specified'}
+- If the reason includes a specific requested item (e.g., "replace with cashews"), you MUST use that exact item as the core of the new action.
 - AVOID generating same category as disliked ({original.category}) unless users lifestyle_focus only includes that category
 - Prefer different category from: {original.category}
 - Users lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
@@ -5767,8 +5768,8 @@ STRICT REQUIREMENTS:
 2. Target hormone MUST be: {original_hormone}
 3. Must be DIFFERENT from: {original.title}
 4. User Request / Context: {reason or 'user wants alternatives'}
-   ⚠️ CRITICAL: Analyze this request. If it contains a specific activity preference (e.g., "dance", "swimming", "yoga"), 
-   generate ONLY variations of that activity. DO NOT mix in unrelated activities like HIIT, strength training, etc.
+    ⚠️ CRITICAL: If the request clearly specifies a replacement item or activity (e.g., "replace with cashews", "swap to yoga", "dance"),
+    then ALL {n} alternatives MUST be variations of that specific item/activity. Do NOT mix unrelated options.
 5. MUST include category-specific fields: {required_fields}
 
 USER HEALTH PROFILE (tailor recommendations to this):

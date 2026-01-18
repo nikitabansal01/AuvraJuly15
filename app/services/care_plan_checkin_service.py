@@ -451,6 +451,7 @@ NEW MESSAGES (JSON list in order):
                     "item_id": int(it.id),
                     "title": title,
                     "category": getattr(it, "category", "general"),
+                    "target_hormone": getattr(it, "target_hormone", None),
                     "slot": getattr(it, "slot", None),
                     "time_slot": getattr(it, "time_slot", None),
                 }

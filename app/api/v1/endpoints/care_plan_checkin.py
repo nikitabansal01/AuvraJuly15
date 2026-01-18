@@ -8,9 +8,12 @@ import logging
 import datetime
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.core.database import get_db, CarePlanCheckInThread
+from app.core.database import get_db, CarePlanCheckInThread, ActionPlan
 from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.care_plan_checkin_service import CarePlanCheckInService
+from app.services.reward_service import RewardService
+from app.services.streak_service import StreakService
+from app.utils.timezone_utils import get_user_current_date
 # Import Graph
 from app.langgraph.graphs.care_plan_checkin import (
     process_care_plan_message, 
@@ -68,6 +71,35 @@ def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePla
 
     # Get current plan items
     items = service.get_plan_items_for_ui(uid=uid)
+
+    # Get plan_id and plan_date for today (fallback to latest)
+    plan_id = saved_context.get("plan_id")
+    plan_date = None
+    if not plan_id:
+        today = get_user_current_date(uid, service.db)
+        plan = (
+            service.db.query(ActionPlan)
+            .filter(ActionPlan.uid == uid, ActionPlan.plan_date == today)
+            .order_by(ActionPlan.created_at.desc())
+            .first()
+        )
+        if not plan:
+            plan = (
+                service.db.query(ActionPlan)
+                .filter(ActionPlan.uid == uid)
+                .order_by(ActionPlan.plan_date.desc(), ActionPlan.created_at.desc())
+                .first()
+            )
+        if plan:
+            plan_id = plan.id
+            plan_date = plan.plan_date
+    else:
+        plan_date = thread.local_date
+
+    # Get refresh tokens + streak
+    reward_service = RewardService(service.db)
+    refresh_status = reward_service.get_refresh_status(uid)
+    streak_status = StreakService(service.db).get_full_streak_status(uid)
     
     # Reconstruct state
     return {
@@ -81,16 +113,16 @@ def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePla
         "workflow_stage": saved_context.get("workflow_stage"),
         "targeted_action_index": saved_context.get("targeted_action_index"),
         "targeted_action_id": saved_context.get("targeted_action_id"),
-        "plan_id": saved_context.get("plan_id"),
+        "plan_id": plan_id,
         "barrier_type": saved_context.get("barrier_type"),
         "change_reason": saved_context.get("change_reason"),
         "alternate_candidates": saved_context.get("alternate_candidates", []),
         
         # Defaults/Context (could be loaded from streak_service/plan_generator if needed)
-        "current_streak": 0, 
-        "refresh_tokens_available": 2,
-        "refresh_tokens_unlocked": True,
-        "plan_date": None, "cycle_day": None, "cycle_phase": None, "primary_hormone": None,
+        "current_streak": streak_status.get("current_streak", 0),
+        "refresh_tokens_available": refresh_status.get("remaining", 0),
+        "refresh_tokens_unlocked": refresh_status.get("limit", 0) > 0,
+        "plan_date": plan_date, "cycle_day": None, "cycle_phase": None, "primary_hormone": None,
         "current_intent": None, "user_message": None,
         "selected_alternate_index": None, "selected_alternate": None,
         "ui_blocks": [], "bot_response": "", "actions_to_execute": [], 
@@ -209,14 +241,14 @@ async def respond_care_plan_checkin(
         state = _reconstruct_state(thread, uid, service)
 
         # 3. Invoke Graph
-        final_state = await process_care_plan_message(state, payload.message_text)
+        final_state = await process_care_plan_message(state, payload.message_text, thread_id=thread.id)
 
         # 4. Save Result to DB
         # Identify new messages
         new_msgs_count = len(final_state["messages"]) - len(state["messages"])
+        raw = list(thread.raw_messages or [])
         if new_msgs_count > 0:
             new_msgs = final_state["messages"][-new_msgs_count:]
-            raw = list(thread.raw_messages or [])
             for msg in new_msgs:
                 role = "bot" if msg["role"] == "assistant" else msg["role"]
                 raw.append({
@@ -225,6 +257,18 @@ async def respond_care_plan_checkin(
                     "content": msg["content"],
                     "created_at": datetime.datetime.utcnow().isoformat()
                 })
+
+        # Always append bot_response if provided
+        bot_response = (final_state.get("bot_response") or "").strip()
+        if bot_response:
+            raw.append({
+                "id": str(uuid4()),
+                "role": "bot",
+                "content": bot_response,
+                "created_at": datetime.datetime.utcnow().isoformat()
+            })
+
+        if raw:
             thread.raw_messages = raw
 
         # Persist context
@@ -236,7 +280,11 @@ async def respond_care_plan_checkin(
 
         # 5. Build Response
         history = service.format_history_for_mobile(thread)
-        tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+        # If UI blocks are present, suppress tap options to reduce conflicting CTAs
+        if final_state.get("ui_blocks"):
+            tap_options = []
+        else:
+            tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
         
         # Convert Graph UI Blocks to Pydantic
         resp_ui_blocks = []
@@ -245,14 +293,15 @@ async def respond_care_plan_checkin(
             for act in block.get("actions", []):
                 actions.append(UIBlockAction(
                     id=act.get("id"), title=act.get("title"), 
-                    action_type="submit_event", payload=act.get("payload", {}),
+                    action_type=act.get("action_type", "submit_event"), payload=act.get("payload", {}),
                     style=act.get("style", "primary")
                 ))
             resp_ui_blocks.append(UIBlock(
                 id=block.get("id", str(uuid4())),
-                type="quick_actions", # Force quick actions for mobile compatibility
+                type=block.get("type") or "quick_actions",
                 title=block.get("title"),
                 subtitle=block.get("description") or block.get("subtitle"),
+                payload=block.get("payload", {}),
                 actions=actions,
                 dismissible=True, priority="high", 
                 analytics={"surface": "care_plan_checkin", "source": "langgraph"}
@@ -318,8 +367,43 @@ async def care_plan_ui_event(
             # Process the selection through LangGraph
             result = await process_alternate_selection(
                 state=stored_state,
-                selected_index=selected_idx
+                selected_index=selected_idx,
+                thread_id=thread.id
             )
+
+            # Handle LangGraph interrupt (confirmation)
+            interrupt_payloads = result.get("__interrupt__") or []
+            if interrupt_payloads:
+                payload = interrupt_payloads[0].value if hasattr(interrupt_payloads[0], "value") else interrupt_payloads[0]
+                ui_block = UIBlock(
+                    id=str(uuid4()),
+                    type="quick_actions",
+                    title="Confirm replacement",
+                    subtitle=payload.get("message") if isinstance(payload, dict) else "Confirm this replacement?",
+                    actions=[
+                        UIBlockAction(id="confirm_replace", title="Yes, confirm", action_type="submit_event", style="primary"),
+                        UIBlockAction(id="cancel_replace", title="No, keep plan", action_type="submit_event", style="secondary"),
+                    ],
+                    dismissible=True,
+                    priority="high",
+                    analytics={"surface": "care_plan_checkin", "source": "langgraph_interrupt"}
+                )
+
+                # Persist state for resume
+                _persist_state(thread, result)
+                db.add(thread)
+                db.commit()
+                db.refresh(thread)
+
+                history = service.format_history_for_mobile(thread)
+                return {
+                    "thread_id": thread.id,
+                    "local_date": thread.local_date.isoformat(),
+                    "history": history,
+                    "tap_options": [],
+                    "actionable_insights": thread.actionable_insights or {},
+                    "ui_blocks": [ui_block],
+                }
             logger.info(f"[SELECT_ALT] Step 4: Graph completed, result keys={list(result.keys())}")
             
             # Update thread with bot response
@@ -364,7 +448,8 @@ async def care_plan_ui_event(
             # Process as a skip confirmation through regular respond
             result = await process_care_plan_message(
                 state=stored_state,
-                user_message="Yes, skip it"
+                user_message="Yes, skip it",
+                thread_id=thread.id
             )
             
             bot_response = result.get("bot_response", "I've skipped that action for you.")
@@ -394,12 +479,48 @@ async def care_plan_ui_event(
                 "ui_blocks": [],
             }
         
+        # Handle interrupt confirmations
+        if action_id in ["confirm_replace", "cancel_replace"]:
+            stored_state = _reconstruct_state(thread, uid, service)
+            resume_value = True if action_id == "confirm_replace" else False
+            result = await process_alternate_selection(
+                state=stored_state,
+                thread_id=thread.id,
+                resume=resume_value
+            )
+
+            bot_response = result.get("bot_response", "All set.")
+            raw_messages = list(thread.raw_messages or [])
+            raw_messages.append({
+                "id": str(uuid4()),
+                "role": "assistant",
+                "content": bot_response,
+                "created_at": datetime.datetime.utcnow().isoformat(),
+            })
+            thread.raw_messages = raw_messages
+
+            _persist_state(thread, result)
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": [],
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [],
+            }
+
         # Handle show_alternates
         if action_id == "show_alternates":
             stored_state = _reconstruct_state(thread, uid, service)
             result = await process_care_plan_message(
                 state=stored_state,
-                user_message="Show me alternatives"
+                user_message="Show me alternatives",
+                thread_id=thread.id
             )
             
             bot_response = result.get("bot_response", "Here are some alternatives:")
@@ -434,9 +555,10 @@ async def care_plan_ui_event(
                     ))
                 resp_ui_blocks.append(UIBlock(
                     id=block.get("id", str(uuid4())),
-                    type="quick_actions",
+                    type=block.get("type") or "quick_actions",
                     title=block.get("title"),
                     subtitle=block.get("subtitle"),
+                    payload=block.get("payload", {}),
                     actions=actions,
                     dismissible=True, priority="high",
                     analytics={"surface": "care_plan_checkin", "source": "langgraph_event"}
