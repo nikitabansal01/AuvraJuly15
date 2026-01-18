@@ -683,8 +683,16 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
             # Create new action - MATCHING THE EXACT FORMAT FROM action_plan_generator.py
             logger.info(f"[GRAPH_NODE] Creating new action with plan_id={original.plan_id}")
             
-            # Generate image prompt for new action
-            image_prompt = f"Calming photograph representing {selected_alt['title']}, peaceful atmosphere, soft natural lighting"
+            # Generate image prompt using EXACT SAME format as action_plan_generator.py
+            category = original.category.lower() if original.category else "food"
+            title = selected_alt["title"]
+            
+            if category == "food":
+                image_prompt = f"Professional close-up food photography of {title}, appetizing presentation, natural lighting, soft shadows, 4K quality"
+            elif category == "movement":
+                image_prompt = f"Serene photograph of a woman doing {title}, natural setting, peaceful atmosphere, soft morning light"
+            else:
+                image_prompt = f"Calming photograph representing {title}, peaceful atmosphere, soft natural lighting"
             
             new_item = ActionPlanItem(
                 plan_id=original.plan_id,
