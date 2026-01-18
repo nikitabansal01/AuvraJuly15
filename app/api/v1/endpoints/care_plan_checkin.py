@@ -9,10 +9,14 @@ import datetime
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
-from app.models.ui_blocks import UIBlock, UIBlockAction
+from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.care_plan_checkin_service import CarePlanCheckInService
 # Import Graph
-from app.langgraph.graphs.care_plan_checkin import process_care_plan_message, CarePlanCheckInState
+from app.langgraph.graphs.care_plan_checkin import (
+    process_care_plan_message, 
+    process_alternate_selection,
+    CarePlanCheckInState
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -250,4 +254,185 @@ async def respond_care_plan_checkin(
     except Exception as e:
         logger.error(f"Respond error: {e}")
         # Return fallback error message to user via 500? Or smooth error?
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/event", response_model=RespondCarePlanCheckInResponse)
+async def care_plan_ui_event(
+    payload: UIEventRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Handle UI block events like button clicks.
+    
+    Routes:
+    - select_alt_N: User selected alternate action N, process replacement
+    - confirm_skip: User confirmed skip
+    - show_alternates: User wants to see alternatives
+    """
+    try:
+        uid = current_user["uid"]
+        if not payload.thread_id:
+            raise HTTPException(status_code=400, detail="thread_id is required")
+        
+        service = CarePlanCheckInService(db)
+        thread = service.get_or_create_thread(uid=uid)
+        
+        action_id = (payload.action_id or "").strip()
+        meta = payload.metadata or {}
+        
+        logger.info(f"Care plan UI event: action_id={action_id}, thread={payload.thread_id}")
+        
+        # Handle alternate selection (select_alt_0, select_alt_1, etc.)
+        if action_id.startswith("select_alt_"):
+            try:
+                selected_idx = int(action_id.replace("select_alt_", ""))
+            except ValueError:
+                selected_idx = 0
+            
+            # Load current state from thread
+            stored_state = thread.langgraph_state or {}
+            
+            # Process the selection through LangGraph
+            result = await process_alternate_selection(
+                state=stored_state,
+                selected_index=selected_idx
+            )
+            
+            # Update thread with bot response
+            bot_response = result.get("bot_response", "I've made the change for you!")
+            raw_messages = list(thread.raw_messages or [])
+            raw_messages.append({
+                "id": str(uuid4()),
+                "role": "assistant",
+                "content": bot_response,
+                "created_at": datetime.datetime.utcnow().isoformat(),
+            })
+            thread.raw_messages = raw_messages
+            thread.langgraph_state = result
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+            
+            # Format response
+            history = service.format_history_for_mobile(thread)
+            
+            # Check for refresh actions
+            actions_to_execute = result.get("actions_to_execute", [])
+            actionable_insights = thread.actionable_insights or {}
+            if any(a.get("type") == "refresh_plan" for a in actions_to_execute):
+                actionable_insights["refresh_plan"] = True
+            
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": [],  # Clear CTAs after selection
+                "actionable_insights": actionable_insights,
+                "ui_blocks": [],  # Clear UI blocks after selection
+            }
+        
+        # Handle confirm_skip
+        if action_id == "confirm_skip":
+            stored_state = thread.langgraph_state or {}
+            # Process as a skip confirmation through regular respond
+            result = await process_care_plan_message(
+                state=stored_state,
+                user_message="Yes, skip it"
+            )
+            
+            bot_response = result.get("bot_response", "I've skipped that action for you.")
+            raw_messages = list(thread.raw_messages or [])
+            raw_messages.append({
+                "id": str(uuid4()),
+                "role": "assistant",
+                "content": bot_response,
+                "created_at": datetime.datetime.utcnow().isoformat(),
+            })
+            thread.raw_messages = raw_messages
+            thread.langgraph_state = result
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+            
+            history = service.format_history_for_mobile(thread)
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": [],
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": [],
+            }
+        
+        # Handle show_alternates
+        if action_id == "show_alternates":
+            stored_state = thread.langgraph_state or {}
+            result = await process_care_plan_message(
+                state=stored_state,
+                user_message="Show me alternatives"
+            )
+            
+            bot_response = result.get("bot_response", "Here are some alternatives:")
+            raw_messages = list(thread.raw_messages or [])
+            raw_messages.append({
+                "id": str(uuid4()),
+                "role": "assistant",
+                "content": bot_response,
+                "created_at": datetime.datetime.utcnow().isoformat(),
+            })
+            thread.raw_messages = raw_messages
+            thread.langgraph_state = result
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+            
+            history = service.format_history_for_mobile(thread)
+            
+            # Format UI blocks from result
+            resp_ui_blocks = []
+            for block in result.get("ui_blocks", []):
+                actions = []
+                for a in block.get("actions", []):
+                    actions.append(UIBlockAction(
+                        id=a.get("id", str(uuid4())),
+                        title=a.get("title", "Action"),
+                        action_type=a.get("action_type", "submit_event"),
+                        style=a.get("style", "primary")
+                    ))
+                resp_ui_blocks.append(UIBlock(
+                    id=block.get("id", str(uuid4())),
+                    type="quick_actions",
+                    title=block.get("title"),
+                    subtitle=block.get("subtitle"),
+                    actions=actions,
+                    dismissible=True, priority="high",
+                    analytics={"surface": "care_plan_checkin", "source": "langgraph_event"}
+                ))
+            
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": [],
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": resp_ui_blocks,
+            }
+        
+        # Unknown action - return empty
+        logger.warning(f"Unknown UI event action: {action_id}")
+        history = service.format_history_for_mobile(thread)
+        return {
+            "thread_id": thread.id,
+            "local_date": thread.local_date.isoformat(),
+            "history": history,
+            "tap_options": [],
+            "actionable_insights": thread.actionable_insights or {},
+            "ui_blocks": [],
+        }
+        
+    except Exception as e:
+        logger.error(f"UI event error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
