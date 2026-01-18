@@ -54,6 +54,69 @@ class TranscribeResponse(BaseModel):
     text: str
 
 # --- Helpers ---
+def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePlanCheckInService) -> CarePlanCheckInState:
+    """Helper to reconstruct full LangGraph state from thread and service context."""
+    saved_context = thread.actionable_insights or {}
+    
+    # Build message history (subset for context)
+    graph_messages = []
+    for rm in (thread.raw_messages or [])[-8:]:
+        graph_messages.append({
+            "role": "assistant" if rm["role"] == "bot" else rm["role"], 
+            "content": rm["content"]
+        })
+
+    # Get current plan items
+    items = service.get_plan_items_for_ui(uid=uid)
+    
+    # Reconstruct state
+    return {
+        "user_id": uid,
+        "thread_id": thread.id,
+        "message_id": str(uuid4()),
+        "action_items": [i for i in items],
+        "messages": graph_messages,
+        
+        # Restore persistent context
+        "workflow_stage": saved_context.get("workflow_stage"),
+        "targeted_action_index": saved_context.get("targeted_action_index"),
+        "barrier_type": saved_context.get("barrier_type"),
+        "change_reason": saved_context.get("change_reason"),
+        "alternate_candidates": saved_context.get("alternate_candidates", []),
+        
+        # Defaults/Context (could be loaded from streak_service/plan_generator if needed)
+        "current_streak": 0, 
+        "refresh_tokens_available": 2,
+        "refresh_tokens_unlocked": True,
+        "plan_id": None, "plan_date": None, "cycle_day": None, "cycle_phase": None, "primary_hormone": None,
+        "current_intent": None, "user_message": None, "targeted_action_id": None,
+        "selected_alternate_index": None, "selected_alternate": None,
+        "ui_blocks": [], "bot_response": "", "actions_to_execute": [], 
+        "phase": "loaded", "error": None
+    }
+
+def _persist_state(thread: CarePlanCheckInThread, final_state: CarePlanCheckInState):
+    """Update thread actionable_insights with persistent LangGraph state."""
+    new_insights = dict(thread.actionable_insights or {})
+    
+    # Serialize Pydantic objects to dicts
+    def serialize(obj):
+        if hasattr(obj, "model_dump"): return obj.model_dump()
+        if hasattr(obj, "dict"): return obj.dict()
+        return obj
+
+    raw_candidates = final_state.get("alternate_candidates", [])
+    serialized_candidates = [serialize(c) for c in raw_candidates]
+
+    new_insights.update({
+        "workflow_stage": final_state.get("workflow_stage"),
+        "targeted_action_index": final_state.get("targeted_action_index"),
+        "barrier_type": final_state.get("barrier_type"),
+        "change_reason": final_state.get("change_reason"),
+        "alternate_candidates": serialized_candidates,
+    })
+    thread.actionable_insights = new_insights
+
 def _ensure_tap_option(tap_options: List[Dict[str, str]], option_id: str, text: str) -> List[Dict[str, str]]:
     existing_ids = {t.get("id") for t in (tap_options or [])}
     if option_id in existing_ids:
@@ -148,35 +211,15 @@ async def respond_care_plan_checkin(
             if role == "bot": role = "assistant" # Graph usually uses 'assistant'
             graph_messages.append({"role": role, "content": m.get("content")})
 
-        state: CarePlanCheckInState = {
-            "user_id": uid,
-            "thread_id": thread.id,
-            "message_id": str(uuid4()),
-            "action_items": [i for i in items], # Copy
-            "messages": graph_messages,
-            
-            # Restore persistent context
-            "workflow_stage": saved_context.get("workflow_stage"),
-            "targeted_action_index": saved_context.get("targeted_action_index"),
-            "barrier_type": saved_context.get("barrier_type"),
-            "change_reason": saved_context.get("change_reason"),
-            "alternate_candidates": saved_context.get("alternate_candidates", []),
-            "current_streak": 0, # Should load real streak if needed
-            "refresh_tokens_available": 2, # simplified
-            "refresh_tokens_unlocked": True,
-            # Defaults
-            "plan_id": None, "plan_date": None, "cycle_day": None, "cycle_phase": None, "primary_hormone": None,
-            "current_intent": None, "user_message": None, "targeted_action_id": None,
-            "selected_alternate_index": None, "selected_alternate": None,
-            "ui_blocks": [], "bot_response": "", "actions_to_execute": [], "phase": "loaded", "error": None
-        }
+        # 2. Reconstruct State
+        state = _reconstruct_state(thread, uid, service)
 
         # 3. Invoke Graph
         final_state = await process_care_plan_message(state, payload.message_text)
 
         # 4. Save Result to DB
         # Identify new messages
-        new_msgs_count = len(final_state["messages"]) - len(graph_messages)
+        new_msgs_count = len(final_state["messages"]) - len(state["messages"])
         if new_msgs_count > 0:
             new_msgs = final_state["messages"][-new_msgs_count:]
             raw = list(thread.raw_messages or [])
@@ -191,28 +234,7 @@ async def respond_care_plan_checkin(
             thread.raw_messages = raw
 
         # Persist context
-        new_insights = dict(thread.actionable_insights or {})
-        
-        # Serialize alternates (Fix for 500 JSON error)
-        raw_candidates = final_state.get("alternate_candidates", [])
-        serialized_candidates = []
-        if raw_candidates:
-            for c in raw_candidates:
-                if hasattr(c, "model_dump"): # Pydantic V2
-                    serialized_candidates.append(c.model_dump())
-                elif hasattr(c, "dict"): # Pydantic V1
-                    serialized_candidates.append(c.dict())
-                else: 
-                    serialized_candidates.append(c)
-
-        new_insights.update({
-            "workflow_stage": final_state.get("workflow_stage"),
-            "targeted_action_index": final_state.get("targeted_action_index"),
-            "barrier_type": final_state.get("barrier_type"),
-            "change_reason": final_state.get("change_reason"),
-            "alternate_candidates": serialized_candidates,
-        })
-        thread.actionable_insights = new_insights
+        _persist_state(thread, final_state)
         
         db.add(thread)
         db.commit()
@@ -293,7 +315,7 @@ async def care_plan_ui_event(
                 selected_idx = 0
             
             # Load current state from thread
-            stored_state = thread.langgraph_state or {}
+            stored_state = _reconstruct_state(thread, uid, service)
             
             # Process the selection through LangGraph
             result = await process_alternate_selection(
@@ -311,7 +333,10 @@ async def care_plan_ui_event(
                 "created_at": datetime.datetime.utcnow().isoformat(),
             })
             thread.raw_messages = raw_messages
-            thread.langgraph_state = result
+            
+            # Persist state correctly
+            _persist_state(thread, result)
+            
             db.add(thread)
             db.commit()
             db.refresh(thread)
@@ -336,7 +361,7 @@ async def care_plan_ui_event(
         
         # Handle confirm_skip
         if action_id == "confirm_skip":
-            stored_state = thread.langgraph_state or {}
+            stored_state = _reconstruct_state(thread, uid, service)
             # Process as a skip confirmation through regular respond
             result = await process_care_plan_message(
                 state=stored_state,
@@ -352,7 +377,10 @@ async def care_plan_ui_event(
                 "created_at": datetime.datetime.utcnow().isoformat(),
             })
             thread.raw_messages = raw_messages
-            thread.langgraph_state = result
+            
+            # Persist state
+            _persist_state(thread, result)
+            
             db.add(thread)
             db.commit()
             db.refresh(thread)
@@ -369,7 +397,7 @@ async def care_plan_ui_event(
         
         # Handle show_alternates
         if action_id == "show_alternates":
-            stored_state = thread.langgraph_state or {}
+            stored_state = _reconstruct_state(thread, uid, service)
             result = await process_care_plan_message(
                 state=stored_state,
                 user_message="Show me alternatives"
@@ -384,7 +412,10 @@ async def care_plan_ui_event(
                 "created_at": datetime.datetime.utcnow().isoformat(),
             })
             thread.raw_messages = raw_messages
-            thread.langgraph_state = result
+            
+            # Persist state
+            _persist_state(thread, result)
+            
             db.add(thread)
             db.commit()
             db.refresh(thread)
