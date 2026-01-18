@@ -773,6 +773,23 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
             refresh_result = reward_service.use_refresh(state["user_id"])
             logger.info(f"[GRAPH_NODE] Refresh token consumed: {refresh_result}")
             
+            if not refresh_result.get("success"):
+                logger.warning(f"[GRAPH_NODE] Refresh failed: {refresh_result.get('error')}")
+                # CRITICAL: Rollback the new action creation if token consumption failed!
+                db.rollback()
+                
+                # Update state to reflect reality (0 tokens)
+                current_streak = state.get("current_streak", 0)
+                remaining_needed = max(0, 16 - current_streak)
+                
+                return {
+                    **state,
+                    "bot_response": f"I couldn't complete the replacement because you're out of refreshes for today! You need a {16}-day streak to unlock more. (Current streak: {current_streak})",
+                    "error": "insufficient_refresh_tokens",
+                    "ui_blocks": [],
+                    "phase": "complete"
+                }
+
             logger.info(f"[GRAPH_NODE] Committing to database")
             db.commit()
             logger.info(f"[GRAPH_NODE] Database commit successful")
@@ -787,6 +804,9 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
                 "ui_blocks": [],
                 "phase": "complete"
             }
+        except Exception as e:
+            db.rollback()
+            raise e
         finally:
             logger.info(f"[GRAPH_NODE] Closing DB session")
             db.close()
