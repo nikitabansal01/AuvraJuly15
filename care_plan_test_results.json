@@ -1,0 +1,6430 @@
+[
+  {
+    "timestamp": "2026-01-18T23:31:27.562731",
+    "category": "AUTH_SUCCESS",
+    "uid": "jYE8X88xNjRLa6ydpOuAFvTFCRq2"
+  },
+  {
+    "timestamp": "2026-01-18T23:31:29.312388",
+    "category": "RESPONSE",
+    "test_name": "MARK_DONE_BASIC_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "be063539-4917-495b-881d-a27653765348",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "c2ac2a4a-aec2-4ae2-9f5a-7b2fed78f4d8",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:31:32.942349",
+    "category": "RESPONSE",
+    "test_name": "MARK_DONE_BASIC_STEP_1",
+    "input_type": "message",
+    "input_value": "I did my morning action",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "be063539-4917-495b-881d-a27653765348",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'm not sure which action you completed. Can you specify?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:31:36.067782",
+    "category": "RESPONSE",
+    "test_name": "MARK_DONE_SPECIFIC_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "83e50891-f11e-4acd-b5f4-a0c9646666ab",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "1efdecc0-7ff3-461b-939a-2bdca8215bf4",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:31:41.405979",
+    "category": "RESPONSE",
+    "test_name": "MARK_DONE_SPECIFIC_STEP_1",
+    "input_type": "message",
+    "input_value": "I completed the breakfast recommendation",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "83e50891-f11e-4acd-b5f4-a0c9646666ab",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "\ud83c\udf89 Androgens is celebrating! That's 0 days strong. Just 4 more to go!",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:31:44.559651",
+    "category": "RESPONSE",
+    "test_name": "SKIP_BASIC_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "f09742df-8803-45d0-bda1-922f71f2198d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "67eb2985-1f1c-4018-b8d8-3371050acac3",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:31:49.995154",
+    "category": "RESPONSE",
+    "test_name": "SKIP_BASIC_STEP_1",
+    "input_type": "message",
+    "input_value": "skip",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "f09742df-8803-45d0-bda1-922f71f2198d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Heads up: skipping this action will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:31:53.358114",
+    "category": "RESPONSE",
+    "test_name": "SKIP_SPECIFIC_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "e0b41334-6089-4566-8b1d-5e6d6f3c4351",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "5c9c6aad-2b7e-49f0-98df-0402b43c6ae0",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:31:58.001113",
+    "category": "RESPONSE",
+    "test_name": "SKIP_SPECIFIC_STEP_1",
+    "input_type": "message",
+    "input_value": "I want to skip the walking exercise",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "e0b41334-6089-4566-8b1d-5e6d6f3c4351",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Heads up: skipping Brisk Walking will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:32:01.361508",
+    "category": "RESPONSE",
+    "test_name": "ASK_WHY_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "28fc62d2-6dba-43f0-99a3-76d647089bfd",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "67581f69-9e94-4412-8167-522eb7a37fe6",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:32:05.355703",
+    "category": "RESPONSE",
+    "test_name": "ASK_WHY_STEP_1",
+    "input_type": "message",
+    "input_value": "Why is this recommended for me?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "28fc62d2-6dba-43f0-99a3-76d647089bfd",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action are you asking about?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:32:08.530420",
+    "category": "RESPONSE",
+    "test_name": "ASK_WHY_SPECIFIC_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fb750c50-5c7d-46f7-a4bd-06fc561a8489",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "62f7e1fb-e05f-4342-b47b-c277d2136e72",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:32:12.627628",
+    "category": "RESPONSE",
+    "test_name": "ASK_WHY_SPECIFIC_STEP_1",
+    "input_type": "message",
+    "input_value": "Why should I do yoga?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fb750c50-5c7d-46f7-a4bd-06fc561a8489",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action are you asking about?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:32:15.800308",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_X_TO_Y_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "83b1d063-0dbf-4494-8ed7-0b982a871e3d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "32a62f28-9c63-46f1-9827-93dd770f0294",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:32:19.592085",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_X_TO_Y_STEP_1",
+    "input_type": "message",
+    "input_value": "Can I do yoga instead of walking?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "83b1d063-0dbf-4494-8ed7-0b982a871e3d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "yoga",
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:32:22.705885",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_X_ONLY_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "9c31944f-9232-45b1-a00f-9e8e6b318afd",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "564d80be-523c-410f-bf0f-b287b1ea7263",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:32:26.141806",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_X_ONLY_STEP_1",
+    "input_type": "message",
+    "input_value": "I want to change the breakfast recommendation",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "9c31944f-9232-45b1-a00f-9e8e6b318afd",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:32:29.288897",
+    "category": "RESPONSE",
+    "test_name": "SUGGEST_ALTERNATES_FOR_X_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "0e085bbc-90af-4ed7-8ad5-48bb7f8258db",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "3e302236-8086-4086-ad2a-b001da1f9353",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:32:32.904436",
+    "category": "RESPONSE",
+    "test_name": "SUGGEST_ALTERNATES_FOR_X_STEP_1",
+    "input_type": "message",
+    "input_value": "Suggest alternates for the morning exercise",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "0e085bbc-90af-4ed7-8ad5-48bb7f8258db",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:32:36.690669",
+    "category": "RESPONSE",
+    "test_name": "DONT_LIKE_PLAN_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "4e96b914-4fa9-4f45-ac96-9ed1eb3825aa",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "2c448897-16f8-49b1-bc38-6fc1e0d89775",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:32:45.805635",
+    "category": "RESPONSE",
+    "test_name": "DONT_LIKE_PLAN_STEP_1",
+    "input_type": "message",
+    "input_value": "I don't like this plan",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "4e96b914-4fa9-4f45-ac96-9ed1eb3825aa",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "Adjust Your Plan",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "swap_item",
+            "title": "Swap Item",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why is this here?",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:32:48.939023",
+    "category": "RESPONSE",
+    "test_name": "GIVE_SUGGESTIONS_FOR_X_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "5c0dd050-ce8d-4751-8d2f-b652530fff5a",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "dbd84a21-dcc3-4478-ad68-4316e944eb8c",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:32:57.888727",
+    "category": "RESPONSE",
+    "test_name": "GIVE_SUGGESTIONS_FOR_X_STEP_1",
+    "input_type": "message",
+    "input_value": "Give me suggestions for the mindfulness activity",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "5c0dd050-ce8d-4751-8d2f-b652530fff5a",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Mindfulness Activity Suggestions",
+        "subtitle": "Choose an activity to switch to:",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mindfulness_meditation",
+            "title": "Meditation",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "mindfulness_yoga",
+            "title": "Yoga",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "mindfulness_breathing",
+            "title": "Breathing Exercises",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "mindfulness_journaling",
+            "title": "Journaling",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:33:01.060508",
+    "category": "RESPONSE",
+    "test_name": "SHOW_ME_OPTIONS_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "bb3edf60-c6ee-4984-bc41-415fc7789689",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "c712c7c0-717b-44ae-be3a-22e253850669",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:33:09.769168",
+    "category": "RESPONSE",
+    "test_name": "SHOW_ME_OPTIONS_STEP_1",
+    "input_type": "message",
+    "input_value": "Show me other options",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "bb3edf60-c6ee-4984-bc41-415fc7789689",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Select an Option",
+        "subtitle": "Choose your desired action.",
+        "payload": {},
+        "actions": [
+          {
+            "id": "option_1",
+            "title": "Change time slot",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "option_2",
+            "title": "Change action name",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "option_3",
+            "title": "Show more options",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:33:13.554159",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_EVERYTHING_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2f81e809-60a8-495f-8b59-6012695e4a5c",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "c58a8da8-63ef-4b99-be20-cdc2de1f872f",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:33:23.080905",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_EVERYTHING_STEP_1",
+    "input_type": "message",
+    "input_value": "Change everything, I hate all of it",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2f81e809-60a8-495f-8b59-6012695e4a5c",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "What would you like to change?",
+        "subtitle": "Select an action below:",
+        "payload": {},
+        "actions": [
+          {
+            "id": "change_action_1",
+            "title": "Change Medication",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_2",
+            "title": "Change Schedule",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_3",
+            "title": "Change Goals",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_4",
+            "title": "Change Support",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:33:26.251875",
+    "category": "RESPONSE",
+    "test_name": "REPLACE_WITH_SPECIFIC_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "5a53071a-b894-4254-9651-925b4b52d247",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "9bed4099-7431-4790-8b47-d6c0ee7e5036",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:33:30.554893",
+    "category": "RESPONSE",
+    "test_name": "REPLACE_WITH_SPECIFIC_STEP_1",
+    "input_type": "message",
+    "input_value": "Replace oatmeal with eggs",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "5a53071a-b894-4254-9651-925b4b52d247",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "eggs",
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:33:33.624729",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_SKIP_TO_DONE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "4d0a6e9c-8355-42f6-aec3-110c811c7fdf",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "d2c12cec-4e4a-4ea2-b5b2-8563f0c41f15",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:33:39.006992",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_SKIP_TO_DONE_STEP_1",
+    "input_type": "message",
+    "input_value": "skip the morning action",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "4d0a6e9c-8355-42f6-aec3-110c811c7fdf",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Heads up: skipping Brisk Walking will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:33:44.785814",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_SKIP_TO_DONE_STEP_2",
+    "input_type": "message",
+    "input_value": "actually wait, I did it",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "4d0a6e9c-8355-42f6-aec3-110c811c7fdf",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "\ud83c\udf89 Thyroid is celebrating! That's 0 days strong. Just 4 more to go!",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:33:47.960161",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_CHANGE_TO_WHY_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "3221b7e6-beca-4642-86c2-00519e449eb1",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "1e631d47-5260-4ac4-a4d5-911db303f373",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:33:51.860687",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_CHANGE_TO_WHY_STEP_1",
+    "input_type": "message",
+    "input_value": "I want to change the breakfast",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "3221b7e6-beca-4642-86c2-00519e449eb1",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:00.862871",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_CHANGE_TO_WHY_STEP_2",
+    "input_type": "message",
+    "input_value": "actually why is it recommended?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "3221b7e6-beca-4642-86c2-00519e449eb1",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "Pine Nuts was chosen to support your androgens. support your goals Want a simpler alternative or keep it as is?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_9476",
+        "type": "choice_buttons",
+        "title": "Choose Your Next Step",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "ask_more_info",
+            "title": "Why Pine Nuts?",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "simpler_alternative",
+            "title": "Show Alternatives",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "keep_as_is",
+            "title": "Keep as Is",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:04.002331",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_WHY_TO_SKIP_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "bc32b8fe-0993-4c26-aee7-28dedb49b582",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "37f8c483-ece0-40a2-82e4-f5e8803f03a3",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:34:13.358211",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_WHY_TO_SKIP_STEP_1",
+    "input_type": "message",
+    "input_value": "Why should I do this exercise?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "bc32b8fe-0993-4c26-aee7-28dedb49b582",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Brisk Walking was chosen to support your thyroid. support your goals Want a simpler alternative or keep it as is?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_2901",
+        "type": "choice_buttons",
+        "title": "Exercise Alternatives",
+        "subtitle": "Choose an option to continue",
+        "payload": {},
+        "actions": [
+          {
+            "id": "switch_to_brisk_walking",
+            "title": "Keep Brisk Walking",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "simpler_alternative",
+            "title": "Show Simpler Options",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:18.579702",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_WHY_TO_SKIP_STEP_2",
+    "input_type": "message",
+    "input_value": "nah skip it",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "bc32b8fe-0993-4c26-aee7-28dedb49b582",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "Heads up: skipping Brisk Walking will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:21.759462",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_DONE_TO_CHANGE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "806bb594-c43c-4c32-973a-b7da08e20d9b",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "2ff59125-59d6-4140-a4e2-77b4c2c7248a",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:34:28.110047",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_DONE_TO_CHANGE_STEP_1",
+    "input_type": "message",
+    "input_value": "I completed the meal",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "806bb594-c43c-4c32-973a-b7da08e20d9b",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "\ud83c\udf89 Androgens is celebrating! That's 0 days strong. Just 4 more to go!",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1196,
+      "alternate_candidates": [],
+      "targeted_action_index": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:32.713365",
+    "category": "RESPONSE",
+    "test_name": "SWITCH_DONE_TO_CHANGE_STEP_2",
+    "input_type": "message",
+    "input_value": "wait no, can I change it?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "806bb594-c43c-4c32-973a-b7da08e20d9b",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1196,
+      "alternate_candidates": [],
+      "targeted_action_index": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:35.986613",
+    "category": "RESPONSE",
+    "test_name": "RAPID_INTENT_SWITCH_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "8672b4d9-a33d-4e88-90b3-b22e6b40b270",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "c04b1ea3-300d-48bf-a34a-703a11e5b776",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:34:39.672865",
+    "category": "RESPONSE",
+    "test_name": "RAPID_INTENT_SWITCH_STEP_1",
+    "input_type": "message",
+    "input_value": "done",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "8672b4d9-a33d-4e88-90b3-b22e6b40b270",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'm not sure which action you completed. Can you specify?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:44.384223",
+    "category": "RESPONSE",
+    "test_name": "RAPID_INTENT_SWITCH_STEP_2",
+    "input_type": "message",
+    "input_value": "skip",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "8672b4d9-a33d-4e88-90b3-b22e6b40b270",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "Heads up: skipping this action will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:53.451101",
+    "category": "RESPONSE",
+    "test_name": "RAPID_INTENT_SWITCH_STEP_3",
+    "input_type": "message",
+    "input_value": "change it",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "8672b4d9-a33d-4e88-90b3-b22e6b40b270",
+    "local_date": "2026-01-18",
+    "bot_message_count": 4,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Select Action to Change",
+        "subtitle": "Choose the action you'd like to modify.",
+        "payload": {},
+        "actions": [
+          {
+            "id": "action_1",
+            "title": "Action 1",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "action_2",
+            "title": "Action 2",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "action_3",
+            "title": "Action 3",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "action_4",
+            "title": "Action 4",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:34:57.801759",
+    "category": "RESPONSE",
+    "test_name": "RAPID_INTENT_SWITCH_STEP_4",
+    "input_type": "message",
+    "input_value": "why?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "8672b4d9-a33d-4e88-90b3-b22e6b40b270",
+    "local_date": "2026-01-18",
+    "bot_message_count": 5,
+    "last_bot_message": "Which action are you asking about?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:35:01.739977",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_OK_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "32c3e4f1-5fd1-4ebe-a95d-c7f13520aa2d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "ca5ac35c-73e1-485a-ad99-93ea5a08abfb",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:35:10.395067",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_OK_STEP_1",
+    "input_type": "message",
+    "input_value": "ok",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "32c3e4f1-5fd1-4ebe-a95d-c7f13520aa2d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "Adjust Your Plan",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "swap_item",
+            "title": "Swap Item",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why It's Here",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:35:13.567597",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_SURE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "088819b6-12f7-474f-9424-9d28c1001720",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "5f252702-6bfa-4a22-bd16-2fda6f510ed8",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:35:23.702460",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_SURE_STEP_1",
+    "input_type": "message",
+    "input_value": "sure",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "088819b6-12f7-474f-9424-9d28c1001720",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "Adjust Your Plan",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "swap_item",
+            "title": "Swap Item",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why is this here?",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:35:26.879542",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_WHATEVER_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "076d439d-8959-4266-963c-96b15da8c1ac",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "bb819b62-6095-46cd-8c35-3cf978cb8eb2",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:35:30.363483",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_WHATEVER_STEP_1",
+    "input_type": "message",
+    "input_value": "whatever",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "076d439d-8959-4266-963c-96b15da8c1ac",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Today's plan: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You've completed 0/4 so far.",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:35:33.590225",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_IDK_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fb4ed2d2-4fff-480e-bfb5-1ee8d643701d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "bc8dcbfa-5a7a-4545-9ce1-58866b56a766",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:35:43.981415",
+    "category": "RESPONSE",
+    "test_name": "VAGUE_IDK_STEP_1",
+    "input_type": "message",
+    "input_value": "I don't know",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fb4ed2d2-4fff-480e-bfb5-1ee8d643701d",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "What would you like to do?",
+        "subtitle": "Choose an option to adjust your plan.",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark as Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "swap_item",
+            "title": "Swap an Item",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why is this here?",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:35:47.163755",
+    "category": "RESPONSE",
+    "test_name": "EMPTY_LIKE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "b316e8d3-8138-4934-9489-d28b7127db8b",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "aca006a2-ced4-48f6-b6d4-1bc9120316b2",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:37:12.251232",
+    "category": "RESPONSE",
+    "test_name": "EMPTY_LIKE_STEP_1",
+    "input_type": "message",
+    "input_value": "...",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "b316e8d3-8138-4934-9489-d28b7127db8b",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "Adjust Your Plan",
+        "subtitle": "Choose an action for today's care plan.",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_swap",
+            "title": "Ask for Swap",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why It's Here",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:37:15.936228",
+    "category": "RESPONSE",
+    "test_name": "RANDOM_GIBBERISH_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "8c1f5e50-41cf-41de-944e-b7e750e3cf18",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "af84d75c-2e31-47e2-9fba-1775d2c9c9d4",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:37:24.334762",
+    "category": "RESPONSE",
+    "test_name": "RANDOM_GIBBERISH_STEP_1",
+    "input_type": "message",
+    "input_value": "asdfghjkl",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "8c1f5e50-41cf-41de-944e-b7e750e3cf18",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "Adjust Your Plan",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_swap",
+            "title": "Swap Item",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why Here?",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:37:27.507780",
+    "category": "RESPONSE",
+    "test_name": "QUESTION_MARK_ONLY_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "a864fa99-9a77-49a4-b6b4-782f4b9b4029",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "21e15784-cac3-456d-a714-c70121b1bd68",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:37:35.970004",
+    "category": "RESPONSE",
+    "test_name": "QUESTION_MARK_ONLY_STEP_1",
+    "input_type": "message",
+    "input_value": "?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "a864fa99-9a77-49a4-b6b4-782f4b9b4029",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "What would you like to do?",
+        "subtitle": "Choose an action for today's plan",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "swap_item",
+            "title": "Swap Item",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why is this here?",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:37:39.180588",
+    "category": "RESPONSE",
+    "test_name": "EMOJI_ONLY_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "9239be2d-3602-4d00-b32f-bba8c49e8f22",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "471a0e71-e7da-448d-a60f-947fac3459d4",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:37:47.374707",
+    "category": "RESPONSE",
+    "test_name": "EMOJI_ONLY_STEP_1",
+    "input_type": "message",
+    "input_value": "\ud83e\udd37\u200d\u2640\ufe0f",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "9239be2d-3602-4d00-b32f-bba8c49e8f22",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "Adjust Your Plan",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "swap_item",
+            "title": "Swap Item",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why It's Here?",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:37:50.546735",
+    "category": "RESPONSE",
+    "test_name": "DONE_AND_SKIP_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "ad5c950a-6444-464c-adab-49acc62ba440",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "4ae12bb6-94f7-486f-898a-582fcde07471",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:37:58.739524",
+    "category": "RESPONSE",
+    "test_name": "DONE_AND_SKIP_STEP_1",
+    "input_type": "message",
+    "input_value": "I did the breakfast but skip the exercise",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "ad5c950a-6444-464c-adab-49acc62ba440",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "Adjust Your Plan",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done_brisk_walking",
+            "title": "Mark as Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "show_alternatives",
+            "title": "Show Alternatives",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "skip_brisk_walking",
+            "title": "I Understand, Skip",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "destructive",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:38:02.343486",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_AND_WHY_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fe715613-7008-4754-a09a-09bd0eb2b809",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "402eb857-00bd-4e70-a047-81c14ebbe583",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:38:13.025088",
+    "category": "RESPONSE",
+    "test_name": "CHANGE_AND_WHY_STEP_1",
+    "input_type": "message",
+    "input_value": "Change it and tell me why it was chosen",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fe715613-7008-4754-a09a-09bd0eb2b809",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Select an Action to Change",
+        "subtitle": "Choose the action you want to modify.",
+        "payload": {},
+        "actions": [
+          {
+            "id": "change_meal_time",
+            "title": "Change Meal Time",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_exercise",
+            "title": "Change Exercise",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_medicine",
+            "title": "Change Medicine",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_sleep_schedule",
+            "title": "Change Sleep Schedule",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:38:16.455332",
+    "category": "RESPONSE",
+    "test_name": "SKIP_ALL_DONE_ONE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "78bc5216-c463-4736-91c2-0206b23935da",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "a70c73ed-1182-4c99-af08-5034f06a14c2",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:38:21.055533",
+    "category": "RESPONSE",
+    "test_name": "SKIP_ALL_DONE_ONE_STEP_1",
+    "input_type": "message",
+    "input_value": "Skip everything except breakfast which I already did",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "78bc5216-c463-4736-91c2-0206b23935da",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Heads up: skipping this action will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:38:24.200481",
+    "category": "RESPONSE",
+    "test_name": "MULTIPLE_CHANGES_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "f291eb3c-1ab4-4be6-9d20-c6936acbdae8",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "aa05d038-0f79-4843-8a98-f936da4e91fc",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:38:27.997624",
+    "category": "RESPONSE",
+    "test_name": "MULTIPLE_CHANGES_STEP_1",
+    "input_type": "message",
+    "input_value": "Change breakfast to eggs and change walking to yoga",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "f291eb3c-1ab4-4be6-9d20-c6936acbdae8",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "yoga",
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:38:31.304674",
+    "category": "RESPONSE",
+    "test_name": "CANCEL_BASIC_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "f237a324-e37c-4382-9995-341ff95a20b0",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "e3628954-6e83-4c5e-b42c-e3e34393cafc",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:38:35.196089",
+    "category": "RESPONSE",
+    "test_name": "CANCEL_BASIC_STEP_1",
+    "input_type": "message",
+    "input_value": "cancel",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "f237a324-e37c-4382-9995-341ff95a20b0",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:38:38.472428",
+    "category": "RESPONSE",
+    "test_name": "CANCEL_AFTER_START_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "d42d1335-9ce9-4b71-9a29-43409e2214fb",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "ba159f89-cde0-4705-a0ab-72072c56249b",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:38:42.800047",
+    "category": "RESPONSE",
+    "test_name": "CANCEL_AFTER_START_STEP_1",
+    "input_type": "message",
+    "input_value": "I want to change breakfast",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "d42d1335-9ce9-4b71-9a29-43409e2214fb",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:38:46.971636",
+    "category": "RESPONSE",
+    "test_name": "CANCEL_AFTER_START_STEP_2",
+    "input_type": "message",
+    "input_value": "cancel that",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "d42d1335-9ce9-4b71-9a29-43409e2214fb",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:38:50.134493",
+    "category": "RESPONSE",
+    "test_name": "NEVERMIND_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "04c89d4e-2b07-4d9b-853e-2e17fb448e02",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "932d3779-5dbc-475f-be66-900a2119899d",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:39:02.229806",
+    "category": "RESPONSE",
+    "test_name": "NEVERMIND_STEP_1",
+    "input_type": "message",
+    "input_value": "show me alternatives",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "04c89d4e-2b07-4d9b-853e-2e17fb448e02",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Select an Alternative Action",
+        "subtitle": "Choose one of the options below:",
+        "payload": {},
+        "actions": [
+          {
+            "id": "change_action_1",
+            "title": "Action 1",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_2",
+            "title": "Action 2",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_3",
+            "title": "Action 3",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_4",
+            "title": "Action 4",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:39:06.326006",
+    "category": "RESPONSE",
+    "test_name": "NEVERMIND_STEP_2",
+    "input_type": "message",
+    "input_value": "never mind",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "04c89d4e-2b07-4d9b-853e-2e17fb448e02",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:39:09.498404",
+    "category": "RESPONSE",
+    "test_name": "GO_BACK_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "1ad5f01a-7be7-42ae-a812-69829dfb01ea",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "00c5d6fa-a3ff-45ad-a7ae-5c1149f7fa32",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:39:14.170220",
+    "category": "RESPONSE",
+    "test_name": "GO_BACK_STEP_1",
+    "input_type": "message",
+    "input_value": "skip the morning action",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "1ad5f01a-7be7-42ae-a812-69829dfb01ea",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Heads up: skipping Brisk Walking will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:39:18.614160",
+    "category": "RESPONSE",
+    "test_name": "GO_BACK_STEP_2",
+    "input_type": "message",
+    "input_value": "go back",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "1ad5f01a-7be7-42ae-a812-69829dfb01ea",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:39:21.888811",
+    "category": "RESPONSE",
+    "test_name": "DONE_PAST_TENSE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "7e05fd8b-4865-4c8f-85b1-81c9c2276068",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "a8165b88-36f8-4f58-8bf8-2abf391fd515",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:39:27.135021",
+    "category": "RESPONSE",
+    "test_name": "DONE_PAST_TENSE_STEP_1",
+    "input_type": "message",
+    "input_value": "I already ate my breakfast",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "7e05fd8b-4865-4c8f-85b1-81c9c2276068",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "\ud83c\udf89 Androgens is celebrating! That's 0 days strong. Just 4 more to go!",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1192,
+      "alternate_candidates": [],
+      "targeted_action_index": 0
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:39:30.285662",
+    "category": "RESPONSE",
+    "test_name": "DONE_FUTURE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "0741e5fc-b76f-4be1-ac4b-cbe4165ba915",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "104d5bca-bcf6-4310-b150-dbd111969a2e",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:40:49.750625",
+    "category": "RESPONSE",
+    "test_name": "DONE_FUTURE_STEP_1",
+    "input_type": "message",
+    "input_value": "I will do the exercise later",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "0741e5fc-b76f-4be1-ac4b-cbe4165ba915",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:40:53.025355",
+    "category": "RESPONSE",
+    "test_name": "CONDITIONAL_DONE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "7379fa59-ebda-453a-b114-350529b35f18",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "a38eb7fe-7289-478f-89c5-3f897a1caae9",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:40:56.344857",
+    "category": "RESPONSE",
+    "test_name": "CONDITIONAL_DONE_STEP_1",
+    "input_type": "message",
+    "input_value": "If I do it now, will it count?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "7379fa59-ebda-453a-b114-350529b35f18",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'm not sure which action you completed. Can you specify?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:40:59.578922",
+    "category": "RESPONSE",
+    "test_name": "NEGATIVE_CHANGE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "48ef98fb-0083-4c66-b2b5-522743d0a7bf",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "bad66e40-207b-4759-ac18-e878499be765",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:04.598567",
+    "category": "RESPONSE",
+    "test_name": "NEGATIVE_CHANGE_STEP_1",
+    "input_type": "message",
+    "input_value": "I can't do walking because of my injury",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "48ef98fb-0083-4c66-b2b5-522743d0a7bf",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Heads up: skipping Brisk Walking will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Want a quicker or easier alternative instead of skipping?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "confirm_block_6975",
+        "type": "quick_actions",
+        "title": null,
+        "subtitle": null,
+        "payload": {},
+        "actions": [
+          {
+            "id": "show_alternates",
+            "title": "Show me alternatives",
+            "action_type": "submit_event",
+            "payload": {
+              "action": "show_alternates"
+            },
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "confirm_skip",
+            "title": "I understand, skip it",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "destructive",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "not_feeling_well",
+      "workflow_stage": "skip_decision",
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:41:07.668578",
+    "category": "RESPONSE",
+    "test_name": "PREFERENCE_STATEMENT_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "46bdb4dd-851b-441c-aeed-4e0b2f24d5dc",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "bf83281b-d51c-41ca-a977-097e5c334fb5",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:16.283970",
+    "category": "RESPONSE",
+    "test_name": "PREFERENCE_STATEMENT_STEP_1",
+    "input_type": "message",
+    "input_value": "I prefer meditation over breathing exercises",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "46bdb4dd-851b-441c-aeed-4e0b2f24d5dc",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Select Your Preferred Action",
+        "subtitle": "Choose the action you'd like to change to:",
+        "payload": {},
+        "actions": [
+          {
+            "id": "meditation_action",
+            "title": "Meditation",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "breathing_action",
+            "title": "Breathing Exercises",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "yoga_action",
+            "title": "Yoga",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "walking_action",
+            "title": "Walking",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "meditation",
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:41:19.444644",
+    "category": "RESPONSE",
+    "test_name": "COMPLAINT_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "20ac1571-d8a5-444c-b862-b1326b7edec1",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "a8812d3a-75bb-4273-8f7a-324751beb0a1",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:32.861051",
+    "category": "RESPONSE",
+    "test_name": "COMPLAINT_STEP_1",
+    "input_type": "message",
+    "input_value": "This is too hard for me",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "20ac1571-d8a5-444c-b862-b1326b7edec1",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Choose an Action to Change",
+        "subtitle": "Select one of the options below:",
+        "payload": {},
+        "actions": [
+          {
+            "id": "change_time_slot",
+            "title": "Change Time Slot",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_name",
+            "title": "Change Action Name",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "show_more_options",
+            "title": "Show More Options",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "skip_this_step",
+            "title": "Skip This Step",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "destructive",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:41:36.091243",
+    "category": "RESPONSE",
+    "test_name": "QUESTION_ABOUT_ACTION_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "cd6185b9-7356-474c-b55f-b19bd632db0c",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "98f0b5fc-d209-4f54-bf2f-a0b76a68223d",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:43.304803",
+    "category": "RESPONSE",
+    "test_name": "QUESTION_ABOUT_ACTION_STEP_1",
+    "input_type": "message",
+    "input_value": "What exactly is brisk walking?",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "cd6185b9-7356-474c-b55f-b19bd632db0c",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Brisk Walking was chosen to support your thyroid. support your goals Want a simpler alternative or keep it as is?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_2901",
+        "type": "choice_buttons",
+        "title": "Choose Your Next Step",
+        "subtitle": "What would you like to do?",
+        "payload": {},
+        "actions": [
+          {
+            "id": "keep_brisk_walking",
+            "title": "Keep Brisk Walking",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "simpler_alternative",
+            "title": "Show Simpler Option",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:41:46.478391",
+    "category": "RESPONSE",
+    "test_name": "TAP_WANT_TO_CHANGE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "170ed7ea-d8de-4e7c-aea0-938d38db5230",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "852fee21-e650-48d2-b388-f5d4a7187a38",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:47.618503",
+    "category": "RESPONSE",
+    "test_name": "TAP_WANT_TO_CHANGE_STEP_1",
+    "input_type": "tap",
+    "input_value": "block=want-to-change,action=want-to-change",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "170ed7ea-d8de-4e7c-aea0-938d38db5230",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:50.763806",
+    "category": "RESPONSE",
+    "test_name": "TAP_ALTERNATE_SUGGESTIONS_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "61bcb981-cf6f-4be5-9545-61489ceca217",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "59eb2683-3dde-417e-a00a-a9ca621c7264",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:51.819891",
+    "category": "RESPONSE",
+    "test_name": "TAP_ALTERNATE_SUGGESTIONS_STEP_1",
+    "input_type": "tap",
+    "input_value": "block=alternate-suggestions,action=alternate-suggestions",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "61bcb981-cf6f-4be5-9545-61489ceca217",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:55.081930",
+    "category": "RESPONSE",
+    "test_name": "TAP_MANAGE_PLAN_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "1b7bf035-1247-4233-b0bd-da48503c476e",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "a012fdee-c8c1-434f-a707-88a45fd55efe",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:56.215747",
+    "category": "RESPONSE",
+    "test_name": "TAP_MANAGE_PLAN_STEP_1",
+    "input_type": "tap",
+    "input_value": "block=manage_plan,action=manage_plan",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "1b7bf035-1247-4233-b0bd-da48503c476e",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:41:59.482080",
+    "category": "RESPONSE",
+    "test_name": "TAP_THEN_MESSAGE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fcf1f608-9431-43b5-8c22-614988b70f63",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "2e6bf0af-7e19-4ff1-b193-fd23994bd112",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:42:00.512454",
+    "category": "RESPONSE",
+    "test_name": "TAP_THEN_MESSAGE_STEP_1",
+    "input_type": "tap",
+    "input_value": "block=want-to-change,action=want-to-change",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fcf1f608-9431-43b5-8c22-614988b70f63",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:42:05.219164",
+    "category": "RESPONSE",
+    "test_name": "TAP_THEN_MESSAGE_STEP_2",
+    "input_type": "message",
+    "input_value": "I want to do yoga instead",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "fcf1f608-9431-43b5-8c22-614988b70f63",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "yoga",
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:42:08.494536",
+    "category": "RESPONSE",
+    "test_name": "MESSAGE_THEN_TAP_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "5cce0348-1af4-4c2a-ad74-2580a4c91d44",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "d6eaef24-4b76-4c57-87a9-f06735ce0f5a",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:42:16.485588",
+    "category": "RESPONSE",
+    "test_name": "MESSAGE_THEN_TAP_STEP_1",
+    "input_type": "message",
+    "input_value": "hmm let me think",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "5cce0348-1af4-4c2a-ad74-2580a4c91d44",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_4108",
+        "type": "choice_buttons",
+        "title": "What would you like to do?",
+        "subtitle": "Choose an action for today's plan.",
+        "payload": {},
+        "actions": [
+          {
+            "id": "mark_done",
+            "title": "Mark Done",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "swap_item",
+            "title": "Swap Item",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "ask_why",
+            "title": "Why It's Here",
+            "action_type": "send_text",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:42:18.034320",
+    "category": "RESPONSE",
+    "test_name": "MESSAGE_THEN_TAP_STEP_2",
+    "input_type": "tap",
+    "input_value": "block=alternate-suggestions,action=alternate-suggestions",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "5cce0348-1af4-4c2a-ad74-2580a4c91d44",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Got it. Want to adjust anything in today's plan? Your actions are: Pine Nuts, Chickpea and Spinach Wrap, Brisk Walking, Strength Training. You can mark one done, ask for a swap, or ask why it's here.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:42:21.294819",
+    "category": "RESPONSE",
+    "test_name": "VERY_LONG_MESSAGE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "0141372e-e011-4243-b7d7-3528c0e926aa",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "b111c005-e273-45b9-bcb5-4680273d5d98",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:42:30.409730",
+    "category": "RESPONSE",
+    "test_name": "VERY_LONG_MESSAGE_STEP_1",
+    "input_type": "message",
+    "input_value": "I want to change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change change everything",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "0141372e-e011-4243-b7d7-3528c0e926aa",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Select Action to Change",
+        "subtitle": "Please choose one of the actions below:",
+        "payload": {},
+        "actions": [
+          {
+            "id": "change_schedule",
+            "title": "Change Schedule",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_goals",
+            "title": "Change Goals",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_frequency",
+            "title": "Change Frequency",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_notes",
+            "title": "Change Notes",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:42:33.582727",
+    "category": "RESPONSE",
+    "test_name": "SPECIAL_CHARACTERS_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "b2aab405-2b34-4da3-baa3-3840ce30b086",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "325403b7-19f1-445d-9902-908f187f0c4d",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:42:37.578515",
+    "category": "RESPONSE",
+    "test_name": "SPECIAL_CHARACTERS_STEP_1",
+    "input_type": "message",
+    "input_value": "Change <script>alert('xss')</script> to yoga",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "b2aab405-2b34-4da3-baa3-3840ce30b086",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: 0)",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "yoga",
+      "workflow_stage": null,
+      "targeted_action_id": 1194,
+      "alternate_candidates": [],
+      "targeted_action_index": 2
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:42:40.694617",
+    "category": "RESPONSE",
+    "test_name": "SQL_INJECTION_ATTEMPT_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "d19f30e5-08b7-41c0-9c26-548b1fb8b7ff",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "6beb450b-8966-42b1-8689-17b5353b83ef",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:42:42.066344",
+    "category": "RESPONSE",
+    "test_name": "SQL_INJECTION_ATTEMPT_STEP_1",
+    "input_type": "message",
+    "input_value": "'; DROP TABLE actions; --",
+    "status_code": 403,
+    "success": false,
+    "error": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n    <title>Blocked</title>\n    <style>@font-face {\n  font-family: \"Roobert\";\n  font-weight: 500;\n  font-style: normal;\n  font-stretch: normal;\n  src: url(\"data:font/woff2;base64,d09GMk9UVE8AAKewAAwAAAABa6QAAKdfAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAADYKmehqCHhuC4UocpRQGYACLBgE2AiQDkygEBgWFRwcgW8pqkQKZcr0u0nk2H+gc25rBL5CqkDOqYXNqo87dNmL1mgByHi4yIGwcgLFJz2f/////",
+    "error_type": "OTHER"
+  },
+  {
+    "timestamp": "2026-01-18T23:42:42.066491",
+    "category": "STEP_FAILED",
+    "scenario": "SQL_INJECTION_ATTEMPT",
+    "step": 1,
+    "error": "OTHER"
+  },
+  {
+    "timestamp": "2026-01-18T23:42:45.184500",
+    "category": "RESPONSE",
+    "test_name": "UNICODE_CHAOS_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "146c08f4-9245-482c-9788-beebae08a682",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "ec5a9719-3b50-4e91-8d1f-14c07dc2428b",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:42:52.957094",
+    "category": "RESPONSE",
+    "test_name": "UNICODE_CHAOS_STEP_1",
+    "input_type": "message",
+    "input_value": "\u0108\u1e2b\u1ea7\u00f1g\u00e9 th\u1e2fs \u1e71\u00f6 \u1e8f\u00f3g\u0101 \ud83e\uddd8\u200d\u2640\ufe0f",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "146c08f4-9245-482c-9788-beebae08a682",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Choose an Action to Change",
+        "subtitle": "Select one of the following options:",
+        "payload": {},
+        "actions": [
+          {
+            "id": "change_yoga_time",
+            "title": "Change Yoga Time",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_yoga_type",
+            "title": "Change Yoga Type",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_exercise_time",
+            "title": "Change Exercise Time",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_exercise_type",
+            "title": "Change Exercise Type",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": "yoga",
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:42:56.032790",
+    "category": "RESPONSE",
+    "test_name": "NULL_BYTE_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2c168bf5-3284-419c-a31d-80edf91e4d4e",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "d7c3cfb2-69c1-4440-adab-47e050c1e6fc",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:43:03.996816",
+    "category": "RESPONSE",
+    "test_name": "NULL_BYTE_STEP_1",
+    "input_type": "message",
+    "input_value": "change\u0000this",
+    "status_code": 500,
+    "success": false,
+    "error": "{\"detail\":\"(psycopg2.errors.UntranslatableCharacter) unsupported Unicode escape sequence\\nLINE 1: UPDATE care_plan_checkin_threads SET raw_messages='[{\\\"id\\\": \\\"...\\n                                                          ^\\nDETAIL:  \\\\u0000 cannot be converted to text.\\nCONTEXT:  JSON data, line 1: ...d8faf9\\\", \\\"role\\\": \\\"user\\\", \\\"content\\\": \\\"change\\\\u0000...\\n\\n[SQL: UPDATE care_plan_checkin_threads SET raw_messages=%(raw_messages)s, actionable_insights=%(actionable_insights)s, updated_at",
+    "error_type": "OTHER"
+  },
+  {
+    "timestamp": "2026-01-18T23:43:03.996943",
+    "category": "STEP_FAILED",
+    "scenario": "NULL_BYTE",
+    "step": 1,
+    "error": "OTHER"
+  },
+  {
+    "timestamp": "2026-01-18T23:43:07.272334",
+    "category": "RESPONSE",
+    "test_name": "EXTREMELY_RAPID_MESSAGES_START",
+    "input_type": "start",
+    "input_value": "force_new=true",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2210784d-2726-4c60-914c-a859b33b7fb3",
+    "local_date": "2026-01-18",
+    "bot_message_count": 1,
+    "last_bot_message": "Quick care plan check-in for today \u2014 how did your actions feel so far?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [
+      {
+        "id": "8b901949-e7fe-443b-b595-4be087d824f5",
+        "type": "quick_actions",
+        "title": "Care plan",
+        "subtitle": "Only shows when it helps",
+        "payload": {},
+        "actions": [
+          {
+            "id": "open_plan_manager",
+            "title": "Manage plan",
+            "action_type": "open_modal",
+            "payload": {
+              "modal": "PlanManagerModal"
+            },
+            "style": null,
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "low",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "reason": "entry_point"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {}
+  },
+  {
+    "timestamp": "2026-01-18T23:43:10.858450",
+    "category": "RESPONSE",
+    "test_name": "EXTREMELY_RAPID_MESSAGES_STEP_1",
+    "input_type": "message",
+    "input_value": "done",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2210784d-2726-4c60-914c-a859b33b7fb3",
+    "local_date": "2026-01-18",
+    "bot_message_count": 2,
+    "last_bot_message": "I'm not sure which action you completed. Can you specify?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:43:16.490402",
+    "category": "RESPONSE",
+    "test_name": "EXTREMELY_RAPID_MESSAGES_STEP_2",
+    "input_type": "message",
+    "input_value": "skip",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2210784d-2726-4c60-914c-a859b33b7fb3",
+    "local_date": "2026-01-18",
+    "bot_message_count": 3,
+    "last_bot_message": "Heads up: skipping this action will put your 0-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. Do you still want to skip it?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:43:28.015366",
+    "category": "RESPONSE",
+    "test_name": "EXTREMELY_RAPID_MESSAGES_STEP_3",
+    "input_type": "message",
+    "input_value": "change",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2210784d-2726-4c60-914c-a859b33b7fb3",
+    "local_date": "2026-01-18",
+    "bot_message_count": 4,
+    "last_bot_message": "Which action would you like to change? You can say the name or the time slot.",
+    "tap_options": [],
+    "tap_option_count": 0,
+    "ui_blocks": [
+      {
+        "id": "care_plan_checkin_cta_5910",
+        "type": "choice_buttons",
+        "title": "Select Action to Change",
+        "subtitle": "Choose the action or time slot you want to modify.",
+        "payload": {},
+        "actions": [
+          {
+            "id": "change_action_1",
+            "title": "Action 1",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "primary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_2",
+            "title": "Action 2",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_3",
+            "title": "Action 3",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          },
+          {
+            "id": "change_action_4",
+            "title": "Action 4",
+            "action_type": "submit_event",
+            "payload": {},
+            "style": "secondary",
+            "requires_confirmation": false
+          }
+        ],
+        "dismissible": true,
+        "priority": "high",
+        "expires_at": null,
+        "analytics": {
+          "surface": "care_plan_checkin",
+          "source": "langgraph"
+        }
+      }
+    ],
+    "ui_block_count": 1,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:43:32.576706",
+    "category": "RESPONSE",
+    "test_name": "EXTREMELY_RAPID_MESSAGES_STEP_4",
+    "input_type": "message",
+    "input_value": "why",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2210784d-2726-4c60-914c-a859b33b7fb3",
+    "local_date": "2026-01-18",
+    "bot_message_count": 5,
+    "last_bot_message": "Which action are you asking about?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:43:36.505404",
+    "category": "RESPONSE",
+    "test_name": "EXTREMELY_RAPID_MESSAGES_STEP_5",
+    "input_type": "message",
+    "input_value": "cancel",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2210784d-2726-4c60-914c-a859b33b7fb3",
+    "local_date": "2026-01-18",
+    "bot_message_count": 6,
+    "last_bot_message": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  },
+  {
+    "timestamp": "2026-01-18T23:43:41.020376",
+    "category": "RESPONSE",
+    "test_name": "EXTREMELY_RAPID_MESSAGES_STEP_6",
+    "input_type": "message",
+    "input_value": "done again",
+    "status_code": 200,
+    "success": true,
+    "thread_id": "2210784d-2726-4c60-914c-a859b33b7fb3",
+    "local_date": "2026-01-18",
+    "bot_message_count": 7,
+    "last_bot_message": "I'm not sure which action you completed. Can you specify?",
+    "tap_options": [
+      {
+        "id": "want-to-change",
+        "text": "\ud83d\udc4e I want to change it"
+      },
+      {
+        "id": "alternate-suggestions",
+        "text": "\ud83d\udd01 I want alternate suggestions"
+      },
+      {
+        "id": "manage_plan",
+        "text": "\ud83e\udde9 Manage plan"
+      }
+    ],
+    "tap_option_count": 3,
+    "ui_blocks": [],
+    "ui_block_count": 0,
+    "actionable_insights": {
+      "plan_id": 299,
+      "barrier_type": null,
+      "change_reason": null,
+      "workflow_stage": null,
+      "targeted_action_id": null,
+      "alternate_candidates": [],
+      "targeted_action_index": null
+    }
+  }
+]

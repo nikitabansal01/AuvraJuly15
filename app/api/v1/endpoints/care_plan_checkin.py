@@ -232,6 +232,13 @@ async def respond_care_plan_checkin(
         service = CarePlanCheckInService(db)
         logger.info(f"CARE_PLAN_RESPOND_V2 for uid={uid}")
         
+        # Sanitize message - remove null bytes and other problematic characters
+        message_text = payload.message_text
+        if message_text:
+            message_text = message_text.replace("\x00", "").replace("\u0000", "")
+            # Remove other control characters except newlines/tabs
+            message_text = "".join(c for c in message_text if c == "\n" or c == "\t" or ord(c) >= 32)
+        
         # 1. Load Thread
         thread = service.get_thread_by_id(uid, payload.thread_id)
         if not thread:
@@ -241,7 +248,7 @@ async def respond_care_plan_checkin(
         state = _reconstruct_state(thread, uid, service)
 
         # 3. Invoke Graph
-        final_state = await process_care_plan_message(state, payload.message_text, thread_id=thread.id)
+        final_state = await process_care_plan_message(state, message_text, thread_id=thread.id)
 
         # 4. Save Result to DB
         # Identify new messages
@@ -636,6 +643,81 @@ async def care_plan_ui_event(
                 "local_date": thread.local_date.isoformat(),
                 "history": history,
                 "tap_options": [],
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": resp_ui_blocks,
+            }
+        
+        # Handle main tap options from start screen
+        tap_to_message = {
+            "want-to-change": "I want to change my plan",
+            "alternate-suggestions": "Show me alternate suggestions",
+            "manage_plan": "I want to manage my plan",
+        }
+        
+        if action_id in tap_to_message:
+            stored_state = _reconstruct_state(thread, uid, service)
+            user_message = tap_to_message[action_id]
+            
+            result = await process_care_plan_message(
+                state=stored_state,
+                user_message=user_message,
+                thread_id=thread.id
+            )
+            
+            bot_response = result.get("bot_response", "")
+            if bot_response:
+                raw_messages = list(thread.raw_messages or [])
+                raw_messages.append({
+                    "id": str(uuid4()),
+                    "role": "assistant",
+                    "content": bot_response,
+                    "created_at": datetime.datetime.utcnow().isoformat(),
+                })
+                thread.raw_messages = raw_messages
+            
+            _persist_state(thread, result)
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+            
+            history = service.format_history_for_mobile(thread)
+            
+            # Format UI blocks from result
+            resp_ui_blocks = []
+            for block in result.get("ui_blocks", []):
+                actions = []
+                for a in block.get("actions", []):
+                    actions.append(UIBlockAction(
+                        id=a.get("id", str(uuid4())),
+                        title=a.get("title", "Action"),
+                        action_type=a.get("action_type", "submit_event"),
+                        style=a.get("style", "primary")
+                    ))
+                resp_ui_blocks.append(UIBlock(
+                    id=block.get("id", str(uuid4())),
+                    type=block.get("type") or "quick_actions",
+                    title=block.get("title"),
+                    subtitle=block.get("subtitle"),
+                    payload=block.get("payload", {}),
+                    actions=actions,
+                    dismissible=True, priority="high",
+                    analytics={"surface": "care_plan_checkin", "source": "tap_option"}
+                ))
+            
+            # Rebuild tap options if no UI blocks
+            tap_options = []
+            if not resp_ui_blocks:
+                tap_options = [
+                    {"id": "want-to-change", "text": "👎 I want to change it"},
+                    {"id": "alternate-suggestions", "text": "🔁 I want alternate suggestions"},
+                    {"id": "manage_plan", "text": "🧩 Manage plan"},
+                ]
+            
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": tap_options,
                 "actionable_insights": thread.actionable_insights or {},
                 "ui_blocks": resp_ui_blocks,
             }
