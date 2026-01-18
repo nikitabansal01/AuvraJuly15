@@ -689,11 +689,9 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
                 time_slot=original.time_slot,
                 category=original.category,
                 title=selected_alt["title"],
-                specific_action=selected_alt["specific_action"],
+                specific_action=selected_alt.get("specific_action", ""),
                 target_hormone=original.target_hormone,
                 purpose=selected_alt.get("purpose", original.purpose),
-                research_citations=original.research_citations if hasattr(original, 'research_citations') else None,
-                image_url=original.image_url if hasattr(original, 'image_url') else None,
                 created_at=datetime.utcnow(),
                 is_completed=False,
                 is_replaced=False
