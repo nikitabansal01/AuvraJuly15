@@ -35,7 +35,7 @@ from app.langgraph.helpers.database_helpers import (
 )
 from app.langgraph.helpers.ui_blocks_helper import (
     generate_intelligent_ctas, create_confirmation_block, 
-    create_alternates_selection_block, clear_ui_blocks
+    create_alternates_selection_block, clear_ui_blocks, create_action_selection_block
 )
 from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog, SessionLocal
 
@@ -499,13 +499,29 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
     action_items = state.get("action_items", [])
     
     if targeted_idx is None or not (0 <= targeted_idx < len(action_items)):
-        response = "Which action would you like to change? You can say the name or the time slot."
-        ui_blocks = await _maybe_add_ctas(state, response, user_message)
+        # Show explicit action list (only incomplete items) instead of generic CTAs
+        available_actions = [
+            item for item in action_items
+            if not item.get("is_completed")
+        ]
+
+        if not available_actions:
+            response = "Looks like you've already completed all your actions for today. 🎉"
+            return {
+                **state,
+                "bot_response": response,
+                "ui_blocks": [],
+                "phase": "complete"
+            }
+
+        response = "Which action would you like to change?"
+        ui_blocks = [create_action_selection_block(available_actions)]
         return {
             **state,
             "bot_response": response,
             "ui_blocks": ui_blocks,
-            "phase": "loaded"
+            "workflow_stage": "awaiting_action_selection",
+            "phase": "awaiting_selection"
         }
 
     # EARLY CHECK: Do they have tokens?

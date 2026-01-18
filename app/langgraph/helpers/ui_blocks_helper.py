@@ -273,6 +273,45 @@ def create_confirmation_block(
     }
 
 
+def create_action_selection_block(
+    action_items: List[Dict[str, Any]],
+    title: str = "Choose action to change",
+    subtitle: str = "Select from your remaining actions",
+) -> Dict[str, Any]:
+    """Create a CTA block that lists action names for selection."""
+    actions: List[Dict[str, Any]] = []
+    for idx, item in enumerate(action_items):
+        item_id = item.get("id") or item.get("item_id")
+        if not item_id:
+            continue
+        item_title = (item.get("title") or "Action").strip()
+        time_slot = (item.get("time_slot") or "").strip()
+        display_title = f"{time_slot.title()}: {item_title}" if time_slot else item_title
+        actions.append(
+            {
+                "id": f"select_action_{item_id}",
+                "title": display_title,
+                "style": "secondary" if idx else "primary",
+                "action_type": "submit_event",
+                "payload": {
+                    "action_id": item_id,
+                    "action_index": idx,
+                    "display_title": display_title,
+                },
+            }
+        )
+
+    return {
+        "id": "care_plan_action_select",
+        "type": "choice_buttons",
+        "title": title,
+        "subtitle": subtitle,
+        "actions": actions,
+        "dismissible": True,
+        "priority": "high",
+    }
+
+
 def create_alternates_selection_block(
     alternates: List[Dict[str, Any]],
     title: str = "Choose an alternative"

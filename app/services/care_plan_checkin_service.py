@@ -448,12 +448,14 @@ NEW MESSAGES (JSON list in order):
                 continue
             out.append(
                 {
+                    "id": int(it.id),
                     "item_id": int(it.id),
                     "title": title,
                     "category": getattr(it, "category", "general"),
                     "target_hormone": getattr(it, "target_hormone", None),
                     "slot": getattr(it, "slot", None),
                     "time_slot": getattr(it, "time_slot", None),
+                    "is_completed": bool(getattr(it, "is_completed", False)),
                 }
             )
             if len(out) >= max(1, min(limit, 20)):

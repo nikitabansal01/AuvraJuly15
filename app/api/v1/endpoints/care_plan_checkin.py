@@ -387,6 +387,102 @@ async def care_plan_ui_event(
             "ask_why": "Why is this action in my plan?",
         }
         logger.info(f"THREAD_TYPE: {type(thread)}, ATTRS: {dir(thread)}")
+
+        # Handle action selection from change-action UI block
+        if action_id.startswith("select_action_"):
+            stored_state = _reconstruct_state(thread, uid, service)
+            action_items = stored_state.get("action_items", [])
+
+            # Extract item_id from action_id
+            try:
+                selected_item_id = int(action_id.replace("select_action_", ""))
+            except ValueError:
+                selected_item_id = None
+
+            # Find selected item and index
+            selected_idx = None
+            selected_title = None
+            for idx, item in enumerate(action_items):
+                item_id = item.get("id") or item.get("item_id")
+                if selected_item_id and item_id == selected_item_id:
+                    selected_idx = idx
+                    selected_title = item.get("title")
+                    break
+
+            if selected_idx is None:
+                # Fallback: try metadata payload index
+                selected_idx = meta.get("action_index") if isinstance(meta, dict) else None
+                if isinstance(selected_idx, int) and 0 <= selected_idx < len(action_items):
+                    selected_title = action_items[selected_idx].get("title")
+                    selected_item_id = action_items[selected_idx].get("id") or action_items[selected_idx].get("item_id")
+
+            # Add user's selection as visible message
+            display_title = (meta.get("display_title") if isinstance(meta, dict) else None) or selected_title or "That action"
+            _add_user_tap_message(thread, f"Change: {display_title}")
+
+            # Persist targeted action in thread context
+            insights = dict(thread.actionable_insights or {})
+            if selected_idx is not None:
+                insights["targeted_action_index"] = selected_idx
+            if selected_item_id is not None:
+                insights["targeted_action_id"] = selected_item_id
+            thread.actionable_insights = insights
+
+            # Reconstruct state with updated insights and run change flow
+            stored_state = _reconstruct_state(thread, uid, service)
+            result = await process_care_plan_message(
+                state=stored_state,
+                user_message=f"I want to change {display_title}",
+                thread_id=thread.id
+            )
+
+            # Update thread with bot response
+            bot_response = result.get("bot_response", "")
+            if bot_response:
+                raw_messages = list(thread.raw_messages or [])
+                raw_messages.append({
+                    "id": str(uuid4()),
+                    "role": "assistant",
+                    "content": bot_response,
+                    "created_at": datetime.datetime.utcnow().isoformat(),
+                })
+                thread.raw_messages = raw_messages
+
+            _persist_state(thread, result)
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            resp_ui_blocks = []
+            for block in result.get("ui_blocks", []):
+                actions = []
+                for a in block.get("actions", []):
+                    actions.append(UIBlockAction(
+                        id=a.get("id", str(uuid4())),
+                        title=a.get("title", "Action"),
+                        action_type=a.get("action_type", "submit_event"),
+                        style=a.get("style", "primary")
+                    ))
+                resp_ui_blocks.append(UIBlock(
+                    id=block.get("id", str(uuid4())),
+                    type=block.get("type") or "quick_actions",
+                    title=block.get("title"),
+                    subtitle=block.get("subtitle"),
+                    payload=block.get("payload", {}),
+                    actions=actions,
+                    dismissible=True, priority="high",
+                    analytics={"surface": "care_plan_checkin", "source": "action_select"}
+                ))
+
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": [],
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": resp_ui_blocks,
+            }
         
         # Handle alternate selection (select_alt_0, select_alt_1, etc.)
         if action_id.startswith("select_alt_"):
