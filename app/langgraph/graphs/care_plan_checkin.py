@@ -33,7 +33,7 @@ from app.langgraph.helpers.ui_blocks_helper import (
     generate_intelligent_ctas, create_confirmation_block, 
     create_alternates_selection_block, clear_ui_blocks
 )
-from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog
+from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog, SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -622,12 +622,14 @@ Output JSON:
 
 async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CarePlanCheckInState:
     """Check tokens at FINAL replacement step and process replacement."""
+    logger.info(f"[GRAPH_NODE] check_refresh_tokens_and_replace START")
     
     selected_idx = state.get("selected_alternate_index")
     alternates = state.get("alternate_candidates", [])
     
     # BOUNDS CHECK (Fix for Issue 8)
     if selected_idx is None or not (0 <= selected_idx < len(alternates)):
+        logger.warning(f"[GRAPH_NODE] Invalid selection: idx={selected_idx}, alternates={len(alternates)}")
         return {
             **state,
             "bot_response": "Invalid selection. Please choose again.",
@@ -637,14 +639,12 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
     
     # Check if user has tokens
     if state.get("refresh_tokens_available", 0) <= 0:
+        logger.info(f"[GRAPH_NODE] No refresh tokens available")
         current_streak = state.get("current_streak", 0)
-        
-        if not state.get("refresh_tokens_unlocked", False):
-            days_until_unlock = max(0, 16 - current_streak)
-            response = f"I'd love to swap that for you, but you'll need refresh tokens to change actions. Refresh tokens unlock at 16 days - you're at {current_streak} days, just {days_until_unlock} more to go! Keep completing your current plan to unlock this feature. 💜"
-        else:
-            response = f"You've used both your refresh tokens for today! You get 2 per day to make changes. They'll reset tomorrow, or you can keep going with your current plan to maintain your {current_streak}-day streak!"
-        
+        response = (
+            f"Oops! You need to complete a {16 - current_streak if current_streak < 16 else 0}-day streak "
+            f"to unlock 'Refresh Action' credits. You currently have {current_streak} days."
+        )
         return {
             **state,
             "bot_response": response,
@@ -655,81 +655,103 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
         }
     
     # Has tokens → proceed to replacement
+    logger.info(f"[GRAPH_NODE] Processing replacement with tokens available")
     try:
-        db = next(get_db())
-        selected_alt = alternates[selected_idx]
-        original_action_id = state.get("targeted_action_id")
+        # Use proper context manager for database session
+        from app.core.database import SessionLocal
+        db = SessionLocal()
+        logger.info(f"[GRAPH_NODE] DB session created")
         
-        if not original_action_id:
-            return {**state, "error": "no_original_action", "phase": "complete"}
-        
-        # Mark original as replaced
-        original = db.query(ActionPlanItem).get(original_action_id)
-        if not original:
-            return {**state, "error": "original_not_found", "phase": "complete"}
-        
-        original.is_replaced = True
-        original.replaced_at = datetime.utcnow()
-        original.replacement_reason = state.get("change_reason", "")
-        
-        # Create new action WITH ALL REQUIRED FIELDS (Fix for Issue 9)
-        new_item = ActionPlanItem(
-            plan_id=state["plan_id"],
-            uid=state["user_id"],
-            slot=original.slot,
-            time_slot=original.time_slot,
-            category=original.category,
-            title=selected_alt["title"],
-            specific_action=selected_alt["specific_action"],
-            target_hormone=original.target_hormone,
-            purpose=selected_alt.get("purpose", original.purpose),
-            research_citations=original.research_citations if hasattr(original, 'research_citations') else None,
-            image_url=original.image_url if hasattr(original, 'image_url') else None,
-            created_at=datetime.utcnow(),
-            is_completed=False,
-            is_replaced=False
-        )
-        db.add(new_item)
-        
-        # CONSUME REFRESH TOKEN - Log to ActionPlanRefreshLog
-        from datetime import date as date_type
-        refresh_log = ActionPlanRefreshLog(
-            uid=state["user_id"],
-            plan_id=state.get("plan_id"),
-            refresh_date=date_type.today(),
-            refresh_count=1,
-            original_action={
-                "id": original_action_id,
-                "title": original.title if original else None,
-                "time_slot": original.time_slot if original else None
-            },
-            replacement_action={
-                "title": selected_alt["title"],
-                "specific_action": selected_alt.get("specific_action")
-            },
-            replacement_reason=state.get("change_reason", "user_request"),
-            thread_id=state.get("session_id")
-        )
-        db.add(refresh_log)
-        logger.info(f"✅ Logged refresh token usage: {state['user_id']} replaced {original.title if original else 'unknown'} with {selected_alt['title']}")
-        
-        db.commit()
-        
-        tokens_remaining = state.get("refresh_tokens_available", 0) - 1
-        
-        response = f"Perfect! I've swapped in {selected_alt['title']}. This still supports your {original.target_hormone}. You have {tokens_remaining} refresh token(s) left today."
-        
+        try:
+            selected_alt = alternates[selected_idx]
+            original_action_id = state.get("targeted_action_id")
+            
+            if not original_action_id:
+                return {**state, "error": "no_original_action", "phase": "complete"}
+            
+            logger.info(f"[GRAPH_NODE] Querying original action id={original_action_id}")
+            # Mark original as replaced
+            original = db.query(ActionPlanItem).get(original_action_id)
+            if not original:
+                return {**state, "error": "original_not_found", "phase": "complete"}
+            
+            logger.info(f"[GRAPH_NODE] Updating original action")
+            original.is_replaced = True
+            original.replaced_at = datetime.utcnow()
+            original.replacement_reason = state.get("change_reason", "")
+            
+            # Create new action WITH ALL REQUIRED FIELDS (Fix for Issue 9)
+            logger.info(f"[GRAPH_NODE] Creating new action")
+            new_item = ActionPlanItem(
+                plan_id=state["plan_id"],
+                uid=state["user_id"],
+                slot=original.slot,
+                time_slot=original.time_slot,
+                category=original.category,
+                title=selected_alt["title"],
+                specific_action=selected_alt["specific_action"],
+                target_hormone=original.target_hormone,
+                purpose=selected_alt.get("purpose", original.purpose),
+                research_citations=original.research_citations if hasattr(original, 'research_citations') else None,
+                image_url=original.image_url if hasattr(original, 'image_url') else None,
+                created_at=datetime.utcnow(),
+                is_completed=False,
+                is_replaced=False
+            )
+            db.add(new_item)
+            
+            # CONSUME REFRESH TOKEN - Log to ActionPlanRefreshLog
+            logger.info(f"[GRAPH_NODE] Creating refresh log")
+            from datetime import date as date_type
+            refresh_log = ActionPlanRefreshLog(
+                uid=state["user_id"],
+                plan_id=state.get("plan_id"),
+                refresh_date=date_type.today(),
+                refresh_count=1,
+                original_action={
+                    "id": original_action_id,
+                    "title": original.title if original else None,
+                    "time_slot": original.time_slot if original else None
+                },
+                replacement_action={
+                    "title": selected_alt["title"],
+                    "specific_action": selected_alt.get("specific_action")
+                },
+                replacement_reason=state.get("change_reason", "user_request"),
+                thread_id=state.get("thread_id"),
+                created_at=datetime.utcnow()
+            )
+            db.add(refresh_log)
+            
+            logger.info(f"[GRAPH_NODE] Committing to database")
+            db.commit()
+            logger.info(f"[GRAPH_NODE] Database commit successful")
+            
+            response = f"Perfect! I've replaced the {original.title} with {selected_alt['title']}."
+            return {
+                **state,
+                "bot_response": response,
+                "actions_to_execute": [{"type": "refresh_plan"}],
+                "workflow_stage": None,
+                "ui_blocks": [],
+                "phase": "complete"
+            }
+        finally:
+            logger.info(f"[GRAPH_NODE] Closing DB session")
+            db.close()
+    
+    except Exception as e:
+        logger.error(f"[GRAPH_NODE] Error during replacement: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             **state,
-            "bot_response": response,
-            "workflow_stage": None,
-            "refresh_tokens_available": tokens_remaining,
-            "actions_to_execute": [{"type": "refresh_plan"}],
+            "bot_response": "Sorry, I couldn't process the replacement. Please try again.",
+            "error": str(e),
             "phase": "complete"
         }
-    except Exception as e:
-        logger.error(f"Error replacing action: {e}")
-        return {**state, "bot_response": f"Error: {e}", "error": str(e), "phase": "complete"}
+
+
 
 
 async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckInState:

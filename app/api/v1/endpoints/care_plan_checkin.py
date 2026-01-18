@@ -300,19 +300,23 @@ async def care_plan_ui_event(
         
         # Handle alternate selection (select_alt_0, select_alt_1, etc.)
         if action_id.startswith("select_alt_"):
+            logger.info(f"[SELECT_ALT] Step 1: Parsing index from {action_id}")
             try:
                 selected_idx = int(action_id.replace("select_alt_", ""))
             except ValueError:
                 selected_idx = 0
+            logger.info(f"[SELECT_ALT] Step 2: Index={selected_idx}, reconstructing state...")
             
             # Load current state from thread
             stored_state = _reconstruct_state(thread, uid, service)
+            logger.info(f"[SELECT_ALT] Step 3: State reconstructed, invoking graph...")
             
             # Process the selection through LangGraph
             result = await process_alternate_selection(
                 state=stored_state,
                 selected_index=selected_idx
             )
+            logger.info(f"[SELECT_ALT] Step 4: Graph completed, result keys={list(result.keys())}")
             
             # Update thread with bot response
             bot_response = result.get("bot_response", "I've made the change for you!")
