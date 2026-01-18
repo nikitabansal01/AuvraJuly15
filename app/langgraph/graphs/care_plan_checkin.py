@@ -130,6 +130,17 @@ class AlternateAction(BaseModel):
     why_better: str
     target_hormone: str
     purpose: str
+    
+    # Rich fields for full ActionPlanItem fidelity
+    food_amounts: List[str] = []
+    food_items: List[str] = []
+    exercise_durations: List[str] = []
+    exercise_types: List[str] = []
+    exercise_intensities: List[str] = []
+    mindfulness_durations: List[str] = []
+    mindfulness_techniques: List[str] = []
+    conditions: List[str] = []
+    symptoms: List[str] = []
 
 
 class AlternatesList(BaseModel):
@@ -551,12 +562,14 @@ Recent Chat History:
 {chat_context}
 
 Requirements:
-- Same target hormone: {action.get('target_hormone', 'general')}
-- Same time slot: {action.get('time_slot', 'any')}
-- Address barrier
-- Research-backed
-- 3 alternatives total
-- MUST NOT be any of these existing actions: {', '.join(existing_titles)}
+1. Address the user's specific barrier or request perfectly.
+2. Maintain the same target hormone goal if possible (unless request overrides it).
+3. **CRITICAL: PROVIDE RICH DETAIL**. Do not just give a title. Fill in the specific fields below.
+
+Detailed Field Requirements:
+- For FOOD: Must include `food_items` (list of ingredients), `food_amounts` (portion sizes), and `specific_action` (e.g., "Eat 30g of...").
+- For MOVEMENT: Must include `exercise_durations` (e.g., "10 mins"), `exercise_types`, and `exercise_intensities`.
+- For MINDFULNESS: Must include `mindfulness_durations` (e.g., "5 mins") and `mindfulness_techniques`.
 
 USER SPECIFIC REQUEST OVERRIDE:
 If the barrier/reason mentions a SPECIFIC activity type OR food item (e.g., "I want dance", "replace with cashew", "try tofu"), 
@@ -565,20 +578,24 @@ then:
 2. DISREGARD "Same target hormone" or "Category" constraints if they conflict with the request.
 3. DO NOT offer "similar" items (e.g., if user asks for Cashews, DO NOT suggest Almonds).
 
-Examples:
-- Request: "change to dance" → ALL 3 must be dance types.
-- Request: "replace with cashew" → ALL 3 must be cashew-based (e.g., Roasted Cashews, Cashew Butter, Cashew Salad).
-- Request: "I want swimming" → ALL 3 must be swimming types.
-
 Output JSON:
 {{
   "alternatives": [
     {{
       "title": "...",
-      "specific_action": "...",
+      "specific_action": "Eat 1 cup of... / Do 10 mins of...",
       "why_better": "How this addresses their barrier",
       "target_hormone": "...",
-      "purpose": "..."
+      "purpose": "...",
+      "food_amounts": ["1 cup", "2 tbsp"],
+      "food_items": ["Greek Yogurt", "Honey"],
+      "exercise_durations": ["10 mins"],
+      "exercise_types": ["Cardio"],
+      "exercise_intensities": ["Low"],
+      "mindfulness_durations": [],
+      "mindfulness_techniques": [],
+      "conditions": [],
+      "symptoms": []
     }}
   ]
 }}
@@ -705,16 +722,16 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
                 purpose=selected_alt.get("purpose", original.purpose),
                 target_hormone=original.target_hormone,
                 hormone_persona_intro=original.hormone_persona_intro,
-                # All required array fields
-                food_amounts=original.food_amounts or [],
-                food_items=original.food_items or [],
-                exercise_durations=original.exercise_durations or [],
-                exercise_types=original.exercise_types or [],
-                exercise_intensities=original.exercise_intensities or [],
-                mindfulness_durations=original.mindfulness_durations or [],
-                mindfulness_techniques=original.mindfulness_techniques or [],
-                conditions=original.conditions or [],
-                symptoms=original.symptoms or [],
+                # All required array fields - PRIORITIZE NEW DATA
+                food_amounts=selected_alt.get("food_amounts") or original.food_amounts or [],
+                food_items=selected_alt.get("food_items") or original.food_items or [],
+                exercise_durations=selected_alt.get("exercise_durations") or original.exercise_durations or [],
+                exercise_types=selected_alt.get("exercise_types") or original.exercise_types or [],
+                exercise_intensities=selected_alt.get("exercise_intensities") or original.exercise_intensities or [],
+                mindfulness_durations=selected_alt.get("mindfulness_durations") or original.mindfulness_durations or [],
+                mindfulness_techniques=selected_alt.get("mindfulness_techniques") or original.mindfulness_techniques or [],
+                conditions=selected_alt.get("conditions") or original.conditions or [],
+                symptoms=selected_alt.get("symptoms") or original.symptoms or [],
                 # Image fields
                 hero_image_url=None,  # Will be generated separately
                 hero_image_prompt=image_prompt,
@@ -858,21 +875,33 @@ CRITICAL INSTRUCTION: You MUST prioritize the user's specific request "{requeste
 - Do NOT substitute it with a generic category or a "safer" alternative unless the request is dangerously invalid.
 - If the user's request seems to conflict with a barrier (e.g. allergy), assume the user knows what they are doing for this specific override, but ensure the new action matches the *item* they requested.
 
-Detailed format:
+Detailed Format Requirements (RICH DATA):
 - Title: Display name (e.g., "Cashew Snack")
 - Specific Action: Actionable details (e.g., "Eat 30g of roasted cashews")
-- Target Hormone: Inference based on ingredient/activity (e.g., "Progesterone" for healthy fats)
+- Target Hormone: Inference based on ingredient/activity
 - Purpose: "To boost healthy fats..."
+- FOOD items: Must include `food_items` (list of ingredients), `food_amounts` (portion sizes)
+- MOVEMENT: Must include `exercise_durations`, `exercise_types`
+- MINDFULNESS: Must include `mindfulness_durations`
 
 Output JSON (List with 1 item):
 {{
   "alternatives": [
     {{
       "title": "Title",
-      "specific_action": "...",
+      "specific_action": "Eat 1 cup of... / Do 10 mins of...",
       "why_better": "Requested replacement",
       "target_hormone": "...",
-      "purpose": "..."
+      "purpose": "...",
+      "food_amounts": ["1 cup", "2 tbsp"],
+      "food_items": ["Greek Yogurt", "Honey"],
+      "exercise_durations": ["10 mins"],
+      "exercise_types": ["Cardio"],
+      "exercise_intensities": ["Low"],
+      "mindfulness_durations": [],
+      "mindfulness_techniques": [],
+      "conditions": [],
+      "symptoms": []
     }}
   ]
 }}
