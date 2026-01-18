@@ -860,6 +860,37 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
     }
 
 
+# ═══════════════════════════════════════════════════════════════════
+# CONDITIONAL EDGE ROUTING (PURE FUNCTIONS)
+# ═══════════════════════════════════════════════════════════════════
+
+def route_by_intent(state: CarePlanCheckInState) -> str:
+    """Route based on LLM-classified intent. FIXED: No fallback to non-existent nodes."""
+    intent = state.get("current_intent", "general")
+    
+    intent_routing = {
+        "complete_action": "handle_complete_action",
+        "skip_action": "handle_skip_action",
+        "change_action": "handle_change_action",
+        "request_alternates": "handle_change_action", # Treat alternates as change request
+        "negotiate": "handle_change_action",  # Treat negotiate as change
+        "ask_why": "handle_ask_why",
+        "cancel_action": "handle_cancel_action",
+        "general": "handle_general_response"
+    }
+    
+    return intent_routing.get(intent, "handle_general_response")
+
+
+def route_after_change(state: CarePlanCheckInState) -> str:
+    """Route after handle_change_action."""
+    if state.get("workflow_stage") == "generating_alternates":
+        return "generate_alternate_suggestions"
+    if state.get("workflow_stage") == "generating_direct_replacement":
+        return "generate_direct_replacement_suggestion"
+    return "END"
+
+
 async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) -> CarePlanCheckInState:
     """Generate a SINGLE specific replacement based on user request."""
     
