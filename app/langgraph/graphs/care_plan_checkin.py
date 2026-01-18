@@ -680,21 +680,41 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
             original.replaced_at = datetime.utcnow()
             original.replacement_reason = state.get("change_reason", "")
             
-            # Create new action - USE ORIGINAL'S PLAN_ID (most reliable source)
+            # Create new action - MATCHING THE EXACT FORMAT FROM action_plan_generator.py
             logger.info(f"[GRAPH_NODE] Creating new action with plan_id={original.plan_id}")
+            
+            # Generate image prompt for new action
+            image_prompt = f"Calming photograph representing {selected_alt['title']}, peaceful atmosphere, soft natural lighting"
+            
             new_item = ActionPlanItem(
-                plan_id=original.plan_id,  # Get from original action, NOT state
+                plan_id=original.plan_id,
                 uid=state["user_id"],
                 slot=original.slot,
                 time_slot=original.time_slot,
                 category=original.category,
                 title=selected_alt["title"],
-                specific_action=selected_alt.get("specific_action", ""),
-                target_hormone=original.target_hormone,
+                specific_action=selected_alt.get("specific_action", f"Try {selected_alt['title']} today"),
                 purpose=selected_alt.get("purpose", original.purpose),
-                created_at=datetime.utcnow(),
+                target_hormone=original.target_hormone,
+                hormone_persona_intro=original.hormone_persona_intro,
+                # All required array fields
+                food_amounts=original.food_amounts or [],
+                food_items=original.food_items or [],
+                exercise_durations=original.exercise_durations or [],
+                exercise_types=original.exercise_types or [],
+                exercise_intensities=original.exercise_intensities or [],
+                mindfulness_durations=original.mindfulness_durations or [],
+                mindfulness_techniques=original.mindfulness_techniques or [],
+                conditions=original.conditions or [],
+                symptoms=original.symptoms or [],
+                # Image fields
+                hero_image_url=None,  # Will be generated separately
+                hero_image_prompt=image_prompt,
+                # Status fields
                 is_completed=False,
-                is_replaced=False
+                is_replaced=False,
+                # Tracking
+                carried_forward_from=original.id
             )
             db.add(new_item)
             
