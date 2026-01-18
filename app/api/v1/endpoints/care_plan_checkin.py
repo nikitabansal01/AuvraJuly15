@@ -573,6 +573,73 @@ async def care_plan_ui_event(
                 "ui_blocks": resp_ui_blocks,
             }
         
+        # Handle mark_done, swap_action, ask_why from choice buttons
+        if action_id in ["mark_done", "swap_action", "ask_why"]:
+            stored_state = _reconstruct_state(thread, uid, service)
+            
+            # Convert to natural language message
+            message_map = {
+                "mark_done": "I completed it",
+                "swap_action": "I want to swap this action",
+                "ask_why": "Why is this action in my plan?"
+            }
+            user_message = message_map.get(action_id, action_id)
+            
+            result = await process_care_plan_message(
+                state=stored_state,
+                user_message=user_message,
+                thread_id=thread.id
+            )
+            
+            bot_response = result.get("bot_response", "")
+            if bot_response:
+                raw_messages = list(thread.raw_messages or [])
+                raw_messages.append({
+                    "id": str(uuid4()),
+                    "role": "assistant",
+                    "content": bot_response,
+                    "created_at": datetime.datetime.utcnow().isoformat(),
+                })
+                thread.raw_messages = raw_messages
+            
+            _persist_state(thread, result)
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+            
+            history = service.format_history_for_mobile(thread)
+            
+            # Format UI blocks from result
+            resp_ui_blocks = []
+            for block in result.get("ui_blocks", []):
+                actions = []
+                for a in block.get("actions", []):
+                    actions.append(UIBlockAction(
+                        id=a.get("id", str(uuid4())),
+                        title=a.get("title", "Action"),
+                        action_type=a.get("action_type", "submit_event"),
+                        style=a.get("style", "primary")
+                    ))
+                resp_ui_blocks.append(UIBlock(
+                    id=block.get("id", str(uuid4())),
+                    type=block.get("type") or "quick_actions",
+                    title=block.get("title"),
+                    subtitle=block.get("subtitle"),
+                    payload=block.get("payload", {}),
+                    actions=actions,
+                    dismissible=True, priority="high",
+                    analytics={"surface": "care_plan_checkin", "source": "langgraph_event"}
+                ))
+            
+            return {
+                "thread_id": thread.id,
+                "local_date": thread.local_date.isoformat(),
+                "history": history,
+                "tap_options": [],
+                "actionable_insights": thread.actionable_insights or {},
+                "ui_blocks": resp_ui_blocks,
+            }
+        
         # Unknown action - return empty
         logger.warning(f"Unknown UI event action: {action_id}")
         history = service.format_history_for_mobile(thread)
