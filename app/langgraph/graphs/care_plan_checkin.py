@@ -509,7 +509,7 @@ Output JSON: {{
             **state,
             "barrier_type": barrier_data.barrier_type,
             "change_reason": barrier_data.requested_item or barrier_data.specific_barrier,
-            "targeted_action_id": action.get("id"),
+            "targeted_action_id": action.get("item_id"),
             "workflow_stage": target_stage,
             "phase": "processing"
         }
