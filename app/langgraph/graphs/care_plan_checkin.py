@@ -222,14 +222,13 @@ async def load_daily_plan_and_tokens(state: CarePlanCheckInState) -> CarePlanChe
         
         # Check refresh tokens (16-day streak unlock, 2x per day)
         current_streak = streak_info.get("current_streak", 0)
-        refresh_unlocked = current_streak >= 16
         
-        # Get available tokens
-        refresh_tokens = 0
-        if refresh_unlocked:
-            # TODO: Query ActionPlanRefreshLog to count today's usage
-            today_refreshes = 0  # Placeholder
-            refresh_tokens = max(0, 2 - today_refreshes)
+        from app.services.reward_service import RewardService
+        reward_service = RewardService(db)
+        status = reward_service.get_refresh_status(user_id)
+        
+        refresh_tokens = status["remaining"]
+        refresh_unlocked = status["limit"] > 0 # Basically if they have any limit at all
         
         return {
             **state,
@@ -468,6 +467,15 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
             **state,
             "bot_response": "Which action would you like to change?",
             "phase": "loaded"
+        }
+
+    # EARLY CHECK: Do they have tokens?
+    if state.get("refresh_tokens_available", 0) <= 0:
+        current_streak = state.get("current_streak", 0)
+        return {
+            **state,
+            "bot_response": f"I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: {current_streak})",
+            "phase": "complete"
         }
     
     action = action_items[targeted_idx]
