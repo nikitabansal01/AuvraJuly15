@@ -680,10 +680,10 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
             original.replaced_at = datetime.utcnow()
             original.replacement_reason = state.get("change_reason", "")
             
-            # Create new action WITH ALL REQUIRED FIELDS (Fix for Issue 9)
-            logger.info(f"[GRAPH_NODE] Creating new action")
+            # Create new action - USE ORIGINAL'S PLAN_ID (most reliable source)
+            logger.info(f"[GRAPH_NODE] Creating new action with plan_id={original.plan_id}")
             new_item = ActionPlanItem(
-                plan_id=state["plan_id"],
+                plan_id=original.plan_id,  # Get from original action, NOT state
                 uid=state["user_id"],
                 slot=original.slot,
                 time_slot=original.time_slot,
@@ -703,7 +703,7 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
             from datetime import date as date_type
             refresh_log = ActionPlanRefreshLog(
                 uid=state["user_id"],
-                plan_id=state.get("plan_id"),
+                plan_id=original.plan_id,  # Use original's plan_id
                 refresh_date=date_type.today(),
                 refresh_count=1,
                 original_action={
