@@ -8,7 +8,7 @@ import logging
 import datetime
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.core.database import get_db
+from app.core.database import get_db, CarePlanCheckInThread
 from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.care_plan_checkin_service import CarePlanCheckInService
 # Import Graph
@@ -200,17 +200,6 @@ async def respond_care_plan_checkin(
         if not thread:
             raise HTTPException(status_code=404, detail="Thread not found")
             
-        # 2. Prepare LangGraph State
-        items = service.get_plan_items_for_ui(uid, limit=12) # Fetch active items
-        saved_context = thread.actionable_insights or {}
-        
-        # Helper to map legacy DB message format to Graph format
-        graph_messages = []
-        for m in (thread.raw_messages or []):
-            role = m.get("role")
-            if role == "bot": role = "assistant" # Graph usually uses 'assistant'
-            graph_messages.append({"role": role, "content": m.get("content")})
-
         # 2. Reconstruct State
         state = _reconstruct_state(thread, uid, service)
 
