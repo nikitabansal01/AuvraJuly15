@@ -17,6 +17,8 @@ Features:
 - UI Blocks integration
 """
 
+from __future__ import annotations
+
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
 from langgraph.graph import StateGraph, END
