@@ -235,9 +235,12 @@ async def respond_care_plan_checkin(
         # Sanitize message - remove null bytes and other problematic characters
         message_text = payload.message_text
         if message_text:
+            original_len = len(message_text)
             message_text = message_text.replace("\x00", "").replace("\u0000", "")
             # Remove other control characters except newlines/tabs
             message_text = "".join(c for c in message_text if c == "\n" or c == "\t" or ord(c) >= 32)
+            if len(message_text) != original_len:
+                logger.info(f"[SANITIZE] Removed {original_len - len(message_text)} problematic characters from message")
         
         # 1. Load Thread
         thread = service.get_thread_by_id(uid, payload.thread_id)
@@ -647,12 +650,13 @@ async def care_plan_ui_event(
                 "ui_blocks": resp_ui_blocks,
             }
         
-        # Handle main tap options from start screen
+        # Handle main tap options from start screen (want-to-change, alternate-suggestions, manage_plan)
         tap_to_message = {
             "want-to-change": "I want to change my plan",
             "alternate-suggestions": "Show me alternate suggestions",
             "manage_plan": "I want to manage my plan",
         }
+        logger.info(f"[EVENT] Checking tap_to_message for action_id='{action_id}', available={list(tap_to_message.keys())}")
         
         if action_id in tap_to_message:
             stored_state = _reconstruct_state(thread, uid, service)
