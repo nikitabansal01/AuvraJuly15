@@ -749,11 +749,19 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
             )
             db.add(refresh_log)
             
+            # ACTUALLY CONSUME THE REFRESH TOKEN (update UserStreakData)
+            logger.info(f"[GRAPH_NODE] Consuming refresh token via RewardService")
+            from app.services.reward_service import RewardService
+            reward_service = RewardService(db)
+            refresh_result = reward_service.use_refresh(state["user_id"])
+            logger.info(f"[GRAPH_NODE] Refresh token consumed: {refresh_result}")
+            
             logger.info(f"[GRAPH_NODE] Committing to database")
             db.commit()
             logger.info(f"[GRAPH_NODE] Database commit successful")
             
-            response = f"Perfect! I've replaced the {original.title} with {selected_alt['title']}."
+            tokens_remaining = refresh_result.get("remaining", 0)
+            response = f"Perfect! I've replaced {original.title} with {selected_alt['title']}. You have {tokens_remaining} refresh(es) left today."
             return {
                 **state,
                 "bot_response": response,
