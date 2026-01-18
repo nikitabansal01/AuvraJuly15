@@ -275,8 +275,9 @@ def create_confirmation_block(
 
 def create_action_selection_block(
     action_items: List[Dict[str, Any]],
-    title: str = "Choose action to change",
+    title: str = "Choose action",
     subtitle: str = "Select from your remaining actions",
+    intent: str = "change_action",
 ) -> Dict[str, Any]:
     """Create a CTA block that lists action names for selection."""
     actions: List[Dict[str, Any]] = []
@@ -297,6 +298,7 @@ def create_action_selection_block(
                     "action_id": item_id,
                     "action_index": idx,
                     "display_title": display_title,
+                    "intent": intent,
                 },
             }
         )

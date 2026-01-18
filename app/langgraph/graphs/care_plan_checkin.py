@@ -514,8 +514,19 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
                 "phase": "complete"
             }
 
-        response = "Which action would you like to change?"
-        ui_blocks = [create_action_selection_block(available_actions)]
+        current_intent = state.get("current_intent") or "change_action"
+        is_alternates = current_intent in {"request_alternates", "negotiate"}
+        response = "Which action would you like alternates for?" if is_alternates else "Which action would you like to change?"
+        title = "Choose action for alternates" if is_alternates else "Choose action to change"
+        subtitle = "Select from your remaining actions"
+        ui_blocks = [
+            create_action_selection_block(
+                available_actions,
+                title=title,
+                subtitle=subtitle,
+                intent=current_intent,
+            )
+        ]
         return {
             **state,
             "bot_response": response,

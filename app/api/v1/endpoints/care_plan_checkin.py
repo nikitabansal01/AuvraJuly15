@@ -418,7 +418,9 @@ async def care_plan_ui_event(
 
             # Add user's selection as visible message
             display_title = (meta.get("display_title") if isinstance(meta, dict) else None) or selected_title or "That action"
-            _add_user_tap_message(thread, f"Change: {display_title}")
+            intent = meta.get("intent") if isinstance(meta, dict) else None
+            is_alternates = intent in {"request_alternates", "negotiate"}
+            _add_user_tap_message(thread, f"Alternates for: {display_title}" if is_alternates else f"Change: {display_title}")
 
             # Persist targeted action in thread context
             insights = dict(thread.actionable_insights or {})
@@ -430,9 +432,10 @@ async def care_plan_ui_event(
 
             # Reconstruct state with updated insights and run change flow
             stored_state = _reconstruct_state(thread, uid, service)
+            user_message = f"Show me alternatives for {display_title}" if is_alternates else f"I want to change {display_title}"
             result = await process_care_plan_message(
                 state=stored_state,
-                user_message=f"I want to change {display_title}",
+                user_message=user_message,
                 thread_id=thread.id
             )
 
