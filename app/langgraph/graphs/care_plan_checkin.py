@@ -998,8 +998,10 @@ def create_load_plan_graph():
     
     workflow.set_entry_point("load_daily_plan_and_tokens")
     workflow.add_edge("load_daily_plan_and_tokens", END)
-    
-    return workflow.compile()
+
+    # Return the uncompiled graph; we compile once below with a checkpointer
+    # so interrupts/resume work consistently across invocations.
+    return workflow
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1059,8 +1061,9 @@ def create_process_message_graph():
             "END": END
         }
     )
-    
-    return workflow.compile()
+
+    # Return the uncompiled graph; we compile once below with a checkpointer.
+    return workflow
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1076,8 +1079,9 @@ def create_process_selection_graph():
     
     workflow.set_entry_point("check_refresh_tokens_and_replace")
     workflow.add_edge("check_refresh_tokens_and_replace", END)
-    
-    return workflow.compile()
+
+    # Return the uncompiled graph; we compile once below with a checkpointer.
+    return workflow
 
 
 # Compile graphs with checkpointer for interrupts and resumable state
