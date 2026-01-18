@@ -1132,6 +1132,10 @@ class ActionPlanGenerator:
             carryforward_result["plan_source"] = "carryforward"
             return carryforward_result
         
+        # NEW: Check for items skipped via care plan check-in yesterday
+        # These should be included in today's plan
+        skipped_items = await self._get_chat_skipped_items_from_yesterday(user_id, today, db)
+        
         # NEW: Check if user has fresh session recommendations that can be converted
         # This happens when user just signed up and session recs were migrated
         
@@ -1151,8 +1155,10 @@ class ActionPlanGenerator:
         
         conversion_result = None  # Force skip conversion
         
-        # Generate new plan
+        # Generate new plan, passing skipped items to include as carry-forward
         logger.info(f"Generating new plan for user {user_id} on {today}")
+        if skipped_items:
+            logger.info(f"Including {len(skipped_items)} chat-skipped items from yesterday in plan generation")
         gen_result = await self.generate_new_plan(
             user_id=user_id,
             plan_date=today,
@@ -1160,9 +1166,12 @@ class ActionPlanGenerator:
             db=db,
             image_mode=image_mode,
             skip_quality_check=skip_quality_check,
+            carryforward_items=skipped_items,  # Pass skipped items for carry-forward
         )
         if isinstance(gen_result, dict) and gen_result.get("success"):
             gen_result.setdefault("plan_source", "generated_new")
+            if skipped_items:
+                gen_result["plan_source"] = "generated_with_carryforward"
         return gen_result
     
     async def generate_new_plan(
@@ -1173,7 +1182,8 @@ class ActionPlanGenerator:
         db: AsyncSession,
         image_mode: Literal["full", "hero_only", "none"] = "full",
         skip_quality_check: bool = False,
-        session_id: Optional[str] = None  # NEW: For guest users
+        session_id: Optional[str] = None,  # For guest users
+        carryforward_items: Optional[List[Dict[str, Any]]] = None  # Items to carry forward from yesterday
     ) -> Dict[str, Any]:
         """
         Generate a completely new action plan.
@@ -1184,6 +1194,7 @@ class ActionPlanGenerator:
         1. Acquire advisory lock for user+date (or session+date)
         2. Check for existing plan (double-check after lock)
         3. Load user context
+        4. If carryforward_items provided, include them in plan (reduces new generation slots)
         """
         start_time = time.time()
         
@@ -1280,6 +1291,13 @@ class ActionPlanGenerator:
                 return {"success": False, "error": "User profile not found"}
             logger.info(f"[GENERATE]  User context loaded successfully")
             
+            # Determine how many new actions to generate based on carryforward items
+            num_carryforward = len(carryforward_items) if carryforward_items else 0
+            num_to_generate = max(0, 4 - num_carryforward)  # Standard plan is 4 items
+            
+            if num_carryforward > 0:
+                logger.info(f"[GENERATE]  Have {num_carryforward} carryforward items, will generate {num_to_generate} new actions")
+            
             # Step 2: Generate actions via GPT-4o-mini with retry logic
             # Pydantic validation ensures complete data - no fallbacks
             logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
@@ -1365,6 +1383,41 @@ class ActionPlanGenerator:
             if not actions:
                 logger.error("[GENERATE]  Failed to generate valid actions via GPT after all retries")
                 return {"success": False, "error": "Failed to generate actions. Please try again."}
+            
+            # Combine carryforward items with newly generated actions
+            if carryforward_items:
+                # Limit new actions to fill remaining slots
+                actions = actions[:num_to_generate]
+                
+                # Add carryforward items at the beginning (they take priority)
+                combined_actions = []
+                for cf_item in carryforward_items[:4]:  # Max 4 total
+                    combined_actions.append({
+                        "title": cf_item.get("title", "Action"),
+                        "category": cf_item.get("category", "general"),
+                        "specific_action": cf_item.get("specific_action", ""),
+                        "purpose": cf_item.get("purpose", ""),
+                        "target_hormone": cf_item.get("target_hormone", "cortisol"),
+                        "time_slot": cf_item.get("time_slot", "morning"),
+                        "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
+                        # Copy other fields
+                        "symptoms": cf_item.get("symptoms", []),
+                        "conditions": cf_item.get("conditions", []),
+                        "food_items": cf_item.get("food_items", []),
+                        "food_amounts": cf_item.get("food_amounts", []),
+                        "exercise_types": cf_item.get("exercise_types", []),
+                        "exercise_durations": cf_item.get("exercise_durations", []),
+                        "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
+                        "mindfulness_durations": cf_item.get("mindfulness_durations", []),
+                        "variants": cf_item.get("variants", []),
+                    })
+                
+                # Add new actions
+                combined_actions.extend(actions)
+                
+                # Ensure max 4 actions
+                actions = combined_actions[:4]
+                logger.info(f"[GENERATE]  Combined {len(carryforward_items)} carryforward + {len(actions) - len(carryforward_items)} new = {len(actions)} total actions")
             
             # Log the generated actions for debugging
             logger.info(f"[GENERATE] ==========================================================================")
@@ -2180,6 +2233,75 @@ class ActionPlanGenerator:
                     )
                 except Exception as unlock_err:
                     logger.warning(f"Failed to release carryforward lock: {unlock_err}")
+    
+    async def _get_chat_skipped_items_from_yesterday(
+        self,
+        user_id: str,
+        today: date,
+        db: AsyncSession
+    ) -> List[Dict[str, Any]]:
+        """
+        Get items that were skipped via care plan check-in yesterday.
+        
+        These items should be carried forward to today's plan generation.
+        Returns list of action item data dicts that can be used as seed for today's plan.
+        """
+        from datetime import timedelta
+        from sqlalchemy import func
+        from app.core.database import ActionPlanFeedback, ActionPlanItem
+        
+        yesterday = today - timedelta(days=1)
+        
+        try:
+            # Find feedback records for skipped items from yesterday's care plan check-in
+            skipped_feedback_result = await db.execute(
+                select(ActionPlanFeedback).where(
+                    and_(
+                        ActionPlanFeedback.uid == user_id,
+                        ActionPlanFeedback.feedback_type == "skipped",
+                        ActionPlanFeedback.feedback_source == "care_plan_checkin",
+                        func.date(ActionPlanFeedback.created_at) == yesterday
+                    )
+                )
+            )
+            skipped_feedbacks = skipped_feedback_result.scalars().all()
+            
+            if not skipped_feedbacks:
+                return []
+            
+            # Get the actual item details for each skipped feedback
+            skipped_items = []
+            for feedback in skipped_feedbacks:
+                if not feedback.item_id:
+                    continue
+                    
+                # Get the original item
+                item_result = await db.execute(
+                    select(ActionPlanItem).where(ActionPlanItem.id == feedback.item_id)
+                )
+                item = item_result.scalar_one_or_none()
+                
+                if item and not item.is_completed:
+                    # Item was skipped and not completed - carry forward
+                    skipped_items.append({
+                        "id": item.id,
+                        "title": item.title,
+                        "category": item.category,
+                        "specific_action": item.specific_action,
+                        "purpose": item.purpose,
+                        "target_hormone": item.target_hormone,
+                        "time_slot": item.time_slot,
+                        "carried_forward_from": item.id,
+                    })
+            
+            if skipped_items:
+                logger.info(f"Found {len(skipped_items)} chat-skipped items from yesterday to carry forward")
+            
+            return skipped_items
+            
+        except Exception as e:
+            logger.error(f"Error getting chat-skipped items: {e}")
+            return []
     
     async def _generate_partial_actions(
         self,
@@ -4612,6 +4734,7 @@ JSON ONLY:
                     research_studies=action.get("research_studies", []),
                     conditions=action_conditions,
                     symptoms=action_symptoms,
+                    carried_forward_from=action.get("carried_forward_from"),  # Track if skipped from previous day
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow()
                 )

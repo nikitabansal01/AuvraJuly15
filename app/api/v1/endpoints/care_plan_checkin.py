@@ -8,7 +8,7 @@ import logging
 import datetime
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.core.database import get_db, CarePlanCheckInThread, ActionPlan
+from app.core.database import get_db, CarePlanCheckInThread, ActionPlan, ActionPlanItem, ActionPlanFeedback
 from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.care_plan_checkin_service import CarePlanCheckInService
 from app.services.reward_service import RewardService
@@ -497,14 +497,67 @@ async def care_plan_ui_event(
             _add_user_tap_message(thread, action_display_text.get(action_id, "Yes, skip it"))
             
             stored_state = _reconstruct_state(thread, uid, service)
-            # Process as a skip confirmation through regular respond
+            
+            # Get the targeted action to mark as skipped
+            targeted_action_id = stored_state.get("targeted_action_id")
+            targeted_action_idx = stored_state.get("targeted_action_index")
+            action_items = stored_state.get("action_items", [])
+            
+            # Find the item to skip (by ID or index)
+            skipped_item = None
+            skipped_item_title = "the action"
+            if targeted_action_id:
+                skipped_item = db.query(ActionPlanItem).filter(
+                    ActionPlanItem.id == targeted_action_id
+                ).first()
+            elif targeted_action_idx is not None and 0 <= targeted_action_idx < len(action_items):
+                item_data = action_items[targeted_action_idx]
+                item_id = item_data.get("id") or item_data.get("item_id")
+                if item_id:
+                    skipped_item = db.query(ActionPlanItem).filter(
+                        ActionPlanItem.id == item_id
+                    ).first()
+            
+            if skipped_item:
+                skipped_item_title = skipped_item.title or "the action"
+                
+                # Record skip feedback for GPT memory and carry-forward tracking
+                feedback = ActionPlanFeedback(
+                    uid=uid,
+                    plan_id=skipped_item.plan_id,
+                    item_id=skipped_item.id,
+                    feedback_type="skipped",
+                    action_title=skipped_item.title,
+                    action_category=skipped_item.category,
+                    target_hormone=skipped_item.target_hormone,
+                    feedback_source="care_plan_checkin",
+                    feedback_text="Skipped via chat - will be carried forward",
+                    created_at=datetime.datetime.utcnow()
+                )
+                db.add(feedback)
+                
+                # Store skipped item ID in thread for carry-forward during next plan generation
+                insights = dict(thread.actionable_insights or {})
+                skipped_items = insights.get("skipped_item_ids", [])
+                if skipped_item.id not in skipped_items:
+                    skipped_items.append(skipped_item.id)
+                insights["skipped_item_ids"] = skipped_items
+                thread.actionable_insights = insights
+                
+                logger.info(f"[SKIP] Marked item {skipped_item.id} ({skipped_item_title}) as skipped for carry-forward")
+            
+            # Process through LangGraph for response
             result = await process_care_plan_message(
                 state=stored_state,
                 user_message="Yes, skip it",
                 thread_id=thread.id
             )
             
-            bot_response = result.get("bot_response", "I've skipped that action for you.")
+            # Customize response to mention carry-forward
+            bot_response = result.get("bot_response", f"I've skipped {skipped_item_title} for you.")
+            if skipped_item and "carry" not in bot_response.lower():
+                bot_response = f"Got it, I've skipped {skipped_item_title}. It'll be carried forward to tomorrow's plan so you can try it then. 💪"
+            
             raw_messages = list(thread.raw_messages or [])
             raw_messages.append({
                 "id": str(uuid4()),
