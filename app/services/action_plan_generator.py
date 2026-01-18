@@ -1298,13 +1298,49 @@ class ActionPlanGenerator:
             if num_carryforward > 0:
                 logger.info(f"[GENERATE]  Have {num_carryforward} carryforward items, will generate {num_to_generate} new actions")
             
-            # Step 2: Generate actions via GPT-4o-mini with retry logic
-            # Pydantic validation ensures complete data - no fallbacks
-            logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
-            actions = None
-            gpt_cost = 0.0
-            used_model = self.GPT_MODEL
-            model_switch_reason = None  # Track why we switched models
+            # EDGE CASE: All 4 actions were skipped - no GPT generation needed
+            if num_to_generate == 0 and carryforward_items:
+                logger.info(f"[GENERATE]  All 4 slots filled by carryforward items - skipping GPT generation")
+                actions = []
+                gpt_cost = 0.0
+                used_model = "carryforward_only"
+                model_switch_reason = "All items carried forward from yesterday"
+                
+                # Build actions list from carryforward items
+                for cf_item in carryforward_items[:4]:
+                    actions.append({
+                        "title": cf_item.get("title", "Action"),
+                        "category": cf_item.get("category", "general"),
+                        "specific_action": cf_item.get("specific_action", ""),
+                        "purpose": cf_item.get("purpose", ""),
+                        "target_hormone": cf_item.get("target_hormone", "cortisol"),
+                        "time_slot": cf_item.get("time_slot", "morning"),
+                        "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
+                        "hormone_persona_intro": cf_item.get("hormone_persona_intro", ""),
+                        "symptoms": cf_item.get("symptoms", []),
+                        "conditions": cf_item.get("conditions", []),
+                        "food_items": cf_item.get("food_items", []),
+                        "food_amounts": cf_item.get("food_amounts", []),
+                        "exercise_types": cf_item.get("exercise_types", []),
+                        "exercise_durations": cf_item.get("exercise_durations", []),
+                        "exercise_intensities": cf_item.get("exercise_intensities", []),
+                        "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
+                        "mindfulness_durations": cf_item.get("mindfulness_durations", []),
+                        "variants": cf_item.get("variants", []),
+                        "hero_image_url": cf_item.get("hero_image_url"),
+                        "research_studies": cf_item.get("research_studies", []),
+                    })
+                
+                logger.info(f"[GENERATE]  Carryforward plan ready with {len(actions)} items (no GPT cost)")
+                
+            else:
+                # Step 2: Generate actions via GPT-4o-mini with retry logic
+                # Pydantic validation ensures complete data - no fallbacks
+                logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
+                actions = None
+                gpt_cost = 0.0
+                used_model = self.GPT_MODEL
+                model_switch_reason = None  # Track why we switched models
             
             from app.services.evaluation_service import get_action_plan_evaluator
             evaluator = get_action_plan_evaluator()
@@ -1384,8 +1420,8 @@ class ActionPlanGenerator:
                 logger.error("[GENERATE]  Failed to generate valid actions via GPT after all retries")
                 return {"success": False, "error": "Failed to generate actions. Please try again."}
             
-            # Combine carryforward items with newly generated actions
-            if carryforward_items:
+            # Combine carryforward items with newly generated actions (only if we have both)
+            if carryforward_items and num_to_generate > 0:
                 # Limit new actions to fill remaining slots
                 actions = actions[:num_to_generate]
                 
@@ -1400,16 +1436,19 @@ class ActionPlanGenerator:
                         "target_hormone": cf_item.get("target_hormone", "cortisol"),
                         "time_slot": cf_item.get("time_slot", "morning"),
                         "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
-                        # Copy other fields
+                        "hormone_persona_intro": cf_item.get("hormone_persona_intro", ""),
                         "symptoms": cf_item.get("symptoms", []),
                         "conditions": cf_item.get("conditions", []),
                         "food_items": cf_item.get("food_items", []),
                         "food_amounts": cf_item.get("food_amounts", []),
                         "exercise_types": cf_item.get("exercise_types", []),
                         "exercise_durations": cf_item.get("exercise_durations", []),
+                        "exercise_intensities": cf_item.get("exercise_intensities", []),
                         "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
                         "mindfulness_durations": cf_item.get("mindfulness_durations", []),
                         "variants": cf_item.get("variants", []),
+                        "hero_image_url": cf_item.get("hero_image_url"),
+                        "research_studies": cf_item.get("research_studies", []),
                     })
                 
                 # Add new actions
@@ -1417,7 +1456,7 @@ class ActionPlanGenerator:
                 
                 # Ensure max 4 actions
                 actions = combined_actions[:4]
-                logger.info(f"[GENERATE]  Combined {len(carryforward_items)} carryforward + {len(actions) - len(carryforward_items)} new = {len(actions)} total actions")
+                logger.info(f"[GENERATE]  Combined {len(carryforward_items)} carryforward + {num_to_generate} new = {len(actions)} total actions")
             
             # Log the generated actions for debugging
             logger.info(f"[GENERATE] ==========================================================================")
