@@ -1682,7 +1682,8 @@ class ActionPlanGenerator:
                     time_slot=time_slots[slot_idx],
                     category=category,
                     title=title,
-                    specific_action=rec.specific_action or f"Try {title} today",
+                    # Prefer generated specific_action; if missing, avoid 'Try' prefix per UX request
+                    specific_action=rec.specific_action or f"{title} today",
                     purpose=rec.purpose or f"Supports your {target_hormone} balance",
                     target_hormone=target_hormone,
                     hormone_persona_intro=hormone_intro,
@@ -1706,7 +1707,8 @@ class ActionPlanGenerator:
                 
                 # Add default variants
                 variant_types = {
-                    "food": ["easy", "tasty", "healthy"],
+                    "food": ["healthy", "easy", "tasty"],
+                    # keep a consistent ordering for movement variants
                     "movement": ["gentle", "energizing", "quick"],
                     "mindfulness": ["guided", "silent", "brief"]
                 }
@@ -4114,15 +4116,17 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                 existing_variants = action.get("variants", [])
                 variant_types = {
                     "food": ["healthy", "easy", "tasty"],
-                    "movement": ["gentle", "quick", "energizing"],
+                    "movement": ["gentle", "energizing", "quick"],
                     "mindfulness": ["brief", "guided", "solo"]
                 }.get(category, ["alternative", "alternative", "alternative"])
                 
                 while len(existing_variants) < 3:
                     idx = len(existing_variants)
+                    v_type = variant_types[idx] if idx < len(variant_types) else "alternative"
                     existing_variants.append({
-                        "variant_type": variant_types[idx] if idx < len(variant_types) else "alternative",
-                        "title": f"Variation {idx + 1}",
+                        "variant_type": v_type,
+                        # Use descriptive title combining main title + variant type (e.g. 'Water Aerobics (Gentle)')
+                        "title": f"{action.get('title', 'Action')} ({v_type.title()})",
                         "description": "Alternative approach",
                         "image_prompt": action.get("image_prompt", "")
                     })
