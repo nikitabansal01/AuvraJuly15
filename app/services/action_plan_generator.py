@@ -7272,6 +7272,7 @@ OUTPUT FORMAT (JSON Array):
             
             
             await db.commit()
+            logger.info(f"✅ Database commit successful for batch replacement of {len(replacements)} actions")
             
             # Fetch variants for each new action to include in response
             from app.core.database import ActionPlanItemVariant
@@ -7301,9 +7302,11 @@ OUTPUT FORMAT (JSON Array):
             }
             
         except Exception as e:
-            logger.error(f"Error in batch replacement: {e}")
+            import traceback
+            logger.error(f"❌ Error in batch replacement: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
             await db.rollback()
-            return {"success": False, "error": "Failed to replace actions. Please try again."}
+            return {"success": False, "error": f"Failed to replace actions: {str(e)[:100]}"}
     
     async def record_feedback(
         self,

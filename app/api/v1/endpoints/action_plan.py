@@ -667,7 +667,11 @@ async def submit_plan_satisfaction(
             
             await async_db.close()
             
+            # Log result for debugging
+            logger.info(f"[PLAN-SATISFACTION] batch_replace_actions returned: success={replacement_result.get('success')}, replaced_count={replacement_result.get('replaced_count', 0)}")
+            
             if not replacement_result.get("success"):
+                logger.error(f"[PLAN-SATISFACTION] Replacement failed: {replacement_result.get('error')}")
                 raise HTTPException(
                     status_code=500,
                     detail=replacement_result.get("error", "Failed to generate replacements")
@@ -825,7 +829,11 @@ async def refresh_all_incomplete_actions(
         
         await async_db.close()
         
+        # Log result for debugging
+        logger.info(f"[REFRESH-ALL] batch_replace_actions returned: success={result.get('success')}, replaced_count={result.get('replaced_count', 0)}")
+        
         if not result.get("success"):
+            logger.error(f"[REFRESH-ALL] Replacement failed: {result.get('error')}")
             raise HTTPException(
                 status_code=500,
                 detail=result.get("error", "Failed to refresh actions")
