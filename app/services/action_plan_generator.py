@@ -7134,6 +7134,28 @@ OUTPUT FORMAT (JSON Array):
                 elif not isinstance(raw_variants, list):
                     raw_variants = []
                 
+                # FIX: Generate default variants when GPT returns empty variants
+                if not raw_variants:
+                    category = replacement_action.get("category", "food").lower()
+                    replacement_title = replacement_action.get("title", "Wellness Action")
+                    
+                    variant_type_defaults = {
+                        "food": ["healthy", "easy", "tasty"],
+                        "movement": ["gentle", "quick", "energizing"],
+                        "mindfulness": ["brief", "guided", "solo"],
+                    }.get(category, ["alternative", "simpler", "quick"])
+                    
+                    # Create default variant dicts
+                    raw_variants = [
+                        {
+                            "variant_type": vt,
+                            "title": f"{vt.title()} {replacement_title}",
+                            "description": f"A {vt} way to enjoy {replacement_title}"
+                        }
+                        for vt in variant_type_defaults
+                    ]
+                    logger.info(f"[BATCH_REPLACE] No variants from GPT, generating 3 default variants for '{replacement_title[:30]}'")
+                
                 for variant in raw_variants[:3]:
                     # Skip if variant is not a dict
                     if not isinstance(variant, dict):
