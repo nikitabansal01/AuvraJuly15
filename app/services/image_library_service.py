@@ -132,7 +132,8 @@ class ImageLibraryService:
         variant_type: Optional[str],
         user_id: str,
         db: AsyncSession,
-        title_embedding: Optional[List[float]] = None
+        title_embedding: Optional[List[float]] = None,
+        cache_key_text: Optional[str] = None,
     ) -> Tuple[str, bool, float]:
         """
         Get a cached image or generate a new one.
@@ -159,20 +160,30 @@ class ImageLibraryService:
             fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS.get("food", ""))
             return (fallback_url, False, 0.0)
         
+        # Use a stable cache key (usually the action title) even if the generation prompt changes.
+        # This improves image quality without destroying semantic cache hit rates.
+        embed_text = cache_key_text or prompt
+
         # Log what we're processing
-        logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
+        if cache_key_text and cache_key_text != prompt:
+            logger.info(
+                f"🖼️ [IMAGE] Processing: cache_key='{embed_text[:40]}...' gen_prompt='{prompt[:40]}...' "
+                f"category={category} variant={variant_type}"
+            )
+        else:
+            logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
         
         try:
-            # Step 1: Get embedding for the TITLE (if not provided)
-            # This gives stable cache matching regardless of prompt style changes
+            # Step 1: Get embedding for the CACHE KEY (if not provided)
+            # This gives stable cache matching regardless of generation prompt style changes
             if title_embedding is None:
-                logger.info(f"[IMAGE] Step 1: Getting embedding for title '{prompt[:30]}...'")
-                title_embedding = await self._get_embedding(prompt)
+                logger.info(f"[IMAGE] Step 1: Getting embedding for cache key '{embed_text[:30]}...'")
+                title_embedding = await self._get_embedding(embed_text)
             
             if not title_embedding:
-                logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{prompt[:30]}...' - generating without cache")
+                logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{embed_text[:30]}...' - generating without cache")
                 return await self._generate_and_store_image(
-                    prompt, category, variant_type, user_id, None, db
+                    prompt, category, variant_type, user_id, None, db, prompt_text_for_library=embed_text
                 )
             
             logger.info(f"[IMAGE] Step 1: ✅ Got embedding (dim={len(title_embedding)})")
@@ -192,7 +203,7 @@ class ImageLibraryService:
                 await self._update_image_usage(cached_image["id"], user_id, db)
                 elapsed = time.time() - start_time
                 logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
-                logger.info(f"[IMAGE]   Title: '{prompt[:40]}...'")
+                logger.info(f"[IMAGE]   Cache key: '{embed_text[:40]}...'")
                 logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
                 logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
                 logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
@@ -201,10 +212,10 @@ class ImageLibraryService:
             # Step 3: No cache hit - generate new image
             elapsed_cache = time.time() - start_time
             logger.info(f"[IMAGE] Step 2: ❌ CACHE MISS (checked in {elapsed_cache:.2f}s)")
-            logger.info(f"[IMAGE] Step 3: 🎨 Generating new image for '{prompt[:40]}...'")
+            logger.info(f"[IMAGE] Step 3: 🎨 Generating new image for '{embed_text[:40]}...'")
             
             result = await self._generate_and_store_image(
-                prompt, category, variant_type, user_id, title_embedding, db
+                prompt, category, variant_type, user_id, title_embedding, db, prompt_text_for_library=embed_text
             )
             
             elapsed = time.time() - start_time
@@ -216,7 +227,7 @@ class ImageLibraryService:
             logger.error(f"[IMAGE] ❌ Error: {e}")
             # Fallback: try to generate without caching
             return await self._generate_and_store_image(
-                prompt, category, variant_type, user_id, None, db
+                prompt, category, variant_type, user_id, None, db, prompt_text_for_library=embed_text
             )
     
     async def _get_embedding(self, text: str) -> Optional[List[float]]:
@@ -496,7 +507,8 @@ class ImageLibraryService:
         variant_type: Optional[str],
         user_id: str,
         prompt_embedding: Optional[List[float]],
-        db: AsyncSession
+        db: AsyncSession,
+        prompt_text_for_library: Optional[str] = None,
     ) -> Tuple[str, bool, float]:
         """Generate a new image using RunPod Flux Schnell and store it."""
         start_time = time.time()
@@ -519,9 +531,10 @@ class ImageLibraryService:
                     image_url = result
 
                 # Store in image library for future semantic matching
+                library_prompt_text = prompt_text_for_library or prompt
                 await self._store_in_library(
                     image_url=image_url,
-                    prompt_text=prompt,
+                    prompt_text=library_prompt_text,
                     prompt_embedding=prompt_embedding,
                     category=category,
                     variant_type=variant_type,
@@ -838,55 +851,81 @@ class ImageLibraryService:
             Enhanced prompt that accurately represents the action
         """
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
+
+        # Global style guardrails.
+        # These images appear as small, often circular crops in the mobile UI.
+        base_style = (
+            "centered composition, subject fills 70% of the frame, "
+            "clean minimalist background, soft natural lighting, warm inviting tones, "
+            "photorealistic, high detail, sharp focus on the subject, "
+            "no text, no typography, no watermark, no logo, no branding"
+        )
         
-        if category == "food":
+        prompt_str = prompt or ""
+        prompt_l = prompt_str.lower()
+
+        # Heuristic: if the prompt already looks like a full, detailed image prompt
+        # (e.g., LLM-generated "Professional close-up food photography..."), don't overwrite it.
+        looks_already_enhanced = any(
+            k in prompt_l
+            for k in [
+                "professional", "photography", "photorealistic", "centered composition",
+                "no watermark", "no text", "4k quality"
+            ]
+        )
+
+        if looks_already_enhanced:
+            enhanced = f"{prompt_str}, {base_style}"
+
+        elif category == "food":
             # FOOD: Show the ACTUAL dish with visible ingredients
             # User should be able to understand what to prepare from the image
             enhanced = (
-                f"A delicious plate of {prompt}, "
-                f"showing the actual ingredients clearly visible, "
-                f"freshly prepared and appetizing, natural vibrant colors, "
-                f"beautifully arranged on a clean white plate, "
-                f"top-down or slight angle view so all ingredients are visible, "
-                f"professional food photography, bright natural lighting, "
-                f"the dish should look exactly like {prompt} with recognizable ingredients, "
-                f"healthy nutritious meal for women's wellness"
+                f"Professional food photograph of {prompt_str} as the hero, "
+                f"{base_style}, "
+                f"served on a simple white plate or bowl, "
+                f"ingredients and textures clearly visible and instantly recognizable, "
+                f"slight 3/4 angle close-up (not wide), shallow depth of field, "
+                f"appetizing natural food styling, no people, no hands"
             )
             
         elif category == "movement":
             # MOVEMENT: Show the ACTUAL exercise position and form
             # User should be able to understand how to do the exercise from the image
             enhanced = (
-                f"A woman demonstrating {prompt} exercise, "
-                f"clear view of the body position and correct form, "
-                f"showing exactly how to perform {prompt}, "
-                f"wearing comfortable athletic clothes, "
-                f"focused calm expression, bright clean background, "
-                f"the exercise pose should be clearly recognizable as {prompt}, "
-                f"fitness photography style, full body visible, "
-                f"instructional and easy to follow, women's wellness exercise"
+                f"Photorealistic wellness photo of one woman demonstrating {prompt_str}, "
+                f"full body visible, pose and form clearly readable, "
+                f"{base_style}, "
+                f"simple bright room or clean studio setting, "
+                f"comfortable athletic clothing, yoga mat if relevant, "
+                f"realistic anatomy, natural proportions, no extra limbs or extra fingers"
             )
             
         elif category == "mindfulness":
             # MINDFULNESS: Show the ACTUAL meditation or breathing practice
             # User should understand what the practice looks like
-            enhanced = (
-                f"A peaceful woman practicing {prompt}, "
-                f"showing the meditation or breathing position clearly, "
-                f"eyes closed, serene relaxed expression, "
-                f"comfortable seated or resting position for {prompt}, "
-                f"wearing soft comfortable clothes, "
-                f"calm cozy setting with soft natural light, "
-                f"the practice should be recognizable as {prompt}, "
-                f"peaceful wellness moment, self-care atmosphere"
-            )
+            if "journal" in prompt_l or "journ" in prompt_l:
+                # For journaling: avoid generating readable text.
+                enhanced = (
+                    f"Photorealistic close-up lifestyle photo of hands writing in a {prompt_str}, "
+                    f"journal open on a simple desk, pen in hand, cozy calm setting, "
+                    f"{base_style}, "
+                    f"the written content is not readable (blurred scribbles), "
+                    f"soft diffused light, self-care atmosphere"
+                )
+            else:
+                enhanced = (
+                    f"Photorealistic calm lifestyle photo of one woman practicing {prompt_str}, "
+                    f"the technique is visually clear (posture and hand placement), "
+                    f"{base_style}, "
+                    f"cozy minimal room, soft diffused light, "
+                    f"realistic anatomy, natural proportions"
+                )
             
         else:
             # Fallback: simple clear wellness image
             enhanced = (
-                f"A beautiful wellness image of {prompt}, "
-                f"clean minimalist style, bright natural lighting, "
-                f"clearly showing what {prompt} looks like"
+                f"Photorealistic wellness image of {prompt_str}, {base_style}"
             )
         
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")

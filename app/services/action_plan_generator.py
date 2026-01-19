@@ -504,9 +504,9 @@ RESEARCH CITATION FORMAT (from search_research_paper tool):
     "pmid": "12345678"
 }
 
-IMAGE PROMPT STYLE (for consistent semantic matching):
+IMAGE PROMPT STYLE (for consistent semantic matching + better-looking images):
 All prompts should follow this pattern:
-"[Subject/food/activity], centered composition, subject fills 60-70% of the frame (important for circular crops), natural lighting, clean minimalist background, warm inviting tones, wellness aesthetic, no text, no watermark, no logo"
+"[Subject/food/activity], photorealistic, centered composition, subject fills 60-70% of the frame (important for circular crops), soft natural lighting, clean minimalist background, warm inviting tones, high detail, sharp focus on subject, no text, no typography, no watermark, no logo, no branding, no surreal elements"
 
 HORMONE PERSONA INTRO STYLE:
 The hormone speaks in first person, identifying itself and explaining whats happening in the users current cycle phase (1 sentence). 
@@ -5008,15 +5008,20 @@ JSON ONLY:
                         return False
                     
                     logger.info(f"[ENSURE_IMAGES] Generating hero: '{item.title[:40]}' ({item.category})")
+
+                    # Prefer the LLM-provided hero prompt if available (usually more illustrative
+                    # than the short title), but keep cache matching stable on the title.
+                    hero_prompt = getattr(item, "hero_image_prompt", None) or item.title
                     
                     async with self.db_semaphore:
                         task_session = await _create_async_session(self.async_session_maker)
                         url, was_cached, cost = await self.image_service.get_or_generate_image(
-                            prompt=item.title,  # Use TITLE for cache matching
+                            prompt=hero_prompt,
                             category=item.category or "food",
                             variant_type="hero",
                             user_id=user_id,
-                            db=task_session
+                            db=task_session,
+                            cache_key_text=item.title,
                         )
                     
                     if url:
@@ -5040,6 +5045,8 @@ JSON ONLY:
                     prompt = variant.image_prompt
                     if not prompt:
                         prompt = f"{variant.variant_type.title()} {item.title}, {item.category} lifestyle, professional photography"
+
+                    cache_key_text = variant.title or item.title
                     
                     async with self.db_semaphore:
                         task_session = await _create_async_session(self.async_session_maker)
@@ -5048,7 +5055,8 @@ JSON ONLY:
                             category=item.category or "food",
                             variant_type=variant.variant_type,
                             user_id=user_id,
-                            db=task_session
+                            db=task_session,
+                            cache_key_text=cache_key_text,
                         )
                     
                     if url:
@@ -6924,14 +6932,17 @@ OUTPUT FORMAT (JSON Array):
                 replacement_title = replacement_action.get("title", "")
                 replacement_category = replacement_action.get("category", "food")
                 logger.info(f"[BATCH_REPLACE] Generating image {index+1}: '{replacement_title[:40]}' ({replacement_category})")
+
+                hero_prompt = replacement_action.get("image_prompt") or replacement_title
                 
                 async with AsyncSession(async_engine) as image_db:
                     hero_url, was_cached, image_cost = await self.image_service.get_or_generate_image(
-                        prompt=replacement_title,
+                        prompt=hero_prompt,
                         category=replacement_category,
                         variant_type="hero",
                         user_id=user_id,
-                        db=image_db
+                        db=image_db,
+                        cache_key_text=replacement_title,
                     )
                     logger.info(f"[BATCH_REPLACE]  Image {index+1} {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
                     return (hero_url, was_cached, image_cost)
@@ -7110,12 +7121,14 @@ OUTPUT FORMAT (JSON Array):
                     MAX_VARIANT_RETRIES = 3
                     for retry_attempt in range(MAX_VARIANT_RETRIES):
                         try:
+                            variant_prompt = variant.get("image_prompt") or variant_title
                             variant_url, was_cached, variant_cost = await self.image_service.get_or_generate_image(
-                                prompt=variant_title,  # Use TITLE for cache matching
+                                prompt=variant_prompt,
                                 category=replacement_action.get("category", "food"),
                                 variant_type=v_type,
                                 user_id=user_id,
-                                db=db
+                                db=db,
+                                cache_key_text=variant_title,
                             )
                             if variant_url:
                                 total_cost += variant_cost
