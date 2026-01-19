@@ -100,22 +100,20 @@ class ImageLibraryService:
         self._cloudinary_configured = False
         if self.cloudinary_cloud_name and self.cloudinary_api_key:
             try:
-                # CRITICAL: Increase urllib3 connection pool size BEFORE importing cloudinary
-                # This fixes "Connection pool is full, discarding connection" warnings
-                import urllib3
-                from urllib3.util import connection
+                # FIX: Properly configure connection pool for requests library
+                # The Cloudinary SDK uses requests internally, so we need to patch
+                # the HTTPAdapter's default pool sizes BEFORE cloudinary imports requests
+                import requests
+                from requests.adapters import HTTPAdapter
                 
-                # Increase default pool size for all connection pools
-                urllib3.connectionpool.HTTPConnectionPool.DEFAULT_MAXSIZE = 20
-                urllib3.connectionpool.HTTPSConnectionPool.DEFAULT_MAXSIZE = 20
+                # Monkey-patch HTTPAdapter to use larger pool sizes
+                original_init = HTTPAdapter.__init__
                 
-                # Also configure requests library which Cloudinary uses internally
-                try:
-                    import requests.adapters
-                    requests.adapters.DEFAULT_POOLCONNECTIONS = 20
-                    requests.adapters.DEFAULT_POOLSIZE = 20
-                except ImportError:
-                    pass  # requests not installed
+                def patched_init(self, pool_connections=20, pool_maxsize=20, max_retries=0, pool_block=False):
+                    original_init(self, pool_connections=pool_connections, pool_maxsize=pool_maxsize, 
+                                  max_retries=max_retries, pool_block=pool_block)
+                
+                HTTPAdapter.__init__ = patched_init
                 
                 import cloudinary
                 
