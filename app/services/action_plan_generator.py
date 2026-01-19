@@ -4943,6 +4943,15 @@ JSON ONLY:
     ) -> None:
         """Check if plan items have missing hero images and generate them."""
         from app.core.database import ActionPlanItem, ActionPlanItemVariant
+
+        def _fallback_for_category(cat: Optional[str]) -> str:
+            c = (cat or "food").lower()
+            # Prefer the central fallback map from ImageLibraryService if present.
+            service_map = getattr(self.image_service, "FALLBACK_IMAGE_URLS", None)
+            if isinstance(service_map, dict):
+                return service_map.get(c) or service_map.get("food") or ""
+            # Hard fallback (should rarely be used).
+            return ""
         
         try:
             # Get items with missing hero images
@@ -5083,6 +5092,29 @@ JSON ONLY:
             # Count successes
             success_count = sum(1 for r in all_results if r and not isinstance(r, Exception))
             logger.info(f"[ENSURE_IMAGES] Generated {success_count}/{total_missing} images for plan {plan.id}")
+
+            # CRITICAL: Never leave any image URL blank.
+            # If generation failed for any item/variant, apply fallback URLs so the mobile UI
+            # never sees missing images.
+            fallback_applied = 0
+            for item in items_missing_images:
+                if not item.hero_image_url:
+                    item.hero_image_url = _fallback_for_category(getattr(item, "category", None))
+                    fallback_applied += 1
+                    logger.warning(
+                        f"[ENSURE_IMAGES] ⚠️ Applied fallback hero for item {item.id} ({item.category}): '{(item.title or '')[:30]}'"
+                    )
+
+            for item, v in variants_missing_images:
+                if not v.image_url:
+                    v.image_url = _fallback_for_category(getattr(item, "category", None))
+                    fallback_applied += 1
+                    logger.warning(
+                        f"[ENSURE_IMAGES] ⚠️ Applied fallback variant for variant {v.id} ({item.category}/{v.variant_type})"
+                    )
+
+            if fallback_applied:
+                logger.info(f"[ENSURE_IMAGES] Applied {fallback_applied} fallback image URLs")
             
             # Commit all changes to the main session
             await db.commit()
@@ -5099,6 +5131,13 @@ JSON ONLY:
     ) -> Dict[str, Any]:
         """Format plan for API response."""
         from app.core.database import ActionPlanItem, ActionPlanItemVariant
+
+        def _fallback_for_category(cat: Optional[str]) -> str:
+            c = (cat or "food").lower()
+            service_map = getattr(self.image_service, "FALLBACK_IMAGE_URLS", None)
+            if isinstance(service_map, dict):
+                return service_map.get(c) or service_map.get("food") or ""
+            return ""
         
         try:
             # Get all items for this plan
@@ -5132,7 +5171,7 @@ JSON ONLY:
                     "purpose": item.purpose,
                     "target_hormone": item.target_hormone,
                     "hormone_persona_intro": item.hormone_persona_intro,
-                    "hero_image_url": item.hero_image_url,
+                    "hero_image_url": item.hero_image_url or _fallback_for_category(item.category),
                     "research_studies": item.research_studies or [],
                     "conditions": item.conditions or [],
                     "symptoms": item.symptoms or [],
@@ -5143,7 +5182,7 @@ JSON ONLY:
                             "variant_type": v.variant_type,
                             "title": v.title,
                             "description": v.description,
-                            "image_url": v.image_url
+                            "image_url": v.image_url or _fallback_for_category(item.category)
                         }
                         for v in variants
                     ]
