@@ -48,8 +48,14 @@ class QuestionService:
                 logger.warning(f"get_session: Session {session_id} NOT FOUND in DB")
                 return None
                 
-            if session.status != "active" and not session.status.startswith("linked:"):
-                logger.warning(f"get_session: Session {session_id} found but status is '{session.status}' (allowed: active, linked:*)")
+            if session.status != "active":
+                # FIX: Allow getting linked sessions for late data arrival
+                if session.status.startswith("linked:"):
+                    # Log but allow proceeding
+                    # logger.info(f"get_session: Session {session_id} is linked ({session.status}), allowing access for data sync")
+                    return session
+                    
+                logger.warning(f"get_session: Session {session_id} found but status is '{session.status}'")
                 return None
                 
             if session.expires_at <= datetime.utcnow():
@@ -126,6 +132,48 @@ class QuestionService:
             if data.lifestyle_focus is not None:
                 session.lifestyle_focus = data.lifestyle_focus
                 logger.info(f"lifestyle_focus saved: {session.lifestyle_focus}")
+            
+            # ---------------------------------------------------------
+            # ROOT CAUSE FIX: Write-through to UserResponse if linked
+            # ---------------------------------------------------------
+            if session.status.startswith("linked:"):
+                try:
+                    uid = session.status.split(":")[1]
+                    logger.info(f"Session {session_id} is linked to {uid}. Syncing data to UserResponse.")
+                    
+                    user_response = self.db.query(UserResponse).filter(
+                        UserResponse.uid == uid
+                    ).first()
+                    
+                    if user_response:
+                        # Sync all fields that were present in 'data'
+                        if data.age is not None: user_response.age = data.age
+                        if data.period_description is not None: user_response.period_description = data.period_description
+                        if data.birth_control is not None: user_response.birth_control = data.birth_control
+                        # Dates
+                        if data.last_period_date is not None: user_response.last_period_date_utc = session.last_period_date_utc
+                        
+                        if data.cycle_length is not None: user_response.cycle_length = data.cycle_length
+                        if data.period_concerns is not None: user_response.period_concerns = data.period_concerns
+                        if data.body_concerns is not None: user_response.body_concerns = data.body_concerns
+                        if data.skin_hair_concerns is not None: user_response.skin_hair_concerns = data.skin_hair_concerns
+                        if data.mental_health_concerns is not None: user_response.mental_health_concerns = data.mental_health_concerns
+                        if data.other_concerns is not None: user_response.other_concerns = data.other_concerns
+                        if data.top_concern is not None: user_response.top_concern = data.top_concern
+                        if data.diagnosed_conditions is not None: user_response.diagnosed_conditions = data.diagnosed_conditions
+                        if data.family_history is not None: user_response.family_history = data.family_history
+                        if data.workout_intensity is not None: user_response.workout_intensity = data.workout_intensity
+                        if data.sleep_duration is not None: user_response.sleep_duration = data.sleep_duration
+                        if data.stress_level is not None: user_response.stress_level = data.stress_level
+                        if data.survey_timezone is not None: user_response.survey_timezone = data.survey_timezone
+                        
+                        logger.info(f"✅ Synced late session data to UserResponse for {uid}")
+                    else:
+                        logger.warning(f"⚠️ Session linked to {uid} but UserResponse not found!")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to sync linked session data: {e}", exc_info=True)
+                    # Don't fail the request, session update is still valid
             
             self.db.commit()
             logger.info(f"Session data saved: {session_id}")
