@@ -403,10 +403,11 @@ async def _generate_recommendations_background(session_id: str, service, process
                 # ═══════════════════════════════════════════════════════════════════════
                 try:
                     from app.core.database import QuestionSession, ActionPlan, ActionPlanItem
+                    from sqlalchemy import text
                     
                     # Get fresh session status
                     session_check = await async_session.execute(
-                        "SELECT session_id, status FROM question_sessions WHERE session_id = :sid",
+                        text("SELECT session_id, status FROM question_sessions WHERE session_id = :sid"),
                         {"sid": session_id}
                     )
                     session_row = session_check.fetchone()
@@ -417,7 +418,7 @@ async def _generate_recommendations_background(session_id: str, service, process
                         
                         # Get the plan and transfer ownership
                         plan_query = await async_session.execute(
-                            "SELECT id FROM action_plans WHERE id = :plan_id",
+                            text("SELECT id FROM action_plans WHERE id = :plan_id"),
                             {"plan_id": plan_id}
                         )
                         plan_row = plan_query.fetchone()
@@ -425,19 +426,19 @@ async def _generate_recommendations_background(session_id: str, service, process
                         if plan_row:
                             # Transfer plan to user
                             await async_session.execute(
-                                "UPDATE action_plans SET uid = :uid, session_id = NULL WHERE id = :plan_id",
+                                text("UPDATE action_plans SET uid = :uid, session_id = NULL WHERE id = :plan_id"),
                                 {"uid": target_uid, "plan_id": plan_id}
                             )
                             
                             # Transfer plan items
                             await async_session.execute(
-                                "UPDATE action_plan_items SET uid = :uid, session_id = NULL WHERE plan_id = :plan_id",
+                                text("UPDATE action_plan_items SET uid = :uid, session_id = NULL WHERE plan_id = :plan_id"),
                                 {"uid": target_uid, "plan_id": plan_id}
                             )
                             
                             # Delete the session (it's no longer needed)
                             await async_session.execute(
-                                "DELETE FROM question_sessions WHERE session_id = :sid",
+                                text("DELETE FROM question_sessions WHERE session_id = :sid"),
                                 {"sid": session_id}
                             )
                             
