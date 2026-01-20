@@ -48,8 +48,8 @@ class QuestionService:
                 logger.warning(f"get_session: Session {session_id} NOT FOUND in DB")
                 return None
                 
-            if session.status != "active":
-                logger.warning(f"get_session: Session {session_id} found but status is '{session.status}'")
+            if session.status != "active" and not session.status.startswith("linked:"):
+                logger.warning(f"get_session: Session {session_id} found but status is '{session.status}' (allowed: active, linked:*)")
                 return None
                 
             if session.expires_at <= datetime.utcnow():
