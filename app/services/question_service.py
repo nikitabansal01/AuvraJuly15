@@ -16,7 +16,7 @@ class QuestionService:
         """Create new question session with 24-hour expiration"""
         try:
             session_id = generate_session_id()
-            expires_at = datetime.utcnow() + timedelta(hours=72)
+            expires_at = datetime.utcnow() + timedelta(hours=24)
             
             session = QuestionSession(
                 session_id=session_id,
@@ -41,10 +41,7 @@ class QuestionService:
         try:
             session = self.db.query(QuestionSession).filter(
                 QuestionSession.session_id == session_id,
-                or_(
-                    QuestionSession.status == "active",
-                    QuestionSession.status.like("linked:%")
-                ),
+                QuestionSession.status == "active",
                 QuestionSession.expires_at > datetime.utcnow()
             ).first()
             
@@ -548,8 +545,8 @@ class QuestionService:
                         item.uid = uid
                         item.session_id = None
                         
-                    # 3. Mark the session as linked (don't delete immediately to allow grace period)
-                    session.status = f"linked:{uid}"
+                    # 3. Clean up the session (it's now fully converted)
+                    self.db.delete(session)
                     
                     self.db.commit()
                     logger.info(f"🚀 Successfully transferred guest plan {guest_plan.id} to user {uid}. Session deleted.")
@@ -746,9 +743,9 @@ class QuestionService:
                         
                         logger.info(f"🚀 Transferred guest plan {guest_plan.id} to user {uid}")
                     
-                    # Mark session as linked (generation is done)
-                    session.status = f"linked:{uid}"
-                    logger.info(f"Session status updated to linked:{uid}: {session_id}")
+                    # Delete session (generation is done)
+                    self.db.delete(session)
+                    logger.info(f"Session deletion completed: {session_id}")
                 
                 # 7. Commit
                 self.db.commit()

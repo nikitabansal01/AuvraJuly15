@@ -388,8 +388,9 @@ async def _generate_recommendations_background(session_id: str, service, process
             
             if response.get("success"):
                 # Plan generated successfully!
-                plan_data = response.get("plan", {})
-                plan_id = plan_data.get("id")
+                # NOTE: _format_plan_response returns plan_id at top level, NOT inside "plan"
+                plan_id = response.get("plan_id")
+                actions = response.get("actions", [])
                 
                 # Update status for all categories to completed
                 for cat in ["food", "movement", "mindfulness"]:
@@ -416,36 +417,39 @@ async def _generate_recommendations_background(session_id: str, service, process
                         target_uid = session_row.status.split(":")[1]
                         logger.info(f"🔄 [AUTO-TRANSFER] User {target_uid} signed up during generation! Transferring plan {plan_id}...")
                         
-                        # Get the plan and transfer ownership
-                        plan_query = await async_session.execute(
-                            text("SELECT id FROM action_plans WHERE id = :plan_id"),
-                            {"plan_id": plan_id}
-                        )
-                        plan_row = plan_query.fetchone()
-                        
-                        if plan_row:
-                            # Transfer plan to user
-                            await async_session.execute(
-                                text("UPDATE action_plans SET uid = :uid, session_id = NULL WHERE id = :plan_id"),
-                                {"uid": target_uid, "plan_id": plan_id}
-                            )
-                            
-                            # Transfer plan items
-                            await async_session.execute(
-                                text("UPDATE action_plan_items SET uid = :uid, session_id = NULL WHERE plan_id = :plan_id"),
-                                {"uid": target_uid, "plan_id": plan_id}
-                            )
-                            
-                            # Delete the session (it's no longer needed)
-                            await async_session.execute(
-                                text("DELETE FROM question_sessions WHERE session_id = :sid"),
-                                {"sid": session_id}
-                            )
-                            
-                            await async_session.commit()
-                            logger.info(f"🚀 [AUTO-TRANSFER] Plan {plan_id} successfully transferred to user {target_uid}")
+                        if not plan_id:
+                            logger.error(f"❌ [AUTO-TRANSFER] plan_id is None! Cannot transfer. Full response keys: {list(response.keys())}")
                         else:
-                            logger.warning(f"⚠️ [AUTO-TRANSFER] Plan {plan_id} not found for transfer")
+                            # Get the plan and transfer ownership
+                            plan_query = await async_session.execute(
+                                text("SELECT id FROM action_plans WHERE id = :plan_id"),
+                                {"plan_id": plan_id}
+                            )
+                            plan_row = plan_query.fetchone()
+                            
+                            if plan_row:
+                                # Transfer plan to user
+                                await async_session.execute(
+                                    text("UPDATE action_plans SET uid = :uid, session_id = NULL WHERE id = :plan_id"),
+                                    {"uid": target_uid, "plan_id": plan_id}
+                                )
+                                
+                                # Transfer plan items
+                                await async_session.execute(
+                                    text("UPDATE action_plan_items SET uid = :uid, session_id = NULL WHERE plan_id = :plan_id"),
+                                    {"uid": target_uid, "plan_id": plan_id}
+                                )
+                                
+                                # Delete the session (it's no longer needed)
+                                await async_session.execute(
+                                    text("DELETE FROM question_sessions WHERE session_id = :sid"),
+                                    {"sid": session_id}
+                                )
+                                
+                                await async_session.commit()
+                                logger.info(f"🚀 [AUTO-TRANSFER] Plan {plan_id} successfully transferred to user {target_uid}")
+                            else:
+                                logger.warning(f"⚠️ [AUTO-TRANSFER] Plan {plan_id} not found for transfer")
                     else:
                         logger.info(f"📍 Session {session_id} not linked yet, plan stays as guest plan")
                         
@@ -456,7 +460,7 @@ async def _generate_recommendations_background(session_id: str, service, process
                 result_summary = {
                     "successful_categories": ["food", "movement", "mindfulness"],
                     "failed_categories": [],
-                    "total_recommendations": len(plan_data.get("actions", [])),
+                    "total_recommendations": len(actions),
                     "plan_id": plan_id
                 }
                 

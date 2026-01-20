@@ -3941,14 +3941,14 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
+            # NOTE: Use adapt_openai_params_for_model to handle GPT-5-nano differences
+            # (uses max_completion_tokens instead of max_tokens, no temperature)
             openai_payload = {
                 "model": self.GPT_MODEL,
                 "messages": [
                     {"role": "system", "content": enhanced_system_with_research},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": self.GPT_TEMPERATURE,
-                "max_tokens": 4000,
                 "response_format": {
                     "type": "json_schema",
                     "json_schema": {
@@ -3958,6 +3958,14 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     }
                 }
             }
+            
+            # Adapt params for model (GPT-5-nano uses max_completion_tokens, not max_tokens)
+            adapted_params = adapt_openai_params_for_model(
+                self.GPT_MODEL,
+                temperature=self.GPT_TEMPERATURE,
+                max_tokens=4000
+            )
+            openai_payload.update(adapted_params)
             
             # Try OpenAI first
             logger.info(f" Trying OpenAI with model: {self.GPT_MODEL}")
