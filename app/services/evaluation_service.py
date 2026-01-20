@@ -156,12 +156,12 @@ class ActionPlanEvaluator:
     Called asynchronously after action plan delivery to avoid blocking UX.
     """
     
-    GPT_MODEL = "gpt-4o-mini"
+    GPT_MODEL = "gpt-5-nano"
     GPT_TEMPERATURE = 0.1  # Low temp for consistent evaluation
     
-    # GPT-4o-mini pricing (per 1M tokens)
-    INPUT_COST_PER_1M = 0.15
-    OUTPUT_COST_PER_1M = 0.60
+    # GPT-5-nano pricing (per 1M tokens) - 10x cheaper than GPT-4o-mini!
+    INPUT_COST_PER_1M = 0.05
+    OUTPUT_COST_PER_1M = 0.40
     
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")

@@ -659,7 +659,7 @@ class ActionPlan(Base):
     # Generation metadata
     generation_cost = Column(String(50), nullable=True)  # Cost tracking
     generation_time_ms = Column(Integer, nullable=True)
-    gpt_model_used = Column(String(50), default="gpt-4o-mini")
+    gpt_model_used = Column(String(50), default="gpt-5-nano")
     
     # Status
     is_regenerated = Column(Boolean, default=False)  # If user requested regeneration

@@ -40,10 +40,11 @@ class ImageLibraryService:
     Stores all images with embeddings for semantic reuse.
     """
     
-    # SIMILARITY_THRESHOLD increased from 0.85 to 0.92 to prevent
-    # false matches between different food items (e.g., spinach vs salmon)
-    # Higher threshold requires more specific semantic match
-    SIMILARITY_THRESHOLD = 0.95  # Cosine similarity threshold for semantic image matching
+    # SIMILARITY_THRESHOLD: Balance between preventing false matches and enabling reuse
+    # - 0.95+ = Very strict, few cache hits but high precision
+    # - 0.90 = Good balance for food/wellness images
+    # - 0.85 = More cache hits but may match different items
+    SIMILARITY_THRESHOLD = 0.90  # Lowered from 0.95 for better cache hit rate
     
     # RunPod Pruna P-Image pricing
     COST_PER_IMAGE = 0.005  # $0.005 per image with Pruna P-Image
@@ -274,7 +275,7 @@ class ImageLibraryService:
             
             # Handle 429 gracefully - embeddings are optional, not critical
             if response.status_code == 429:
-                # Don't log error - just silently skip embedding (OpenAI quota issue)
+                logger.warning("[IMAGE] ⚠️ OpenAI embedding 429 - quota exceeded, caching disabled for this image")
                 return None
             
             response.raise_for_status()
@@ -287,7 +288,8 @@ class ImageLibraryService:
             return embedding
             
         except Exception as e:
-            # Silently skip - embeddings are optional for image generation
+            # Log the error so we can diagnose cache issues
+            logger.warning(f"[IMAGE] ⚠️ Embedding failed: {type(e).__name__}: {str(e)[:100]}")
             return None
     
     async def _get_batch_embeddings(self, texts: List[str]) -> List[Optional[List[float]]]:

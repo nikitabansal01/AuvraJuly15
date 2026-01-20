@@ -1025,7 +1025,7 @@ class ActionPlanGenerator:
     5. Store plan in database
     """
     
-    GPT_MODEL = "gpt-4o-mini"
+    GPT_MODEL = "gpt-5-nano"
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     

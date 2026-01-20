@@ -27,12 +27,14 @@ if not DATABASE_URL:
 if '?' not in DATABASE_URL:
     DATABASE_URL += '?sslmode=require'
 
-# OpenAI pricing per 1M tokens (current as of 2025)
+# OpenAI pricing per 1M tokens (current as of 2026)
 # GPT-4o: $2.50 input / $10.00 output per 1M
-# GPT-4o-mini: $0.15 input / $0.60 output per 1M
+# GPT-4o-mini: $0.60 input / $2.40 output per 1M
+# GPT-5-nano: $0.05 input / $0.40 output per 1M (NEW - 10x cheaper!)
 PRICING = {
+    'gpt-5-nano': {'input': 0.05/1_000_000, 'output': 0.40/1_000_000},
     'gpt-4o': {'input': 2.50/1_000_000, 'output': 10.00/1_000_000},
-    'gpt-4o-mini': {'input': 0.15/1_000_000, 'output': 0.60/1_000_000},
+    'gpt-4o-mini': {'input': 0.60/1_000_000, 'output': 2.40/1_000_000},
     'gpt-4': {'input': 30.00/1_000_000, 'output': 60.00/1_000_000},
     'gpt-4-turbo': {'input': 10.00/1_000_000, 'output': 30.00/1_000_000},
     'gpt-3.5-turbo': {'input': 0.50/1_000_000, 'output': 1.50/1_000_000},
@@ -74,8 +76,8 @@ def main():
                 out = row[2] or 0
                 count = row[3]
                 
-                # Get pricing (default to gpt-4o-mini if unknown)
-                price = PRICING.get(model.lower(), PRICING['gpt-4o-mini'])
+                # Get pricing (default to gpt-5-nano if unknown)
+                price = PRICING.get(model.lower(), PRICING['gpt-5-nano'])
                 cost = inp * price['input'] + out * price['output']
                 chat_total_cost += cost
                 
@@ -91,7 +93,7 @@ def main():
         # 2) Check ActionPlan table for generation_cost
         plan_query = text("""
             SELECT 
-                COALESCE(gpt_model_used, 'gpt-4o-mini') as model,
+                COALESCE(gpt_model_used, 'gpt-5-nano') as model,
                 COUNT(*) as plan_count,
                 SUM(COALESCE(generation_time_ms, 0)) as total_time_ms,
                 STRING_AGG(DISTINCT generation_cost, ', ') as cost_strings
@@ -110,7 +112,7 @@ def main():
         total_plans = 0
         if plan_rows:
             for row in plan_rows:
-                model = row[0] or 'gpt-4o-mini'
+                model = row[0] or 'gpt-5-nano'
                 count = row[1]
                 total_plans += count
                 time_ms = row[2] or 0
@@ -167,12 +169,12 @@ def main():
         print(f"  Feedback entries: {counts[4]}")
         
         # 5) Estimate action plan generation cost
-        # Each action plan uses ~4000-8000 input tokens and ~2000-4000 output tokens with gpt-4o-mini
-        # Estimate: ~6000 input + ~3000 output per plan
+        # Each action plan uses ~4000-8000 input tokens and ~2000-4000 output tokens
+        # Estimate: ~6000 input + ~3000 output per plan (now with GPT-5-nano pricing!)
         action_plan_count = counts[2] or 0
         estimated_plan_input = action_plan_count * 6000
         estimated_plan_output = action_plan_count * 3000
-        price = PRICING['gpt-4o-mini']
+        price = PRICING['gpt-5-nano']
         estimated_plan_cost = estimated_plan_input * price['input'] + estimated_plan_output * price['output']
         
         print("\n💰 ESTIMATED OpenAI API COST (last 30 days):")
