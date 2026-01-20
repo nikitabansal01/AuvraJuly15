@@ -1328,28 +1328,42 @@ class ActionPlanGenerator:
                 model_switch_reason = "All items carried forward from yesterday"
                 
                 # Build actions list from carryforward items
+                # IMPORTANT: cf_item contains {'source_item': ActionPlanItem, 'source_variants': [...], 'original_id': int}
                 for cf_item in carryforward_items[:4]:
+                    source_item = cf_item.get("source_item")
+                    source_variants = cf_item.get("source_variants", [])
+                    
+                    if not source_item:
+                        logger.warning(f"[GENERATE] Carryforward item has no source_item, skipping")
+                        continue
+                    
+                    # Extract data from the source ActionPlanItem ORM object
                     actions.append({
-                        "title": cf_item.get("title", "Action"),
-                        "category": cf_item.get("category", "general"),
-                        "specific_action": cf_item.get("specific_action", ""),
-                        "purpose": cf_item.get("purpose", ""),
-                        "target_hormone": cf_item.get("target_hormone", "cortisol"),
-                        "time_slot": cf_item.get("time_slot", "morning"),
-                        "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
-                        "hormone_persona_intro": cf_item.get("hormone_persona_intro", ""),
-                        "symptoms": cf_item.get("symptoms", []),
-                        "conditions": cf_item.get("conditions", []),
-                        "food_items": cf_item.get("food_items", []),
-                        "food_amounts": cf_item.get("food_amounts", []),
-                        "exercise_types": cf_item.get("exercise_types", []),
-                        "exercise_durations": cf_item.get("exercise_durations", []),
-                        "exercise_intensities": cf_item.get("exercise_intensities", []),
-                        "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
-                        "mindfulness_durations": cf_item.get("mindfulness_durations", []),
-                        "variants": cf_item.get("variants", []),
-                        "hero_image_url": cf_item.get("hero_image_url"),
-                        "research_studies": cf_item.get("research_studies", []),
+                        "title": source_item.title or "Action",
+                        "category": source_item.category or "food",
+                        "specific_action": source_item.specific_action or "",
+                        "purpose": source_item.purpose or "",
+                        "target_hormone": source_item.target_hormone or "cortisol",
+                        "time_slot": source_item.time_slot or "morning",
+                        "carried_forward_from": cf_item.get("original_id") or source_item.id,
+                        "hormone_persona_intro": source_item.hormone_persona_intro or "",
+                        "symptoms": source_item.symptoms or [],
+                        "conditions": source_item.conditions or [],
+                        "food_items": source_item.food_items or [],
+                        "food_amounts": source_item.food_amounts or [],
+                        "exercise_types": source_item.exercise_types or [],
+                        "exercise_durations": source_item.exercise_durations or [],
+                        "exercise_intensities": source_item.exercise_intensities or [],
+                        "mindfulness_techniques": source_item.mindfulness_techniques or [],
+                        "mindfulness_durations": source_item.mindfulness_durations or [],
+                        "variants": [{
+                            "variant_type": v.variant_type,
+                            "title": v.title,
+                            "description": v.description,
+                            "image_url": v.image_url
+                        } for v in source_variants] if source_variants else [],
+                        "hero_image_url": source_item.hero_image_url,
+                        "research_studies": source_item.research_studies or [],
                     })
                 
                 logger.info(f"[GENERATE]  Carryforward plan ready with {len(actions)} items (no GPT cost)")
@@ -1447,29 +1461,43 @@ class ActionPlanGenerator:
                 actions = actions[:num_to_generate]
                 
                 # Add carryforward items at the beginning (they take priority)
+                # IMPORTANT: cf_item contains {'source_item': ActionPlanItem, 'source_variants': [...], 'original_id': int}
                 combined_actions = []
                 for cf_item in carryforward_items[:4]:  # Max 4 total
+                    source_item = cf_item.get("source_item")
+                    source_variants = cf_item.get("source_variants", [])
+                    
+                    if not source_item:
+                        logger.warning(f"[GENERATE] Carryforward item has no source_item, skipping")
+                        continue
+                    
+                    # Extract data from the source ActionPlanItem ORM object
                     combined_actions.append({
-                        "title": cf_item.get("title", "Action"),
-                        "category": cf_item.get("category", "general"),
-                        "specific_action": cf_item.get("specific_action", ""),
-                        "purpose": cf_item.get("purpose", ""),
-                        "target_hormone": cf_item.get("target_hormone", "cortisol"),
-                        "time_slot": cf_item.get("time_slot", "morning"),
-                        "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
-                        "hormone_persona_intro": cf_item.get("hormone_persona_intro", ""),
-                        "symptoms": cf_item.get("symptoms", []),
-                        "conditions": cf_item.get("conditions", []),
-                        "food_items": cf_item.get("food_items", []),
-                        "food_amounts": cf_item.get("food_amounts", []),
-                        "exercise_types": cf_item.get("exercise_types", []),
-                        "exercise_durations": cf_item.get("exercise_durations", []),
-                        "exercise_intensities": cf_item.get("exercise_intensities", []),
-                        "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
-                        "mindfulness_durations": cf_item.get("mindfulness_durations", []),
-                        "variants": cf_item.get("variants", []),
-                        "hero_image_url": cf_item.get("hero_image_url"),
-                        "research_studies": cf_item.get("research_studies", []),
+                        "title": source_item.title or "Action",
+                        "category": source_item.category or "food",
+                        "specific_action": source_item.specific_action or "",
+                        "purpose": source_item.purpose or "",
+                        "target_hormone": source_item.target_hormone or "cortisol",
+                        "time_slot": source_item.time_slot or "morning",
+                        "carried_forward_from": cf_item.get("original_id") or source_item.id,
+                        "hormone_persona_intro": source_item.hormone_persona_intro or "",
+                        "symptoms": source_item.symptoms or [],
+                        "conditions": source_item.conditions or [],
+                        "food_items": source_item.food_items or [],
+                        "food_amounts": source_item.food_amounts or [],
+                        "exercise_types": source_item.exercise_types or [],
+                        "exercise_durations": source_item.exercise_durations or [],
+                        "exercise_intensities": source_item.exercise_intensities or [],
+                        "mindfulness_techniques": source_item.mindfulness_techniques or [],
+                        "mindfulness_durations": source_item.mindfulness_durations or [],
+                        "variants": [{
+                            "variant_type": v.variant_type,
+                            "title": v.title,
+                            "description": v.description,
+                            "image_url": v.image_url
+                        } for v in source_variants] if source_variants else [],
+                        "hero_image_url": source_item.hero_image_url,
+                        "research_studies": source_item.research_studies or [],
                     })
                 
                 # Add new actions
