@@ -700,69 +700,50 @@ class QuestionService:
                 is_still_processing = status and status.processing_status in ["queued", "in_progress"]
                 
                 if is_still_processing:
-                    logger.info(f"⏳ Waiting for guest plan generation to complete for {session_id}...")
-                    
-                    # Wait for generation to complete before returning
-                    # This prevents HomeScreen from starting a duplicate generation
-                    import time
-                    max_wait_seconds = 90
-                    poll_interval = 2
-                    waited = 0
-                    
-                    while waited < max_wait_seconds:
-                        time.sleep(poll_interval)
-                        waited += poll_interval
-                        
-                        # Refresh the session to avoid stale data
-                        self.db.expire_all()
-                        
-                        # Check if guest plan was created
-                        guest_plan = self.db.query(ActionPlan).filter(
-                            ActionPlan.session_id == session_id
-                        ).first()
-                        
-                        if guest_plan:
-                            logger.info(f"✅ Guest plan {guest_plan.id} found after waiting {waited}s")
-                            
-                            # Transfer plan to user
-                            guest_plan.uid = uid
-                            guest_plan.session_id = None
-                            
-                            # Update plan date to user's local date
-                            try:
-                                from app.utils.timezone_utils import ZoneInfo
-                                tz = ZoneInfo(current_timezone)
-                                today = datetime.now(tz).date()
-                                if guest_plan.plan_date != today:
-                                    logger.info(f"🔄 Updating guest plan date from {guest_plan.plan_date} to {today}")
-                                    guest_plan.plan_date = today
-                            except Exception as e:
-                                logger.error(f"Failed to update plan date: {e}")
-                            
-                            # Transfer all plan items
-                            guest_items = self.db.query(ActionPlanItem).filter(
-                                ActionPlanItem.plan_id == guest_plan.id
-                            ).all()
-                            for item in guest_items:
-                                item.uid = uid
-                                item.session_id = None
-                            
-                            # Delete the session
-                            self.db.delete(session)
-                            self.db.commit()
-                            logger.info(f"🚀 Successfully transferred guest plan {guest_plan.id} to user {uid} after {waited}s wait")
-                            return True
-                        
-                        # Log progress every 10 seconds
-                        if waited % 10 == 0:
-                            logger.info(f"⏳ Still waiting for guest plan... ({waited}s/{max_wait_seconds}s)")
-                    
-                    # Timeout reached - let HomeScreen generate
-                    logger.warning(f"⚠️ Generation timeout after {max_wait_seconds}s. HomeScreen will generate plan.")
+                    # ═══════════════════════════════════════════════════════════════════════
+                    # NON-BLOCKING: Mark session as linked and return immediately
+                    # Background worker will auto-transfer plan when generation completes
+                    # ═══════════════════════════════════════════════════════════════════════
+                    logger.info(f"📍 Generation in progress for {session_id}. Marking as linked:{uid}")
                     session.status = f"linked:{uid}"
                     self.db.commit()
+                    logger.info(f"✅ Session marked for auto-transfer. Background worker will transfer plan to {uid} when ready.")
+                    # Return success - frontend will poll for plan availability
                 else:
-                    # 6. Delete session only if processing is done
+                    # Generation done - check if plan exists already
+                    guest_plan = self.db.query(ActionPlan).filter(
+                        ActionPlan.session_id == session_id
+                    ).first()
+                    
+                    if guest_plan:
+                        logger.info(f"✅ Guest plan {guest_plan.id} already exists, transferring to user {uid}")
+                        
+                        # Transfer plan to user
+                        guest_plan.uid = uid
+                        guest_plan.session_id = None
+                        
+                        # Update plan date to user's local date
+                        try:
+                            from app.utils.timezone_utils import ZoneInfo
+                            tz = ZoneInfo(current_timezone)
+                            today = datetime.now(tz).date()
+                            if guest_plan.plan_date != today:
+                                logger.info(f"🔄 Updating guest plan date from {guest_plan.plan_date} to {today}")
+                                guest_plan.plan_date = today
+                        except Exception as e:
+                            logger.error(f"Failed to update plan date: {e}")
+                        
+                        # Transfer all plan items
+                        guest_items = self.db.query(ActionPlanItem).filter(
+                            ActionPlanItem.plan_id == guest_plan.id
+                        ).all()
+                        for item in guest_items:
+                            item.uid = uid
+                            item.session_id = None
+                        
+                        logger.info(f"🚀 Transferred guest plan {guest_plan.id} to user {uid}")
+                    
+                    # Delete session (generation is done)
                     self.db.delete(session)
                     logger.info(f"Session deletion completed: {session_id}")
                 

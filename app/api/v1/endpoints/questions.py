@@ -389,6 +389,7 @@ async def _generate_recommendations_background(session_id: str, service, process
             if response.get("success"):
                 # Plan generated successfully!
                 plan_data = response.get("plan", {})
+                plan_id = plan_data.get("id")
                 
                 # Update status for all categories to completed
                 for cat in ["food", "movement", "mindfulness"]:
@@ -396,11 +397,66 @@ async def _generate_recommendations_background(session_id: str, service, process
                 
                 logger.info(f"✅ Saved FULL ACTION PLAN for guest session {session_id}")
                 
+                # ═══════════════════════════════════════════════════════════════════════
+                # AUTO-TRANSFER: Check if user signed up during generation
+                # If session is marked as "linked:{uid}", transfer plan immediately
+                # ═══════════════════════════════════════════════════════════════════════
+                try:
+                    from app.core.database import QuestionSession, ActionPlan, ActionPlanItem
+                    
+                    # Get fresh session status
+                    session_check = await async_session.execute(
+                        "SELECT session_id, status FROM question_sessions WHERE session_id = :sid",
+                        {"sid": session_id}
+                    )
+                    session_row = session_check.fetchone()
+                    
+                    if session_row and session_row.status and session_row.status.startswith("linked:"):
+                        target_uid = session_row.status.split(":")[1]
+                        logger.info(f"🔄 [AUTO-TRANSFER] User {target_uid} signed up during generation! Transferring plan {plan_id}...")
+                        
+                        # Get the plan and transfer ownership
+                        plan_query = await async_session.execute(
+                            "SELECT id FROM action_plans WHERE id = :plan_id",
+                            {"plan_id": plan_id}
+                        )
+                        plan_row = plan_query.fetchone()
+                        
+                        if plan_row:
+                            # Transfer plan to user
+                            await async_session.execute(
+                                "UPDATE action_plans SET uid = :uid, session_id = NULL WHERE id = :plan_id",
+                                {"uid": target_uid, "plan_id": plan_id}
+                            )
+                            
+                            # Transfer plan items
+                            await async_session.execute(
+                                "UPDATE action_plan_items SET uid = :uid, session_id = NULL WHERE plan_id = :plan_id",
+                                {"uid": target_uid, "plan_id": plan_id}
+                            )
+                            
+                            # Delete the session (it's no longer needed)
+                            await async_session.execute(
+                                "DELETE FROM question_sessions WHERE session_id = :sid",
+                                {"sid": session_id}
+                            )
+                            
+                            await async_session.commit()
+                            logger.info(f"🚀 [AUTO-TRANSFER] Plan {plan_id} successfully transferred to user {target_uid}")
+                        else:
+                            logger.warning(f"⚠️ [AUTO-TRANSFER] Plan {plan_id} not found for transfer")
+                    else:
+                        logger.info(f"📍 Session {session_id} not linked yet, plan stays as guest plan")
+                        
+                except Exception as transfer_err:
+                    logger.error(f"❌ [AUTO-TRANSFER] Failed to auto-transfer plan: {transfer_err}", exc_info=True)
+                    # Don't fail the whole generation - plan is still created
+                
                 result_summary = {
                     "successful_categories": ["food", "movement", "mindfulness"],
                     "failed_categories": [],
                     "total_recommendations": len(plan_data.get("actions", [])),
-                    "plan_id": plan_data.get("id")
+                    "plan_id": plan_id
                 }
                 
                 # Complete overall processing
