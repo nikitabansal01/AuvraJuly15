@@ -1053,7 +1053,9 @@ class ActionPlanGenerator:
     5. Store plan in database
     """
     
-    GPT_MODEL = "gpt-5-nano"
+    # CHANGED: gpt-5-nano was returning empty content with Structured Outputs
+    # Reverting to gpt-4o-mini which works reliably with json_schema response_format
+    GPT_MODEL = "gpt-4o-mini"
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     
@@ -4078,7 +4080,31 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             output_tokens = data.get("usage", {}).get("completion_tokens", 0)
             total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
             
-            content = data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"].get("content")
+            finish_reason = data["choices"][0].get("finish_reason", "unknown")
+            
+            # CRITICAL: Check for None or empty content
+            # This can happen when:
+            # 1. GPT returns a refusal (content is None, refusal field is set)
+            # 2. Structured outputs fail silently 
+            # 3. Model returns empty response
+            # 4. finish_reason is "length" (truncated) or "content_filter" (blocked)
+            if content is None:
+                refusal = data["choices"][0]["message"].get("refusal")
+                logger.error(f"GPT returned None content. finish_reason={finish_reason}")
+                logger.error(f"Full message: {data['choices'][0]['message']}")
+                if refusal:
+                    logger.error(f"GPT REFUSED to generate: {refusal}")
+                else:
+                    logger.error("No refusal reason provided")
+                return (None, total_cost)
+            
+            if not content or content.strip() == "":
+                logger.error(f"GPT returned empty content string. finish_reason={finish_reason}")
+                logger.error(f"Full message: {data['choices'][0]['message']}")
+                logger.error(f"Usage: input={input_tokens}, output={output_tokens}")
+                return (None, total_cost)
+            
             logger.info(f" GPT generated recommendations based on {len(research_findings)} research papers")
             
             # Parse response
