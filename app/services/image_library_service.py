@@ -851,97 +851,72 @@ class ImageLibraryService:
     
     def _enhance_prompt(self, prompt: str, category: str) -> str:
         """
-        Create prompts that show users EXACTLY what to eat or do.
+        Create "founder-quality" prompts optimized for FLUX.1 Schnell.
         
-        AUVRA-specific approach:
-        1. Focus on the ACTUAL CONTENT - what does this food/exercise look like?
-        2. Make it actionable - user should understand what to prepare/do
-        3. Keep it simple - AI image models don't need camera specs
-        4. Be specific about the subject, not the photography
-        
-        Args:
-            prompt: Action title (e.g., "Chickpea Salad", "Swimming", "Deep Breathing")
-            category: "food", "movement", or "mindfulness"
-            
-        Returns:
-            Enhanced prompt that accurately represents the action
+        Strategy:
+        1. Subject-First: Tell the model exactly what to draw immediately.
+        2. Style: "Editorial", "Cinematic", "Professional".
+        3. Tech Specs: "f/1.8", "4k", "sharp focus" - FLUX loves these.
         """
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
 
-        # Global style guardrails.
-        # These images appear as small, often circular crops in the mobile UI.
-        base_style = (
-            "centered composition, subject fills 70% of the frame, "
-            "clean minimalist background, soft natural lighting, warm inviting tones, "
-            "photorealistic, high detail, sharp focus on the subject, "
-            "no text, no typography, no watermark, no logo, no branding"
-        )
         
-        prompt_str = prompt or ""
+        prompt_str = prompt or "wellness activity"
         prompt_l = prompt_str.lower()
+        
+        # Heuristic: if prompt is already detailed/optimized, trust it
+        if "editorial" in prompt_l or "photography" in prompt_l or "4k" in prompt_l:
+            return f"{prompt_str}, high quality, sharp focus"
+        
 
-        # Heuristic: if the prompt already looks like a full, detailed image prompt
-        # (e.g., LLM-generated "Professional close-up food photography..."), don't overwrite it.
-        looks_already_enhanced = any(
-            k in prompt_l
-            for k in [
-                "professional", "photography", "photorealistic", "centered composition",
-                "no watermark", "no text", "4k quality"
-            ]
-        )
-
-        if looks_already_enhanced:
-            enhanced = f"{prompt_str}, {base_style}"
-
-        elif category == "food":
-            # FOOD: Show the ACTUAL dish with visible ingredients
-            # User should be able to understand what to prepare from the image
+        if category == "food":
+            # FOOD: Editorial magazine style
+            # Goal: Mouth-watering, fresh, clean
             enhanced = (
-                f"Professional food photograph of {prompt_str} as the hero, "
-                f"{base_style}, "
-                f"served on a simple white plate or bowl, "
-                f"ingredients and textures clearly visible and instantly recognizable, "
-                f"slight 3/4 angle close-up (not wide), shallow depth of field, "
-                f"appetizing natural food styling, no people, no hands"
+                f"Editorial food photography of {prompt_str}, "
+                f"overhead shot on a rustic ceramic plate, "
+                f"fresh vibrant ingredients, soft morning window light, "
+                f"shallow depth of field f/2.8, sharp focus on food, "
+                f"clean minimalist styling, Bon Appetit magazine style, "
+                f"4k, highly detailed, photorealistic"
             )
             
         elif category == "movement":
-            # MOVEMENT: Show the ACTUAL exercise position and form
-            # User should be able to understand how to do the exercise from the image
+            # MOVEMENT: Clean studio fitness style
+            # Goal: Clear form, aspirational, bright
             enhanced = (
-                f"Photorealistic wellness photo of one woman demonstrating {prompt_str}, "
-                f"full body visible, pose and form clearly readable, "
-                f"{base_style}, "
-                f"simple bright room or clean studio setting, "
-                f"comfortable athletic clothing, yoga mat if relevant, "
-                f"realistic anatomy, natural proportions, no extra limbs or extra fingers"
+                f"Professional fitness photography of a woman demonstrating {prompt_str}, "
+                f"perfect form, clean bright modern yoga studio, "
+                f"soft diffused daylight, neutral colors, "
+                f"athletic wear, wide shot capturing full body, "
+                f"cinematic lighting, high resolution, 4k, sharp focus"
             )
             
         elif category == "mindfulness":
-            # MINDFULNESS: Show the ACTUAL meditation or breathing practice
-            # User should understand what the practice looks like
-            if "journal" in prompt_l or "journ" in prompt_l:
-                # For journaling: avoid generating readable text.
+            # MINDFULNESS: Atmospheric lifestyle style
+            # Goal: Peaceful, emotional, warm
+            if "journal" in prompt_l:
                 enhanced = (
-                    f"Photorealistic close-up lifestyle photo of hands writing in a {prompt_str}, "
-                    f"journal open on a simple desk, pen in hand, cozy calm setting, "
-                    f"{base_style}, "
-                    f"the written content is not readable (blurred scribbles), "
-                    f"soft diffused light, self-care atmosphere"
+                    f"Close-up lifestyle photography of hands writing in a journal, "
+                    f"soft focus, cozy atmosphere, warm golden hour lighting, "
+                    f"cup of tea nearby, wooden texture, "
+                    f"peaceful mood, cinematic, 4k, highly detailed"
                 )
             else:
                 enhanced = (
-                    f"Photorealistic calm lifestyle photo of one woman practicing {prompt_str}, "
-                    f"the technique is visually clear (posture and hand placement), "
-                    f"{base_style}, "
-                    f"cozy minimal room, soft diffused light, "
-                    f"realistic anatomy, natural proportions"
+                    f"Serene lifestyle photography of a woman practicing {prompt_str}, "
+                    f"peaceful calm expression, closed eyes, "
+                    f"cozy minimalist living space, warm ambient lighting, "
+                    f"soft textures, cinematic composition, "
+                    f"photorealistic, 4k, high quality"
                 )
-            
+        
         else:
-            # Fallback: simple clear wellness image
+            # Fallback
             enhanced = (
-                f"Photorealistic wellness image of {prompt_str}, {base_style}"
+                f"Professional wellness photography of {prompt_str}, "
+                f"clean minimalist background, soft lighting, "
+                f"high quality, 4k, sharp focus, photorealistic"
             )
         
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")
