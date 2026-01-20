@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status as http_status, Depends
 from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
@@ -10,7 +10,7 @@ from app.models.question_models import (
 )
 from app.core.security import get_current_active_user, get_current_user
 from typing import Optional, Dict
-from fastapi import Depends, HTTPException, status
+# Already imported above with alias
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.database import create_tables
 import logging
@@ -84,7 +84,7 @@ async def create_session(
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session creation failed: {str(e)}"
         )
 
@@ -105,7 +105,7 @@ async def save_session_data(
         if not session:
             logger.error(f"Session not found: {session_id}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Session not found or expired"
             )
         
@@ -117,7 +117,7 @@ async def save_session_data(
             return {"message": "Session data saved successfully"}
         else:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to save session data"
             )
         
@@ -126,7 +126,7 @@ async def save_session_data(
     except Exception as e:
         logger.error(f"Exception during session data save: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session data save failed: {str(e)}"
         )
 
@@ -142,7 +142,7 @@ async def get_session_data(
         
         if not data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Session data not found"
             )
         
@@ -152,7 +152,7 @@ async def get_session_data(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session data retrieval failed: {str(e)}"
         )
 
@@ -221,7 +221,7 @@ async def get_session_recommendations(
     except Exception as e:
         logger.error(f"Session recommendations retrieval failed: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session recommendations retrieval failed: {str(e)}"
         )
 
@@ -241,7 +241,7 @@ async def start_session_recommendations_generation(
         if not session:
             logger.error(f"Session not found: {session_id}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Session not found or expired"
             )
         
@@ -249,7 +249,7 @@ async def start_session_recommendations_generation(
         if session.age is None and session.period_description is None:
             logger.error(f"Session has no data: {session_id}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Session has no data to generate recommendations"
             )
         
@@ -283,7 +283,7 @@ async def start_session_recommendations_generation(
         session_data = service.get_session_data(session_id)
         if not session_data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Session data not found"
             )
         
@@ -336,7 +336,7 @@ async def start_session_recommendations_generation(
     except Exception as e:
         logger.error(f"Failed to start session recommendation generation: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start recommendation generation: {str(e)}"
         )
 
@@ -440,11 +440,9 @@ async def _generate_recommendations_background(session_id: str, service, process
                                     {"uid": target_uid, "plan_id": plan_id}
                                 )
                                 
-                                # Delete the session (it's no longer needed)
-                                await async_session.execute(
-                                    text("DELETE FROM question_sessions WHERE session_id = :sid"),
-                                    {"sid": session_id}
-                                )
+                                # DO NOT delete the session here - link_session_to_user endpoint still needs it
+                                # The session will be deleted by link_session_to_user after successful linking
+                                logger.info(f"📍 [AUTO-TRANSFER] Session {session_id} preserved for link endpoint")
                                 
                                 await async_session.commit()
                                 logger.info(f"🚀 [AUTO-TRANSFER] Plan {plan_id} successfully transferred to user {target_uid}")
@@ -510,7 +508,7 @@ async def link_session_to_user(
     except asyncio.TimeoutError:
         logger.error(f"Session linking timeout: session_id={session_id}")
         raise HTTPException(
-            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            status_code=http_status.HTTP_408_REQUEST_TIMEOUT,
             detail="Session linking timeout"
         )
 
@@ -535,7 +533,7 @@ async def _link_session_to_user_internal(
         if current_user.get("email") != link_data.user_profile.email:
             logger.warning(f"Email mismatch: current_user_email={current_user.get('email')}, request_email={link_data.user_profile.email}")
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="You can only link your own sessions"
             )
         
@@ -560,7 +558,7 @@ async def _link_session_to_user_internal(
             logger.error(f"Session linking failed: session_id={session_id}, success=False")
             logger.error(f"=== 400 error occurred: Session linking failed ===")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Session linking failed"
             )
             
@@ -570,7 +568,7 @@ async def _link_session_to_user_internal(
     except Exception as e:
         logger.error(f"Exception during session linking: session_id={session_id}, error={str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session linking failed: {str(e)}"
         )
 
@@ -650,7 +648,7 @@ async def get_user_responses(
         # Check that user can only access their own data
         if current_user.get("uid") != uid:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="You can only access your own data"
             )
         
@@ -663,7 +661,7 @@ async def get_user_responses(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Response retrieval failed: {str(e)}"
         )
 
@@ -682,7 +680,7 @@ async def cleanup_expired_sessions(
         
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Cleanup failed: {str(e)}"
         ) 
 
@@ -702,7 +700,7 @@ async def get_session_recommendations_status(
         
         if not session:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Session not found or expired"
             )
         
@@ -748,17 +746,17 @@ async def get_session_recommendations_status(
             if len(completed_categories) == 3:  # All categories completed
                 # Additional check for minimum recommendations (at least 1 per category)
                 if all(count > 0 for count in category_counts.values()):
-                    status = "completed"
+                    rec_status = "completed"
                 else:
-                    status = "in_progress"
+                    rec_status = "in_progress"
             elif len(completed_categories) > 0:  # Some categories completed
-                status = "in_progress"
+                rec_status = "in_progress"
             else:  # Not started yet
-                status = "pending"
+                rec_status = "pending"
             
             return {
                 "session_id": session_id,
-                "status": status,
+                "status": rec_status,
                 "phase": "Legacy Mode",
                 "progress": len(completed_categories) * 33,
                 "message": f"{len(completed_categories)}/3 categories completed",
@@ -773,7 +771,7 @@ async def get_session_recommendations_status(
     except Exception as e:
         logger.error(f"Session recommendations status retrieval failed: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Session recommendations status retrieval failed: {str(e)}"
         ) 
 
@@ -792,7 +790,7 @@ async def get_hormone_analysis(
         
         if not session:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Session not found or expired"
             )
         
@@ -927,7 +925,7 @@ async def get_hormone_analysis(
         
         if not session_data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Session data not found"
             )
 
@@ -1036,7 +1034,7 @@ async def get_hormone_analysis(
     except Exception as e:
         logger.error(f"Hormone analysis retrieval failed: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Hormone analysis retrieval failed: {str(e)}"
         )
 
