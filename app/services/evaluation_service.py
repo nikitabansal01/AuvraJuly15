@@ -440,7 +440,8 @@ class ActionPlanEvaluator:
                     },
                     json={
                         "model": self.GPT_MODEL,
-                        "temperature": self.GPT_TEMPERATURE,
+                        # NOTE: GPT-5-nano only supports temperature=1 (default), so we omit it
+                        # For other models, uncomment: "temperature": self.GPT_TEMPERATURE,
                         "messages": [
                             {"role": "system", "content": "You are a health recommendation quality evaluator. Respond only with valid JSON."},
                             {"role": "user", "content": prompt}

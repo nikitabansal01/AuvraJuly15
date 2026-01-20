@@ -1010,6 +1010,34 @@ Respond with valid JSON array only."""
 
 
 # ============================================================================
+# GPT-5-NANO PARAMETER ADAPTER
+# ============================================================================
+
+def adapt_openai_params_for_model(model: str, **kwargs) -> dict:
+    """
+    Adapt OpenAI API parameters for different model requirements.
+    
+    GPT-5-nano specific requirements:
+    - Uses 'max_completion_tokens' instead of 'max_tokens'
+    - Only supports temperature=1 (default)
+    
+    Returns kwargs dict with adapted parameters.
+    """
+    params = dict(kwargs)
+    
+    if "gpt-5" in model.lower():
+        # GPT-5 models use max_completion_tokens instead of max_tokens
+        if "max_tokens" in params:
+            params["max_completion_tokens"] = params.pop("max_tokens")
+        
+        # GPT-5-nano only supports default temperature (1)
+        if "temperature" in params:
+            del params["temperature"]
+    
+    return params
+
+
+# ============================================================================
 # ACTION PLAN GENERATOR SERVICE
 # ============================================================================
 
