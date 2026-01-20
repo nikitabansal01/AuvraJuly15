@@ -2642,27 +2642,36 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 if not session:
                     logger.warning(f"[CONTEXT] Session {session_id} not found")
                     return None
+                
+                # Get hormones from session (set by root cause analysis)
+                # Fall back to defaults only if not set
+                primary_hormone = session.primary_hormone or "cortisol"
+                secondary_hormones = session.secondary_hormones or []
+                # secondary_hormones is a list of strings like ['androgens'], not tuples
+                secondary_hormone = secondary_hormones[0] if secondary_hormones else "progesterone"
+                
+                logger.info(f"[CONTEXT] Guest hormones from session: primary={primary_hormone}, secondary={secondary_hormone}")
                     
                 # Construct context from session data
                 return {
                     "age": session.age,
                     "cycle_day": 1, 
                     "cycle_phase": "follicular", # Default or infer from period_description?
-                    "primary_hormone": "cortisol", 
-                    "secondary_hormone": "progesterone",
+                    "primary_hormone": primary_hormone,
+                    "secondary_hormone": secondary_hormone,
                     "top_concern": session.top_concern,
                     "diagnosed_conditions": session.diagnosed_conditions or [],
-                    "period_concerns": [], # Map from session?
-                    "body_concerns": [],
-                    "skin_hair_concerns": [],
-                    "mental_health_concerns": [],
-                    "family_history": [],
+                    "period_concerns": session.period_concerns or [],
+                    "body_concerns": session.body_concerns or [],
+                    "skin_hair_concerns": session.skin_hair_concerns or [],
+                    "mental_health_concerns": session.mental_health_concerns or [],
+                    "family_history": session.family_history or [],
                     "lifestyle_focus": session.lifestyle_focus or ["eat", "move", "pause"],
                     "diet_preference": "none",
                     "food_allergies": [],
-                    "stress_level": "moderate",
-                    "sleep_duration": "7-8 hours",
-                    "workout_intensity": "moderate",
+                    "stress_level": session.stress_level or "moderate",
+                    "sleep_duration": session.sleep_duration or "7-8 hours",
+                    "workout_intensity": session.workout_intensity or "moderate",
                     "birth_control": session.birth_control,
                     "current_streak": 0,
                     "longest_streak": 0,
