@@ -439,10 +439,10 @@ async def link_session_to_user(
     
     try:
         logger.info(f"=== _link_session_to_user_internal call start ===")
-        # Set timeout (30 seconds)
+        # Increased timeout to 120s to allow waiting for guest plan generation (up to 90s)
         result = await asyncio.wait_for(
             _link_session_to_user_internal(session_id, link_data, db, current_user),
-            timeout=30.0
+            timeout=120.0
         )
         logger.info(f"=== _link_session_to_user_internal completed ===")
         return result
