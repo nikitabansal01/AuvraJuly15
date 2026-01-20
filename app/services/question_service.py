@@ -28,7 +28,7 @@ class QuestionService:
             self.db.add(session)
             self.db.commit()
             
-            logger.info(f"New session created: {session_id}, device: {device_id}")
+            logger.info(f"New session created: {session_id}, device: {device_id}, expires: {expires_at}")
             return session_id
             
         except Exception as e:
@@ -39,14 +39,21 @@ class QuestionService:
     def get_session(self, session_id: str) -> Optional[QuestionSession]:
         """Get active session"""
         try:
+            # DEBUG: Split query to identify why session is missing
             session = self.db.query(QuestionSession).filter(
-                QuestionSession.session_id == session_id,
-                QuestionSession.status == "active",
-                QuestionSession.expires_at > datetime.utcnow()
+                QuestionSession.session_id == session_id
             ).first()
             
             if not session:
-                logger.warning(f"Session not found or expired: {session_id}")
+                logger.warning(f"get_session: Session {session_id} NOT FOUND in DB")
+                return None
+                
+            if session.status != "active":
+                logger.warning(f"get_session: Session {session_id} found but status is '{session.status}'")
+                return None
+                
+            if session.expires_at <= datetime.utcnow():
+                logger.warning(f"get_session: Session {session_id} found but EXPIRED. Expires: {session.expires_at}, Now: {datetime.utcnow()}")
                 return None
                 
             return session
