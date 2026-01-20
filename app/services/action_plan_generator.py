@@ -5452,8 +5452,8 @@ REQUIREMENTS:
 - Should be DIFFERENT from: {original.title} (user disliked this)
 - Dislike reason: {reason or 'not specified'}
 - If the reason includes a specific requested item (e.g., "replace with cashews"), you MUST use that exact item as the core of the new action.
-- AVOID generating same category as disliked ({original.category}) unless users lifestyle_focus only includes that category
-- Prefer different category from: {original.category}
+- ⚠️ CRITICAL: Category MUST be EXACTLY: {original.category} (Keep replacement in SAME category!)
+- ⚠️ CRITICAL: Target hormone MUST be EXACTLY: {original.target_hormone} (Keep replacement targeting SAME hormone!)
 - Users lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 
 ======================================================================
@@ -5662,6 +5662,9 @@ Respond with valid JSON object only."""
                             parsed_action["research_studies"] = [research_paper]
                     
                     # Validate the action
+                    # ENFORCE same category and hormone as original (LLM sometimes ignores instructions)
+                    parsed_action["category"] = original.category.lower() if original.category else "food"
+                    parsed_action["target_hormone"] = original.target_hormone or "cortisol"
                     category = parsed_action.get("category", "food")
                     valid, missing = self._validate_action_fields(parsed_action, category)
                     
