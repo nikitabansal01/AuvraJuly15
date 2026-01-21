@@ -1190,6 +1190,19 @@ class ActionPlanGenerator:
         
         conversion_result = None  # Force skip conversion
         
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # CRITICAL FIX: Check if a session plan is being generated for this user
+        # If user signed up while session generation was in progress, the session status
+        # will be "linked:{user_id}". We should WAIT for that generation to complete and
+        # auto-transfer instead of starting a duplicate generation.
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        pending_session_plan = await self._check_pending_session_plan_for_user(user_id, today, db)
+        if pending_session_plan:
+            plan_result = pending_session_plan
+            if isinstance(plan_result, dict) and plan_result.get("success"):
+                plan_result["plan_source"] = "session_transfer"
+            return plan_result
+        
         # Combine all carry-forward sources:
         # 1. Items passed from daily review carry-forward (carryforward_items parameter)
         # 2. Items skipped via care plan check-in yesterday (skipped_items)
@@ -2126,6 +2139,164 @@ class ActionPlanGenerator:
         except Exception as e:
             logger.error(f"[SESSION_CONVERT] Error converting session recs: {e}", exc_info=True)
             await db.rollback()
+            return None
+    
+    async def _check_pending_session_plan_for_user(
+        self,
+        user_id: str,
+        today: date,
+        db: AsyncSession,
+        max_wait_seconds: int = 120
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Check if there's a session plan being generated that will be auto-transferred to this user.
+        
+        When a user signs up while session generation is in progress, the session status
+        is marked as "linked:{user_id}". The background generation will auto-transfer the
+        plan when complete. This method waits for that transfer instead of starting a
+        duplicate generation.
+        
+        Args:
+            user_id: The authenticated user ID
+            today: Today's date in user's timezone
+            db: Async database session
+            max_wait_seconds: Maximum time to wait for session plan (default 120s)
+            
+        Returns:
+            Plan response dict if session plan was transferred, None otherwise
+        """
+        import asyncio
+        from sqlalchemy import text
+        from app.core.database import ActionPlan, QuestionSession
+        
+        logger.info(f"🔍 [PENDING_SESSION_CHECK] Checking for pending session plan for user {user_id}")
+        
+        try:
+            # Find any session marked as linked to this user that's still processing
+            session_result = await db.execute(
+                text("""
+                    SELECT qs.session_id, qs.status, sps.processing_status
+                    FROM question_sessions qs
+                    LEFT JOIN session_processing_status sps ON qs.session_id = sps.session_id
+                    WHERE qs.status = :linked_status
+                    ORDER BY qs.created_at DESC
+                    LIMIT 1
+                """),
+                {"linked_status": f"linked:{user_id}"}
+            )
+            session_row = session_result.fetchone()
+            
+            if not session_row:
+                logger.info(f"🔍 [PENDING_SESSION_CHECK] No linked session found for user {user_id}")
+                return None
+            
+            session_id = session_row.session_id
+            processing_status = session_row.processing_status
+            
+            logger.info(f"🔍 [PENDING_SESSION_CHECK] Found linked session {session_id}, status: {processing_status}")
+            
+            # Check if session is still processing
+            if processing_status not in ["queued", "in_progress"]:
+                # Session finished, check if plan was transferred
+                plan_result = await db.execute(
+                    text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
+                    {"uid": user_id, "today": today}
+                )
+                existing_plan_id = plan_result.scalar()
+                
+                if existing_plan_id:
+                    logger.info(f"✅ [PENDING_SESSION_CHECK] Plan {existing_plan_id} already transferred to user {user_id}")
+                    # Plan exists, fetch and return it
+                    existing_plan = await self._get_existing_plan(user_id, today, db)
+                    if existing_plan:
+                        resp = await self._format_plan_response(existing_plan, db)
+                        if isinstance(resp, dict) and resp.get("success"):
+                            resp["plan_source"] = "session_already_transferred"
+                        return resp
+                
+                logger.info(f"⚠️ [PENDING_SESSION_CHECK] Session {session_id} finished but no plan found for user")
+                return None
+            
+            # Session is still processing - WAIT for it to complete and transfer
+            logger.info(f"⏳ [PENDING_SESSION_CHECK] Session {session_id} still processing, waiting for transfer...")
+            
+            poll_interval = 2.0  # Check every 2 seconds
+            total_waited = 0.0
+            
+            while total_waited < max_wait_seconds:
+                await asyncio.sleep(poll_interval)
+                total_waited += poll_interval
+                
+                # Check if plan has been transferred
+                plan_check = await db.execute(
+                    text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
+                    {"uid": user_id, "today": today}
+                )
+                plan_id = plan_check.scalar()
+                
+                if plan_id:
+                    logger.info(f"✅ [PENDING_SESSION_CHECK] Plan {plan_id} transferred after {total_waited:.1f}s wait")
+                    existing_plan = await self._get_existing_plan(user_id, today, db)
+                    if existing_plan:
+                        resp = await self._format_plan_response(existing_plan, db)
+                        if isinstance(resp, dict) and resp.get("success"):
+                            resp["plan_source"] = "session_transfer_waited"
+                            resp["session_wait_time_seconds"] = total_waited
+                        return resp
+                
+                # Check if session processing is still in progress
+                status_check = await db.execute(
+                    text("SELECT processing_status FROM session_processing_status WHERE session_id = :sid"),
+                    {"sid": session_id}
+                )
+                current_status = status_check.scalar()
+                
+                if current_status not in ["queued", "in_progress"]:
+                    # Processing finished but plan not found - might have failed
+                    logger.warning(f"⚠️ [PENDING_SESSION_CHECK] Session {session_id} finished (status: {current_status}) but no plan transferred after {total_waited:.1f}s")
+                    
+                    # One more check for plan
+                    final_check = await db.execute(
+                        text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
+                        {"uid": user_id, "today": today}
+                    )
+                    final_plan_id = final_check.scalar()
+                    
+                    if final_plan_id:
+                        logger.info(f"✅ [PENDING_SESSION_CHECK] Found plan {final_plan_id} on final check")
+                        existing_plan = await self._get_existing_plan(user_id, today, db)
+                        if existing_plan:
+                            resp = await self._format_plan_response(existing_plan, db)
+                            if isinstance(resp, dict) and resp.get("success"):
+                                resp["plan_source"] = "session_transfer_late"
+                            return resp
+                    
+                    # Session generation failed, fall through to generate new plan
+                    return None
+                
+                if total_waited % 10 == 0:
+                    logger.info(f"⏳ [PENDING_SESSION_CHECK] Still waiting for session {session_id}... ({total_waited:.0f}s)")
+            
+            # Timeout - session took too long
+            logger.warning(f"⏱️ [PENDING_SESSION_CHECK] Timeout waiting for session {session_id} after {max_wait_seconds}s")
+            
+            # Final check for plan
+            final_check = await db.execute(
+                text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
+                {"uid": user_id, "today": today}
+            )
+            if final_check.scalar():
+                existing_plan = await self._get_existing_plan(user_id, today, db)
+                if existing_plan:
+                    resp = await self._format_plan_response(existing_plan, db)
+                    if isinstance(resp, dict) and resp.get("success"):
+                        resp["plan_source"] = "session_transfer_timeout"
+                    return resp
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ [PENDING_SESSION_CHECK] Error checking pending session: {e}", exc_info=True)
             return None
     
     async def _check_and_carryforward_frozen_plan(
