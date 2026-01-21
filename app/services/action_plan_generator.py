@@ -1275,6 +1275,7 @@ class ActionPlanGenerator:
         lock_key = hash(f"{identity_key}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
         got_lock = False
         
+        try:
             # Step 0: Acquire advisory lock (BLOCKING is fine here as we release it quickly)
             # This serializes the check-and-set of the processing status
             logger.info(f"{log_prefix} Step 0: Acquiring advisory lock (key: {lock_key})")
