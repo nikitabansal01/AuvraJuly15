@@ -77,8 +77,9 @@ class ImageLibraryService:
         """Initialize the image library service."""
         # RunPod configuration - uses FLUX.1 Schnell for ultra-fast generation
         self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
-        # FLUX.1 Schnell endpoint - optimized for 1-4 step sampling
-        self.runpod_endpoint = "vvkx0l6kv85cxu"
+        # FLUX.1 Schnell PUBLIC MANAGED endpoint (Black Forest Labs official)
+        # This is a serverless endpoint provided by RunPod, NOT a custom pod
+        self.runpod_endpoint = "black-forest-labs-flux-1-schnell"
         
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")

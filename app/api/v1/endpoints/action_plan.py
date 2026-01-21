@@ -127,8 +127,7 @@ async def get_today_assignments(
         # Query automatically handles signup day: plan_date < today_date finds nothing on day 1
         total_plan_count = db.query(ActionPlan).filter(ActionPlan.uid == uid).count()
         
-        pending_review = None
-        if total_plan_count > 0:
+        if total_plan_count > 1:
             pending_review = db.query(ActionPlan).filter(
                 and_(
                     ActionPlan.uid == uid,

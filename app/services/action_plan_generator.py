@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update, text, or_
 
+from app.core.database import SessionProcessingStatus
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
 from app.core.config import settings
@@ -1274,64 +1275,119 @@ class ActionPlanGenerator:
         lock_key = hash(f"{identity_key}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
         got_lock = False
         
-        try:
-            # Step 0: Acquire advisory lock to prevent race conditions
-            # Two requests for the same user+date will serialize here
+            # Step 0: Acquire advisory lock (BLOCKING is fine here as we release it quickly)
+            # This serializes the check-and-set of the processing status
             logger.info(f"{log_prefix} Step 0: Acquiring advisory lock (key: {lock_key})")
-            lock_result = await db.execute(
-                text("SELECT pg_try_advisory_lock(:key)"),
-                {"key": lock_key}
-            )
-            got_lock = lock_result.scalar()
+            await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
+            got_lock = True
             
-            if not got_lock:
-                # Another request is already generating - wait and poll for result
-                # OPTIMIZED: Reduced wait times since we're faster now (~15s total instead of 45s)
-                logger.info(f"{log_prefix}  Another request is generating plan, polling for result...")
+            try:
+                # Double-check for existing plan
+                existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
+                if existing_plan:
+                    logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
+                    # Release lock before returning
+                    await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+                    got_lock = False
+                    
+                    resp = await self._format_plan_response(existing_plan, db)
+                    if isinstance(resp, dict) and resp.get("success"):
+                        resp["plan_source"] = "existing_at_start"
+                    return resp
                 
-                # Poll for existing plan with shorter backoff (2s, 4s, 9s = ~15s total)
-                wait_times = [2, 4, 9]
-                for wait_time in wait_times:
-                    await asyncio.sleep(wait_time)
-                    
-                    # Check if plan was created by the other request
-                    from app.core.database import ActionPlan
-                    query = select(ActionPlan).where(ActionPlan.plan_date == plan_date)
-                    if user_id:
-                        query = query.where(ActionPlan.uid == user_id)
-                    elif session_id:
-                        query = query.where(ActionPlan.session_id == session_id)
-                    
-                    result = await db.execute(query)
-                    existing_plan = result.scalar_one_or_none()
-
-                    if existing_plan:
-                        logger.info(f"{log_prefix}  Found plan created by concurrent request after {wait_time}s wait")
-                        resp = await self._format_plan_response(existing_plan, db)
-                        if isinstance(resp, dict) and resp.get("success"):
-                            resp["plan_source"] = "concurrent_wait_existing"
-                        return resp
-                    
-                    logger.info(f"{log_prefix}  Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
-                
-                # After ~45s of waiting, try to acquire blocking lock
-                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, acquiring blocking lock...")
-                await db.execute(
-                    text("SELECT pg_advisory_lock(:key)"),
-                    {"key": lock_key}
+                # Check processing status
+                processing_id = user_id if user_id else session_id
+                # NOTE: We use sync-style query execution in async session
+                stmt = select(SessionProcessingStatus).where(
+                    SessionProcessingStatus.session_id == processing_id
                 )
-                got_lock = True
-            
-            # Double-check for existing plan after acquiring lock
-            existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
-            if existing_plan:
-                logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
-                resp = await self._format_plan_response(existing_plan, db)
-                if isinstance(resp, dict) and resp.get("success"):
-                    resp["plan_source"] = "existing_after_lock"
-                return resp
-            
-            logger.info(f"[GENERATE]  Lock acquired, proceeding with plan generation")
+                result = await db.execute(stmt)
+                status_record = result.scalar_one_or_none()
+                
+                # If another process is working, release lock and wait
+                if status_record and status_record.processing_status == "in_progress":
+                    last_heartbeat = status_record.heartbeat_at or status_record.started_at or datetime.utcnow()
+                    if (datetime.utcnow() - last_heartbeat).total_seconds() < 300:  # 5 min timeout
+                        logger.info(f"{log_prefix} Another process is generating (started {status_record.started_at}), releasing lock and polling...")
+                        
+                        # Release lock so the worker can eventually finish/save
+                        await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+                        got_lock = False
+                        
+                        # Poll for completion (Wait loop)
+                        # We wait for EITHER plan existence OR status completion
+                        wait_times = [2, 4, 6, 8, 10, 10, 10]  # ~50s total
+                        for wait_time in wait_times:
+                            await asyncio.sleep(wait_time)
+                            
+                            # Check for plan
+                            existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
+                            if existing_plan:
+                                logger.info(f"{log_prefix} Found plan after waiting")
+                                return await self._format_plan_response(existing_plan, db)
+                            
+                            # Check status again (using a new transaction/query)
+                            # In async session, we might need to expire to see updates? 
+                            # Usually simple execute is fine if we are not in a transaction that isolates snapshot.
+                            try:
+                                # Simple check
+                                check_res = await db.execute(
+                                    select(SessionProcessingStatus.processing_status)
+                                    .where(SessionProcessingStatus.session_id == processing_id)
+                                )
+                                curr_status = check_res.scalar_one_or_none()
+                                if curr_status == "completed":
+                                    # Should have found plan above, but loop again
+                                    continue
+                                if curr_status == "failed":
+                                    logger.error(f"{log_prefix} Other process failed, taking over...")
+                                    break
+                            except Exception:
+                                pass
+                                
+                        # If we fall through here, we assume timeout or failure, try to take over
+                        logger.info(f"{log_prefix} Polling timed out, attempting to take over generation...")
+                        
+                        # Re-acquire lock to set status
+                        await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
+                        got_lock = True
+                
+                # Set status to in_progress (we own the job now)
+                if not status_record:
+                    new_status = SessionProcessingStatus(
+                        session_id=processing_id,
+                        processing_status="in_progress",
+                        phase="Starting",
+                        progress=5,
+                        started_at=datetime.utcnow(),
+                        heartbeat_at=datetime.utcnow()
+                    )
+                    db.add(new_status)
+                else:
+                    status_record.processing_status = "in_progress"
+                    status_record.phase = "Starting"
+                    status_record.progress = 5
+                    status_record.started_at = datetime.utcnow()
+                    status_record.heartbeat_at = datetime.utcnow()
+                    # Ensure we reset error state
+                    status_record.error = None
+                
+                await db.commit()
+                logger.info(f"{log_prefix} Status marked in_progress. Releasing DB lock to run AI tasks...")
+                
+                # RELEASE LOCK - Critical step to allow concurrency!
+                await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+                got_lock = False
+                
+            except Exception as e:
+                # If anything failed during check-set, ensure we release lock
+                logger.error(f"{log_prefix} Error during lock/status check: {e}")
+                if got_lock:
+                    await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+                    got_lock = False
+                raise e
+
+            logger.info(f"[GENERATE]  Proceeding with plan generation (unlocked)")
             
             # Step 1: Load user context
             logger.info(f"[GENERATE] Step 1: Loading user context...")
@@ -1567,6 +1623,11 @@ class ActionPlanGenerator:
                 total_cost += image_cost
                 logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
             
+            # Re-acquire lock to ensure safe storage and status update
+            logger.info(f"{log_prefix} Re-acquiring lock for save...")
+            await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
+            got_lock = True
+
             # Step 4: Store plan in database
             logger.info(f"{log_prefix} Step 4: Storing plan in database...")
             plan = await self._store_plan(
@@ -1579,6 +1640,25 @@ class ActionPlanGenerator:
                 db=db,
                 session_id=session_id
             )
+            
+            # Mark processing as completed
+            try:
+                processing_id = user_id if user_id else session_id
+                await db.execute(
+                    update(SessionProcessingStatus)
+                    .where(SessionProcessingStatus.session_id == processing_id)
+                    .values(
+                        processing_status="completed",
+                        phase="Completed",
+                        progress=100,
+                        finished_at=datetime.utcnow(),
+                        message="Plan generated successfully"
+                    )
+                )
+                await db.commit()
+            except Exception as e:
+                logger.error(f"{log_prefix} Failed to update processing status to completed: {e}")
+            
             logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
             
             # Step 4.5: Log AI Model Usage (Admin Tracking)
@@ -1641,6 +1721,26 @@ class ActionPlanGenerator:
         except Exception as e:
             logger.error(f"[GENERATE]  Error generating plan: {e}")
             logger.error(f"[GENERATE] Full traceback: {traceback.format_exc()}")
+            
+            # Update status to failed so we don't block subsequent requests
+            try:
+                processing_id = user_id if user_id else session_id
+                await db.execute(
+                    update(SessionProcessingStatus)
+                    .where(SessionProcessingStatus.session_id == processing_id)
+                    .values(
+                        processing_status="failed",
+                        phase="Failed",
+                        finished_at=datetime.utcnow(),
+                        # Store error as JSON
+                        error={"message": str(e)},
+                        message="Plan generation failed"
+                    )
+                )
+                await db.commit()
+            except Exception as update_err:
+                logger.error(f"[GENERATE] Failed to update status to failed: {update_err}")
+
             return {"success": False, "error": "Failed to generate plan. Please try again."}
         finally:
             # Release advisory lock if we acquired it

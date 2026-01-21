@@ -428,10 +428,30 @@ async def _generate_recommendations_background(session_id: str, service, process
                             plan_row = plan_query.fetchone()
                             
                             if plan_row:
-                                # Transfer plan to user
+                                # Transfer plan to user AND update date to match user's today
+                                # This prevents checking for "pending review" if UTC date was yesterday in user's IDL
+                                # 1. Get user timezone
+                                timezone_query = await async_session.execute(
+                                    text("SELECT current_timezone FROM user_profiles WHERE uid = :uid"),
+                                    {"uid": target_uid}
+                                )
+                                tz_row = timezone_query.fetchone()
+                                user_tz = tz_row.current_timezone if tz_row and tz_row.current_timezone else "Asia/Seoul"
+                                
+                                # 2. Calculate today in user's timezone
+                                from app.utils.timezone_utils import ZoneInfo
+                                from datetime import datetime
+                                try:
+                                    tz = ZoneInfo(user_tz)
+                                    today_local = datetime.now(tz).date()
+                                except Exception:
+                                    today_local = datetime.utcnow().date()
+                                
+                                logger.info(f"🔄 [AUTO-TRANSFER] Updating plan date to {today_local} (enabled valid today check)")
+
                                 await async_session.execute(
-                                    text("UPDATE action_plans SET uid = :uid, session_id = NULL WHERE id = :plan_id"),
-                                    {"uid": target_uid, "plan_id": plan_id}
+                                    text("UPDATE action_plans SET uid = :uid, session_id = NULL, plan_date = :new_date WHERE id = :plan_id"),
+                                    {"uid": target_uid, "plan_id": plan_id, "new_date": today_local}
                                 )
                                 
                                 # Transfer plan items
