@@ -129,6 +129,11 @@ async def get_today_assignments(
         pending_review = None
 
         if total_plan_count > 1:
+            # CRITICAL: Force fresh read from DB to avoid stale pooler connections
+            # This fixes race condition where /submit-daily-review commits but 
+            # /assignments/today sees stale data due to Supabase session pooler
+            db.expire_all()
+            
             pending_review = db.query(ActionPlan).filter(
                 and_(
                     ActionPlan.uid == uid,
@@ -890,6 +895,10 @@ async def get_pending_review(
         from datetime import timedelta
         
         today = get_user_current_date(uid, db)
+        
+        # CRITICAL: Force fresh read from DB to avoid stale pooler connections
+        # This ensures we see latest commits from /submit-daily-review
+        db.expire_all()
         
         # CRITICAL FIX: Check how many plans this user has
         # If user only has ONE plan ever, skip review (it's their first day / signup)
