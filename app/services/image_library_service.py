@@ -95,7 +95,11 @@ class ImageLibraryService:
         self.storage_bucket = "action-plan-images"
         
         # HTTP clients
-        self.client = httpx.AsyncClient(timeout=120.0)
+        # FIX: Increase max connections to avoid "Max client connections reached" during parallel generation
+        self.client = httpx.AsyncClient(
+            timeout=120.0,
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50)
+        )
         
         # In-memory cache for embeddings (avoid repeated API calls)
         self._embedding_cache: Dict[str, List[float]] = {}
@@ -110,15 +114,15 @@ class ImageLibraryService:
                 import urllib3
                 from urllib3.util import connection
                 
-                # Increase default pool size for all connection pools
-                urllib3.connectionpool.HTTPConnectionPool.DEFAULT_MAXSIZE = 20
-                urllib3.connectionpool.HTTPSConnectionPool.DEFAULT_MAXSIZE = 20
+                # Increase default pool size for all connection pools - Fix for parallel generation
+                urllib3.connectionpool.HTTPConnectionPool.DEFAULT_MAXSIZE = 50
+                urllib3.connectionpool.HTTPSConnectionPool.DEFAULT_MAXSIZE = 50
                 
                 # Also configure requests library which Cloudinary uses internally
                 try:
                     import requests.adapters
-                    requests.adapters.DEFAULT_POOLCONNECTIONS = 20
-                    requests.adapters.DEFAULT_POOLSIZE = 20
+                    requests.adapters.DEFAULT_POOLCONNECTIONS = 50
+                    requests.adapters.DEFAULT_POOLSIZE = 50
                 except ImportError:
                     pass  # requests not installed
                 

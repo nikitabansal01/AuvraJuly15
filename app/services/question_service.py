@@ -514,40 +514,44 @@ class QuestionService:
             # 2. Create user profile (save current timezone and lifestyle focus)
             logger.info(f"Creating user profile: uid={uid}")
             user_profile = self.create_user_profile(uid, name, email)
-            # Save current_timezone and lifestyle_focus to UserProfile
             user_profile.current_timezone = current_timezone
             user_profile.lifestyle_focus = lifestyle_focus
-            self.db.commit()
-            logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}, lifestyle_focus={lifestyle_focus}")
+            # NOTE: Do NOT commit here. We'll commit everything at the end for atomicity.
+            logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}, lifestyle_focus={lifestyle_focus}"))
             
-            # 3. Create UserResponse (save UTC data as is)
-            response_data = self._convert_session_to_response_data(session)
-            
-            user_response = UserResponse(
-                uid=uid,
-                age=response_data.age,
-                period_description=response_data.period_description,
-                birth_control=response_data.birth_control,
-                last_period_date_utc=response_data.last_period_date_utc,  # Save UTC as is
-                cycle_length=response_data.cycle_length,
-                period_concerns=response_data.period_concerns,
-                body_concerns=response_data.body_concerns,
-                skin_hair_concerns=response_data.skin_hair_concerns,
-                mental_health_concerns=response_data.mental_health_concerns,
-                other_concerns=response_data.other_concerns,
-                top_concern=response_data.top_concern,
-                diagnosed_conditions=response_data.diagnosed_conditions,
-                family_history=response_data.family_history,
-                workout_intensity=response_data.workout_intensity,
-                sleep_duration=response_data.sleep_duration,
-                stress_level=response_data.stress_level,
-                survey_timezone=response_data.survey_timezone,
-                primary_hormone=session.primary_hormone,
-                secondary_hormones=session.secondary_hormones,
-                lifestyle_focus=lifestyle_focus
-            )
-            self.db.add(user_response)
-            logger.info(f"Session data saved for user {uid}")
+            # 3. Create UserResponse (save UTC data as is) - IDEMPOTENCY CHECK
+            existing_user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+            if existing_user_response:
+                logger.info(f"✅ [IDEMPOTENCY] UserResponse already exists for {uid}, skipping creation")
+                user_response = existing_user_response
+            else:
+                response_data = self._convert_session_to_response_data(session)
+                
+                user_response = UserResponse(
+                    uid=uid,
+                    age=response_data.age,
+                    period_description=response_data.period_description,
+                    birth_control=response_data.birth_control,
+                    last_period_date_utc=response_data.last_period_date_utc,  # Save UTC as is
+                    cycle_length=response_data.cycle_length,
+                    period_concerns=response_data.period_concerns,
+                    body_concerns=response_data.body_concerns,
+                    skin_hair_concerns=response_data.skin_hair_concerns,
+                    mental_health_concerns=response_data.mental_health_concerns,
+                    other_concerns=response_data.other_concerns,
+                    top_concern=response_data.top_concern,
+                    diagnosed_conditions=response_data.diagnosed_conditions,
+                    family_history=response_data.family_history,
+                    workout_intensity=response_data.workout_intensity,
+                    sleep_duration=response_data.sleep_duration,
+                    stress_level=response_data.stress_level,
+                    survey_timezone=response_data.survey_timezone,
+                    primary_hormone=session.primary_hormone,
+                    secondary_hormones=session.secondary_hormones,
+                    lifestyle_focus=lifestyle_focus
+                )
+                self.db.add(user_response)
+                logger.info(f"Session data saved for user {uid}")
             
             # 4. Migrate session-linked recommendations to permanent storage
             logger.info(f"Session recommendation permanent storage migration started: session_id={session_id}")
@@ -729,7 +733,7 @@ class QuestionService:
                                 import concurrent.futures
                                 with concurrent.futures.ThreadPoolExecutor() as pool:
                                     future = pool.submit(asyncio.run, create_plan_async())
-                                    plan_result = future.result(timeout=120)
+                                    plan_result = future.result(timeout=90)  # Inner timeout shorter than outer 120s
                             else:
                                 plan_result = loop.run_until_complete(create_plan_async())
                         except RuntimeError:

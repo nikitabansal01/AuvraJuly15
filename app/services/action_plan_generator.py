@@ -33,6 +33,7 @@ from sqlalchemy import select, and_, update, text, or_
 from app.core.database import SessionProcessingStatus
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
+from app.services.processing_status_service import ProcessingStatusService
 from app.core.config import settings
 
 # Get API keys from environment
@@ -1458,6 +1459,13 @@ class ActionPlanGenerator:
             else:
                 # Step 2: Generate actions via GPT-4o-mini with retry logic
                 # Pydantic validation ensures complete data - no fallbacks
+                
+                # UPDATE STATUS: Designing
+                from app.services.processing_status_service import ProcessingStatusService
+                status_service = ProcessingStatusService(db)
+                processing_id = user_id if user_id else session_id
+                status_service.update_category_status(processing_id, "all", "processing", phase="Designing Plan", progress=15)
+                
                 logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
                 actions = None
                 gpt_cost = 0.0
@@ -1472,7 +1480,7 @@ class ActionPlanGenerator:
                 
                 # Generate actions with real citations from PubMed
                 # Pydantic validation happens inside _generate_actions_via_gpt
-                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db)
+                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db, session_id=session_id)
                 gpt_cost += attempt_cost
                 
                 if attempt_actions:
@@ -1500,7 +1508,7 @@ class ActionPlanGenerator:
                             
                             try:
                                 fallback_actions, fallback_cost = await self._generate_actions_via_gpt(
-                                    user_context, db, model_override=fallback_model
+                                    user_context, db, model_override=fallback_model, session_id=session_id
                                 )
                                 gpt_cost += fallback_cost
                                 
@@ -1612,6 +1620,9 @@ class ActionPlanGenerator:
                 logger.info("[GENERATE] Step 3: Skipping image generation (image_mode=none)")
                 actions_with_images, image_cost = actions, 0.0
             else:
+                # UPDATE STATUS: Creating Visuals
+                status_service.update_category_status(processing_id, "all", "processing", phase="Creating Visuals", progress=60)
+                
                 logger.info(
                     f"[GENERATE] Step 3: Generating images for {len(actions)} actions (image_mode={image_mode})..."
                 )
@@ -1620,6 +1631,7 @@ class ActionPlanGenerator:
                     user_id=user_id,
                     db=db,
                     image_mode=image_mode,  # Use actual mode - no override
+                    session_id=session_id
                 )
                 total_cost += image_cost
                 logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
@@ -3757,7 +3769,8 @@ Format as bullet points."""
         self,
         user_context: Dict[str, Any],
         db: Optional[AsyncSession] = None,
-        model_override: Optional[str] = None
+        model_override: Optional[str] = None,
+        session_id: Optional[str] = None
     ) -> Tuple[Optional[List[Dict]], float]:
         """Generate actions using GPT with tool calling."""
         logger.info(f"[GPT] ==========================================================================")
@@ -3923,6 +3936,14 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
         diagnosed_conditions = ", ".join(user_context.get("diagnosed_conditions", [])) or "womens health"
         
         try:
+            # UPDATE STATUS if DB available
+            if db:
+                from app.services.processing_status_service import ProcessingStatusService
+                status_svc = ProcessingStatusService(db)
+                pid = user_context.get('user_id') or session_id
+                if pid:
+                    status_svc.update_category_status(pid, "all", "processing", phase="Finding Research", progress=20)
+
             # =======================================================================
             # STEP 1: RESEARCH DISCOVERY PHASE
             # Search for evidence-based interventions BEFORE deciding what to recommend
@@ -3990,6 +4011,13 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
                 logger.info(f"   Found: {result['paper'].get('title', '')[:50]}...")
             
             logger.info(f" Research complete: Found {len(research_findings)} relevant papers")
+            
+            # UPDATE STATUS after research
+            if db:
+                pid = user_context.get('user_id') or session_id
+                if pid:
+                    status_svc.update_category_status(pid, "all", "processing", phase="Drafting Plan", progress=35)
+            
             
             # Build research summary for GPT
             research_summary = "\\n\\n======================================================================\\n"
@@ -4651,6 +4679,7 @@ JSON ONLY:
         user_id: str,
         db: AsyncSession,
         image_mode: Literal["full", "hero_only", "variants_only", "none"] = "full",
+        session_id: Optional[str] = None
     ) -> Tuple[List[Dict], float]:
         """
         Generate all images for all actions (16 total) in PARALLEL.
@@ -4682,7 +4711,7 @@ JSON ONLY:
                         prompt=prompt,
                         category=category,
                         variant_type=variant_type,
-                        user_id=user_id,
+                        user_id=user_id or (f"guest_{session_id}" if session_id else "unknown"),
                         db=task_session,
                         title_embedding=title_embedding
                     )
