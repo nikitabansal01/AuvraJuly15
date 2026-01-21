@@ -517,7 +517,7 @@ class QuestionService:
             user_profile.current_timezone = current_timezone
             user_profile.lifestyle_focus = lifestyle_focus
             # NOTE: Do NOT commit here. We'll commit everything at the end for atomicity.
-            logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}, lifestyle_focus={lifestyle_focus}"))
+            logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}, lifestyle_focus={lifestyle_focus}")
             
             # 3. Create UserResponse (save UTC data as is) - IDEMPOTENCY CHECK
             existing_user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
