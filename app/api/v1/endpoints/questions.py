@@ -378,13 +378,16 @@ async def _generate_recommendations_background(session_id: str, service, process
             
             # Generate the plan!
             # We pass session_id and NO user_id
+            # CRITICAL: is_background_task=True to skip the in_progress check
+            # (we set the status to in_progress before calling this!)
             response = await generator.generate_new_plan(
                 user_id=None,
                 plan_date=date.today(),
                 user_timezone="UTC", # Default for guest, can update on signup
                 db=async_session,
                 image_mode="full", # Generate ALL images now!
-                session_id=session_id
+                session_id=session_id,
+                is_background_task=True  # Skip in_progress check - we are the background task!
             )
             
             if response.get("success"):

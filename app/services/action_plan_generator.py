@@ -1249,7 +1249,8 @@ class ActionPlanGenerator:
         image_mode: Literal["full", "hero_only", "none"] = "full",
         skip_quality_check: bool = False,
         session_id: Optional[str] = None,  # For guest users
-        carryforward_items: Optional[List[Dict[str, Any]]] = None  # Items to carry forward from yesterday
+        carryforward_items: Optional[List[Dict[str, Any]]] = None,  # Items to carry forward from yesterday
+        is_background_task: bool = False  # Skip in_progress check when called from background task
     ) -> Dict[str, Any]:
         """
         Generate a completely new action plan.
@@ -1396,7 +1397,8 @@ class ActionPlanGenerator:
                 status_record = result.scalar_one_or_none()
                 
                 # If another process is working, release lock and wait
-                if status_record and status_record.processing_status == "in_progress":
+                # CRITICAL FIX: Skip this check if we're the background task (we set the status ourselves!)
+                if status_record and status_record.processing_status == "in_progress" and not is_background_task:
                     last_heartbeat = status_record.heartbeat_at or status_record.started_at or datetime.utcnow()
                     if (datetime.utcnow() - last_heartbeat).total_seconds() < 300:  # 5 min timeout
                         logger.info(f"{log_prefix} Another process is generating (started {status_record.started_at}), releasing lock and polling...")
