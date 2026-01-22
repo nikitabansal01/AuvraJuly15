@@ -1363,14 +1363,25 @@ class ActionPlanGenerator:
                         await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
                         got_lock = False
                         
-                        # Calculate estimated time remaining
+                        # Calculate estimated time remaining (FIXED FORMULA)
                         elapsed_seconds = 0
                         if session_started:
                             elapsed_seconds = (datetime.utcnow() - session_started).total_seconds()
-                        estimated_total = 180  # ~3 minutes typical
-                        if session_progress > 0:
-                            estimated_total = (elapsed_seconds / session_progress) * 100
-                        estimated_remaining = max(0, estimated_total - elapsed_seconds)
+                        
+                        # Fixed formula: estimate based on typical phase durations
+                        if session_progress <= 15:
+                            estimated_total = 60
+                        elif session_progress <= 35:
+                            estimated_total = 90
+                        elif session_progress <= 60:
+                            estimated_total = 120
+                        elif session_progress <= 95:
+                            estimated_total = 140
+                        else:
+                            estimated_total = 150
+                        
+                        remaining_ratio = (100 - session_progress) / 100 if session_progress > 0 else 1
+                        estimated_remaining = min(estimated_total * remaining_ratio, 180)
                         
                         # Return "generating" status - frontend should poll
                         return {
@@ -2309,16 +2320,25 @@ class ActionPlanGenerator:
             # ═══════════════════════════════════════════════════════════════════════════════════
             logger.info(f"🚀 [PENDING_SESSION_CHECK] Session {session_id} still generating - returning 'generating' status (NO WAIT)")
             
-            # Calculate estimated time remaining (typical generation is 150-200 seconds)
+            # Calculate estimated time remaining (FIXED FORMULA)
             elapsed_seconds = 0
             if started_at:
                 elapsed_seconds = (datetime.utcnow() - started_at).total_seconds()
             
-            # Estimate remaining time based on progress
-            estimated_total = 180  # ~3 minutes typical
-            if progress > 0:
-                estimated_total = (elapsed_seconds / progress) * 100
-            estimated_remaining = max(0, estimated_total - elapsed_seconds)
+            # Fixed formula: estimate based on typical phase durations
+            if progress <= 15:
+                estimated_total = 60
+            elif progress <= 35:
+                estimated_total = 90
+            elif progress <= 60:
+                estimated_total = 120
+            elif progress <= 95:
+                estimated_total = 140
+            else:
+                estimated_total = 150
+            
+            remaining_ratio = (100 - progress) / 100 if progress > 0 else 1
+            estimated_remaining = min(estimated_total * remaining_ratio, 180)
             
             return {
                 "success": True,

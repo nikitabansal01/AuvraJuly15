@@ -5,9 +5,57 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
 import json
 import os
+import time
+from functools import lru_cache
+from typing import Dict, Tuple, Optional
+import hashlib
 
 # HTTP Bearer token schema
 security = HTTPBearer()
+
+# ═══════════════════════════════════════════════════════════════════════════════════
+# TOKEN VERIFICATION CACHE
+# Cache verified tokens for 60 seconds to avoid repeated Firebase Admin SDK calls.
+# This DRAMATICALLY reduces latency when frontend polls status endpoint rapidly.
+# ═══════════════════════════════════════════════════════════════════════════════════
+_token_cache: Dict[str, Tuple[dict, float]] = {}  # token_hash -> (decoded_token, expiry_timestamp)
+_TOKEN_CACHE_TTL_SECONDS = 60  # Cache for 60 seconds
+_MAX_CACHE_SIZE = 1000  # Prevent memory bloat
+
+def _get_token_hash(token: str) -> str:
+    """Get a short hash of token for cache key (don't store full token in memory)"""
+    return hashlib.sha256(token.encode()).hexdigest()[:32]
+
+def _get_cached_token(token: str) -> Optional[dict]:
+    """Get cached token verification result if still valid"""
+    token_hash = _get_token_hash(token)
+    if token_hash in _token_cache:
+        decoded_token, expiry = _token_cache[token_hash]
+        if time.time() < expiry:
+            return decoded_token
+        else:
+            # Expired, remove from cache
+            del _token_cache[token_hash]
+    return None
+
+def _cache_token(token: str, decoded_token: dict):
+    """Cache a verified token"""
+    global _token_cache
+    # Prevent cache from growing too large
+    if len(_token_cache) >= _MAX_CACHE_SIZE:
+        # Remove oldest entries (simple FIFO-ish cleanup)
+        current_time = time.time()
+        expired_keys = [k for k, (_, exp) in _token_cache.items() if exp < current_time]
+        for k in expired_keys:
+            del _token_cache[k]
+        # If still too big, clear half
+        if len(_token_cache) >= _MAX_CACHE_SIZE:
+            keys_to_remove = list(_token_cache.keys())[:_MAX_CACHE_SIZE // 2]
+            for k in keys_to_remove:
+                del _token_cache[k]
+    
+    token_hash = _get_token_hash(token)
+    _token_cache[token_hash] = (decoded_token, time.time() + _TOKEN_CACHE_TTL_SECONDS)
 
 # Firebase initialization
 def initialize_firebase():
@@ -59,11 +107,19 @@ def initialize_firebase():
 
 
 async def verify_firebase_token(token: str) -> dict:
-    """Verify Firebase ID token"""
+    """Verify Firebase ID token with caching to reduce repeated verifications"""
     import logging
     logger = logging.getLogger(__name__)
     
     try:
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # CHECK CACHE FIRST - avoids redundant Firebase Admin SDK calls during rapid polling
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        cached_result = _get_cached_token(token)
+        if cached_result:
+            # Don't log every cache hit to avoid log spam during polling
+            return cached_result
+        
         logger.info(f"Firebase token verification started: token length={len(token)}")
         
         # Check if Firebase app is initialized
@@ -78,6 +134,10 @@ async def verify_firebase_token(token: str) -> dict:
         logger.info("Firebase token verification in progress...")
         decoded_token = auth.verify_id_token(token, check_revoked=False)
         logger.info(f"Firebase token verification successful: uid={decoded_token.get('uid')}, email={decoded_token.get('email')}")
+        
+        # Cache the successful verification
+        _cache_token(token, decoded_token)
+        
         return decoded_token
         
     except Exception as e:

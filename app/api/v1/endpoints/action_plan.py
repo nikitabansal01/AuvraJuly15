@@ -389,10 +389,38 @@ async def get_today_plan_status(
                     elapsed = (datetime.utcnow() - processing.started_at).total_seconds()
                 
                 progress = processing.progress or 0
-                estimated_total = 180  # ~3 minutes typical
+                
+                # ═══════════════════════════════════════════════════════════════════════════════════
+                # FIXED FORMULA: Better remaining time estimate that doesn't INCREASE over time
+                # Old broken formula: estimated_total = (elapsed / progress) * 100
+                # Problem: When progress=5% and elapsed=100s, that gives 2000s total (33 min!)
+                #          And remaining INCREASES as elapsed increases at low progress.
+                # 
+                # New formula: Use fixed expected durations based on phase, with caps
+                # ═══════════════════════════════════════════════════════════════════════════════════
+                phase = processing.phase or "Generating"
+                
+                # Base expected times by progress milestone
+                if progress <= 15:  # Research phase
+                    estimated_total = 60  # About 1 minute
+                elif progress <= 35:  # GPT generation
+                    estimated_total = 90  # About 1.5 minutes
+                elif progress <= 60:  # Image generation
+                    estimated_total = 120  # About 2 minutes
+                elif progress <= 95:  # Finalizing
+                    estimated_total = 140  # About 2.5 minutes
+                else:
+                    estimated_total = 150  # Almost done
+                
+                # Scale by progress - if we're at 35%, remaining is ~65% of expected
                 if progress > 0:
-                    estimated_total = (elapsed / progress) * 100
-                estimated_remaining = max(0, estimated_total - elapsed)
+                    remaining_ratio = (100 - progress) / 100
+                    estimated_remaining = estimated_total * remaining_ratio
+                else:
+                    estimated_remaining = estimated_total
+                
+                # Cap at reasonable maximum to never show more than 3 minutes remaining
+                estimated_remaining = min(estimated_remaining, 180)
                 
                 logger.info(f"[STATUS] Session {linked_session.session_id} generating for {uid}: {progress}% complete")
                 
