@@ -1331,14 +1331,14 @@ class ActionPlanGenerator:
                     return resp
                 
                 # ═══════════════════════════════════════════════════════════════════════════════════
-                # CRITICAL FIX: For USER requests, check if a session plan is being generated
-                # that will auto-transfer to this user. If so, WAIT instead of generating duplicate.
-                # This is a second layer of defense after _check_pending_session_plan_for_user
+                # OPTION 3+4 FIX: For USER requests, if a session plan is being generated for this user,
+                # return "generating" status immediately instead of waiting. This prevents duplicate
+                # generations and eliminates the 200s blocking wait.
                 # ═══════════════════════════════════════════════════════════════════════════════════
                 if user_id:
                     linked_session_result = await db.execute(
                         text("""
-                            SELECT qs.session_id, sps.processing_status
+                            SELECT qs.session_id, sps.processing_status, sps.progress, sps.phase, sps.started_at
                             FROM question_sessions qs
                             LEFT JOIN session_processing_status sps ON qs.session_id = sps.session_id
                             WHERE qs.status = :linked_status 
@@ -1352,79 +1352,39 @@ class ActionPlanGenerator:
                     
                     if linked_row:
                         linked_session_id = linked_row.session_id
-                        logger.info(f"⚠️ [GENERATE] Found linked session {linked_session_id} in progress, waiting for transfer...")
+                        session_progress = linked_row.progress or 0
+                        session_phase = linked_row.phase or "Starting"
+                        session_started = linked_row.started_at
                         
-                        # Release lock so the session generation can finish
+                        logger.info(f"🚀 [GENERATE] Found linked session {linked_session_id} in progress - returning 'generating' status (NO WAIT)")
+                        
+                        # Release lock immediately
                         await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
                         got_lock = False
                         
-                        # CRITICAL FIX: Wait for session to complete and transfer plan
-                        # Plan generation can take up to 3 minutes (image gen is the bottleneck)
-                        # So we wait up to 200 seconds (100 * 2s) with early exit when session completes
-                        for i in range(100):  # 100 * 2s = 200s max wait (covers typical 3-minute generation)
-                            await asyncio.sleep(2)
-                            
-                            # Check if plan now exists (transferred from session)
-                            existing_plan = await self._get_existing_plan(user_id, plan_date, db)
-                            if existing_plan:
-                                logger.info(f"✅ [GENERATE] Plan found after waiting {(i+1)*2}s for session transfer")
-                                resp = await self._format_plan_response(existing_plan, db)
-                                if isinstance(resp, dict) and resp.get("success"):
-                                    resp["plan_source"] = "session_transfer_at_generate"
-                                return resp
-                            
-                            # Check if session finished (early exit if session failed)
-                            status_check = await db.execute(
-                                text("SELECT processing_status FROM session_processing_status WHERE session_id = :sid"),
-                                {"sid": linked_session_id}
-                            )
-                            status = status_check.scalar()
-                            if status == 'completed':
-                                # Session completed - plan should exist, check one more time
-                                await asyncio.sleep(1)  # Brief delay for transfer to complete
-                                existing_plan = await self._get_existing_plan(user_id, plan_date, db)
-                                if existing_plan:
-                                    logger.info(f"✅ [GENERATE] Plan found after session completed ({(i+1)*2}s)")
-                                    resp = await self._format_plan_response(existing_plan, db)
-                                    if isinstance(resp, dict) and resp.get("success"):
-                                        resp["plan_source"] = "session_transfer_after_complete"
-                                    return resp
-                                logger.warning(f"⚠️ [GENERATE] Session {linked_session_id} completed but no plan found - continuing to generate")
-                                break
-                            elif status == 'failed':
-                                logger.warning(f"⚠️ [GENERATE] Linked session {linked_session_id} failed, proceeding with generation")
-                                break
-                            elif status not in ['queued', 'in_progress', None]:
-                                logger.info(f"⚠️ [GENERATE] Linked session {linked_session_id} finished (status={status}), no plan transferred")
-                                break
-                            
-                            # Log progress every 30 seconds
-                            if (i + 1) % 15 == 0:
-                                logger.info(f"⏳ [GENERATE] Still waiting for session {linked_session_id}... ({(i+1)*2}s elapsed, status={status})")
+                        # Calculate estimated time remaining
+                        elapsed_seconds = 0
+                        if session_started:
+                            elapsed_seconds = (datetime.utcnow() - session_started).total_seconds()
+                        estimated_total = 180  # ~3 minutes typical
+                        if session_progress > 0:
+                            estimated_total = (elapsed_seconds / session_progress) * 100
+                        estimated_remaining = max(0, estimated_total - elapsed_seconds)
                         
-                        # Re-check for plan one more time
-                        existing_plan = await self._get_existing_plan(user_id, plan_date, db)
-                        if existing_plan:
-                            logger.info(f"✅ [GENERATE] Plan found on final check after session wait")
-                            resp = await self._format_plan_response(existing_plan, db)
-                            if isinstance(resp, dict) and resp.get("success"):
-                                resp["plan_source"] = "session_transfer_final_check"
-                            return resp
-                        
-                        # Re-acquire lock to proceed with generation
-                        logger.info(f"{log_prefix} Re-acquiring lock to proceed with new generation")
-                        await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
-                        got_lock = True
-                        
-                        # Final check after re-acquiring lock
-                        existing_plan = await self._get_existing_plan(user_id, plan_date, db)
-                        if existing_plan:
-                            await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
-                            got_lock = False
-                            resp = await self._format_plan_response(existing_plan, db)
-                            if isinstance(resp, dict) and resp.get("success"):
-                                resp["plan_source"] = "existing_after_session_wait"
-                            return resp
+                        # Return "generating" status - frontend should poll
+                        return {
+                            "success": True,
+                            "generating": True,  # KEY FLAG: tells frontend to poll
+                            "plan_exists": False,
+                            "session_id": linked_session_id,
+                            "processing_status": linked_row.processing_status,
+                            "progress": session_progress,
+                            "phase": session_phase,
+                            "elapsed_seconds": int(elapsed_seconds),
+                            "estimated_remaining_seconds": int(estimated_remaining),
+                            "message": f"Your personalized plan is being generated ({session_progress}% complete). Please wait...",
+                            "plan_source": "session_generating_at_lock"
+                        }
                 
                 # Check processing status
                 processing_id = user_id if user_id else session_id
@@ -2262,26 +2222,30 @@ class ActionPlanGenerator:
         user_id: str,
         today: date,
         db: AsyncSession,
-        max_wait_seconds: int = 45  # Reduced from 120s - enough for most session completions
+        max_wait_seconds: int = 0  # NO WAITING - return "generating" status immediately
     ) -> Optional[Dict[str, Any]]:
         """
         Check if there's a session plan being generated that will be auto-transferred to this user.
         
+        OPTION 3+4 FIX: Instead of waiting for session completion (which can take 3+ minutes),
+        we return a "generating" status immediately. The frontend should poll /assignments/today/status
+        until the plan is ready.
+        
         When a user signs up while session generation is in progress, the session status
         is marked as "linked:{user_id}". The background generation will auto-transfer the
-        plan when complete. This method waits for that transfer instead of starting a
-        duplicate generation.
+        plan when complete.
         
         Args:
             user_id: The authenticated user ID
             today: Today's date in user's timezone
             db: Async database session
-            max_wait_seconds: Maximum time to wait for session plan (default 120s)
+            max_wait_seconds: UNUSED - kept for backwards compatibility
             
         Returns:
-            Plan response dict if session plan was transferred, None otherwise
+            - Plan response dict if session plan was already transferred
+            - {"success": True, "generating": True, ...} if session is still generating
+            - None if no linked session exists
         """
-        import asyncio
         from sqlalchemy import text
         from app.core.database import ActionPlan, QuestionSession
         
@@ -2291,7 +2255,7 @@ class ActionPlanGenerator:
             # Find any session marked as linked to this user that's still processing
             session_result = await db.execute(
                 text("""
-                    SELECT qs.session_id, qs.status, sps.processing_status
+                    SELECT qs.session_id, qs.status, sps.processing_status, sps.progress, sps.phase, sps.started_at
                     FROM question_sessions qs
                     LEFT JOIN session_processing_status sps ON qs.session_id = sps.session_id
                     WHERE qs.status = :linked_status
@@ -2308,8 +2272,11 @@ class ActionPlanGenerator:
             
             session_id = session_row.session_id
             processing_status = session_row.processing_status
+            progress = session_row.progress or 0
+            phase = session_row.phase or "Starting"
+            started_at = session_row.started_at
             
-            logger.info(f"🔍 [PENDING_SESSION_CHECK] Found linked session {session_id}, status: {processing_status}")
+            logger.info(f"🔍 [PENDING_SESSION_CHECK] Found linked session {session_id}, status: {processing_status}, progress: {progress}%")
             
             # Check if session is still processing
             if processing_status not in ["queued", "in_progress"]:
@@ -2333,83 +2300,37 @@ class ActionPlanGenerator:
                 logger.info(f"⚠️ [PENDING_SESSION_CHECK] Session {session_id} finished but no plan found for user")
                 return None
             
-            # Session is still processing - WAIT for it to complete and transfer
-            logger.info(f"⏳ [PENDING_SESSION_CHECK] Session {session_id} still processing, waiting for transfer...")
+            # ═══════════════════════════════════════════════════════════════════════════════════
+            # OPTION 3+4 FIX: Session is still generating - DON'T WAIT!
+            # Return "generating" status immediately. Frontend will poll for completion.
+            # This prevents duplicate generations and eliminates complex wait loops.
+            # ═══════════════════════════════════════════════════════════════════════════════════
+            logger.info(f"🚀 [PENDING_SESSION_CHECK] Session {session_id} still generating - returning 'generating' status (NO WAIT)")
             
-            poll_interval = 2.0  # Check every 2 seconds
-            total_waited = 0.0
+            # Calculate estimated time remaining (typical generation is 150-200 seconds)
+            elapsed_seconds = 0
+            if started_at:
+                elapsed_seconds = (datetime.utcnow() - started_at).total_seconds()
             
-            while total_waited < max_wait_seconds:
-                await asyncio.sleep(poll_interval)
-                total_waited += poll_interval
-                
-                # Check if plan has been transferred
-                plan_check = await db.execute(
-                    text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
-                    {"uid": user_id, "today": today}
-                )
-                plan_id = plan_check.scalar()
-                
-                if plan_id:
-                    logger.info(f"✅ [PENDING_SESSION_CHECK] Plan {plan_id} transferred after {total_waited:.1f}s wait")
-                    existing_plan = await self._get_existing_plan(user_id, today, db)
-                    if existing_plan:
-                        resp = await self._format_plan_response(existing_plan, db)
-                        if isinstance(resp, dict) and resp.get("success"):
-                            resp["plan_source"] = "session_transfer_waited"
-                            resp["session_wait_time_seconds"] = total_waited
-                        return resp
-                
-                # Check if session processing is still in progress
-                status_check = await db.execute(
-                    text("SELECT processing_status FROM session_processing_status WHERE session_id = :sid"),
-                    {"sid": session_id}
-                )
-                current_status = status_check.scalar()
-                
-                if current_status not in ["queued", "in_progress"]:
-                    # Processing finished but plan not found - might have failed
-                    logger.warning(f"⚠️ [PENDING_SESSION_CHECK] Session {session_id} finished (status: {current_status}) but no plan transferred after {total_waited:.1f}s")
-                    
-                    # One more check for plan
-                    final_check = await db.execute(
-                        text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
-                        {"uid": user_id, "today": today}
-                    )
-                    final_plan_id = final_check.scalar()
-                    
-                    if final_plan_id:
-                        logger.info(f"✅ [PENDING_SESSION_CHECK] Found plan {final_plan_id} on final check")
-                        existing_plan = await self._get_existing_plan(user_id, today, db)
-                        if existing_plan:
-                            resp = await self._format_plan_response(existing_plan, db)
-                            if isinstance(resp, dict) and resp.get("success"):
-                                resp["plan_source"] = "session_transfer_late"
-                            return resp
-                    
-                    # Session generation failed, fall through to generate new plan
-                    return None
-                
-                if total_waited % 10 == 0:
-                    logger.info(f"⏳ [PENDING_SESSION_CHECK] Still waiting for session {session_id}... ({total_waited:.0f}s)")
+            # Estimate remaining time based on progress
+            estimated_total = 180  # ~3 minutes typical
+            if progress > 0:
+                estimated_total = (elapsed_seconds / progress) * 100
+            estimated_remaining = max(0, estimated_total - elapsed_seconds)
             
-            # Timeout - session took too long
-            logger.warning(f"⏱️ [PENDING_SESSION_CHECK] Timeout waiting for session {session_id} after {max_wait_seconds}s")
-            
-            # Final check for plan
-            final_check = await db.execute(
-                text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
-                {"uid": user_id, "today": today}
-            )
-            if final_check.scalar():
-                existing_plan = await self._get_existing_plan(user_id, today, db)
-                if existing_plan:
-                    resp = await self._format_plan_response(existing_plan, db)
-                    if isinstance(resp, dict) and resp.get("success"):
-                        resp["plan_source"] = "session_transfer_timeout"
-                    return resp
-            
-            return None
+            return {
+                "success": True,
+                "generating": True,  # KEY FLAG: tells frontend to poll
+                "plan_exists": False,
+                "session_id": session_id,
+                "processing_status": processing_status,
+                "progress": progress,
+                "phase": phase,
+                "elapsed_seconds": int(elapsed_seconds),
+                "estimated_remaining_seconds": int(estimated_remaining),
+                "message": f"Your personalized plan is being generated ({progress}% complete). Please wait...",
+                "plan_source": "session_generating"
+            }
             
         except Exception as e:
             logger.error(f"❌ [PENDING_SESSION_CHECK] Error checking pending session: {e}", exc_info=True)

@@ -211,6 +211,35 @@ async def get_today_assignments(
 
         t_generator_ms = int((time.perf_counter() - t_gen_start) * 1000)
         
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # OPTION 3+4 FIX: Handle "generating" status
+        # If a session plan is being generated for this user, don't block or start duplicate.
+        # Return a 202 Accepted with progress info so frontend can poll.
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        if result.get("generating"):
+            logger.info(f"[ACTION_PLAN_TODAY] Plan is being generated for {uid}, returning 202 with progress info")
+            
+            # Return 202 Accepted - indicates request accepted but not yet complete
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "success": True,
+                    "generating": True,
+                    "plan_exists": False,
+                    "session_id": result.get("session_id"),
+                    "processing_status": result.get("processing_status", "in_progress"),
+                    "progress": result.get("progress", 0),
+                    "phase": result.get("phase", "Generating"),
+                    "elapsed_seconds": result.get("elapsed_seconds", 0),
+                    "estimated_remaining_seconds": result.get("estimated_remaining_seconds", 180),
+                    "message": result.get("message", "Your personalized plan is being generated. Please wait..."),
+                    "plan_source": result.get("plan_source"),
+                    "poll_endpoint": "/action-plan/assignments/today/status",
+                    "poll_interval_ms": 3000,  # Suggest frontend poll every 3 seconds
+                }
+            )
+        
         if not result.get("success"):
             raise HTTPException(
                 status_code=500, 
@@ -284,12 +313,16 @@ async def get_today_plan_status(
     without triggering a new plan generation. This prevents race conditions
     where multiple generation requests could create duplicate plans.
     
+    OPTION 3+4 ENHANCEMENT: Also checks for linked session generation in progress.
+    
     Returns:
         - plan_exists: True if plan exists for today
+        - generating: True if a session plan is being generated (poll again)
         - plan_id: ID of the plan (if exists)
         - plan_date: Date of the plan (if exists)
         - ready: True if plan exists and has assignments
         - total_assignments: Number of assignments (if exists)
+        - progress: Generation progress if generating (0-100)
     """
     try:
         uid = current_user.get("uid")
@@ -297,7 +330,7 @@ async def get_today_plan_status(
             raise HTTPException(status_code=400, detail="User ID not found")
         
         # Get user profile for timezone
-        from app.core.database import UserProfile, ActionPlan, ActionPlanItem
+        from app.core.database import UserProfile, ActionPlan, ActionPlanItem, QuestionSession, SessionProcessingStatus
         from app.utils.timezone_utils import get_user_current_date
         
         user_profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
@@ -318,28 +351,75 @@ async def get_today_plan_status(
             ActionPlan.plan_date == today
         ).first()
         
-        if not plan:
+        if plan:
+            # Plan exists! Return it
+            item_count = db.query(ActionPlanItem).filter(
+                ActionPlanItem.plan_id == plan.id
+            ).count()
+            
             return {
-                "plan_exists": False,
-                "plan_id": None,
-                "plan_date": str(today),
-                "ready": False,
-                "total_assignments": 0
+                "plan_exists": True,
+                "generating": False,
+                "plan_id": plan.id,
+                "plan_date": str(plan.plan_date),
+                "ready": item_count > 0,
+                "total_assignments": item_count,
+                "cycle_phase": plan.cycle_phase,
+                "primary_hormone": plan.primary_hormone
             }
         
-        # Count assignments
-        item_count = db.query(ActionPlanItem).filter(
-            ActionPlanItem.plan_id == plan.id
-        ).count()
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # OPTION 3+4 ENHANCEMENT: Check if a linked session is generating for this user
+        # This lets frontend show progress while waiting for session completion
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        linked_session = db.query(QuestionSession).filter(
+            QuestionSession.status == f"linked:{uid}"
+        ).order_by(QuestionSession.created_at.desc()).first()
         
+        if linked_session:
+            # Check if session is still being processed
+            processing = db.query(SessionProcessingStatus).filter(
+                SessionProcessingStatus.session_id == linked_session.session_id
+            ).first()
+            
+            if processing and processing.processing_status in ["queued", "in_progress"]:
+                # Session is still generating - return progress info
+                elapsed = 0
+                if processing.started_at:
+                    elapsed = (datetime.utcnow() - processing.started_at).total_seconds()
+                
+                progress = processing.progress or 0
+                estimated_total = 180  # ~3 minutes typical
+                if progress > 0:
+                    estimated_total = (elapsed / progress) * 100
+                estimated_remaining = max(0, estimated_total - elapsed)
+                
+                logger.info(f"[STATUS] Session {linked_session.session_id} generating for {uid}: {progress}% complete")
+                
+                return {
+                    "plan_exists": False,
+                    "generating": True,  # KEY FLAG
+                    "plan_id": None,
+                    "plan_date": str(today),
+                    "ready": False,
+                    "total_assignments": 0,
+                    "session_id": linked_session.session_id,
+                    "processing_status": processing.processing_status,
+                    "progress": progress,
+                    "phase": processing.phase or "Generating",
+                    "elapsed_seconds": int(elapsed),
+                    "estimated_remaining_seconds": int(estimated_remaining),
+                    "message": f"Your personalized plan is {progress}% complete..."
+                }
+        
+        # No plan and no active session - plan doesn't exist
         return {
-            "plan_exists": True,
-            "plan_id": plan.id,
-            "plan_date": str(plan.plan_date),
-            "ready": item_count > 0,
-            "total_assignments": item_count,
-            "cycle_phase": plan.cycle_phase,
-            "primary_hormone": plan.primary_hormone
+            "plan_exists": False,
+            "generating": False,
+            "plan_id": None,
+            "plan_date": str(today),
+            "ready": False,
+            "total_assignments": 0
         }
         
     except HTTPException:
