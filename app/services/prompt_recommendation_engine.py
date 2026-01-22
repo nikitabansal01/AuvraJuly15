@@ -169,24 +169,33 @@ LIFESTYLE_TO_CATEGORY = {
 # ┌─────────────────┬───────┬──────────┬─────────────┬───────┐
 # │ Selection       │ Food  │ Movement │ Mindfulness │ Total │
 # ├─────────────────┼───────┼──────────┼─────────────┼───────┤
-# │ Eat only        │   2   │    1     │      1      │   4   │
-# │ Move only       │   1   │    2     │      1      │   4   │
-# │ Pause only      │   1   │    1     │      2      │   4   │
-# │ Eat + Move      │   2   │    2     │      0      │   4   │ ← Skip unselected!
-# │ Eat + Pause     │   2   │    0     │      2      │   4   │ ← Skip unselected!
-# │ Move + Pause    │   0   │    2     │      2      │   4   │ ← Skip unselected!
-# │ All three       │   2   │    1     │      1      │   4   │
-# │ None selected   │   2   │    1     │      1      │   4   │
+# │ Eat only        │   4   │    0     │      0      │   4   │ ← All 4 of selected!
+# │ Move only       │   0   │    4     │      0      │   4   │ ← All 4 of selected!
+# │ Pause only      │   0   │    0     │      4      │   4   │ ← All 4 of selected!
+# │ Eat + Move      │   2   │    2     │      0      │   4   │ ← 2 each selected
+# │ Eat + Pause     │   2   │    0     │      2      │   4   │ ← 2 each selected
+# │ Move + Pause    │   0   │    2     │      2      │   4   │ ← 2 each selected
+# │ All three       │ 1/2   │  1/2     │    1/2      │   4   │ ← Random gets 2, others 1
+# │ None selected   │ 1/2   │  1/2     │    1/2      │   4   │ ← Random gets 2, others 1
 # └─────────────────┴───────┴──────────┴─────────────┴───────┘
 #
-# Key Insight: When user selects 2 categories, give them ONLY those 2 (split 2+2)
-# This respects their preference - they actively chose NOT to get the third!
+# Key Insights:
+# - Single selection: User wants ONLY that category → give them all 4
+# - Dual selection: User wants both → split 2+2
+# - All/None: Balanced approach with random category getting extra
+
+import random
 
 def get_category_distribution(lifestyle_focus: List[str]) -> Dict[str, int]:
     """
     Calculate exact category distribution based on user's lifestyle focus selection.
     
     ALWAYS returns exactly 4 total actions.
+    
+    Distribution Rules:
+    - 1 selected: Show 4 items of that category only
+    - 2 selected: Show 2 items from each selected category
+    - 3 or 0 selected: Random category gets 2, other two get 1 each
     
     Args:
         lifestyle_focus: List of user selections like ['eat', 'move'] or ['pause']
@@ -203,28 +212,40 @@ def get_category_distribution(lifestyle_focus: List[str]) -> Dict[str, int]:
     has_move = 'move' in focus
     has_pause = 'pause' in focus
     
-    # Default distribution (also used for "all three" or "none")
-    distribution = {'food': 2, 'movement': 1, 'mindfulness': 1}
-    
     if num_selected == 1:
-        # Single selection: Boost that category to 2, others get 1
+        # Single selection: Give ALL 4 to that category
         if has_eat:
-            distribution = {'food': 2, 'movement': 1, 'mindfulness': 1}
+            distribution = {'food': 4, 'movement': 0, 'mindfulness': 0}
         elif has_move:
-            distribution = {'food': 1, 'movement': 2, 'mindfulness': 1}
+            distribution = {'food': 0, 'movement': 4, 'mindfulness': 0}
         elif has_pause:
-            distribution = {'food': 1, 'movement': 1, 'mindfulness': 2}
+            distribution = {'food': 0, 'movement': 0, 'mindfulness': 4}
+        else:
+            # Fallback (shouldn't happen)
+            distribution = {'food': 4, 'movement': 0, 'mindfulness': 0}
             
     elif num_selected == 2:
-        # Dual selection: SKIP the unselected category entirely!
+        # Dual selection: 2 each from selected categories
         if has_eat and has_move:
             distribution = {'food': 2, 'movement': 2, 'mindfulness': 0}
         elif has_eat and has_pause:
             distribution = {'food': 2, 'movement': 0, 'mindfulness': 2}
         elif has_move and has_pause:
             distribution = {'food': 0, 'movement': 2, 'mindfulness': 2}
+        else:
+            # Fallback
+            distribution = {'food': 2, 'movement': 2, 'mindfulness': 0}
     
-    # num_selected == 0 or 3: Use default (balanced with food priority)
+    else:
+        # num_selected == 0 or 3: Random category gets 2, others get 1
+        # Pick random category to get the extra item
+        categories = ['food', 'movement', 'mindfulness']
+        lucky_category = random.choice(categories)
+        
+        distribution = {'food': 1, 'movement': 1, 'mindfulness': 1}
+        distribution[lucky_category] = 2
+        
+        logger.info(f"🎲 Random selection: '{lucky_category}' gets 2 items, others get 1")
     
     logger.info(f"📊 Category Distribution for lifestyle_focus={focus}: {distribution}")
     return distribution

@@ -1972,19 +1972,12 @@ class ActionPlanGenerator:
             cycle_phase = user_context.get("cycle_phase", "menstrual")
             lifestyle_focus = user_context.get("lifestyle_focus", ["eat", "move", "pause"])
             
-            # Step 4: Select up to 4 recommendations (2 food, 2 movement ideally)
+            # Step 4: Select up to 4 recommendations using smart distribution
             selected_recs = []
-            categories_needed = {"food": 2, "movement": 2, "mindfulness": 0}
             
-            # Adjust based on lifestyle_focus
-            if "eat" in lifestyle_focus and "move" in lifestyle_focus and "pause" not in lifestyle_focus:
-                categories_needed = {"food": 2, "movement": 2, "mindfulness": 0}
-            elif "eat" in lifestyle_focus and "pause" in lifestyle_focus and "move" not in lifestyle_focus:
-                categories_needed = {"food": 2, "movement": 0, "mindfulness": 2}
-            elif "move" in lifestyle_focus and "pause" in lifestyle_focus and "eat" not in lifestyle_focus:
-                categories_needed = {"food": 0, "movement": 2, "mindfulness": 2}
-            elif len(lifestyle_focus) == 3:
-                categories_needed = {"food": 2, "movement": 1, "mindfulness": 1}
+            # Use centralized distribution logic from prompt_recommendation_engine
+            from app.services.prompt_recommendation_engine import get_category_distribution
+            categories_needed = get_category_distribution(lifestyle_focus)
             
             for rec in fresh_recs:
                 cat = rec.category.lower() if rec.category else "food"
