@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ARRAY, Text, ForeignKey, Date, Index, BigInteger
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ARRAY, Text, ForeignKey, Date, Index, BigInteger, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -670,10 +670,15 @@ class ActionPlan(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Unique constraint: one plan per user per day OR per session per day
+    # CRITICAL: Unique constraint to ensure ONE plan per user per day
+    # This prevents duplicate plan generation from race conditions
     __table_args__ = (
         Index('idx_action_plan_user_date', 'uid', 'plan_date'),
         Index('idx_action_plan_session_date', 'session_id', 'plan_date'),
+        # UNIQUE constraint - allows only one plan per user per day
+        # Note: Uses partial index since uid can be NULL for guest plans
+        Index('uq_action_plan_user_date', 'uid', 'plan_date', unique=True, postgresql_where=text('uid IS NOT NULL')),
+        Index('uq_action_plan_session_date', 'session_id', 'plan_date', unique=True, postgresql_where=text('session_id IS NOT NULL')),
     )
     
     # Relationships

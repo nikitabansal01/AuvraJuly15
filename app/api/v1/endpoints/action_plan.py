@@ -271,6 +271,84 @@ async def get_today_assignments(
         raise HTTPException(status_code=500, detail="Failed to get action plan")
 
 
+@router.get("/assignments/today/status")
+async def get_today_plan_status(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    timezone: Optional[str] = Query(None, description="User's current local timezone (IANA format)"),
+):
+    """
+    Check if today's plan exists WITHOUT generating one.
+    
+    Use this endpoint for polling to check if a plan has been created,
+    without triggering a new plan generation. This prevents race conditions
+    where multiple generation requests could create duplicate plans.
+    
+    Returns:
+        - plan_exists: True if plan exists for today
+        - plan_id: ID of the plan (if exists)
+        - plan_date: Date of the plan (if exists)
+        - ready: True if plan exists and has assignments
+        - total_assignments: Number of assignments (if exists)
+    """
+    try:
+        uid = current_user.get("uid")
+        if not uid:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        
+        # Get user profile for timezone
+        from app.core.database import UserProfile, ActionPlan, ActionPlanItem
+        from app.utils.timezone_utils import get_user_current_date
+        
+        user_profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
+        
+        # If timezone provided, update profile and use it
+        if timezone and user_profile:
+            if user_profile.current_timezone != timezone:
+                logger.info(f"Updating timezone for user {uid}: {user_profile.current_timezone} -> {timezone}")
+                user_profile.current_timezone = timezone
+                db.commit()
+        
+        user_timezone = timezone or (user_profile.current_timezone if user_profile else "Asia/Seoul")
+        today = get_user_current_date(uid, db)
+        
+        # Check if plan exists for today - DO NOT GENERATE
+        plan = db.query(ActionPlan).filter(
+            ActionPlan.uid == uid,
+            ActionPlan.plan_date == today
+        ).first()
+        
+        if not plan:
+            return {
+                "plan_exists": False,
+                "plan_id": None,
+                "plan_date": str(today),
+                "ready": False,
+                "total_assignments": 0
+            }
+        
+        # Count assignments
+        item_count = db.query(ActionPlanItem).filter(
+            ActionPlanItem.plan_id == plan.id
+        ).count()
+        
+        return {
+            "plan_exists": True,
+            "plan_id": plan.id,
+            "plan_date": str(plan.plan_date),
+            "ready": item_count > 0,
+            "total_assignments": item_count,
+            "cycle_phase": plan.cycle_phase,
+            "primary_hormone": plan.primary_hormone
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to check plan status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to check plan status")
+
+
 @router.get("/assignments/{target_date}")
 async def get_assignments_for_date(
     target_date: str,
