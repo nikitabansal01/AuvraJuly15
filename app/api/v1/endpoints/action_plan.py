@@ -411,6 +411,57 @@ async def get_today_plan_status(
                     "estimated_remaining_seconds": int(estimated_remaining),
                     "message": f"Your personalized plan is {progress}% complete..."
                 }
+            
+            # ═══════════════════════════════════════════════════════════════════════════════════
+            # CRITICAL FIX: If processing just completed, the plan might not be visible yet due to
+            # transaction timing. Re-check for plan with a fresh query and commit.
+            # This fixes the race condition where processing=completed but plan query returns None.
+            # ═══════════════════════════════════════════════════════════════════════════════════
+            if processing and processing.processing_status == "completed":
+                # Force a fresh read from database (flush any pending transactions)
+                db.expire_all()
+                
+                # Re-check for plan - it should exist now after auto-transfer
+                plan_recheck = db.query(ActionPlan).filter(
+                    ActionPlan.uid == uid,
+                    ActionPlan.plan_date == today
+                ).first()
+                
+                if plan_recheck:
+                    logger.info(f"[STATUS] Plan {plan_recheck.id} found after session completion for {uid}")
+                    item_count = db.query(ActionPlanItem).filter(
+                        ActionPlanItem.plan_id == plan_recheck.id
+                    ).count()
+                    
+                    return {
+                        "plan_exists": True,
+                        "generating": False,
+                        "plan_id": plan_recheck.id,
+                        "plan_date": str(plan_recheck.plan_date),
+                        "ready": item_count > 0,
+                        "total_assignments": item_count,
+                        "cycle_phase": plan_recheck.cycle_phase,
+                        "primary_hormone": plan_recheck.primary_hormone
+                    }
+                else:
+                    # Processing completed but plan not found - this is unexpected
+                    # Log warning and return "still generating" to keep frontend polling
+                    logger.warning(f"[STATUS] Processing completed for session {linked_session.session_id} but no plan found for {uid}. Waiting...")
+                    return {
+                        "plan_exists": False,
+                        "generating": True,  # Keep polling - plan transfer might be in progress
+                        "plan_id": None,
+                        "plan_date": str(today),
+                        "ready": False,
+                        "total_assignments": 0,
+                        "session_id": linked_session.session_id,
+                        "processing_status": "completing",
+                        "progress": 95,
+                        "phase": "Finalizing",
+                        "elapsed_seconds": 0,
+                        "estimated_remaining_seconds": 10,
+                        "message": "Finalizing your personalized plan..."
+                    }
         
         # No plan and no active session - plan doesn't exist
         return {
