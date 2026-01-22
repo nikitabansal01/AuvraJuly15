@@ -229,14 +229,23 @@ class ImageLibraryService:
             
             if cached_image:
                 # Found a semantically similar image!
-                await self._update_image_usage(cached_image["id"], user_id, db)
-                elapsed = time.time() - start_time
-                logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
-                logger.info(f"[IMAGE]   Cache key: '{embed_text[:40]}...'")
-                logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
-                logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
-                logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
-                return (cached_image["image_url"], True, 0.0)
+                # CRITICAL: Validate that the cached URL is permanent (Cloudinary), not temporary (RunPod)
+                cached_url = cached_image.get("image_url", "")
+                if "runpod.ai" in cached_url or "image.runpod" in cached_url:
+                    # BAD DATA: This is a temporary RunPod URL that will expire
+                    # Skip this cache entry and regenerate
+                    logger.warning(f"[IMAGE] ⚠️ Found expired RunPod URL in cache - skipping and regenerating")
+                    logger.warning(f"[IMAGE]   Bad URL: {cached_url[:60]}...")
+                    # Don't use this cache entry - fall through to generation
+                else:
+                    await self._update_image_usage(cached_image["id"], user_id, db)
+                    elapsed = time.time() - start_time
+                    logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
+                    logger.info(f"[IMAGE]   Cache key: '{embed_text[:40]}...'")
+                    logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
+                    logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
+                    logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
+                    return (cached_image["image_url"], True, 0.0)
             
             # Step 3: No cache hit - generate new image
             elapsed_cache = time.time() - start_time
@@ -555,23 +564,28 @@ class ImageLibraryService:
             # Check if result is already a URL (from RunPod) or bytes
             if isinstance(result, str) and result.startswith("http"):
                 # RunPod returned a URL directly - upload to Cloudinary for permanent storage
+                # CRITICAL: RunPod URLs expire! We MUST upload to Cloudinary.
                 image_url = await self._upload_to_cloudinary_from_url(result, category, variant_type)
-                if not image_url:
-                    # Fallback: use RunPod URL directly (may expire)
-                    image_url = result
-
-                # Store in image library for future semantic matching
-                library_prompt_text = prompt_text_for_library or prompt
-                await self._store_in_library(
-                    image_url=image_url,
-                    prompt_text=library_prompt_text,
-                    prompt_embedding=prompt_embedding,
-                    category=category,
-                    variant_type=variant_type,
-                    user_id=user_id,
-                    generation_time_ms=generation_time_ms,
-                    db=db
-                )
+                
+                if image_url:
+                    # SUCCESS: Store permanent Cloudinary URL in library
+                    library_prompt_text = prompt_text_for_library or prompt
+                    await self._store_in_library(
+                        image_url=image_url,
+                        prompt_text=library_prompt_text,
+                        prompt_embedding=prompt_embedding,
+                        category=category,
+                        variant_type=variant_type,
+                        user_id=user_id,
+                        generation_time_ms=generation_time_ms,
+                        db=db
+                    )
+                    logger.info(f"📚 Image stored in library: {category}/{variant_type}")
+                else:
+                    # CRITICAL: Cloudinary failed - DO NOT store in library!
+                    # Use RunPod URL temporarily but don't cache it
+                    logger.warning(f"⚠️ Cloudinary upload failed - using temporary RunPod URL (NOT caching)")
+                    image_url = result  # Use temporarily but NOT stored in library
 
             elif isinstance(result, bytes):
                 # We have image bytes - upload to Cloudinary or Supabase
@@ -1027,48 +1041,66 @@ class ImageLibraryService:
         self,
         image_url: str,
         category: str,
-        variant_type: Optional[str]
+        variant_type: Optional[str],
+        max_retries: int = 3
     ) -> Optional[str]:
-        """Upload image from URL to Cloudinary for permanent storage."""
+        """
+        Upload image from URL to Cloudinary for permanent storage.
+        
+        CRITICAL: This MUST succeed for the image to be stored in the library.
+        RunPod URLs expire, so we NEVER want to cache them directly.
+        
+        Args:
+            image_url: The source URL (usually RunPod temporary URL)
+            category: food, movement, mindfulness
+            variant_type: hero, tasty, easy, etc.
+            max_retries: Number of retry attempts (default 3)
+        
+        Returns:
+            Cloudinary permanent URL, or None if all retries fail
+        """
         if not self.cloudinary_cloud_name or not self.cloudinary_api_key:
             logger.warning("Cloudinary not configured")
             return None
         
-        try:
-            import cloudinary
-            import cloudinary.uploader
-            
-            # Cloudinary is configured once in __init__ - no need to reconfigure here
-            # This prevents "Connection pool is full" warnings during parallel uploads
-            
-            # Generate unique public_id
-            timestamp = int(time.time() * 1000)
-            file_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
-            variant_str = f"_{variant_type}" if variant_type else ""
-            public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
-            
-            # Upload from URL in a separate thread to avoid blocking the event loop
-            result = await asyncio.to_thread(
-                cloudinary.uploader.upload,
-                image_url,
-                public_id=public_id,
-                folder="action-plan-images",
-                resource_type="image"
-            )
-            
-            cloudinary_url = result.get("secure_url")
-            if cloudinary_url:
-                logger.info(f"📤 Image uploaded to Cloudinary from URL: {cloudinary_url}")
-                return cloudinary_url
-            
-            return None
-            
-        except ImportError:
-            logger.warning("cloudinary package not installed")
-            return None
-        except Exception as e:
-            logger.error(f"Error uploading to Cloudinary from URL: {e}")
-            return None
+        import cloudinary
+        import cloudinary.uploader
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Generate unique public_id
+                timestamp = int(time.time() * 1000)
+                file_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
+                variant_str = f"_{variant_type}" if variant_type else ""
+                public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
+                
+                # Upload from URL in a separate thread to avoid blocking the event loop
+                result = await asyncio.to_thread(
+                    cloudinary.uploader.upload,
+                    image_url,
+                    public_id=public_id,
+                    folder="action-plan-images",
+                    resource_type="image",
+                    timeout=30  # Add timeout
+                )
+                
+                cloudinary_url = result.get("secure_url")
+                if cloudinary_url:
+                    logger.info(f"📤 Image uploaded to Cloudinary from URL: {cloudinary_url}")
+                    return cloudinary_url
+                
+            except ImportError:
+                logger.warning("cloudinary package not installed")
+                return None
+            except Exception as e:
+                logger.warning(f"⚠️ Cloudinary upload attempt {attempt}/{max_retries} failed: {type(e).__name__}: {e}")
+                if attempt < max_retries:
+                    # Wait before retry with exponential backoff
+                    await asyncio.sleep(0.5 * attempt)
+                else:
+                    logger.error(f"❌ Cloudinary upload FAILED after {max_retries} attempts - image will NOT be cached")
+        
+        return None
     
     async def _upload_to_supabase(
         self,
@@ -1265,6 +1297,48 @@ class ImageLibraryService:
         except Exception as e:
             logger.error(f"Error getting library stats: {e}")
             return {}
+
+    async def cleanup_expired_runpod_urls(self, db: AsyncSession) -> Dict[str, int]:
+        """
+        Remove images with expired RunPod URLs from the library.
+        
+        RunPod URLs are temporary and expire. If any got stored in the library
+        (due to Cloudinary upload failures), this cleans them up.
+        
+        Returns:
+            Dict with counts of deleted images
+        """
+        from app.core.database import ImageLibrary
+        
+        try:
+            # Find all images with RunPod URLs
+            result = await db.execute(
+                select(ImageLibrary).where(
+                    ImageLibrary.image_url.like('%runpod.ai%')
+                )
+            )
+            bad_images = result.scalars().all()
+            
+            if not bad_images:
+                logger.info("✅ No expired RunPod URLs found in image library")
+                return {"deleted": 0, "found": 0}
+            
+            logger.warning(f"🗑️ Found {len(bad_images)} images with expired RunPod URLs - deleting...")
+            
+            # Delete them
+            for img in bad_images:
+                logger.info(f"   Deleting ID {img.id}: {img.prompt_text[:40]}...")
+                await db.delete(img)
+            
+            await db.commit()
+            
+            logger.info(f"✅ Cleaned up {len(bad_images)} expired RunPod URLs from image library")
+            return {"deleted": len(bad_images), "found": len(bad_images)}
+            
+        except Exception as e:
+            logger.error(f"Error cleaning up RunPod URLs: {e}")
+            await db.rollback()
+            return {"deleted": 0, "found": 0, "error": str(e)}
 
 
 # Global instance
