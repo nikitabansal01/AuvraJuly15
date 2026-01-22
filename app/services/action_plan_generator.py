@@ -3952,17 +3952,19 @@ Format as bullet points."""
         """
         Generate STRICT category distribution guidance based on lifestyle focus.
         
+        CRITICAL: This MUST match get_category_distribution() in prompt_recommendation_engine.py!
+        
         Distribution Matrix (Total = 4):
         +-----------------+-------+----------+-------------+
         | Selection       | Food  | Movement | Mindfulness |
         +-----------------+-------+----------+-------------+
-        | Eat only        |   2   |    1     |      1      |
-        | Move only       |   1   |    2     |      1      |
-        | Pause only      |   1   |    1     |      2      |
+        | Eat only        |   4   |    0     |      0      |  <-- ALL 4 to selected!
+        | Move only       |   0   |    4     |      0      |  <-- ALL 4 to selected!
+        | Pause only      |   0   |    0     |      4      |  <-- ALL 4 to selected!
         | Eat + Move      |   2   |    2     |      0      |
         | Eat + Pause     |   2   |    0     |      2      |
         | Move + Pause    |   0   |    2     |      2      |
-        | All three/None  |   2   |    1     |      1      |
+        | All three/None  |   R   |    R     |      R      |  (Random 2+1+1)
         +-----------------+-------+----------+-------------+
         """
         focus = [f.lower() for f in (lifestyle_focus or [])]
@@ -3972,23 +3974,38 @@ Format as bullet points."""
         has_move = 'move' in focus
         has_pause = 'pause' in focus
         
-        if num_selected == 1:
-            if has_eat:
-                return "Food focus (STRICT): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
-            elif has_move:
-                return "Movement focus (STRICT): Generate 1 Food + 2 Movement + 1 Mindfulness = 4 total"
-            elif has_pause:
-                return "Mindfulness focus (STRICT): Generate 1 Food + 1 Movement + 2 Mindfulness = 4 total"
-        elif num_selected == 2:
-            if has_eat and has_move:
-                return "Food and movement focus (STRICT): Generate 2 Food + 2 Movement + 0 Mindfulness = 4 total (NO mindfulness!)"
-            elif has_eat and has_pause:
-                return "Food and mindfulness focus (STRICT): Generate 2 Food + 0 Movement + 2 Mindfulness = 4 total (NO movement!)"
-            elif has_move and has_pause:
-                return "Movement and mindfulness focus (STRICT): Generate 0 Food + 2 Movement + 2 Mindfulness = 4 total (NO food!)"
+        logger.info(f"[CATEGORY] lifestyle_focus={lifestyle_focus}, num_selected={num_selected}")
         
-        # Default: All three or none selected
-        return "Balanced (STRICT): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
+        if num_selected == 1:
+            # Single selection: ALL 4 items MUST be from that category!
+            if has_eat:
+                guidance = "🍎 FOOD ONLY (STRICT ENFORCEMENT): Generate EXACTLY 4 Food items. ZERO movement, ZERO mindfulness. User selected ONLY food - respect this!"
+            elif has_move:
+                guidance = "🏃 MOVEMENT ONLY (STRICT ENFORCEMENT): Generate EXACTLY 4 Movement items. ZERO food, ZERO mindfulness. User selected ONLY movement - respect this!"
+            elif has_pause:
+                guidance = "🧘 MINDFULNESS ONLY (STRICT ENFORCEMENT): Generate EXACTLY 4 Mindfulness items. ZERO food, ZERO movement. User selected ONLY mindfulness - respect this!"
+            else:
+                guidance = "Balanced: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
+            logger.info(f"[CATEGORY] Single selection guidance: {guidance}")
+            return guidance
+            
+        elif num_selected == 2:
+            # Dual selection: 2 items from each selected category, 0 from unselected
+            if has_eat and has_move:
+                guidance = "🍎🏃 FOOD + MOVEMENT (STRICT): Generate EXACTLY 2 Food + EXACTLY 2 Movement + ZERO Mindfulness = 4 total"
+            elif has_eat and has_pause:
+                guidance = "🍎🧘 FOOD + MINDFULNESS (STRICT): Generate EXACTLY 2 Food + ZERO Movement + EXACTLY 2 Mindfulness = 4 total"
+            elif has_move and has_pause:
+                guidance = "🏃🧘 MOVEMENT + MINDFULNESS (STRICT): Generate ZERO Food + EXACTLY 2 Movement + EXACTLY 2 Mindfulness = 4 total"
+            else:
+                guidance = "Balanced: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
+            logger.info(f"[CATEGORY] Dual selection guidance: {guidance}")
+            return guidance
+        
+        # Default: All three or none selected - random distribution
+        guidance = "🎲 BALANCED (All/None selected): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total (or similar balanced mix)"
+        logger.info(f"[CATEGORY] Default guidance: {guidance}")
+        return guidance
     
     async def _generate_actions_via_gpt(
         self,
