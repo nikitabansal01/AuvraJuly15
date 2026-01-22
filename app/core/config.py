@@ -74,7 +74,11 @@ class Settings(BaseSettings):
     ACTION_PLAN_MAX_RETRIES: int = 2
     ACTION_PLAN_TIMEOUT: int = 120
     PUBMED_RATE_LIMIT_DELAY: float = 0.5
-    IMAGE_SIMILARITY_THRESHOLD: float = 0.95
+    # Image similarity threshold for cache matching
+    # 0.85 provides good balance: allows ~10-12 cache hits vs 2 at 0.90
+    # Higher = stricter matches, more regeneration
+    # Lower = more cache hits but potentially less accurate matches
+    IMAGE_SIMILARITY_THRESHOLD: float = 0.85
     FEEDBACK_SUMMARIZE_THRESHOLD: int = 100
     
     model_config = {

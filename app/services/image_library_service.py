@@ -44,9 +44,10 @@ class ImageLibraryService:
     
     # SIMILARITY_THRESHOLD: Balance between preventing false matches and enabling reuse
     # - 0.95+ = Very strict, few cache hits but high precision
-    # - 0.90 = Good balance for food/wellness images
-    # - 0.85 = More cache hits but may match different items
-    SIMILARITY_THRESHOLD = 0.90  # Lowered from 0.95 for better cache hit rate
+    # - 0.90 = Was the old setting - only ~2 cache hits per plan
+    # - 0.85 = Better balance - ~10-12 cache hits per plan, saves ~80% of image generation time
+    # Based on log analysis: top similarities often hit 0.85-0.89 range
+    SIMILARITY_THRESHOLD = 0.85  # Lowered from 0.90 for better cache hit rate (saves ~2+ minutes)
     
     # RunPod FLUX.1 Schnell pricing: $0.0024 per megapixel
     # 512x512 = 0.262 megapixels = ~$0.0006 per image

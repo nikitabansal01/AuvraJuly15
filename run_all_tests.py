@@ -449,7 +449,7 @@ from app.services.image_library_service import ImageLibraryService, get_image_li
 
 service = get_image_library_service()
 record("ImageLibraryService singleton", service is not None)
-record("SIMILARITY_THRESHOLD = 0.95", service.SIMILARITY_THRESHOLD == 0.95)
+record("SIMILARITY_THRESHOLD = 0.85", service.SIMILARITY_THRESHOLD == 0.85)
 record("COST_PER_IMAGE = 0.0006", service.COST_PER_IMAGE == 0.0006)
 
 # Test prompt enhancement

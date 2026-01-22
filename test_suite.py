@@ -200,7 +200,7 @@ def main() -> int:
 
     svc = get_image_library_service()
     test("Singleton instance", svc is not None)
-    test("SIMILARITY_THRESHOLD=0.95", svc.SIMILARITY_THRESHOLD == 0.95)
+    test("SIMILARITY_THRESHOLD=0.85", svc.SIMILARITY_THRESHOLD == 0.85)
     test("COST_PER_IMAGE=0.0006", svc.COST_PER_IMAGE == 0.0006)
 
     enhanced = svc._enhance_prompt("bowl of oatmeal", "food")

@@ -193,7 +193,7 @@ def test_image_library_service_init():
     service = get_image_library_service()
     
     assert service is not None
-    assert service.SIMILARITY_THRESHOLD == 0.95
+    assert service.SIMILARITY_THRESHOLD == 0.85
     assert service.COST_PER_IMAGE == 0.0006
     print(f"  ✅ Service initialized")
     print(f"  ✅ Similarity threshold: {service.SIMILARITY_THRESHOLD}")

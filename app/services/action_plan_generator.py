@@ -1358,11 +1358,13 @@ class ActionPlanGenerator:
                         await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
                         got_lock = False
                         
-                        # Wait for session to complete and transfer plan (max 60s)
-                        for i in range(30):  # 30 * 2s = 60s max wait
+                        # CRITICAL FIX: Wait for session to complete and transfer plan
+                        # Plan generation can take up to 3 minutes (image gen is the bottleneck)
+                        # So we wait up to 200 seconds (100 * 2s) with early exit when session completes
+                        for i in range(100):  # 100 * 2s = 200s max wait (covers typical 3-minute generation)
                             await asyncio.sleep(2)
                             
-                            # Check if plan now exists
+                            # Check if plan now exists (transferred from session)
                             existing_plan = await self._get_existing_plan(user_id, plan_date, db)
                             if existing_plan:
                                 logger.info(f"✅ [GENERATE] Plan found after waiting {(i+1)*2}s for session transfer")
@@ -1371,15 +1373,34 @@ class ActionPlanGenerator:
                                     resp["plan_source"] = "session_transfer_at_generate"
                                 return resp
                             
-                            # Check if session finished
+                            # Check if session finished (early exit if session failed)
                             status_check = await db.execute(
                                 text("SELECT processing_status FROM session_processing_status WHERE session_id = :sid"),
                                 {"sid": linked_session_id}
                             )
                             status = status_check.scalar()
-                            if status not in ['queued', 'in_progress', None]:
+                            if status == 'completed':
+                                # Session completed - plan should exist, check one more time
+                                await asyncio.sleep(1)  # Brief delay for transfer to complete
+                                existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                                if existing_plan:
+                                    logger.info(f"✅ [GENERATE] Plan found after session completed ({(i+1)*2}s)")
+                                    resp = await self._format_plan_response(existing_plan, db)
+                                    if isinstance(resp, dict) and resp.get("success"):
+                                        resp["plan_source"] = "session_transfer_after_complete"
+                                    return resp
+                                logger.warning(f"⚠️ [GENERATE] Session {linked_session_id} completed but no plan found - continuing to generate")
+                                break
+                            elif status == 'failed':
+                                logger.warning(f"⚠️ [GENERATE] Linked session {linked_session_id} failed, proceeding with generation")
+                                break
+                            elif status not in ['queued', 'in_progress', None]:
                                 logger.info(f"⚠️ [GENERATE] Linked session {linked_session_id} finished (status={status}), no plan transferred")
                                 break
+                            
+                            # Log progress every 30 seconds
+                            if (i + 1) % 15 == 0:
+                                logger.info(f"⏳ [GENERATE] Still waiting for session {linked_session_id}... ({(i+1)*2}s elapsed, status={status})")
                         
                         # Re-check for plan one more time
                         existing_plan = await self._get_existing_plan(user_id, plan_date, db)
