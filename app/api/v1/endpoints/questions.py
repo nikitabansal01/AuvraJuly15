@@ -350,7 +350,7 @@ async def _generate_recommendations_background(session_id: str, service, process
     """
     try:
         from datetime import date
-        from app.services.action_plan_generator import ActionPlanGenerator
+        from app.services.action_plan_generator import get_action_plan_generator
         from app.core.database import AsyncSessionLocal
         
         logger.info(f"🚀 Background FULL PLAN generation started for session: {session_id}")
@@ -368,12 +368,13 @@ async def _generate_recommendations_background(session_id: str, service, process
             processing_service.update_category_status(session_id, category, "processing", f"{category} plan generation in progress")
 
         # ═══════════════════════════════════════════════════════════════════════
-        # NEW: use ActionPlanGenerator directly
+        # FIX: Use singleton pattern instead of creating new instance per request
+        # This avoids re-initializing httpx clients, OpenAI clients, etc.
         # ═══════════════════════════════════════════════════════════════════════
         
         # We need a new AsyncSession for the generator
         async with AsyncSessionLocal() as async_session:
-            generator = ActionPlanGenerator()  # No args needed - uses internal engine
+            generator = get_action_plan_generator()  # Use singleton
             
             # Generate the plan!
             # We pass session_id and NO user_id

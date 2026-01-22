@@ -47,6 +47,8 @@ class StreakService:
         self.db = db
         self._streak_data_cache: Dict[str, UserStreakData] = {}  # Cache for streak data
         self._today_cache: Dict[str, date] = {}  # Cache for user's today date
+        self._streak_calc_cache: Dict[str, int] = {}  # FIX: Cache for streak calculation results
+        self._missed_days_cache: Dict[str, list] = {}  # FIX: Cache for missed days results
     
     def get_or_create_streak_data(self, uid: str) -> UserStreakData:
         """Get or create user's streak data record. Cached per request."""
@@ -133,6 +135,7 @@ class StreakService:
         Starts from YESTERDAY (today excluded - user hasn't had full day).
         
         OPTIMIZED: Batch loads all data in 2 queries instead of per-day queries.
+        CACHED: Results cached per request to avoid redundant calculations.
         
         Args:
             uid: User ID
@@ -143,6 +146,12 @@ class StreakService:
         Returns:
             Current consecutive day streak count
         """
+        # FIX: Check cache first to avoid redundant calculations within same request
+        cache_key = f"{uid}:{user_timezone or 'db'}:{reference_date.isoformat() if reference_date else 'none'}"
+        if cache_key in self._streak_calc_cache:
+            logger.debug(f"Streak calc CACHE HIT for {uid}")
+            return self._streak_calc_cache[cache_key]
+        
         streak = 0
         
         # Get today in user's timezone, then calculate yesterday
@@ -259,6 +268,9 @@ class StreakService:
                     break
         
         logger.info(f"Final streak for {uid}: {streak}")
+        
+        # FIX: Cache the result for future calls within this request
+        self._streak_calc_cache[cache_key] = streak
         return streak
     
     def get_longest_streak(self, uid: str) -> int:
@@ -427,6 +439,8 @@ class StreakService:
         IMPORTANT: We only count days up to the FIRST complete/frozen day.
         Days before a complete/frozen day are part of an OLD streak - not recoverable.
         
+        CACHED: Results cached per request to avoid redundant calculations.
+        
         Args:
             uid: User ID
             user_timezone: User's timezone string
@@ -434,6 +448,12 @@ class StreakService:
         Returns:
             List of date objects for each missed day (most recent first)
         """
+        # FIX: Check cache first
+        cache_key = f"{uid}:{user_timezone or 'db'}"
+        if cache_key in self._missed_days_cache:
+            logger.debug(f"Missed days CACHE HIT for {uid}")
+            return self._missed_days_cache[cache_key]
+        
         streak_data = self.get_or_create_streak_data(uid)
         missed_days = []
         today = self._get_user_today(uid, user_timezone)
@@ -524,6 +544,8 @@ class StreakService:
             if days_checked >= 7:
                 break
         
+        # FIX: Cache the result for future calls within this request
+        self._missed_days_cache[cache_key] = missed_days
         return missed_days
     
     def get_streak_risk_status(self, uid: str, user_timezone: str = None) -> Dict[str, Any]:

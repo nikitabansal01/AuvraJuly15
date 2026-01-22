@@ -107,25 +107,9 @@ class ImageLibraryService:
         # Configure Cloudinary ONCE at startup to avoid connection pool issues
         # (Previously configured per-upload, causing "Connection pool is full" warnings)
         self._cloudinary_configured = False
+        
         if self.cloudinary_cloud_name and self.cloudinary_api_key:
             try:
-                # CRITICAL: Increase urllib3 connection pool size BEFORE importing cloudinary
-                # This fixes "Connection pool is full, discarding connection" warnings
-                import urllib3
-                from urllib3.util import connection
-                
-                # Increase default pool size for all connection pools - Fix for parallel generation
-                urllib3.connectionpool.HTTPConnectionPool.DEFAULT_MAXSIZE = 50
-                urllib3.connectionpool.HTTPSConnectionPool.DEFAULT_MAXSIZE = 50
-                
-                # Also configure requests library which Cloudinary uses internally
-                try:
-                    import requests.adapters
-                    requests.adapters.DEFAULT_POOLCONNECTIONS = 50
-                    requests.adapters.DEFAULT_POOLSIZE = 50
-                except ImportError:
-                    pass  # requests not installed
-                
                 import cloudinary
                 
                 cloudinary.config(
@@ -135,7 +119,31 @@ class ImageLibraryService:
                     secure=True
                 )
                 self._cloudinary_configured = True
-                logger.info("✅ Cloudinary configured globally at startup (pool size: 20)")
+                
+                # FIX: Patch cloudinary's internal HTTP pool manager with larger pool size
+                # This fixes "Connection pool is full, discarding connection: api.cloudinary.com. Connection pool size: 1"
+                # The default pool size of 1 cannot handle parallel image uploads (we do 16+ at once)
+                try:
+                    import cloudinary.uploader
+                    from urllib3 import PoolManager
+                    
+                    # Create a PoolManager with larger connection pool
+                    # num_pools = number of pools (one per host:port)
+                    # maxsize = max connections per pool (per host)
+                    large_pool_manager = PoolManager(
+                        num_pools=10,        # Number of host connection pools to cache
+                        maxsize=50,          # Max connections per host - handles parallel uploads
+                        block=False,         # Don't block when pool is full (just warn)
+                        **cloudinary.CERT_KWARGS  # Include SSL cert settings
+                    )
+                    
+                    # Replace cloudinary's default _http with our larger pool
+                    cloudinary.uploader._http = large_pool_manager
+                    logger.info("✅ Cloudinary HTTP pool patched: num_pools=10, maxsize=50")
+                except (ImportError, AttributeError) as e:
+                    logger.warning(f"Could not patch cloudinary pool: {e}")
+                
+                logger.info("✅ Cloudinary configured globally at startup")
             except Exception as e:
                 logger.warning(f"Failed to configure Cloudinary: {e}")
         
@@ -668,12 +676,22 @@ class ImageLibraryService:
             # Step 2: Poll /status/{job_id} - Schnell is ultra-fast
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
             
-            # Fast polling for Schnell (usually completes in 1-3 seconds)
-            max_polls = 150  # 45 seconds max (150 × 0.3s)
-            poll_interval = 0.3  # Poll every 0.3s for fast response
+            # OPTIMIZED POLLING: Use exponential backoff to reduce HTTP requests
+            # Schnell typically completes in 1-3 seconds, so start fast then slow down
+            # Pattern: 0.3s, 0.3s, 0.5s, 0.5s, 1s, 1s, 2s, 2s, 3s, 3s, 5s, 5s...
+            # This reduces ~150 requests to ~20-25 while keeping responsiveness
+            poll_intervals = [0.3, 0.3, 0.5, 0.5, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0] + [5.0] * 7  # ~45s total
+            max_wait_seconds = 45
+            total_waited = 0.0
+            poll_num = 0
             
-            for poll_num in range(max_polls):
+            for poll_interval in poll_intervals:
+                if total_waited >= max_wait_seconds:
+                    break
+                    
                 await asyncio.sleep(poll_interval)
+                total_waited += poll_interval
+                poll_num += 1
                 
                 try:
                     status_response = await self.client.get(
@@ -717,8 +735,8 @@ class ImageLibraryService:
                     
                     elif status in ["IN_QUEUE", "IN_PROGRESS"]:
                         # Continue polling
-                        if poll_num % 10 == 0:  # Log every 3 seconds
-                            logger.debug(f"[Schnell] Poll {poll_num + 1}/{max_polls}: {status}")
+                        if poll_num % 5 == 0:  # Log every few polls
+                            logger.debug(f"[Schnell] Poll {poll_num}/{len(poll_intervals)}: {status}, waited {total_waited:.1f}s")
                         continue
                     
                     else:

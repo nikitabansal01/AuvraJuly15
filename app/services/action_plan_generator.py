@@ -1261,6 +1261,10 @@ class ActionPlanGenerator:
         2. Check for existing plan (double-check after lock)
         3. Load user context
         4. If carryforward_items provided, include them in plan (reduces new generation slots)
+        
+        CRITICAL FIX (Jan 2026): Uses TWO lock keys for user generation:
+        - Primary lock: user_id:plan_date (blocks duplicate user requests)
+        - Secondary lock: Also checks for linked sessions being transferred
         """
         start_time = time.time()
         
@@ -1284,7 +1288,20 @@ class ActionPlanGenerator:
         start_time = time.time()
         total_cost = 0.0
         
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # CRITICAL FIX: Use GLOBAL user-level lock to prevent race condition
+        # The race condition occurs when:
+        # 1. Session generation is in progress for guest
+        # 2. User signs up -> session marked as linked:user_id
+        # 3. HomeScreen calls /assignments/today MULTIPLE times
+        # 4. Each call uses different lock keys (session vs user) and both proceed
+        #
+        # Solution: For USER generation, always use user_id as lock key (ignore session)
+        # This ensures ALL requests for the same user serialize properly
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        
         # Lock key based on user_id or session_id
+        # FIXED: Always use user_id for user-level locking, session_id only for guest
         identity_key = user_id if user_id else f"session:{session_id}"
         lock_key = hash(f"{identity_key}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
         got_lock = False
@@ -1297,7 +1314,10 @@ class ActionPlanGenerator:
             got_lock = True
             
             try:
-                # Double-check for existing plan
+                # ═══════════════════════════════════════════════════════════════════════════════════
+                # CRITICAL FIX: Double-check for existing plan AND pending session transfers
+                # This catches plans that were created/transferred while we were waiting for lock
+                # ═══════════════════════════════════════════════════════════════════════════════════
                 existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
                 if existing_plan:
                     logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
@@ -1309,6 +1329,81 @@ class ActionPlanGenerator:
                     if isinstance(resp, dict) and resp.get("success"):
                         resp["plan_source"] = "existing_at_start"
                     return resp
+                
+                # ═══════════════════════════════════════════════════════════════════════════════════
+                # CRITICAL FIX: For USER requests, check if a session plan is being generated
+                # that will auto-transfer to this user. If so, WAIT instead of generating duplicate.
+                # This is a second layer of defense after _check_pending_session_plan_for_user
+                # ═══════════════════════════════════════════════════════════════════════════════════
+                if user_id:
+                    linked_session_result = await db.execute(
+                        text("""
+                            SELECT qs.session_id, sps.processing_status
+                            FROM question_sessions qs
+                            LEFT JOIN session_processing_status sps ON qs.session_id = sps.session_id
+                            WHERE qs.status = :linked_status 
+                              AND (sps.processing_status IN ('queued', 'in_progress') OR sps.processing_status IS NULL)
+                            ORDER BY qs.created_at DESC
+                            LIMIT 1
+                        """),
+                        {"linked_status": f"linked:{user_id}"}
+                    )
+                    linked_row = linked_session_result.fetchone()
+                    
+                    if linked_row:
+                        linked_session_id = linked_row.session_id
+                        logger.info(f"⚠️ [GENERATE] Found linked session {linked_session_id} in progress, waiting for transfer...")
+                        
+                        # Release lock so the session generation can finish
+                        await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+                        got_lock = False
+                        
+                        # Wait for session to complete and transfer plan (max 60s)
+                        for i in range(30):  # 30 * 2s = 60s max wait
+                            await asyncio.sleep(2)
+                            
+                            # Check if plan now exists
+                            existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                            if existing_plan:
+                                logger.info(f"✅ [GENERATE] Plan found after waiting {(i+1)*2}s for session transfer")
+                                resp = await self._format_plan_response(existing_plan, db)
+                                if isinstance(resp, dict) and resp.get("success"):
+                                    resp["plan_source"] = "session_transfer_at_generate"
+                                return resp
+                            
+                            # Check if session finished
+                            status_check = await db.execute(
+                                text("SELECT processing_status FROM session_processing_status WHERE session_id = :sid"),
+                                {"sid": linked_session_id}
+                            )
+                            status = status_check.scalar()
+                            if status not in ['queued', 'in_progress', None]:
+                                logger.info(f"⚠️ [GENERATE] Linked session {linked_session_id} finished (status={status}), no plan transferred")
+                                break
+                        
+                        # Re-check for plan one more time
+                        existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                        if existing_plan:
+                            logger.info(f"✅ [GENERATE] Plan found on final check after session wait")
+                            resp = await self._format_plan_response(existing_plan, db)
+                            if isinstance(resp, dict) and resp.get("success"):
+                                resp["plan_source"] = "session_transfer_final_check"
+                            return resp
+                        
+                        # Re-acquire lock to proceed with generation
+                        logger.info(f"{log_prefix} Re-acquiring lock to proceed with new generation")
+                        await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
+                        got_lock = True
+                        
+                        # Final check after re-acquiring lock
+                        existing_plan = await self._get_existing_plan(user_id, plan_date, db)
+                        if existing_plan:
+                            await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+                            got_lock = False
+                            resp = await self._format_plan_response(existing_plan, db)
+                            if isinstance(resp, dict) and resp.get("success"):
+                                resp["plan_source"] = "existing_after_session_wait"
+                            return resp
                 
                 # Check processing status
                 processing_id = user_id if user_id else session_id
@@ -2146,7 +2241,7 @@ class ActionPlanGenerator:
         user_id: str,
         today: date,
         db: AsyncSession,
-        max_wait_seconds: int = 120
+        max_wait_seconds: int = 45  # Reduced from 120s - enough for most session completions
     ) -> Optional[Dict[str, Any]]:
         """
         Check if there's a session plan being generated that will be auto-transferred to this user.
@@ -2846,14 +2941,16 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     logger.info(" Partial actions generated via OpenAI")
                 except Exception as e:
                     openai_error = str(e)
-                    logger.warning(f" OpenAI exception: {openai_error[:200]}")
+                    # CRITICAL: Log OpenAI failures prominently for monitoring
+                    logger.error(f"🔴 [OPENAI_FAILURE] Primary API failed - falling back to Groq: {openai_error[:300]}")
             else:
                 openai_error = "No OpenAI API key"
+                logger.warning("🟡 [CONFIG] OpenAI API key not configured, using Groq as primary")
             
             # Groq fallback
             if openai_error and GROQ_API_KEY:
                 try:
-                    logger.info(f" Falling back to Groq ({GROQ_FALLBACK_MODEL})")
+                    logger.warning(f"🟡 [FALLBACK] Using Groq ({GROQ_FALLBACK_MODEL}) due to OpenAI error: {openai_error[:100]}")
                     groq_client = AsyncGroq(api_key=GROQ_API_KEY)
                     
                     # gpt-oss-120b is a reasoning model - doesn't support response_format
