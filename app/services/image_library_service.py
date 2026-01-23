@@ -2,17 +2,16 @@
 AUVRA Image Library Service
 
 Semantic image caching and generation using:
-- RunPod FLUX.1 Schnell for ultra-fast image generation ($0.0006/image at 512x512)
+- RunPod Pruna P-Image for ultra-fast image generation ($0.005/image)
 - OpenAI ada-002 for embeddings ($0.0001/call)  
 - Cloudinary for image hosting
 - PostgreSQL for semantic matching
 
 Features:
-- FLUX.1 Schnell: optimized for 1-4 step sampling, ultra-low latency
-- Semantic embedding matching (cosine similarity > 0.90)
+- Semantic embedding matching (cosine similarity > 0.85)
 - Cross-user image reuse (never same image for same user)
 - All 16 images generated per day (4 actions × 4 variants)
-- 512x512 resolution for speed and cost optimization
+- Ultra-fast generation with automatic prompt enhancement
 """
 
 import os
@@ -37,34 +36,30 @@ class ImageLibraryService:
     """
     Image generation and semantic caching service.
     
-    Uses RunPod FLUX.1 Schnell for ultra-fast image generation.
-    Optimized for 1-4 step sampling with 512x512 resolution.
+    Uses RunPod Pruna P-Image for ultra-fast, high-quality images.
     Stores all images with embeddings for semantic reuse.
     """
     
-    # SIMILARITY_THRESHOLD: Balance between preventing false matches and enabling reuse
-    # - 0.95+ = Very strict, few cache hits but high precision
-    # - 0.90 = Was the old setting - only ~2 cache hits per plan
-    # - 0.85 = Better balance - ~10-12 cache hits per plan, saves ~80% of image generation time
-    # Based on log analysis: top similarities often hit 0.85-0.89 range
-    SIMILARITY_THRESHOLD = 0.85  # Lowered from 0.90 for better cache hit rate (saves ~2+ minutes)
+    # SIMILARITY_THRESHOLD increased from 0.85 to 0.92 to prevent
+    # false matches between different food items (e.g., spinach vs salmon)
+    # Higher threshold requires more specific semantic match
+    SIMILARITY_THRESHOLD = 0.95  # Cosine similarity threshold for semantic image matching
     
-    # RunPod FLUX.1 Schnell pricing: $0.0024 per megapixel
-    # 512x512 = 0.262 megapixels = ~$0.0006 per image
-    COST_PER_IMAGE = 0.0006
+    # RunPod Pruna P-Image pricing
+    COST_PER_IMAGE = 0.005  # $0.005 per image with Pruna P-Image
     
     # Embedding model
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
-    # Retry settings - FLUX.1 Schnell is very fast and reliable
-    MAX_IMAGE_RETRIES = 2  # Fewer retries needed
-    RETRY_DELAYS = [0.5, 1.0]  # Fast retries
+    # Retry settings - fast failure, fast retry
+    MAX_IMAGE_RETRIES = 3  # 3 retries for shared endpoint variability
+    RETRY_DELAYS = [1.0, 2.0, 4.0]  # Progressive delays for retries
     
-    # RunPod timeout settings - Schnell is ultra-fast
-    RUNPOD_SYNC_TIMEOUT = 30.0  # 30s timeout (Schnell is much faster)
-    RUNPOD_POLL_TIMEOUT = 45  # 45 seconds max (rarely needed)
-    RUNPOD_POLL_INTERVAL = 0.3  # Poll every 0.3s for faster response
+    # RunPod timeout settings - synchronous call is much faster
+    RUNPOD_SYNC_TIMEOUT = 60.0  # 60s for sync call (includes cold start)
+    RUNPOD_POLL_TIMEOUT = 120  # 120 seconds (2 min) max wait - shared endpoint can be slow
+    RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second
     
     # Fallback images when generation fails - prevents empty image URLs in database
     # These are hosted on Cloudinary and match the app's visual style
@@ -76,11 +71,10 @@ class ImageLibraryService:
     
     def __init__(self):
         """Initialize the image library service."""
-        # RunPod configuration - uses FLUX.1 Schnell for ultra-fast generation
+        # RunPod configuration - uses Pruna P-Image for ultra-fast generation
         self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
-        # FLUX.1 Schnell PUBLIC MANAGED endpoint (Black Forest Labs official)
-        # This is a serverless endpoint provided by RunPod, NOT a custom pod
-        self.runpod_endpoint = "black-forest-labs-flux-1-schnell"
+        # Use the correct Pruna P-Image endpoint (was pruna-p-image, now p-image-t2i)
+        self.runpod_endpoint = "p-image-t2i"
         
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -96,11 +90,7 @@ class ImageLibraryService:
         self.storage_bucket = "action-plan-images"
         
         # HTTP clients
-        # FIX: Increase max connections to avoid "Max client connections reached" during parallel generation
-        self.client = httpx.AsyncClient(
-            timeout=120.0,
-            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50)
-        )
+        self.client = httpx.AsyncClient(timeout=120.0)
         
         # In-memory cache for embeddings (avoid repeated API calls)
         self._embedding_cache: Dict[str, List[float]] = {}
@@ -108,10 +98,15 @@ class ImageLibraryService:
         # Configure Cloudinary ONCE at startup to avoid connection pool issues
         # (Previously configured per-upload, causing "Connection pool is full" warnings)
         self._cloudinary_configured = False
-        
         if self.cloudinary_cloud_name and self.cloudinary_api_key:
             try:
                 import cloudinary
+                import urllib3
+                # Increase urllib3 connection pool size to prevent "Connection pool is full" warnings
+                # Default is 1, which causes issues with concurrent uploads
+                urllib3.util.connection.HAS_IPV6 = False  # Force IPv4 to reduce pool fragmentation
+                from urllib3 import HTTPConnectionPool
+                HTTPConnectionPool.DEFAULT_MAXSIZE = 20  # Increase from default 1
                 
                 cloudinary.config(
                     cloud_name=self.cloudinary_cloud_name,
@@ -120,31 +115,7 @@ class ImageLibraryService:
                     secure=True
                 )
                 self._cloudinary_configured = True
-                
-                # FIX: Patch cloudinary's internal HTTP pool manager with larger pool size
-                # This fixes "Connection pool is full, discarding connection: api.cloudinary.com. Connection pool size: 1"
-                # The default pool size of 1 cannot handle parallel image uploads (we do 16+ at once)
-                try:
-                    import cloudinary.uploader
-                    from urllib3 import PoolManager
-                    
-                    # Create a PoolManager with larger connection pool
-                    # num_pools = number of pools (one per host:port)
-                    # maxsize = max connections per pool (per host)
-                    large_pool_manager = PoolManager(
-                        num_pools=10,        # Number of host connection pools to cache
-                        maxsize=50,          # Max connections per host - handles parallel uploads
-                        block=False,         # Don't block when pool is full (just warn)
-                        **cloudinary.CERT_KWARGS  # Include SSL cert settings
-                    )
-                    
-                    # Replace cloudinary's default _http with our larger pool
-                    cloudinary.uploader._http = large_pool_manager
-                    logger.info("✅ Cloudinary HTTP pool patched: num_pools=10, maxsize=50")
-                except (ImportError, AttributeError) as e:
-                    logger.warning(f"Could not patch cloudinary pool: {e}")
-                
-                logger.info("✅ Cloudinary configured globally at startup")
+                logger.info("✅ Cloudinary configured globally at startup (pool size: 20)")
             except Exception as e:
                 logger.warning(f"Failed to configure Cloudinary: {e}")
         
@@ -161,8 +132,7 @@ class ImageLibraryService:
         variant_type: Optional[str],
         user_id: str,
         db: AsyncSession,
-        title_embedding: Optional[List[float]] = None,
-        cache_key_text: Optional[str] = None,
+        title_embedding: Optional[List[float]] = None
     ) -> Tuple[str, bool, float]:
         """
         Get a cached image or generate a new one.
@@ -189,30 +159,20 @@ class ImageLibraryService:
             fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS.get("food", ""))
             return (fallback_url, False, 0.0)
         
-        # Use a stable cache key (usually the action title) even if the generation prompt changes.
-        # This improves image quality without destroying semantic cache hit rates.
-        embed_text = cache_key_text or prompt
-
         # Log what we're processing
-        if cache_key_text and cache_key_text != prompt:
-            logger.info(
-                f"🖼️ [IMAGE] Processing: cache_key='{embed_text[:40]}...' gen_prompt='{prompt[:40]}...' "
-                f"category={category} variant={variant_type}"
-            )
-        else:
-            logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
+        logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
         
         try:
-            # Step 1: Get embedding for the CACHE KEY (if not provided)
-            # This gives stable cache matching regardless of generation prompt style changes
+            # Step 1: Get embedding for the TITLE (if not provided)
+            # This gives stable cache matching regardless of prompt style changes
             if title_embedding is None:
-                logger.info(f"[IMAGE] Step 1: Getting embedding for cache key '{embed_text[:30]}...'")
-                title_embedding = await self._get_embedding(embed_text)
+                logger.info(f"[IMAGE] Step 1: Getting embedding for title '{prompt[:30]}...'")
+                title_embedding = await self._get_embedding(prompt)
             
             if not title_embedding:
-                logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{embed_text[:30]}...' - generating without cache")
+                logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{prompt[:30]}...' - generating without cache")
                 return await self._generate_and_store_image(
-                    prompt, category, variant_type, user_id, None, db, prompt_text_for_library=embed_text
+                    prompt, category, variant_type, user_id, None, db
                 )
             
             logger.info(f"[IMAGE] Step 1: ✅ Got embedding (dim={len(title_embedding)})")
@@ -229,31 +189,22 @@ class ImageLibraryService:
             
             if cached_image:
                 # Found a semantically similar image!
-                # CRITICAL: Validate that the cached URL is permanent (Cloudinary), not temporary (RunPod)
-                cached_url = cached_image.get("image_url", "")
-                if "runpod.ai" in cached_url or "image.runpod" in cached_url:
-                    # BAD DATA: This is a temporary RunPod URL that will expire
-                    # Skip this cache entry and regenerate
-                    logger.warning(f"[IMAGE] ⚠️ Found expired RunPod URL in cache - skipping and regenerating")
-                    logger.warning(f"[IMAGE]   Bad URL: {cached_url[:60]}...")
-                    # Don't use this cache entry - fall through to generation
-                else:
-                    await self._update_image_usage(cached_image["id"], user_id, db)
-                    elapsed = time.time() - start_time
-                    logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
-                    logger.info(f"[IMAGE]   Cache key: '{embed_text[:40]}...'")
-                    logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
-                    logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
-                    logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
-                    return (cached_image["image_url"], True, 0.0)
+                await self._update_image_usage(cached_image["id"], user_id, db)
+                elapsed = time.time() - start_time
+                logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
+                logger.info(f"[IMAGE]   Title: '{prompt[:40]}...'")
+                logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
+                logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
+                logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
+                return (cached_image["image_url"], True, 0.0)
             
             # Step 3: No cache hit - generate new image
             elapsed_cache = time.time() - start_time
             logger.info(f"[IMAGE] Step 2: ❌ CACHE MISS (checked in {elapsed_cache:.2f}s)")
-            logger.info(f"[IMAGE] Step 3: 🎨 Generating new image for '{embed_text[:40]}...'")
+            logger.info(f"[IMAGE] Step 3: 🎨 Generating new image for '{prompt[:40]}...'")
             
             result = await self._generate_and_store_image(
-                prompt, category, variant_type, user_id, title_embedding, db, prompt_text_for_library=embed_text
+                prompt, category, variant_type, user_id, title_embedding, db
             )
             
             elapsed = time.time() - start_time
@@ -265,7 +216,7 @@ class ImageLibraryService:
             logger.error(f"[IMAGE] ❌ Error: {e}")
             # Fallback: try to generate without caching
             return await self._generate_and_store_image(
-                prompt, category, variant_type, user_id, None, db, prompt_text_for_library=embed_text
+                prompt, category, variant_type, user_id, None, db
             )
     
     async def _get_embedding(self, text: str) -> Optional[List[float]]:
@@ -301,7 +252,7 @@ class ImageLibraryService:
             
             # Handle 429 gracefully - embeddings are optional, not critical
             if response.status_code == 429:
-                logger.warning("[IMAGE] ⚠️ OpenAI embedding 429 - quota exceeded, caching disabled for this image")
+                # Don't log error - just silently skip embedding (OpenAI quota issue)
                 return None
             
             response.raise_for_status()
@@ -314,8 +265,7 @@ class ImageLibraryService:
             return embedding
             
         except Exception as e:
-            # Log the error so we can diagnose cache issues
-            logger.warning(f"[IMAGE] ⚠️ Embedding failed: {type(e).__name__}: {str(e)[:100]}")
+            # Silently skip - embeddings are optional for image generation
             return None
     
     async def _get_batch_embeddings(self, texts: List[str]) -> List[Optional[List[float]]]:
@@ -546,8 +496,7 @@ class ImageLibraryService:
         variant_type: Optional[str],
         user_id: str,
         prompt_embedding: Optional[List[float]],
-        db: AsyncSession,
-        prompt_text_for_library: Optional[str] = None,
+        db: AsyncSession
     ) -> Tuple[str, bool, float]:
         """Generate a new image using RunPod Flux Schnell and store it."""
         start_time = time.time()
@@ -564,28 +513,22 @@ class ImageLibraryService:
             # Check if result is already a URL (from RunPod) or bytes
             if isinstance(result, str) and result.startswith("http"):
                 # RunPod returned a URL directly - upload to Cloudinary for permanent storage
-                # CRITICAL: RunPod URLs expire! We MUST upload to Cloudinary.
                 image_url = await self._upload_to_cloudinary_from_url(result, category, variant_type)
-                
-                if image_url:
-                    # SUCCESS: Store permanent Cloudinary URL in library
-                    library_prompt_text = prompt_text_for_library or prompt
-                    await self._store_in_library(
-                        image_url=image_url,
-                        prompt_text=library_prompt_text,
-                        prompt_embedding=prompt_embedding,
-                        category=category,
-                        variant_type=variant_type,
-                        user_id=user_id,
-                        generation_time_ms=generation_time_ms,
-                        db=db
-                    )
-                    logger.info(f"📚 Image stored in library: {category}/{variant_type}")
-                else:
-                    # CRITICAL: Cloudinary failed - DO NOT store in library!
-                    # Use RunPod URL temporarily but don't cache it
-                    logger.warning(f"⚠️ Cloudinary upload failed - using temporary RunPod URL (NOT caching)")
-                    image_url = result  # Use temporarily but NOT stored in library
+                if not image_url:
+                    # Fallback: use RunPod URL directly (may expire)
+                    image_url = result
+
+                # Store in image library for future semantic matching
+                await self._store_in_library(
+                    image_url=image_url,
+                    prompt_text=prompt,
+                    prompt_embedding=prompt_embedding,
+                    category=category,
+                    variant_type=variant_type,
+                    user_id=user_id,
+                    generation_time_ms=generation_time_ms,
+                    db=db
+                )
 
             elif isinstance(result, bytes):
                 # We have image bytes - upload to Cloudinary or Supabase
@@ -625,14 +568,14 @@ class ImageLibraryService:
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod FLUX.1 Schnell serverless endpoint using /run + /status async pattern.
+        Call RunPod Pruna P-Image serverless PUBLIC endpoint using /run + /status async pattern.
         
-        FLUX.1 Schnell features:
-        - Rectified Flow Transformer optimized for 1-4 step sampling
-        - Ultra-fast generation with crisp results
-        - High prompt fidelity
-        - 512x512 resolution for speed and cost optimization
-        - ~$0.0006 per image
+        Pruna P-Image features:
+        - Ultra-fast generation
+        - Automatic prompt enhancement (built-in)
+        - 2-stage refinement for quality
+        - Returns direct image_url (no base64 decoding needed)
+        - $0.005 per image, 250 req/min rate limit
         """
         if not self.runpod_api_key:
             logger.warning("RunPod API key not configured, using placeholder")
@@ -642,19 +585,15 @@ class ImageLibraryService:
         
         try:
             # Enhanced prompt with category-specific styling
+            # Note: Pruna has automatic prompt enhancement, but we still add style hints
             enhanced_prompt = self._enhance_prompt(prompt, category)
             
-            # FLUX.1 Schnell payload format
-            # Optimized for speed: 512x512, 4 steps, moderate guidance
+            # Pruna P-Image payload format (correct endpoint: p-image-t2i)
             payload = {
                 "input": {
                     "prompt": enhanced_prompt,
-                    "width": 512,           # Small for speed and cost
-                    "height": 512,          # Square images for action cards
-                    "num_inference_steps": 4,  # Ultra-fast 4-step sampling
-                    "guidance": 5.0,        # Moderate prompt adherence
-                    "seed": -1,             # Random seed
-                    "image_format": "webp"  # Smaller file size
+                    "aspect_ratio": "1:1",  # Square images for action cards
+                    "enable_safety_checker": True  # Keep safety on
                 }
             }
             
@@ -666,7 +605,7 @@ class ImageLibraryService:
             # Step 1: Submit job to /run endpoint
             run_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
             
-            logger.info(f"🎨 [Schnell] Submitting job: {prompt[:50]}...")
+            logger.info(f"🎨 [Pruna] Submitting job: {prompt[:50]}...")
             
             response = await self.client.post(
                 run_url,
@@ -676,37 +615,27 @@ class ImageLibraryService:
             )
             
             if response.status_code != 200:
-                logger.error(f"❌ [Schnell] Submission failed: {response.status_code} - {response.text[:200]}")
+                logger.error(f"❌ [Pruna] Submission failed: {response.status_code} - {response.text[:200]}")
                 return await self._generate_placeholder_image(prompt)
             
             result = response.json()
             job_id = result.get("id")
             
             if not job_id:
-                logger.error(f"❌ [Schnell] No job_id in response")
+                logger.error(f"❌ [Pruna] No job_id in response")
                 return await self._generate_placeholder_image(prompt)
             
-            logger.debug(f"[Schnell] Job ID: {job_id}")
+            logger.debug(f"[Pruna] Job ID: {job_id}")
             
-            # Step 2: Poll /status/{job_id} - Schnell is ultra-fast
+            # Step 2: Poll /status/{job_id} - Pruna is usually fast but can be slow on cold start
             status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
             
-            # OPTIMIZED POLLING: Use exponential backoff to reduce HTTP requests
-            # Schnell typically completes in 1-3 seconds, so start fast then slow down
-            # Pattern: 0.3s, 0.3s, 0.5s, 0.5s, 1s, 1s, 2s, 2s, 3s, 3s, 5s, 5s...
-            # This reduces ~150 requests to ~20-25 while keeping responsiveness
-            poll_intervals = [0.3, 0.3, 0.5, 0.5, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0] + [5.0] * 7  # ~45s total
-            max_wait_seconds = 45
-            total_waited = 0.0
-            poll_num = 0
+            # Increased polling - allow up to 45s for cold start scenarios
+            max_polls = 90  # 45 seconds max (90 × 0.5s)
+            poll_interval = 0.5  # Poll every 0.5s for faster response
             
-            for poll_interval in poll_intervals:
-                if total_waited >= max_wait_seconds:
-                    break
-                    
+            for poll_num in range(max_polls):
                 await asyncio.sleep(poll_interval)
-                total_waited += poll_interval
-                poll_num += 1
                 
                 try:
                     status_response = await self.client.get(
@@ -716,7 +645,7 @@ class ImageLibraryService:
                     )
                     
                     if status_response.status_code != 200:
-                        logger.warning(f"⚠️ [Schnell] Status check failed: {status_response.status_code}")
+                        logger.warning(f"⚠️ [Pruna] Status check failed: {status_response.status_code}")
                         continue
                     
                     status_result = status_response.json()
@@ -726,51 +655,55 @@ class ImageLibraryService:
                         output = status_result.get("output", {})
                         elapsed_ms = int((time.time() - start_time) * 1000)
                         
-                        logger.info(f"✅ [Schnell] Completed in {elapsed_ms}ms")
+                        logger.info(f"✅ [Pruna] Completed in {elapsed_ms}ms")
                         
-                        # FLUX.1 Schnell output format
+                        # Pruna returns 'result' with the image URL
                         if isinstance(output, dict):
-                            # Primary: check 'image_url' key
-                            image_url = output.get("image_url")
-                            if image_url and image_url.startswith("http"):
-                                return (image_url, elapsed_ms)
-                            
-                            # Fallback: check 'result' key
+                            # Primary: check 'result' key (Pruna's actual format)
                             image_url = output.get("result")
                             if image_url and image_url.startswith("http"):
                                 return (image_url, elapsed_ms)
+                            
+                            # Fallback: check 'image_url' key
+                            image_url = output.get("image_url")
+                            if image_url:
+                                return (image_url, elapsed_ms)
+                            
+                            # Also check for generation_url as backup
+                            generation_url = output.get("generation_url")
+                            if generation_url:
+                                return (generation_url, elapsed_ms)
                         
-                        logger.error(f"❌ [Schnell] Unexpected output format: {output}")
+                        logger.error(f"❌ [Pruna] Unexpected output format: {output}")
                         return await self._generate_placeholder_image(prompt)
                     
                     elif status == "FAILED":
                         error = status_result.get("error", "Unknown error")
-                        logger.error(f"❌ [Schnell] Job failed: {error}")
+                        logger.error(f"❌ [Pruna] Job failed: {error}")
                         return await self._generate_placeholder_image(prompt)
                     
                     elif status in ["IN_QUEUE", "IN_PROGRESS"]:
                         # Continue polling
-                        if poll_num % 5 == 0:  # Log every few polls
-                            logger.debug(f"[Schnell] Poll {poll_num}/{len(poll_intervals)}: {status}, waited {total_waited:.1f}s")
+                        if poll_num % 10 == 0:  # Log every 5 seconds
+                            logger.debug(f"[Pruna] Poll {poll_num + 1}/{max_polls}: {status}")
                         continue
                     
                     else:
-                        logger.warning(f"⚠️ [Schnell] Unknown status: {status}")
+                        logger.warning(f"⚠️ [Pruna] Unknown status: {status}")
                         continue
                 
                 except Exception as poll_error:
-                    logger.warning(f"⚠️ [Schnell] Poll error: {poll_error}")
+                    logger.warning(f"⚠️ [Pruna] Poll error: {poll_error}")
                     continue
             
             # Timeout - return None to trigger retry logic
             elapsed = time.time() - start_time
-            logger.warning(f"⚠️ [Schnell] Timeout after {elapsed:.1f}s (job: {job_id}) - will retry")
-            return (None, 0)  # Return None to trigger retry
+            logger.warning(f"⚠️ [Pruna] Timeout after {elapsed:.1f}s (job: {job_id}) - will retry")
+            return (None, 0)  # Return None to trigger retry in _call_runpod_flux_with_retry
             
         except Exception as e:
-            logger.warning(f"⚠️ [Schnell] Error: {type(e).__name__}: {e} - will retry")
+            logger.warning(f"⚠️ [Pruna] Error: {type(e).__name__}: {e} - will retry")
             return (None, 0)  # Return None to trigger retry
-
 
     async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
@@ -851,22 +784,22 @@ class ImageLibraryService:
     
     async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod FLUX.1 Schnell with retry logic.
+        Call RunPod Pruna P-Image with retry logic.
         
-        Schnell is ultra-fast so retries should be rare, but we keep retry logic
+        Pruna is ultra-fast so retries should be rare, but we keep retry logic
         for robustness against transient network issues.
         """
         total_start = time.time()
         
         for attempt in range(self.MAX_IMAGE_RETRIES):
             try:
-                logger.info(f"🎨 Schnell attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES} for: {prompt[:50]}...")
+                logger.info(f"🎨 Pruna attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES} for: {prompt[:50]}...")
                 result, gen_time = await self._call_runpod_flux(prompt, category)
                 
                 if result:
                     total_time = time.time() - total_start
                     if attempt > 0:
-                        logger.info(f"✅ Schnell succeeded on retry {attempt + 1} (total time: {total_time:.1f}s)")
+                        logger.info(f"✅ Pruna succeeded on retry {attempt + 1} (total time: {total_time:.1f}s)")
                     return (result, gen_time)
                 
                 # Returned None - timeout or transient error, retry
@@ -889,72 +822,71 @@ class ImageLibraryService:
     
     def _enhance_prompt(self, prompt: str, category: str) -> str:
         """
-        Create "founder-quality" prompts optimized for FLUX.1 Schnell.
+        Create prompts that show users EXACTLY what to eat or do.
         
-        Strategy:
-        1. Subject-First: Tell the model exactly what to draw immediately.
-        2. Style: "Editorial", "Cinematic", "Professional".
-        3. Tech Specs: "f/1.8", "4k", "sharp focus" - FLUX loves these.
+        AUVRA-specific approach:
+        1. Focus on the ACTUAL CONTENT - what does this food/exercise look like?
+        2. Make it actionable - user should understand what to prepare/do
+        3. Keep it simple - AI image models don't need camera specs
+        4. Be specific about the subject, not the photography
+        
+        Args:
+            prompt: Action title (e.g., "Chickpea Salad", "Swimming", "Deep Breathing")
+            category: "food", "movement", or "mindfulness"
+            
+        Returns:
+            Enhanced prompt that accurately represents the action
         """
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
-
         
-        prompt_str = prompt or "wellness activity"
-        prompt_l = prompt_str.lower()
-        
-        # Heuristic: if prompt is already detailed/optimized, trust it
-        if "editorial" in prompt_l or "photography" in prompt_l or "4k" in prompt_l:
-            return f"{prompt_str}, high quality, sharp focus"
-        
-
         if category == "food":
-            # FOOD: Editorial magazine style
-            # Goal: Mouth-watering, fresh, clean
+            # FOOD: Show the ACTUAL dish with visible ingredients
+            # User should be able to understand what to prepare from the image
             enhanced = (
-                f"Editorial food photography of {prompt_str}, "
-                f"overhead shot on a rustic ceramic plate, "
-                f"fresh vibrant ingredients, soft morning window light, "
-                f"shallow depth of field f/2.8, sharp focus on food, "
-                f"clean minimalist styling, Bon Appetit magazine style, "
-                f"4k, highly detailed, photorealistic"
+                f"A delicious plate of {prompt}, "
+                f"showing the actual ingredients clearly visible, "
+                f"freshly prepared and appetizing, natural vibrant colors, "
+                f"beautifully arranged on a clean white plate, "
+                f"top-down or slight angle view so all ingredients are visible, "
+                f"professional food photography, bright natural lighting, "
+                f"the dish should look exactly like {prompt} with recognizable ingredients, "
+                f"healthy nutritious meal for women's wellness"
             )
             
         elif category == "movement":
-            # MOVEMENT: Clean studio fitness style
-            # Goal: Clear form, aspirational, bright
+            # MOVEMENT: Show the ACTUAL exercise position and form
+            # User should be able to understand how to do the exercise from the image
             enhanced = (
-                f"Professional fitness photography of a woman demonstrating {prompt_str}, "
-                f"perfect form, clean bright modern yoga studio, "
-                f"soft diffused daylight, neutral colors, "
-                f"athletic wear, wide shot capturing full body, "
-                f"cinematic lighting, high resolution, 4k, sharp focus"
+                f"A woman demonstrating {prompt} exercise, "
+                f"clear view of the body position and correct form, "
+                f"showing exactly how to perform {prompt}, "
+                f"wearing comfortable athletic clothes, "
+                f"focused calm expression, bright clean background, "
+                f"the exercise pose should be clearly recognizable as {prompt}, "
+                f"fitness photography style, full body visible, "
+                f"instructional and easy to follow, women's wellness exercise"
             )
             
         elif category == "mindfulness":
-            # MINDFULNESS: Atmospheric lifestyle style
-            # Goal: Peaceful, emotional, warm
-            if "journal" in prompt_l:
-                enhanced = (
-                    f"Close-up lifestyle photography of hands writing in a journal, "
-                    f"soft focus, cozy atmosphere, warm golden hour lighting, "
-                    f"cup of tea nearby, wooden texture, "
-                    f"peaceful mood, cinematic, 4k, highly detailed"
-                )
-            else:
-                enhanced = (
-                    f"Serene lifestyle photography of a woman practicing {prompt_str}, "
-                    f"peaceful calm expression, closed eyes, "
-                    f"cozy minimalist living space, warm ambient lighting, "
-                    f"soft textures, cinematic composition, "
-                    f"photorealistic, 4k, high quality"
-                )
-        
-        else:
-            # Fallback
+            # MINDFULNESS: Show the ACTUAL meditation or breathing practice
+            # User should understand what the practice looks like
             enhanced = (
-                f"Professional wellness photography of {prompt_str}, "
-                f"clean minimalist background, soft lighting, "
-                f"high quality, 4k, sharp focus, photorealistic"
+                f"A peaceful woman practicing {prompt}, "
+                f"showing the meditation or breathing position clearly, "
+                f"eyes closed, serene relaxed expression, "
+                f"comfortable seated or resting position for {prompt}, "
+                f"wearing soft comfortable clothes, "
+                f"calm cozy setting with soft natural light, "
+                f"the practice should be recognizable as {prompt}, "
+                f"peaceful wellness moment, self-care atmosphere"
+            )
+            
+        else:
+            # Fallback: simple clear wellness image
+            enhanced = (
+                f"A beautiful wellness image of {prompt}, "
+                f"clean minimalist style, bright natural lighting, "
+                f"clearly showing what {prompt} looks like"
             )
         
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")
@@ -1041,66 +973,48 @@ class ImageLibraryService:
         self,
         image_url: str,
         category: str,
-        variant_type: Optional[str],
-        max_retries: int = 3
+        variant_type: Optional[str]
     ) -> Optional[str]:
-        """
-        Upload image from URL to Cloudinary for permanent storage.
-        
-        CRITICAL: This MUST succeed for the image to be stored in the library.
-        RunPod URLs expire, so we NEVER want to cache them directly.
-        
-        Args:
-            image_url: The source URL (usually RunPod temporary URL)
-            category: food, movement, mindfulness
-            variant_type: hero, tasty, easy, etc.
-            max_retries: Number of retry attempts (default 3)
-        
-        Returns:
-            Cloudinary permanent URL, or None if all retries fail
-        """
+        """Upload image from URL to Cloudinary for permanent storage."""
         if not self.cloudinary_cloud_name or not self.cloudinary_api_key:
             logger.warning("Cloudinary not configured")
             return None
         
-        import cloudinary
-        import cloudinary.uploader
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                # Generate unique public_id
-                timestamp = int(time.time() * 1000)
-                file_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
-                variant_str = f"_{variant_type}" if variant_type else ""
-                public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
-                
-                # Upload from URL in a separate thread to avoid blocking the event loop
-                result = await asyncio.to_thread(
-                    cloudinary.uploader.upload,
-                    image_url,
-                    public_id=public_id,
-                    folder="action-plan-images",
-                    resource_type="image",
-                    timeout=30  # Add timeout
-                )
-                
-                cloudinary_url = result.get("secure_url")
-                if cloudinary_url:
-                    logger.info(f"📤 Image uploaded to Cloudinary from URL: {cloudinary_url}")
-                    return cloudinary_url
-                
-            except ImportError:
-                logger.warning("cloudinary package not installed")
-                return None
-            except Exception as e:
-                logger.warning(f"⚠️ Cloudinary upload attempt {attempt}/{max_retries} failed: {type(e).__name__}: {e}")
-                if attempt < max_retries:
-                    # Wait before retry with exponential backoff
-                    await asyncio.sleep(0.5 * attempt)
-                else:
-                    logger.error(f"❌ Cloudinary upload FAILED after {max_retries} attempts - image will NOT be cached")
-        
-        return None
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            
+            # Cloudinary is configured once in __init__ - no need to reconfigure here
+            # This prevents "Connection pool is full" warnings during parallel uploads
+            
+            # Generate unique public_id
+            timestamp = int(time.time() * 1000)
+            file_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
+            variant_str = f"_{variant_type}" if variant_type else ""
+            public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
+            
+            # Upload from URL in a separate thread to avoid blocking the event loop
+            result = await asyncio.to_thread(
+                cloudinary.uploader.upload,
+                image_url,
+                public_id=public_id,
+                folder="action-plan-images",
+                resource_type="image"
+            )
+            
+            cloudinary_url = result.get("secure_url")
+            if cloudinary_url:
+                logger.info(f"📤 Image uploaded to Cloudinary from URL: {cloudinary_url}")
+                return cloudinary_url
+            
+            return None
+            
+        except ImportError:
+            logger.warning("cloudinary package not installed")
+            return None
+        except Exception as e:
+            logger.error(f"Error uploading to Cloudinary from URL: {e}")
+            return None
     
     async def _upload_to_supabase(
         self,
@@ -1297,48 +1211,6 @@ class ImageLibraryService:
         except Exception as e:
             logger.error(f"Error getting library stats: {e}")
             return {}
-
-    async def cleanup_expired_runpod_urls(self, db: AsyncSession) -> Dict[str, int]:
-        """
-        Remove images with expired RunPod URLs from the library.
-        
-        RunPod URLs are temporary and expire. If any got stored in the library
-        (due to Cloudinary upload failures), this cleans them up.
-        
-        Returns:
-            Dict with counts of deleted images
-        """
-        from app.core.database import ImageLibrary
-        
-        try:
-            # Find all images with RunPod URLs
-            result = await db.execute(
-                select(ImageLibrary).where(
-                    ImageLibrary.image_url.like('%runpod.ai%')
-                )
-            )
-            bad_images = result.scalars().all()
-            
-            if not bad_images:
-                logger.info("✅ No expired RunPod URLs found in image library")
-                return {"deleted": 0, "found": 0}
-            
-            logger.warning(f"🗑️ Found {len(bad_images)} images with expired RunPod URLs - deleting...")
-            
-            # Delete them
-            for img in bad_images:
-                logger.info(f"   Deleting ID {img.id}: {img.prompt_text[:40]}...")
-                await db.delete(img)
-            
-            await db.commit()
-            
-            logger.info(f"✅ Cleaned up {len(bad_images)} expired RunPod URLs from image library")
-            return {"deleted": len(bad_images), "found": len(bad_images)}
-            
-        except Exception as e:
-            logger.error(f"Error cleaning up RunPod URLs: {e}")
-            await db.rollback()
-            return {"deleted": 0, "found": 0, "error": str(e)}
 
 
 # Global instance

@@ -31,6 +31,43 @@ from app.utils.timezone_utils import get_user_current_date
 logger = logging.getLogger(__name__)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CONVERSATION EVALUATION HELPER (NON-BREAKING)
+# ═══════════════════════════════════════════════════════════════════════════
+def _evaluate_conversation_safely(
+    thread_type: str,
+    thread_id: str,
+    uid: str,
+    raw_messages: list,
+    is_complete: bool,
+    db: Session
+) -> None:
+    """
+    Evaluate conversation quality without blocking or breaking main flow.
+    Only evaluates after every 6+ messages to avoid excessive computation.
+    """
+    try:
+        # Skip if not enough messages to evaluate
+        if len(raw_messages or []) < 6:
+            return
+            
+        from app.services.conversation_evaluation_service import get_conversation_evaluator
+        evaluator = get_conversation_evaluator()
+        result = evaluator.evaluate_thread_sync(
+            thread_type=thread_type,
+            thread_id=thread_id,
+            uid=uid,
+            raw_messages=raw_messages,
+            is_complete=is_complete,
+            db=db
+        )
+        if result:
+            logger.debug(f"📊 Conversation evaluated: quality={result.get('conversation_quality_score')}")
+    except Exception as e:
+        # Never let evaluation failure break the main flow
+        logger.debug(f"Conversation evaluation skipped: {e}")
+
+
 class SymptomCheckInService:
     TAIL_SIZE = 20
 
@@ -319,6 +356,20 @@ class SymptomCheckInService:
         self.db.add(thread)
         self.db.commit()
         self.db.refresh(thread)
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # EVALUATE CONVERSATION QUALITY (NON-BLOCKING, SAMPLED)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Only evaluate periodically (every 6+ messages) to avoid excessive processing
+        if len(raw) >= 6 and len(raw) % 4 == 0:  # Every 4 message pairs after initial 6
+            _evaluate_conversation_safely(
+                thread_type="symptom_checkin",
+                thread_id=str(thread.id),
+                uid=uid,
+                raw_messages=raw,
+                is_complete=False,  # Symptom threads are ongoing
+                db=self.db
+            )
 
         return thread, ai_response
 

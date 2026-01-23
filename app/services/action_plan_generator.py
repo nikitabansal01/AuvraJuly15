@@ -30,10 +30,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update, text, or_
 
-from app.core.database import SessionProcessingStatus
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
-from app.services.processing_status_service import ProcessingStatusService
 from app.core.config import settings
 
 # Get API keys from environment
@@ -506,9 +504,9 @@ RESEARCH CITATION FORMAT (from search_research_paper tool):
     "pmid": "12345678"
 }
 
-IMAGE PROMPT STYLE (for consistent semantic matching + better-looking images):
+IMAGE PROMPT STYLE (for consistent semantic matching):
 All prompts should follow this pattern:
-"[Subject/food/activity], photorealistic, centered composition, subject fills 60-70% of the frame (important for circular crops), soft natural lighting, clean minimalist background, warm inviting tones, high detail, sharp focus on subject, no text, no typography, no watermark, no logo, no branding, no surreal elements"
+"[Subject/food/activity], centered composition, subject fills 60-70% of the frame (important for circular crops), natural lighting, clean minimalist background, warm inviting tones, wellness aesthetic, no text, no watermark, no logo"
 
 HORMONE PERSONA INTRO STYLE:
 The hormone speaks in first person, identifying itself and explaining whats happening in the users current cycle phase (1 sentence). 
@@ -1012,34 +1010,6 @@ Respond with valid JSON array only."""
 
 
 # ============================================================================
-# GPT-5-NANO PARAMETER ADAPTER
-# ============================================================================
-
-def adapt_openai_params_for_model(model: str, **kwargs) -> dict:
-    """
-    Adapt OpenAI API parameters for different model requirements.
-    
-    GPT-5-nano specific requirements:
-    - Uses 'max_completion_tokens' instead of 'max_tokens'
-    - Only supports temperature=1 (default)
-    
-    Returns kwargs dict with adapted parameters.
-    """
-    params = dict(kwargs)
-    
-    if "gpt-5" in model.lower():
-        # GPT-5 models use max_completion_tokens instead of max_tokens
-        if "max_tokens" in params:
-            params["max_completion_tokens"] = params.pop("max_tokens")
-        
-        # GPT-5-nano only supports default temperature (1)
-        if "temperature" in params:
-            del params["temperature"]
-    
-    return params
-
-
-# ============================================================================
 # ACTION PLAN GENERATOR SERVICE
 # ============================================================================
 
@@ -1055,8 +1025,6 @@ class ActionPlanGenerator:
     5. Store plan in database
     """
     
-    # CHANGED: gpt-5-nano was returning empty content with Structured Outputs
-    # Reverting to gpt-4o-mini which works reliably with json_schema response_format
     GPT_MODEL = "gpt-4o-mini"
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
@@ -1190,19 +1158,6 @@ class ActionPlanGenerator:
         
         conversion_result = None  # Force skip conversion
         
-        # ═══════════════════════════════════════════════════════════════════════════════════
-        # CRITICAL FIX: Check if a session plan is being generated for this user
-        # If user signed up while session generation was in progress, the session status
-        # will be "linked:{user_id}". We should WAIT for that generation to complete and
-        # auto-transfer instead of starting a duplicate generation.
-        # ═══════════════════════════════════════════════════════════════════════════════════
-        pending_session_plan = await self._check_pending_session_plan_for_user(user_id, today, db)
-        if pending_session_plan:
-            plan_result = pending_session_plan
-            if isinstance(plan_result, dict) and plan_result.get("success"):
-                plan_result["plan_source"] = "session_transfer"
-            return plan_result
-        
         # Combine all carry-forward sources:
         # 1. Items passed from daily review carry-forward (carryforward_items parameter)
         # 2. Items skipped via care plan check-in yesterday (skipped_items)
@@ -1249,8 +1204,7 @@ class ActionPlanGenerator:
         image_mode: Literal["full", "hero_only", "none"] = "full",
         skip_quality_check: bool = False,
         session_id: Optional[str] = None,  # For guest users
-        carryforward_items: Optional[List[Dict[str, Any]]] = None,  # Items to carry forward from yesterday
-        is_background_task: bool = False  # Skip in_progress check when called from background task
+        carryforward_items: Optional[List[Dict[str, Any]]] = None  # Items to carry forward from yesterday
     ) -> Dict[str, Any]:
         """
         Generate a completely new action plan.
@@ -1262,10 +1216,6 @@ class ActionPlanGenerator:
         2. Check for existing plan (double-check after lock)
         3. Load user context
         4. If carryforward_items provided, include them in plan (reduces new generation slots)
-        
-        CRITICAL FIX (Jan 2026): Uses TWO lock keys for user generation:
-        - Primary lock: user_id:plan_date (blocks duplicate user requests)
-        - Secondary lock: Also checks for linked sessions being transferred
         """
         start_time = time.time()
         
@@ -1289,209 +1239,69 @@ class ActionPlanGenerator:
         start_time = time.time()
         total_cost = 0.0
         
-        # ═══════════════════════════════════════════════════════════════════════════════════
-        # CRITICAL FIX: Use GLOBAL user-level lock to prevent race condition
-        # The race condition occurs when:
-        # 1. Session generation is in progress for guest
-        # 2. User signs up -> session marked as linked:user_id
-        # 3. HomeScreen calls /assignments/today MULTIPLE times
-        # 4. Each call uses different lock keys (session vs user) and both proceed
-        #
-        # Solution: For USER generation, always use user_id as lock key (ignore session)
-        # This ensures ALL requests for the same user serialize properly
-        # ═══════════════════════════════════════════════════════════════════════════════════
-        
         # Lock key based on user_id or session_id
-        # FIXED: Always use user_id for user-level locking, session_id only for guest
         identity_key = user_id if user_id else f"session:{session_id}"
         lock_key = hash(f"{identity_key}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
         got_lock = False
         
         try:
-            # Step 0: Acquire advisory lock (BLOCKING is fine here as we release it quickly)
-            # This serializes the check-and-set of the processing status
+            # Step 0: Acquire advisory lock to prevent race conditions
+            # Two requests for the same user+date will serialize here
             logger.info(f"{log_prefix} Step 0: Acquiring advisory lock (key: {lock_key})")
-            await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
-            got_lock = True
+            lock_result = await db.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": lock_key}
+            )
+            got_lock = lock_result.scalar()
             
-            try:
-                # ═══════════════════════════════════════════════════════════════════════════════════
-                # CRITICAL FIX: Double-check for existing plan AND pending session transfers
-                # This catches plans that were created/transferred while we were waiting for lock
-                # ═══════════════════════════════════════════════════════════════════════════════════
-                existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
-                if existing_plan:
-                    logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
-                    # Release lock before returning
-                    await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
-                    got_lock = False
+            if not got_lock:
+                # Another request is already generating - wait and poll for result
+                # OPTIMIZED: Reduced wait times since we're faster now (~15s total instead of 45s)
+                logger.info(f"{log_prefix}  Another request is generating plan, polling for result...")
+                
+                # Poll for existing plan with shorter backoff (2s, 4s, 9s = ~15s total)
+                wait_times = [2, 4, 9]
+                for wait_time in wait_times:
+                    await asyncio.sleep(wait_time)
                     
-                    resp = await self._format_plan_response(existing_plan, db)
-                    if isinstance(resp, dict) and resp.get("success"):
-                        resp["plan_source"] = "existing_at_start"
-                    return resp
-                
-                # ═══════════════════════════════════════════════════════════════════════════════════
-                # OPTION 3+4 FIX: For USER requests, if a session plan is being generated for this user,
-                # return "generating" status immediately instead of waiting. This prevents duplicate
-                # generations and eliminates the 200s blocking wait.
-                # ═══════════════════════════════════════════════════════════════════════════════════
-                if user_id:
-                    linked_session_result = await db.execute(
-                        text("""
-                            SELECT qs.session_id, sps.processing_status, sps.progress, sps.phase, sps.started_at
-                            FROM question_sessions qs
-                            LEFT JOIN session_processing_status sps ON qs.session_id = sps.session_id
-                            WHERE qs.status = :linked_status 
-                              AND (sps.processing_status IN ('queued', 'in_progress') OR sps.processing_status IS NULL)
-                            ORDER BY qs.created_at DESC
-                            LIMIT 1
-                        """),
-                        {"linked_status": f"linked:{user_id}"}
-                    )
-                    linked_row = linked_session_result.fetchone()
+                    # Check if plan was created by the other request
+                    from app.core.database import ActionPlan
+                    query = select(ActionPlan).where(ActionPlan.plan_date == plan_date)
+                    if user_id:
+                        query = query.where(ActionPlan.uid == user_id)
+                    elif session_id:
+                        query = query.where(ActionPlan.session_id == session_id)
                     
-                    if linked_row:
-                        linked_session_id = linked_row.session_id
-                        session_progress = linked_row.progress or 0
-                        session_phase = linked_row.phase or "Starting"
-                        session_started = linked_row.started_at
-                        
-                        logger.info(f"🚀 [GENERATE] Found linked session {linked_session_id} in progress - returning 'generating' status (NO WAIT)")
-                        
-                        # Release lock immediately
-                        await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
-                        got_lock = False
-                        
-                        # Calculate estimated time remaining (FIXED FORMULA)
-                        elapsed_seconds = 0
-                        if session_started:
-                            elapsed_seconds = (datetime.utcnow() - session_started).total_seconds()
-                        
-                        # Fixed formula: estimate based on typical phase durations
-                        if session_progress <= 15:
-                            estimated_total = 60
-                        elif session_progress <= 35:
-                            estimated_total = 90
-                        elif session_progress <= 60:
-                            estimated_total = 120
-                        elif session_progress <= 95:
-                            estimated_total = 140
-                        else:
-                            estimated_total = 150
-                        
-                        remaining_ratio = (100 - session_progress) / 100 if session_progress > 0 else 1
-                        estimated_remaining = min(estimated_total * remaining_ratio, 180)
-                        
-                        # Return "generating" status - frontend should poll
-                        return {
-                            "success": True,
-                            "generating": True,  # KEY FLAG: tells frontend to poll
-                            "plan_exists": False,
-                            "session_id": linked_session_id,
-                            "processing_status": linked_row.processing_status,
-                            "progress": session_progress,
-                            "phase": session_phase,
-                            "elapsed_seconds": int(elapsed_seconds),
-                            "estimated_remaining_seconds": int(estimated_remaining),
-                            "message": f"Your personalized plan is being generated ({session_progress}% complete). Please wait...",
-                            "plan_source": "session_generating_at_lock"
-                        }
-                
-                # Check processing status
-                processing_id = user_id if user_id else session_id
-                # NOTE: We use sync-style query execution in async session
-                stmt = select(SessionProcessingStatus).where(
-                    SessionProcessingStatus.session_id == processing_id
-                )
-                result = await db.execute(stmt)
-                status_record = result.scalar_one_or_none()
-                
-                # If another process is working, release lock and wait
-                # CRITICAL FIX: Skip this check if we're the background task (we set the status ourselves!)
-                if status_record and status_record.processing_status == "in_progress" and not is_background_task:
-                    last_heartbeat = status_record.heartbeat_at or status_record.started_at or datetime.utcnow()
-                    if (datetime.utcnow() - last_heartbeat).total_seconds() < 300:  # 5 min timeout
-                        logger.info(f"{log_prefix} Another process is generating (started {status_record.started_at}), releasing lock and polling...")
-                        
-                        # Release lock so the worker can eventually finish/save
-                        await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
-                        got_lock = False
-                        
-                        # Poll for completion (Wait loop)
-                        # We wait for EITHER plan existence OR status completion
-                        wait_times = [2, 4, 6, 8, 10, 10, 10]  # ~50s total
-                        for wait_time in wait_times:
-                            await asyncio.sleep(wait_time)
-                            
-                            # Check for plan
-                            existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
-                            if existing_plan:
-                                logger.info(f"{log_prefix} Found plan after waiting")
-                                return await self._format_plan_response(existing_plan, db)
-                            
-                            # Check status again (using a new transaction/query)
-                            # In async session, we might need to expire to see updates? 
-                            # Usually simple execute is fine if we are not in a transaction that isolates snapshot.
-                            try:
-                                # Simple check
-                                check_res = await db.execute(
-                                    select(SessionProcessingStatus.processing_status)
-                                    .where(SessionProcessingStatus.session_id == processing_id)
-                                )
-                                curr_status = check_res.scalar_one_or_none()
-                                if curr_status == "completed":
-                                    # Should have found plan above, but loop again
-                                    continue
-                                if curr_status == "failed":
-                                    logger.error(f"{log_prefix} Other process failed, taking over...")
-                                    break
-                            except Exception:
-                                pass
-                                
-                        # If we fall through here, we assume timeout or failure, try to take over
-                        logger.info(f"{log_prefix} Polling timed out, attempting to take over generation...")
-                        
-                        # Re-acquire lock to set status
-                        await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
-                        got_lock = True
-                
-                # Set status to in_progress (we own the job now)
-                if not status_record:
-                    new_status = SessionProcessingStatus(
-                        session_id=processing_id,
-                        processing_status="in_progress",
-                        phase="Starting",
-                        progress=5,
-                        started_at=datetime.utcnow(),
-                        heartbeat_at=datetime.utcnow()
-                    )
-                    db.add(new_status)
-                else:
-                    status_record.processing_status = "in_progress"
-                    status_record.phase = "Starting"
-                    status_record.progress = 5
-                    status_record.started_at = datetime.utcnow()
-                    status_record.heartbeat_at = datetime.utcnow()
-                    # Ensure we reset error state
-                    status_record.error = None
-                
-                await db.commit()
-                logger.info(f"{log_prefix} Status marked in_progress. Releasing DB lock to run AI tasks...")
-                
-                # RELEASE LOCK - Critical step to allow concurrency!
-                await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
-                got_lock = False
-                
-            except Exception as e:
-                # If anything failed during check-set, ensure we release lock
-                logger.error(f"{log_prefix} Error during lock/status check: {e}")
-                if got_lock:
-                    await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
-                    got_lock = False
-                raise e
+                    result = await db.execute(query)
+                    existing_plan = result.scalar_one_or_none()
 
-            logger.info(f"[GENERATE]  Proceeding with plan generation (unlocked)")
+                    if existing_plan:
+                        logger.info(f"{log_prefix}  Found plan created by concurrent request after {wait_time}s wait")
+                        resp = await self._format_plan_response(existing_plan, db)
+                        if isinstance(resp, dict) and resp.get("success"):
+                            resp["plan_source"] = "concurrent_wait_existing"
+                        return resp
+                    
+                    logger.info(f"{log_prefix}  Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
+                
+                # After ~45s of waiting, try to acquire blocking lock
+                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, acquiring blocking lock...")
+                await db.execute(
+                    text("SELECT pg_advisory_lock(:key)"),
+                    {"key": lock_key}
+                )
+                got_lock = True
+            
+            # Double-check for existing plan after acquiring lock
+            existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
+            if existing_plan:
+                logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
+                resp = await self._format_plan_response(existing_plan, db)
+                if isinstance(resp, dict) and resp.get("success"):
+                    resp["plan_source"] = "existing_after_lock"
+                return resp
+            
+            logger.info(f"[GENERATE]  Lock acquired, proceeding with plan generation")
             
             # Step 1: Load user context
             logger.info(f"[GENERATE] Step 1: Loading user context...")
@@ -1518,42 +1328,28 @@ class ActionPlanGenerator:
                 model_switch_reason = "All items carried forward from yesterday"
                 
                 # Build actions list from carryforward items
-                # IMPORTANT: cf_item contains {'source_item': ActionPlanItem, 'source_variants': [...], 'original_id': int}
                 for cf_item in carryforward_items[:4]:
-                    source_item = cf_item.get("source_item")
-                    source_variants = cf_item.get("source_variants", [])
-                    
-                    if not source_item:
-                        logger.warning(f"[GENERATE] Carryforward item has no source_item, skipping")
-                        continue
-                    
-                    # Extract data from the source ActionPlanItem ORM object
                     actions.append({
-                        "title": source_item.title or "Action",
-                        "category": source_item.category or "food",
-                        "specific_action": source_item.specific_action or "",
-                        "purpose": source_item.purpose or "",
-                        "target_hormone": source_item.target_hormone or "cortisol",
-                        "time_slot": source_item.time_slot or "morning",
-                        "carried_forward_from": cf_item.get("original_id") or source_item.id,
-                        "hormone_persona_intro": source_item.hormone_persona_intro or "",
-                        "symptoms": source_item.symptoms or [],
-                        "conditions": source_item.conditions or [],
-                        "food_items": source_item.food_items or [],
-                        "food_amounts": source_item.food_amounts or [],
-                        "exercise_types": source_item.exercise_types or [],
-                        "exercise_durations": source_item.exercise_durations or [],
-                        "exercise_intensities": source_item.exercise_intensities or [],
-                        "mindfulness_techniques": source_item.mindfulness_techniques or [],
-                        "mindfulness_durations": source_item.mindfulness_durations or [],
-                        "variants": [{
-                            "variant_type": v.variant_type,
-                            "title": v.title,
-                            "description": v.description,
-                            "image_url": v.image_url
-                        } for v in source_variants] if source_variants else [],
-                        "hero_image_url": source_item.hero_image_url,
-                        "research_studies": source_item.research_studies or [],
+                        "title": cf_item.get("title", "Action"),
+                        "category": cf_item.get("category", "general"),
+                        "specific_action": cf_item.get("specific_action", ""),
+                        "purpose": cf_item.get("purpose", ""),
+                        "target_hormone": cf_item.get("target_hormone", "cortisol"),
+                        "time_slot": cf_item.get("time_slot", "morning"),
+                        "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
+                        "hormone_persona_intro": cf_item.get("hormone_persona_intro", ""),
+                        "symptoms": cf_item.get("symptoms", []),
+                        "conditions": cf_item.get("conditions", []),
+                        "food_items": cf_item.get("food_items", []),
+                        "food_amounts": cf_item.get("food_amounts", []),
+                        "exercise_types": cf_item.get("exercise_types", []),
+                        "exercise_durations": cf_item.get("exercise_durations", []),
+                        "exercise_intensities": cf_item.get("exercise_intensities", []),
+                        "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
+                        "mindfulness_durations": cf_item.get("mindfulness_durations", []),
+                        "variants": cf_item.get("variants", []),
+                        "hero_image_url": cf_item.get("hero_image_url"),
+                        "research_studies": cf_item.get("research_studies", []),
                     })
                 
                 logger.info(f"[GENERATE]  Carryforward plan ready with {len(actions)} items (no GPT cost)")
@@ -1561,13 +1357,6 @@ class ActionPlanGenerator:
             else:
                 # Step 2: Generate actions via GPT-4o-mini with retry logic
                 # Pydantic validation ensures complete data - no fallbacks
-                
-                # UPDATE STATUS: Designing
-                from app.services.processing_status_service import ProcessingStatusService
-                status_service = ProcessingStatusService(db)
-                processing_id = user_id if user_id else session_id
-                status_service.update_category_status(processing_id, "all", "processing", phase="Designing Plan", progress=15)
-                
                 logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
                 actions = None
                 gpt_cost = 0.0
@@ -1582,7 +1371,7 @@ class ActionPlanGenerator:
                 
                 # Generate actions with real citations from PubMed
                 # Pydantic validation happens inside _generate_actions_via_gpt
-                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db, session_id=session_id)
+                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db)
                 gpt_cost += attempt_cost
                 
                 if attempt_actions:
@@ -1610,7 +1399,7 @@ class ActionPlanGenerator:
                             
                             try:
                                 fallback_actions, fallback_cost = await self._generate_actions_via_gpt(
-                                    user_context, db, model_override=fallback_model, session_id=session_id
+                                    user_context, db, model_override=fallback_model
                                 )
                                 gpt_cost += fallback_cost
                                 
@@ -1658,43 +1447,29 @@ class ActionPlanGenerator:
                 actions = actions[:num_to_generate]
                 
                 # Add carryforward items at the beginning (they take priority)
-                # IMPORTANT: cf_item contains {'source_item': ActionPlanItem, 'source_variants': [...], 'original_id': int}
                 combined_actions = []
                 for cf_item in carryforward_items[:4]:  # Max 4 total
-                    source_item = cf_item.get("source_item")
-                    source_variants = cf_item.get("source_variants", [])
-                    
-                    if not source_item:
-                        logger.warning(f"[GENERATE] Carryforward item has no source_item, skipping")
-                        continue
-                    
-                    # Extract data from the source ActionPlanItem ORM object
                     combined_actions.append({
-                        "title": source_item.title or "Action",
-                        "category": source_item.category or "food",
-                        "specific_action": source_item.specific_action or "",
-                        "purpose": source_item.purpose or "",
-                        "target_hormone": source_item.target_hormone or "cortisol",
-                        "time_slot": source_item.time_slot or "morning",
-                        "carried_forward_from": cf_item.get("original_id") or source_item.id,
-                        "hormone_persona_intro": source_item.hormone_persona_intro or "",
-                        "symptoms": source_item.symptoms or [],
-                        "conditions": source_item.conditions or [],
-                        "food_items": source_item.food_items or [],
-                        "food_amounts": source_item.food_amounts or [],
-                        "exercise_types": source_item.exercise_types or [],
-                        "exercise_durations": source_item.exercise_durations or [],
-                        "exercise_intensities": source_item.exercise_intensities or [],
-                        "mindfulness_techniques": source_item.mindfulness_techniques or [],
-                        "mindfulness_durations": source_item.mindfulness_durations or [],
-                        "variants": [{
-                            "variant_type": v.variant_type,
-                            "title": v.title,
-                            "description": v.description,
-                            "image_url": v.image_url
-                        } for v in source_variants] if source_variants else [],
-                        "hero_image_url": source_item.hero_image_url,
-                        "research_studies": source_item.research_studies or [],
+                        "title": cf_item.get("title", "Action"),
+                        "category": cf_item.get("category", "general"),
+                        "specific_action": cf_item.get("specific_action", ""),
+                        "purpose": cf_item.get("purpose", ""),
+                        "target_hormone": cf_item.get("target_hormone", "cortisol"),
+                        "time_slot": cf_item.get("time_slot", "morning"),
+                        "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
+                        "hormone_persona_intro": cf_item.get("hormone_persona_intro", ""),
+                        "symptoms": cf_item.get("symptoms", []),
+                        "conditions": cf_item.get("conditions", []),
+                        "food_items": cf_item.get("food_items", []),
+                        "food_amounts": cf_item.get("food_amounts", []),
+                        "exercise_types": cf_item.get("exercise_types", []),
+                        "exercise_durations": cf_item.get("exercise_durations", []),
+                        "exercise_intensities": cf_item.get("exercise_intensities", []),
+                        "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
+                        "mindfulness_durations": cf_item.get("mindfulness_durations", []),
+                        "variants": cf_item.get("variants", []),
+                        "hero_image_url": cf_item.get("hero_image_url"),
+                        "research_studies": cf_item.get("research_studies", []),
                     })
                 
                 # Add new actions
@@ -1722,9 +1497,6 @@ class ActionPlanGenerator:
                 logger.info("[GENERATE] Step 3: Skipping image generation (image_mode=none)")
                 actions_with_images, image_cost = actions, 0.0
             else:
-                # UPDATE STATUS: Creating Visuals
-                status_service.update_category_status(processing_id, "all", "processing", phase="Creating Visuals", progress=60)
-                
                 logger.info(
                     f"[GENERATE] Step 3: Generating images for {len(actions)} actions (image_mode={image_mode})..."
                 )
@@ -1733,16 +1505,10 @@ class ActionPlanGenerator:
                     user_id=user_id,
                     db=db,
                     image_mode=image_mode,  # Use actual mode - no override
-                    session_id=session_id
                 )
                 total_cost += image_cost
                 logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
             
-            # Re-acquire lock to ensure safe storage and status update
-            logger.info(f"{log_prefix} Re-acquiring lock for save...")
-            await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
-            got_lock = True
-
             # Step 4: Store plan in database
             logger.info(f"{log_prefix} Step 4: Storing plan in database...")
             plan = await self._store_plan(
@@ -1755,25 +1521,6 @@ class ActionPlanGenerator:
                 db=db,
                 session_id=session_id
             )
-            
-            # Mark processing as completed
-            try:
-                processing_id = user_id if user_id else session_id
-                await db.execute(
-                    update(SessionProcessingStatus)
-                    .where(SessionProcessingStatus.session_id == processing_id)
-                    .values(
-                        processing_status="completed",
-                        phase="Completed",
-                        progress=100,
-                        finished_at=datetime.utcnow(),
-                        message="Plan generated successfully"
-                    )
-                )
-                await db.commit()
-            except Exception as e:
-                logger.error(f"{log_prefix} Failed to update processing status to completed: {e}")
-            
             logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
             
             # Step 4.5: Log AI Model Usage (Admin Tracking)
@@ -1836,26 +1583,6 @@ class ActionPlanGenerator:
         except Exception as e:
             logger.error(f"[GENERATE]  Error generating plan: {e}")
             logger.error(f"[GENERATE] Full traceback: {traceback.format_exc()}")
-            
-            # Update status to failed so we don't block subsequent requests
-            try:
-                processing_id = user_id if user_id else session_id
-                await db.execute(
-                    update(SessionProcessingStatus)
-                    .where(SessionProcessingStatus.session_id == processing_id)
-                    .values(
-                        processing_status="failed",
-                        phase="Failed",
-                        finished_at=datetime.utcnow(),
-                        # Store error as JSON
-                        error={"message": str(e)},
-                        message="Plan generation failed"
-                    )
-                )
-                await db.commit()
-            except Exception as update_err:
-                logger.error(f"[GENERATE] Failed to update status to failed: {update_err}")
-
             return {"success": False, "error": "Failed to generate plan. Please try again."}
         finally:
             # Release advisory lock if we acquired it
@@ -1972,12 +1699,19 @@ class ActionPlanGenerator:
             cycle_phase = user_context.get("cycle_phase", "menstrual")
             lifestyle_focus = user_context.get("lifestyle_focus", ["eat", "move", "pause"])
             
-            # Step 4: Select up to 4 recommendations using smart distribution
+            # Step 4: Select up to 4 recommendations (2 food, 2 movement ideally)
             selected_recs = []
+            categories_needed = {"food": 2, "movement": 2, "mindfulness": 0}
             
-            # Use centralized distribution logic from prompt_recommendation_engine
-            from app.services.prompt_recommendation_engine import get_category_distribution
-            categories_needed = get_category_distribution(lifestyle_focus)
+            # Adjust based on lifestyle_focus
+            if "eat" in lifestyle_focus and "move" in lifestyle_focus and "pause" not in lifestyle_focus:
+                categories_needed = {"food": 2, "movement": 2, "mindfulness": 0}
+            elif "eat" in lifestyle_focus and "pause" in lifestyle_focus and "move" not in lifestyle_focus:
+                categories_needed = {"food": 2, "movement": 0, "mindfulness": 2}
+            elif "move" in lifestyle_focus and "pause" in lifestyle_focus and "eat" not in lifestyle_focus:
+                categories_needed = {"food": 0, "movement": 2, "mindfulness": 2}
+            elif len(lifestyle_focus) == 3:
+                categories_needed = {"food": 2, "movement": 1, "mindfulness": 1}
             
             for rec in fresh_recs:
                 cat = rec.category.lower() if rec.category else "food"
@@ -2221,134 +1955,6 @@ class ActionPlanGenerator:
         except Exception as e:
             logger.error(f"[SESSION_CONVERT] Error converting session recs: {e}", exc_info=True)
             await db.rollback()
-            return None
-    
-    async def _check_pending_session_plan_for_user(
-        self,
-        user_id: str,
-        today: date,
-        db: AsyncSession,
-        max_wait_seconds: int = 0  # NO WAITING - return "generating" status immediately
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Check if there's a session plan being generated that will be auto-transferred to this user.
-        
-        OPTION 3+4 FIX: Instead of waiting for session completion (which can take 3+ minutes),
-        we return a "generating" status immediately. The frontend should poll /assignments/today/status
-        until the plan is ready.
-        
-        When a user signs up while session generation is in progress, the session status
-        is marked as "linked:{user_id}". The background generation will auto-transfer the
-        plan when complete.
-        
-        Args:
-            user_id: The authenticated user ID
-            today: Today's date in user's timezone
-            db: Async database session
-            max_wait_seconds: UNUSED - kept for backwards compatibility
-            
-        Returns:
-            - Plan response dict if session plan was already transferred
-            - {"success": True, "generating": True, ...} if session is still generating
-            - None if no linked session exists
-        """
-        from sqlalchemy import text
-        from app.core.database import ActionPlan, QuestionSession
-        
-        logger.info(f"🔍 [PENDING_SESSION_CHECK] Checking for pending session plan for user {user_id}")
-        
-        try:
-            # Find any session marked as linked to this user that's still processing
-            session_result = await db.execute(
-                text("""
-                    SELECT qs.session_id, qs.status, sps.processing_status, sps.progress, sps.phase, sps.started_at
-                    FROM question_sessions qs
-                    LEFT JOIN session_processing_status sps ON qs.session_id = sps.session_id
-                    WHERE qs.status = :linked_status
-                    ORDER BY qs.created_at DESC
-                    LIMIT 1
-                """),
-                {"linked_status": f"linked:{user_id}"}
-            )
-            session_row = session_result.fetchone()
-            
-            if not session_row:
-                logger.info(f"🔍 [PENDING_SESSION_CHECK] No linked session found for user {user_id}")
-                return None
-            
-            session_id = session_row.session_id
-            processing_status = session_row.processing_status
-            progress = session_row.progress or 0
-            phase = session_row.phase or "Starting"
-            started_at = session_row.started_at
-            
-            logger.info(f"🔍 [PENDING_SESSION_CHECK] Found linked session {session_id}, status: {processing_status}, progress: {progress}%")
-            
-            # Check if session is still processing
-            if processing_status not in ["queued", "in_progress"]:
-                # Session finished, check if plan was transferred
-                plan_result = await db.execute(
-                    text("SELECT id FROM action_plans WHERE uid = :uid AND plan_date = :today LIMIT 1"),
-                    {"uid": user_id, "today": today}
-                )
-                existing_plan_id = plan_result.scalar()
-                
-                if existing_plan_id:
-                    logger.info(f"✅ [PENDING_SESSION_CHECK] Plan {existing_plan_id} already transferred to user {user_id}")
-                    # Plan exists, fetch and return it
-                    existing_plan = await self._get_existing_plan(user_id, today, db)
-                    if existing_plan:
-                        resp = await self._format_plan_response(existing_plan, db)
-                        if isinstance(resp, dict) and resp.get("success"):
-                            resp["plan_source"] = "session_already_transferred"
-                        return resp
-                
-                logger.info(f"⚠️ [PENDING_SESSION_CHECK] Session {session_id} finished but no plan found for user")
-                return None
-            
-            # ═══════════════════════════════════════════════════════════════════════════════════
-            # OPTION 3+4 FIX: Session is still generating - DON'T WAIT!
-            # Return "generating" status immediately. Frontend will poll for completion.
-            # This prevents duplicate generations and eliminates complex wait loops.
-            # ═══════════════════════════════════════════════════════════════════════════════════
-            logger.info(f"🚀 [PENDING_SESSION_CHECK] Session {session_id} still generating - returning 'generating' status (NO WAIT)")
-            
-            # Calculate estimated time remaining (FIXED FORMULA)
-            elapsed_seconds = 0
-            if started_at:
-                elapsed_seconds = (datetime.utcnow() - started_at).total_seconds()
-            
-            # Fixed formula: estimate based on typical phase durations
-            if progress <= 15:
-                estimated_total = 60
-            elif progress <= 35:
-                estimated_total = 90
-            elif progress <= 60:
-                estimated_total = 120
-            elif progress <= 95:
-                estimated_total = 140
-            else:
-                estimated_total = 150
-            
-            remaining_ratio = (100 - progress) / 100 if progress > 0 else 1
-            estimated_remaining = min(estimated_total * remaining_ratio, 180)
-            
-            return {
-                "success": True,
-                "generating": True,  # KEY FLAG: tells frontend to poll
-                "plan_exists": False,
-                "session_id": session_id,
-                "processing_status": processing_status,
-                "progress": progress,
-                "phase": phase,
-                "elapsed_seconds": int(elapsed_seconds),
-                "estimated_remaining_seconds": int(estimated_remaining),
-                "message": f"Your personalized plan is being generated ({progress}% complete). Please wait...",
-                "plan_source": "session_generating"
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ [PENDING_SESSION_CHECK] Error checking pending session: {e}", exc_info=True)
             return None
     
     async def _check_and_carryforward_frozen_plan(
@@ -2898,16 +2504,14 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     logger.info(" Partial actions generated via OpenAI")
                 except Exception as e:
                     openai_error = str(e)
-                    # CRITICAL: Log OpenAI failures prominently for monitoring
-                    logger.error(f"🔴 [OPENAI_FAILURE] Primary API failed - falling back to Groq: {openai_error[:300]}")
+                    logger.warning(f" OpenAI exception: {openai_error[:200]}")
             else:
                 openai_error = "No OpenAI API key"
-                logger.warning("🟡 [CONFIG] OpenAI API key not configured, using Groq as primary")
             
             # Groq fallback
             if openai_error and GROQ_API_KEY:
                 try:
-                    logger.warning(f"🟡 [FALLBACK] Using Groq ({GROQ_FALLBACK_MODEL}) due to OpenAI error: {openai_error[:100]}")
+                    logger.info(f" Falling back to Groq ({GROQ_FALLBACK_MODEL})")
                     groq_client = AsyncGroq(api_key=GROQ_API_KEY)
                     
                     # gpt-oss-120b is a reasoning model - doesn't support response_format
@@ -3010,36 +2614,27 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 if not session:
                     logger.warning(f"[CONTEXT] Session {session_id} not found")
                     return None
-                
-                # Get hormones from session (set by root cause analysis)
-                # Fall back to defaults only if not set
-                primary_hormone = session.primary_hormone or "cortisol"
-                secondary_hormones = session.secondary_hormones or []
-                # secondary_hormones is a list of strings like ['androgens'], not tuples
-                secondary_hormone = secondary_hormones[0] if secondary_hormones else "progesterone"
-                
-                logger.info(f"[CONTEXT] Guest hormones from session: primary={primary_hormone}, secondary={secondary_hormone}")
                     
                 # Construct context from session data
                 return {
                     "age": session.age,
                     "cycle_day": 1, 
                     "cycle_phase": "follicular", # Default or infer from period_description?
-                    "primary_hormone": primary_hormone,
-                    "secondary_hormone": secondary_hormone,
+                    "primary_hormone": "cortisol", 
+                    "secondary_hormone": "progesterone",
                     "top_concern": session.top_concern,
                     "diagnosed_conditions": session.diagnosed_conditions or [],
-                    "period_concerns": session.period_concerns or [],
-                    "body_concerns": session.body_concerns or [],
-                    "skin_hair_concerns": session.skin_hair_concerns or [],
-                    "mental_health_concerns": session.mental_health_concerns or [],
-                    "family_history": session.family_history or [],
+                    "period_concerns": [], # Map from session?
+                    "body_concerns": [],
+                    "skin_hair_concerns": [],
+                    "mental_health_concerns": [],
+                    "family_history": [],
                     "lifestyle_focus": session.lifestyle_focus or ["eat", "move", "pause"],
                     "diet_preference": "none",
                     "food_allergies": [],
-                    "stress_level": session.stress_level or "moderate",
-                    "sleep_duration": session.sleep_duration or "7-8 hours",
-                    "workout_intensity": session.workout_intensity or "moderate",
+                    "stress_level": "moderate",
+                    "sleep_duration": "7-8 hours",
+                    "workout_intensity": "moderate",
                     "birth_control": session.birth_control,
                     "current_streak": 0,
                     "longest_streak": 0,
@@ -3952,19 +3547,17 @@ Format as bullet points."""
         """
         Generate STRICT category distribution guidance based on lifestyle focus.
         
-        CRITICAL: This MUST match get_category_distribution() in prompt_recommendation_engine.py!
-        
         Distribution Matrix (Total = 4):
         +-----------------+-------+----------+-------------+
         | Selection       | Food  | Movement | Mindfulness |
         +-----------------+-------+----------+-------------+
-        | Eat only        |   4   |    0     |      0      |  <-- ALL 4 to selected!
-        | Move only       |   0   |    4     |      0      |  <-- ALL 4 to selected!
-        | Pause only      |   0   |    0     |      4      |  <-- ALL 4 to selected!
+        | Eat only        |   2   |    1     |      1      |
+        | Move only       |   1   |    2     |      1      |
+        | Pause only      |   1   |    1     |      2      |
         | Eat + Move      |   2   |    2     |      0      |
         | Eat + Pause     |   2   |    0     |      2      |
         | Move + Pause    |   0   |    2     |      2      |
-        | All three/None  |   R   |    R     |      R      |  (Random 2+1+1)
+        | All three/None  |   2   |    1     |      1      |
         +-----------------+-------+----------+-------------+
         """
         focus = [f.lower() for f in (lifestyle_focus or [])]
@@ -3974,45 +3567,29 @@ Format as bullet points."""
         has_move = 'move' in focus
         has_pause = 'pause' in focus
         
-        logger.info(f"[CATEGORY] lifestyle_focus={lifestyle_focus}, num_selected={num_selected}")
-        
         if num_selected == 1:
-            # Single selection: ALL 4 items MUST be from that category!
             if has_eat:
-                guidance = "🍎 FOOD ONLY (STRICT ENFORCEMENT): Generate EXACTLY 4 Food items. ZERO movement, ZERO mindfulness. User selected ONLY food - respect this!"
+                return "Food focus (STRICT): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
             elif has_move:
-                guidance = "🏃 MOVEMENT ONLY (STRICT ENFORCEMENT): Generate EXACTLY 4 Movement items. ZERO food, ZERO mindfulness. User selected ONLY movement - respect this!"
+                return "Movement focus (STRICT): Generate 1 Food + 2 Movement + 1 Mindfulness = 4 total"
             elif has_pause:
-                guidance = "🧘 MINDFULNESS ONLY (STRICT ENFORCEMENT): Generate EXACTLY 4 Mindfulness items. ZERO food, ZERO movement. User selected ONLY mindfulness - respect this!"
-            else:
-                guidance = "Balanced: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
-            logger.info(f"[CATEGORY] Single selection guidance: {guidance}")
-            return guidance
-            
+                return "Mindfulness focus (STRICT): Generate 1 Food + 1 Movement + 2 Mindfulness = 4 total"
         elif num_selected == 2:
-            # Dual selection: 2 items from each selected category, 0 from unselected
             if has_eat and has_move:
-                guidance = "🍎🏃 FOOD + MOVEMENT (STRICT): Generate EXACTLY 2 Food + EXACTLY 2 Movement + ZERO Mindfulness = 4 total"
+                return "Food and movement focus (STRICT): Generate 2 Food + 2 Movement + 0 Mindfulness = 4 total (NO mindfulness!)"
             elif has_eat and has_pause:
-                guidance = "🍎🧘 FOOD + MINDFULNESS (STRICT): Generate EXACTLY 2 Food + ZERO Movement + EXACTLY 2 Mindfulness = 4 total"
+                return "Food and mindfulness focus (STRICT): Generate 2 Food + 0 Movement + 2 Mindfulness = 4 total (NO movement!)"
             elif has_move and has_pause:
-                guidance = "🏃🧘 MOVEMENT + MINDFULNESS (STRICT): Generate ZERO Food + EXACTLY 2 Movement + EXACTLY 2 Mindfulness = 4 total"
-            else:
-                guidance = "Balanced: Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
-            logger.info(f"[CATEGORY] Dual selection guidance: {guidance}")
-            return guidance
+                return "Movement and mindfulness focus (STRICT): Generate 0 Food + 2 Movement + 2 Mindfulness = 4 total (NO food!)"
         
-        # Default: All three or none selected - random distribution
-        guidance = "🎲 BALANCED (All/None selected): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total (or similar balanced mix)"
-        logger.info(f"[CATEGORY] Default guidance: {guidance}")
-        return guidance
+        # Default: All three or none selected
+        return "Balanced (STRICT): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
     
     async def _generate_actions_via_gpt(
         self,
         user_context: Dict[str, Any],
         db: Optional[AsyncSession] = None,
-        model_override: Optional[str] = None,
-        session_id: Optional[str] = None
+        model_override: Optional[str] = None
     ) -> Tuple[Optional[List[Dict]], float]:
         """Generate actions using GPT with tool calling."""
         logger.info(f"[GPT] ==========================================================================")
@@ -4178,14 +3755,6 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
         diagnosed_conditions = ", ".join(user_context.get("diagnosed_conditions", [])) or "womens health"
         
         try:
-            # UPDATE STATUS if DB available
-            if db:
-                from app.services.processing_status_service import ProcessingStatusService
-                status_svc = ProcessingStatusService(db)
-                pid = user_context.get('user_id') or session_id
-                if pid:
-                    status_svc.update_category_status(pid, "all", "processing", phase="Finding Research", progress=20)
-
             # =======================================================================
             # STEP 1: RESEARCH DISCOVERY PHASE
             # Search for evidence-based interventions BEFORE deciding what to recommend
@@ -4254,13 +3823,6 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
             
             logger.info(f" Research complete: Found {len(research_findings)} relevant papers")
             
-            # UPDATE STATUS after research
-            if db:
-                pid = user_context.get('user_id') or session_id
-                if pid:
-                    status_svc.update_category_status(pid, "all", "processing", phase="Drafting Plan", progress=35)
-            
-            
             # Build research summary for GPT
             research_summary = "\\n\\n======================================================================\\n"
             research_summary += "RESEARCH FINDINGS - USE THESE TO INFORM YOUR RECOMMENDATIONS\\n"
@@ -4314,14 +3876,14 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
-            # NOTE: Use adapt_openai_params_for_model to handle GPT-5-nano differences
-            # (uses max_completion_tokens instead of max_tokens, no temperature)
             openai_payload = {
                 "model": self.GPT_MODEL,
                 "messages": [
                     {"role": "system", "content": enhanced_system_with_research},
                     {"role": "user", "content": prompt}
                 ],
+                "temperature": self.GPT_TEMPERATURE,
+                "max_tokens": 4000,
                 "response_format": {
                     "type": "json_schema",
                     "json_schema": {
@@ -4331,14 +3893,6 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     }
                 }
             }
-            
-            # Adapt params for model (GPT-5-nano uses max_completion_tokens, not max_tokens)
-            adapted_params = adapt_openai_params_for_model(
-                self.GPT_MODEL,
-                temperature=self.GPT_TEMPERATURE,
-                max_tokens=4000
-            )
-            openai_payload.update(adapted_params)
             
             # Try OpenAI first
             logger.info(f" Trying OpenAI with model: {self.GPT_MODEL}")
@@ -4451,31 +4005,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             output_tokens = data.get("usage", {}).get("completion_tokens", 0)
             total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
             
-            content = data["choices"][0]["message"].get("content")
-            finish_reason = data["choices"][0].get("finish_reason", "unknown")
-            
-            # CRITICAL: Check for None or empty content
-            # This can happen when:
-            # 1. GPT returns a refusal (content is None, refusal field is set)
-            # 2. Structured outputs fail silently 
-            # 3. Model returns empty response
-            # 4. finish_reason is "length" (truncated) or "content_filter" (blocked)
-            if content is None:
-                refusal = data["choices"][0]["message"].get("refusal")
-                logger.error(f"GPT returned None content. finish_reason={finish_reason}")
-                logger.error(f"Full message: {data['choices'][0]['message']}")
-                if refusal:
-                    logger.error(f"GPT REFUSED to generate: {refusal}")
-                else:
-                    logger.error("No refusal reason provided")
-                return (None, total_cost)
-            
-            if not content or content.strip() == "":
-                logger.error(f"GPT returned empty content string. finish_reason={finish_reason}")
-                logger.error(f"Full message: {data['choices'][0]['message']}")
-                logger.error(f"Usage: input={input_tokens}, output={output_tokens}")
-                return (None, total_cost)
-            
+            content = data["choices"][0]["message"]["content"]
             logger.info(f" GPT generated recommendations based on {len(research_findings)} research papers")
             
             # Parse response
@@ -4921,7 +4451,6 @@ JSON ONLY:
         user_id: str,
         db: AsyncSession,
         image_mode: Literal["full", "hero_only", "variants_only", "none"] = "full",
-        session_id: Optional[str] = None
     ) -> Tuple[List[Dict], float]:
         """
         Generate all images for all actions (16 total) in PARALLEL.
@@ -4953,7 +4482,7 @@ JSON ONLY:
                         prompt=prompt,
                         category=category,
                         variant_type=variant_type,
-                        user_id=user_id or (f"guest_{session_id}" if session_id else "unknown"),
+                        user_id=user_id,
                         db=task_session,
                         title_embedding=title_embedding
                     )
@@ -5414,15 +4943,6 @@ JSON ONLY:
     ) -> None:
         """Check if plan items have missing hero images and generate them."""
         from app.core.database import ActionPlanItem, ActionPlanItemVariant
-
-        def _fallback_for_category(cat: Optional[str]) -> str:
-            c = (cat or "food").lower()
-            # Prefer the central fallback map from ImageLibraryService if present.
-            service_map = getattr(self.image_service, "FALLBACK_IMAGE_URLS", None)
-            if isinstance(service_map, dict):
-                return service_map.get(c) or service_map.get("food") or ""
-            # Hard fallback (should rarely be used).
-            return ""
         
         try:
             # Get items with missing hero images
@@ -5488,20 +5008,15 @@ JSON ONLY:
                         return False
                     
                     logger.info(f"[ENSURE_IMAGES] Generating hero: '{item.title[:40]}' ({item.category})")
-
-                    # Prefer the LLM-provided hero prompt if available (usually more illustrative
-                    # than the short title), but keep cache matching stable on the title.
-                    hero_prompt = getattr(item, "hero_image_prompt", None) or item.title
                     
                     async with self.db_semaphore:
                         task_session = await _create_async_session(self.async_session_maker)
                         url, was_cached, cost = await self.image_service.get_or_generate_image(
-                            prompt=hero_prompt,
+                            prompt=item.title,  # Use TITLE for cache matching
                             category=item.category or "food",
                             variant_type="hero",
                             user_id=user_id,
-                            db=task_session,
-                            cache_key_text=item.title,
+                            db=task_session
                         )
                     
                     if url:
@@ -5525,8 +5040,6 @@ JSON ONLY:
                     prompt = variant.image_prompt
                     if not prompt:
                         prompt = f"{variant.variant_type.title()} {item.title}, {item.category} lifestyle, professional photography"
-
-                    cache_key_text = variant.title or item.title
                     
                     async with self.db_semaphore:
                         task_session = await _create_async_session(self.async_session_maker)
@@ -5535,8 +5048,7 @@ JSON ONLY:
                             category=item.category or "food",
                             variant_type=variant.variant_type,
                             user_id=user_id,
-                            db=task_session,
-                            cache_key_text=cache_key_text,
+                            db=task_session
                         )
                     
                     if url:
@@ -5563,29 +5075,6 @@ JSON ONLY:
             # Count successes
             success_count = sum(1 for r in all_results if r and not isinstance(r, Exception))
             logger.info(f"[ENSURE_IMAGES] Generated {success_count}/{total_missing} images for plan {plan.id}")
-
-            # CRITICAL: Never leave any image URL blank.
-            # If generation failed for any item/variant, apply fallback URLs so the mobile UI
-            # never sees missing images.
-            fallback_applied = 0
-            for item in items_missing_images:
-                if not item.hero_image_url:
-                    item.hero_image_url = _fallback_for_category(getattr(item, "category", None))
-                    fallback_applied += 1
-                    logger.warning(
-                        f"[ENSURE_IMAGES] ⚠️ Applied fallback hero for item {item.id} ({item.category}): '{(item.title or '')[:30]}'"
-                    )
-
-            for item, v in variants_missing_images:
-                if not v.image_url:
-                    v.image_url = _fallback_for_category(getattr(item, "category", None))
-                    fallback_applied += 1
-                    logger.warning(
-                        f"[ENSURE_IMAGES] ⚠️ Applied fallback variant for variant {v.id} ({item.category}/{v.variant_type})"
-                    )
-
-            if fallback_applied:
-                logger.info(f"[ENSURE_IMAGES] Applied {fallback_applied} fallback image URLs")
             
             # Commit all changes to the main session
             await db.commit()
@@ -5602,13 +5091,6 @@ JSON ONLY:
     ) -> Dict[str, Any]:
         """Format plan for API response."""
         from app.core.database import ActionPlanItem, ActionPlanItemVariant
-
-        def _fallback_for_category(cat: Optional[str]) -> str:
-            c = (cat or "food").lower()
-            service_map = getattr(self.image_service, "FALLBACK_IMAGE_URLS", None)
-            if isinstance(service_map, dict):
-                return service_map.get(c) or service_map.get("food") or ""
-            return ""
         
         try:
             # Get all items for this plan
@@ -5642,7 +5124,7 @@ JSON ONLY:
                     "purpose": item.purpose,
                     "target_hormone": item.target_hormone,
                     "hormone_persona_intro": item.hormone_persona_intro,
-                    "hero_image_url": item.hero_image_url or _fallback_for_category(item.category),
+                    "hero_image_url": item.hero_image_url,
                     "research_studies": item.research_studies or [],
                     "conditions": item.conditions or [],
                     "symptoms": item.symptoms or [],
@@ -5653,7 +5135,7 @@ JSON ONLY:
                             "variant_type": v.variant_type,
                             "title": v.title,
                             "description": v.description,
-                            "image_url": v.image_url or _fallback_for_category(item.category)
+                            "image_url": v.image_url
                         }
                         for v in variants
                     ]
@@ -5886,8 +5368,8 @@ REQUIREMENTS:
 - Should be DIFFERENT from: {original.title} (user disliked this)
 - Dislike reason: {reason or 'not specified'}
 - If the reason includes a specific requested item (e.g., "replace with cashews"), you MUST use that exact item as the core of the new action.
-- ⚠️ CRITICAL: Category MUST be EXACTLY: {original.category} (Keep replacement in SAME category!)
-- ⚠️ CRITICAL: Target hormone MUST be EXACTLY: {original.target_hormone} (Keep replacement targeting SAME hormone!)
+- AVOID generating same category as disliked ({original.category}) unless users lifestyle_focus only includes that category
+- Prefer different category from: {original.category}
 - Users lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 
 ======================================================================
@@ -6096,9 +5578,6 @@ Respond with valid JSON object only."""
                             parsed_action["research_studies"] = [research_paper]
                     
                     # Validate the action
-                    # ENFORCE same category and hormone as original (LLM sometimes ignores instructions)
-                    parsed_action["category"] = original.category.lower() if original.category else "food"
-                    parsed_action["target_hormone"] = original.target_hormone or "cortisol"
                     category = parsed_action.get("category", "food")
                     valid, missing = self._validate_action_fields(parsed_action, category)
                     
@@ -7445,17 +6924,14 @@ OUTPUT FORMAT (JSON Array):
                 replacement_title = replacement_action.get("title", "")
                 replacement_category = replacement_action.get("category", "food")
                 logger.info(f"[BATCH_REPLACE] Generating image {index+1}: '{replacement_title[:40]}' ({replacement_category})")
-
-                hero_prompt = replacement_action.get("image_prompt") or replacement_title
                 
                 async with AsyncSession(async_engine) as image_db:
                     hero_url, was_cached, image_cost = await self.image_service.get_or_generate_image(
-                        prompt=hero_prompt,
+                        prompt=replacement_title,
                         category=replacement_category,
                         variant_type="hero",
                         user_id=user_id,
-                        db=image_db,
-                        cache_key_text=replacement_title,
+                        db=image_db
                     )
                     logger.info(f"[BATCH_REPLACE]  Image {index+1} {'CACHE HIT' if was_cached else 'GENERATED'}: '{replacement_title[:30]}...'")
                     return (hero_url, was_cached, image_cost)
@@ -7608,28 +7084,6 @@ OUTPUT FORMAT (JSON Array):
                 elif not isinstance(raw_variants, list):
                     raw_variants = []
                 
-                # FIX: Generate default variants when GPT returns empty variants
-                if not raw_variants:
-                    category = replacement_action.get("category", "food").lower()
-                    replacement_title = replacement_action.get("title", "Wellness Action")
-                    
-                    variant_type_defaults = {
-                        "food": ["healthy", "easy", "tasty"],
-                        "movement": ["gentle", "quick", "energizing"],
-                        "mindfulness": ["brief", "guided", "solo"],
-                    }.get(category, ["alternative", "simpler", "quick"])
-                    
-                    # Create default variant dicts
-                    raw_variants = [
-                        {
-                            "variant_type": vt,
-                            "title": f"{vt.title()} {replacement_title}",
-                            "description": f"A {vt} way to enjoy {replacement_title}"
-                        }
-                        for vt in variant_type_defaults
-                    ]
-                    logger.info(f"[BATCH_REPLACE] No variants from GPT, generating 3 default variants for '{replacement_title[:30]}'")
-                
                 for variant in raw_variants[:3]:
                     # Skip if variant is not a dict
                     if not isinstance(variant, dict):
@@ -7656,14 +7110,12 @@ OUTPUT FORMAT (JSON Array):
                     MAX_VARIANT_RETRIES = 3
                     for retry_attempt in range(MAX_VARIANT_RETRIES):
                         try:
-                            variant_prompt = variant.get("image_prompt") or variant_title
                             variant_url, was_cached, variant_cost = await self.image_service.get_or_generate_image(
-                                prompt=variant_prompt,
+                                prompt=variant_title,  # Use TITLE for cache matching
                                 category=replacement_action.get("category", "food"),
                                 variant_type=v_type,
                                 user_id=user_id,
-                                db=db,
-                                cache_key_text=variant_title,
+                                db=db
                             )
                             if variant_url:
                                 total_cost += variant_cost
@@ -7746,7 +7198,6 @@ OUTPUT FORMAT (JSON Array):
             
             
             await db.commit()
-            logger.info(f"✅ Database commit successful for batch replacement of {len(replacements)} actions")
             
             # Fetch variants for each new action to include in response
             from app.core.database import ActionPlanItemVariant
@@ -7776,11 +7227,9 @@ OUTPUT FORMAT (JSON Array):
             }
             
         except Exception as e:
-            import traceback
-            logger.error(f"❌ Error in batch replacement: {e}")
-            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            logger.error(f"Error in batch replacement: {e}")
             await db.rollback()
-            return {"success": False, "error": f"Failed to replace actions: {str(e)[:100]}"}
+            return {"success": False, "error": "Failed to replace actions. Please try again."}
     
     async def record_feedback(
         self,

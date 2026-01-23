@@ -29,6 +29,40 @@ from app.utils.timezone_utils import get_user_current_date
 logger = logging.getLogger(__name__)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CONVERSATION EVALUATION HELPER (NON-BREAKING)
+# ═══════════════════════════════════════════════════════════════════════════
+def _evaluate_conversation_safely(
+    thread_type: str,
+    thread_id: str,
+    uid: str,
+    raw_messages: list,
+    is_complete: bool,
+    db: Session
+) -> None:
+    """
+    Evaluate conversation quality without blocking or breaking main flow.
+    
+    This is a fire-and-forget helper that logs any errors but never raises.
+    """
+    try:
+        from app.services.conversation_evaluation_service import get_conversation_evaluator
+        evaluator = get_conversation_evaluator()
+        result = evaluator.evaluate_thread_sync(
+            thread_type=thread_type,
+            thread_id=thread_id,
+            uid=uid,
+            raw_messages=raw_messages,
+            is_complete=is_complete,
+            db=db
+        )
+        if result:
+            logger.info(f"📊 Conversation evaluated: quality={result.get('conversation_quality_score')}")
+    except Exception as e:
+        # Never let evaluation failure break the main flow
+        logger.warning(f"Conversation evaluation skipped (non-critical): {e}")
+
+
 class WeeklyCheckInService:
     """
     Manages weekly check-in sessions.
@@ -755,6 +789,18 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
         self.db.refresh(checkin)
         
         logger.info(f"Completed check-in {checkin.id} for user {checkin.uid}")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # EVALUATE CONVERSATION QUALITY (NON-BLOCKING)
+        # ═══════════════════════════════════════════════════════════════════════════
+        _evaluate_conversation_safely(
+            thread_type="weekly_checkin",
+            thread_id=str(checkin.id),
+            uid=checkin.uid,
+            raw_messages=checkin.raw_messages or [],
+            is_complete=True,
+            db=self.db
+        )
         
         # Use AI's completion message directly (it already includes findings)
         completion_message = checkin.conversation_summary or "Thanks for sharing! I've updated your health profile. 💜"
