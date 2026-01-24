@@ -98,6 +98,7 @@ class CarePlanCheckInState(TypedDict):
     targeted_action_index: Optional[int]  # 0-3 index
     change_reason: Optional[str]
     barrier_type: Optional[str]
+    feedback_topic: Optional[str]  # NEW: For plan feedback intents (generic, repetitive, etc.)
     
     # Multi-stage workflow
     workflow_stage: Optional[str]
@@ -129,6 +130,7 @@ class IntentClassification(BaseModel):
     targeted_action_index: Optional[int] = None  # 1-4 (user-facing)
     proposed_replacement: Optional[str] = None   # "cashews", "dance", etc.
     confidence: float
+    feedback_topic: Optional[str] = None  # For feedback intents: "generic", "science", "personalization", etc.
 
 
 class BarrierAnalysis(BaseModel):
@@ -289,7 +291,7 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
         for i, item in enumerate(state.get("action_items", []))
     ])
 
-    prompt = f"""Classify the user's intent for this care plan check-in message using ONLY the action list below.
+    prompt = f"""Classify the user's intent for this care plan check-in message.
 
 User Message: "{user_message}"
 
@@ -302,35 +304,43 @@ Today's Action Items:
 Intent Categories:
 1. **complete_action**: User completed an action ("Done!", "✓", "I ate the walnuts")
 2. **skip_action**: User skipping ("Skip yoga", "Can't do this", "Not today")
-3. **change_action**: User wants to replace ("Change the salmon", "I want something else")
-4. **request_alternates**: Asking for options ("Show me alternatives", "What else can I eat?")
-5. **negotiate**: Conditional/barriers ("If I can't find X, what else?", "This is too hard", "Not dance")
-6. **ask_why**: Asking rationale ("Why walnuts?", "What does this help?")
+3. **change_action**: User wants to replace a SPECIFIC action ("Change the salmon", "I want something else for action 2")
+4. **request_alternates**: Asking for options for a specific action ("Show me alternatives for the walnuts")
+5. **negotiate**: Conditional/barriers for specific action ("If I can't find X, what else?", "This is too hard")
+6. **ask_why**: Asking rationale for ONE specific action ("Why walnuts?", "What does salmon help?")
 7. **cancel_action**: User wants to stop changing/cancel request ("Never mind", "Cancel", "Go back", "Keep as is")
-8. **general**: General chat or unclear
+8. **plan_feedback**: User is giving FEEDBACK about the OVERALL PLAN quality, NOT asking about a specific action!
+   Examples: "This looks generic", "Not personalized", "Seems random", "Doesn't match my symptoms", "Same as yesterday"
+9. **challenge_science**: User is questioning the RESEARCH or SCIENCE behind recommendations
+   Examples: "Is this backed by research?", "Have you done thorough research?", "Just random suggestions?"
+10. **explain_plan**: User wants to understand HOW the whole plan was created
+   Examples: "How did you make this?", "Why these specific items?", "What's the logic?"
+11. **general**: General chat or unclear
+
+⚠️ CRITICAL DISTINCTION:
+- If user says "Why walnuts?" → ask_why (about ONE action)
+- If user says "Why these items?" or "My plan looks generic" → plan_feedback (about WHOLE plan)
+- If user says "All four of them" or "The whole plan" → This is about the ENTIRE plan, NOT a specific action!
 
 Rules for targeted_action_index:
-- If the user clearly refers to a plan item by name or time (e.g., "morning one"), select that item.
-- If the user mentions multiple items, pick the most directly referenced item.
-- If the user wants to change the whole plan but doesn't name an item, set targeted_action_index to null.
+- ONLY set this if user clearly refers to ONE specific action by name/number
+- If user says "all of them", "the whole plan", "my actions", etc. → set to null
+- If user is giving general feedback about the plan → set to null
 
-Rules for proposed_replacement:
-- If user says "replace X with Y" or "change X to Y", set proposed_replacement to Y.
-- If user says "swap it for Y" or "I want Y instead", set proposed_replacement to Y.
-- If user is asking for alternatives without specifying a replacement, set proposed_replacement to null.
-
-Examples:
-- "Replace walnuts with cashews" → intent=change_action, targeted_action_index=1 (walnuts), proposed_replacement="cashews"
-- "Change the evening stretch" → intent=change_action, targeted_action_index=4 (evening item), proposed_replacement=null
-- "What else can I eat?" → intent=request_alternates, targeted_action_index=food item if mentioned else null
-- "Why is this here?" → intent=ask_why, targeted_action_index=most recent item referenced or null
+Rules for feedback_topic (only for plan_feedback/challenge_science intents):
+- "generic": Plan feels like generic wellness, not personalized
+- "repetitive": Same items appearing repeatedly
+- "not_personalized": Doesn't match user's specific conditions/symptoms
+- "science_question": Questioning the research behind recommendations
+- "other": Other feedback
 
 Output JSON:
 {{
-  "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|cancel_action|general",
+  "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|cancel_action|plan_feedback|challenge_science|explain_plan|general",
   "targeted_action_index": 1-4 or null,
   "proposed_replacement": "string" or null,
-  "confidence": 0.0-1.0
+  "confidence": 0.0-1.0,
+  "feedback_topic": "generic|repetitive|not_personalized|science_question|other" or null
 }}
 """
     
@@ -353,6 +363,7 @@ Output JSON:
             "targeted_action_id": targeted_id,
             "targeted_action_index": targeted_idx,
             "change_reason": classification.proposed_replacement or state.get("change_reason"), # Store as reason if present
+            "feedback_topic": classification.feedback_topic,  # NEW: Pass feedback topic for feedback handlers
             "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
             "phase": "processing"
         }
@@ -842,6 +853,219 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
         }
 
 
+async def handle_plan_feedback(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle when user gives feedback about the OVERALL plan quality."""
+    
+    user_message = state.get("user_message", "")
+    action_items = state.get("action_items", [])
+    user_id = state.get("user_id")
+    feedback_topic = state.get("feedback_topic", "generic")
+    
+    # Log the feedback for learning
+    logger.info(f"[PLAN_FEEDBACK] User {user_id} feedback - topic: {feedback_topic}, message: {user_message}")
+    
+    # Get user context to explain personalization
+    user_context = await _get_user_context_for_explanation(user_id)
+    
+    # Build a personalized explanation
+    actions_summary = ", ".join([item.get("title", "action") for item in action_items[:4]])
+    
+    # Create empathetic response that acknowledges feedback AND explains personalization
+    if feedback_topic == "generic":
+        response = f"""I hear you - I want to make sure your plan truly fits YOUR needs. 
+
+Let me explain why I chose these for you today:
+
+Your plan ({actions_summary}) was created based on:
+• Your cycle phase: {user_context.get('cycle_phase', 'unknown')}
+• Your main concerns: {user_context.get('concerns', 'overall wellness')}
+• Your diagnosed conditions: {user_context.get('conditions', 'none specified')}
+
+Each item is backed by research for hormone balance. Would you like me to explain the science behind any specific action, or would you prefer I regenerate your plan with different items?"""
+    elif feedback_topic == "repetitive":
+        response = f"""You're right to point that out! Some foods like pumpkin seeds and berries appear often because they're powerhouses for hormone health - but variety matters too.
+
+Would you like me to:
+1. Show you WHY these specific items help your {user_context.get('concerns', 'hormone balance')}
+2. Generate a FRESH plan with different foods that have similar benefits?
+
+Just let me know!"""
+    elif feedback_topic == "not_personalized":
+        response = f"""I understand - you want to feel like this plan was made just for YOU, not copy-pasted from a template.
+
+Here's what I know about you:
+• Cycle phase: {user_context.get('cycle_phase', 'unknown')}
+• Primary concerns: {user_context.get('concerns', 'hormone wellness')}
+• Conditions: {user_context.get('conditions', 'none specified')}
+
+If any of this is outdated or incomplete, we can update your profile! Or I can regenerate today's plan focusing more specifically on your needs. What would you prefer?"""
+    else:
+        response = f"""Thank you for your feedback! I want to make sure every plan feels truly personalized for you.
+
+Today's actions ({actions_summary}) were chosen for your {user_context.get('concerns', 'hormone health')}. 
+
+Would you like me to:
+• Explain WHY each item was chosen for you specifically
+• Regenerate the plan with different items
+• Update your profile so future plans fit better?"""
+    
+    ui_blocks = [
+        {
+            "type": "quick_replies",
+            "replies": [
+                {"label": "Explain the science", "value": "explain why you chose these items"},
+                {"label": "Regenerate plan", "value": "give me a completely different plan"},
+                {"label": "Update my profile", "value": "let me update my health profile"}
+            ]
+        }
+    ]
+    
+    return {
+        **state,
+        "bot_response": response,
+        "ui_blocks": ui_blocks,
+        "phase": "awaiting_feedback_response"
+    }
+
+
+async def handle_challenge_science(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle when user questions the research/science behind the plan."""
+    
+    user_message = state.get("user_message", "")
+    action_items = state.get("action_items", [])
+    user_id = state.get("user_id")
+    
+    logger.info(f"[CHALLENGE_SCIENCE] User {user_id} questioning science: {user_message}")
+    
+    # Get user context
+    user_context = await _get_user_context_for_explanation(user_id)
+    
+    # Build explanation with actual citations from plan items
+    science_explanations = []
+    for i, item in enumerate(action_items[:4]):
+        title = item.get("title", "Action")
+        evidence = item.get("evidence_summary", item.get("why_it_works", ""))
+        citations = item.get("citations", [])
+        
+        if evidence:
+            citation_text = f" [{', '.join(citations[:2])}]" if citations else ""
+            science_explanations.append(f"**{title}**: {evidence}{citation_text}")
+        else:
+            science_explanations.append(f"**{title}**: Selected for {user_context.get('concerns', 'hormone support')}")
+    
+    explanations_text = "\n".join(science_explanations)
+    
+    response = f"""Great question! I absolutely base my recommendations on research. Here's the science behind today's plan:
+
+{explanations_text}
+
+Each recommendation targets your specific concerns ({user_context.get('concerns', 'hormone balance')}) and is timed for your current cycle phase ({user_context.get('cycle_phase', 'unknown')}).
+
+Would you like me to dive deeper into any specific item, or would you prefer I find different evidence-backed alternatives?"""
+    
+    ui_blocks = [
+        {
+            "type": "quick_replies",
+            "replies": [
+                {"label": "Tell me more", "value": "explain more about the research"},
+                {"label": "Different options", "value": "show me alternative items with different research"},
+                {"label": "Looks good!", "value": "okay I trust the science, let's continue"}
+            ]
+        }
+    ]
+    
+    return {
+        **state,
+        "bot_response": response,
+        "ui_blocks": ui_blocks,
+        "phase": "complete"
+    }
+
+
+async def handle_explain_plan(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle when user wants to understand HOW the plan was created."""
+    
+    user_message = state.get("user_message", "")
+    action_items = state.get("action_items", [])
+    user_id = state.get("user_id")
+    
+    logger.info(f"[EXPLAIN_PLAN] User {user_id} wants explanation: {user_message}")
+    
+    # Get user context
+    user_context = await _get_user_context_for_explanation(user_id)
+    
+    response = f"""Let me show you exactly how I created today's plan for YOU:
+
+**Step 1: Your Profile**
+I considered your cycle phase ({user_context.get('cycle_phase', 'unknown')}), your main concerns ({user_context.get('concerns', 'hormone wellness')}), and any conditions you've shared ({user_context.get('conditions', 'none')}).
+
+**Step 2: Research-Backed Selection**
+I searched medical research (PubMed studies) for interventions that help with your specific concerns during this phase of your cycle.
+
+**Step 3: Practical Fit**
+I filtered for actions that fit your preferences, dietary restrictions, and lifestyle.
+
+**Step 4: Today's 4 Actions**
+{chr(10).join([f"• {item.get('title')}: {item.get('why_it_works', 'supports your goals')}" for item in action_items[:4]])}
+
+Is there anything specific you'd like me to adjust or explain further?"""
+    
+    ui_blocks = [
+        {
+            "type": "quick_replies",
+            "replies": [
+                {"label": "Makes sense!", "value": "great, let's continue with the plan"},
+                {"label": "Still too generic", "value": "I still feel the plan is too generic"},
+                {"label": "Change something", "value": "I'd like to swap one of the items"}
+            ]
+        }
+    ]
+    
+    return {
+        **state,
+        "bot_response": response,
+        "ui_blocks": ui_blocks,
+        "phase": "complete"
+    }
+
+
+async def _get_user_context_for_explanation(user_id: int) -> dict:
+    """Fetch user context to explain plan personalization."""
+    try:
+        from app.database import SessionLocal
+        from app.models.user import User
+        from app.models.response import Response
+        
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            
+            # Get user's period concerns from responses
+            concerns_response = db.query(Response).filter(
+                Response.user_id == user_id,
+                Response.question_id == 5  # Period concerns question
+            ).first()
+            
+            # Get diagnosed conditions
+            conditions_response = db.query(Response).filter(
+                Response.user_id == user_id,
+                Response.question_id == 18  # Diagnosed conditions question
+            ).first()
+            
+            return {
+                "cycle_phase": getattr(user, 'current_cycle_phase', 'follicular') if user else 'unknown',
+                "concerns": concerns_response.answer_text if concerns_response else 'hormone balance',
+                "conditions": conditions_response.answer_text if conditions_response else 'none specified'
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error fetching user context: {e}")
+        return {
+            "cycle_phase": "unknown",
+            "concerns": "hormone health",
+            "conditions": "none specified"
+        }
 
 
 async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckInState:
@@ -903,6 +1127,9 @@ def route_by_intent(state: CarePlanCheckInState) -> str:
         "negotiate": "handle_change_action",  # Treat negotiate as change
         "ask_why": "handle_ask_why",
         "cancel_action": "handle_cancel_action",
+        "plan_feedback": "handle_plan_feedback",  # NEW: Overall plan quality feedback
+        "challenge_science": "handle_challenge_science",  # NEW: Questioning research
+        "explain_plan": "handle_explain_plan",  # NEW: How was plan created
         "general": "handle_general_response"
     }
     
@@ -1073,6 +1300,10 @@ def create_process_message_graph():
     workflow.add_node("handle_general_response", handle_general_response)
     workflow.add_node("handle_cancel_action", handle_cancel_action)
     workflow.add_node("handle_ask_why", handle_ask_why)
+    # NEW: Feedback handling nodes
+    workflow.add_node("handle_plan_feedback", handle_plan_feedback)
+    workflow.add_node("handle_challenge_science", handle_challenge_science)
+    workflow.add_node("handle_explain_plan", handle_explain_plan)
     
     # Set entry point
     workflow.set_entry_point("classify_user_intent")
@@ -1088,7 +1319,11 @@ def create_process_message_graph():
             "generate_alternate_suggestions": "generate_alternate_suggestions",
             "handle_general_response": "handle_general_response",
             "handle_cancel_action": "handle_cancel_action",
-            "handle_ask_why": "handle_ask_why"
+            "handle_ask_why": "handle_ask_why",
+            # NEW: Feedback routes
+            "handle_plan_feedback": "handle_plan_feedback",
+            "handle_challenge_science": "handle_challenge_science",
+            "handle_explain_plan": "handle_explain_plan"
         }
     )
     
@@ -1100,6 +1335,10 @@ def create_process_message_graph():
     workflow.add_edge("handle_ask_why", END)
     workflow.add_edge("generate_alternate_suggestions", END)
     workflow.add_edge("generate_direct_replacement_suggestion", END)
+    # NEW: Feedback handlers go to END
+    workflow.add_edge("handle_plan_feedback", END)
+    workflow.add_edge("handle_challenge_science", END)
+    workflow.add_edge("handle_explain_plan", END)
     
     # Change action → alternates
     workflow.add_conditional_edges(
