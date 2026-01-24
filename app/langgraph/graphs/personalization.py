@@ -7,6 +7,7 @@ FIXES APPLIED:
 2. ✅ Profile value validation before storage
 3. ✅ Proper graph flow (not ending at elicitation)
 4. ✅ Complete unlock tier implementation
+5. ✅ UNIFIED MEMORY: Cross-chatbot context awareness
 
 Features:
 - Reward-gated progressive profiling (7 unlock tiers)
@@ -14,6 +15,7 @@ Features:
 - Cycle-aware discovery prompts
 - Profile density scoring
 - chatbot_memory JSON storage
+- Cross-chatbot memory for smarter questions
 """
 
 from typing import TypedDict, List, Dict, Any, Optional, Literal
@@ -26,6 +28,9 @@ from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
 from app.langgraph.helpers.database_helpers import get_cycle_info, get_streak_info, get_user_profile
 from app.core.database import get_db
 from app.langgraph.helpers.ui_blocks_helper import generate_intelligent_ctas, create_confirmation_block
+
+# NEW: Unified memory for cross-chatbot context
+from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +82,10 @@ class PersonalizationState(TypedDict):
     current_profile_data: Dict[str, Any]
     profile_gaps: List[str]
     profile_density: float
+    
+    # UNIFIED MEMORY: Cross-chatbot context
+    unified_context: Optional[Dict[str, Any]]
+    formatted_context: Optional[str]
     
     # Conversation
     messages: List[Dict[str, str]]
@@ -225,10 +234,16 @@ def validate_profile_field(field_name: str, value: Any) -> ValidationResult:
 # ═══════════════════════════════════════════════════════════════════
 
 async def load_profile_and_check_unlocks(state: PersonalizationState) -> PersonalizationState:
-    """Load profile and determine unlocked features."""
+    """Load profile, cross-chatbot memory, and determine unlocked features."""
     try:
         db = next(get_db())
         user_id = state["user_id"]
+        
+        # ══════════════════════════════════════════════════════════════
+        # NEW: Load unified cross-chatbot memory context
+        # ══════════════════════════════════════════════════════════════
+        unified_ctx = await get_unified_context(user_id, "personalization")
+        formatted_ctx = format_context_for_prompt(unified_ctx)
         
         # Get streak
         streak_info = get_streak_info(user_id, db)
@@ -285,6 +300,8 @@ async def load_profile_and_check_unlocks(state: PersonalizationState) -> Persona
             "profile_density": density,
             "cycle_day": cycle_info.get("cycle_day"),
             "cycle_phase": cycle_info.get("phase"),
+            "unified_context": unified_ctx,
+            "formatted_context": formatted_ctx,
             "bot_response": greeting,
             "messages": [{"role": "assistant", "content": greeting}],
             "phase": "loaded"

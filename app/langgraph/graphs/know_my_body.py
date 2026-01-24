@@ -8,6 +8,7 @@ FIXES APPLIED:
 3. ✅ Complete routing
 4. ✅ Hormone buddy voices
 5. ✅ User interest tracking
+6. ✅ UNIFIED MEMORY: Cross-chatbot context awareness
 
 Features:
 - Educational Q&A about cycles, hormones, symptoms
@@ -15,6 +16,7 @@ Features:
 - Cycle-aware explanations
 - Action plan rationale with research
 - Conversational memory tracking
+- Cross-chatbot memory for personalized education
 """
 
 from typing import TypedDict, List, Dict, Any, Optional, Literal
@@ -27,6 +29,9 @@ from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
 from app.langgraph.helpers.database_helpers import get_cycle_info, get_todays_action_plan, get_user_profile
 from app.core.database import get_db
 from app.langgraph.helpers.ui_blocks_helper import generate_intelligent_ctas, create_confirmation_block
+
+# NEW: Unified memory for cross-chatbot context
+from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +94,10 @@ class KnowMyBodyState(TypedDict):
     
     # Action plan context (for rationale questions)
     todays_action_plan: List[Dict[str, Any]]
+    
+    # UNIFIED MEMORY: Cross-chatbot context
+    unified_context: Optional[Dict[str, Any]]
+    formatted_context: Optional[str]
     
     # Educational content
     explanation: Optional[str]
@@ -161,10 +170,16 @@ def create_initial_state(user_id: str) -> KnowMyBodyState:
 # ═══════════════════════════════════════════════════════════════════
 
 async def load_context(state: KnowMyBodyState) -> KnowMyBodyState:
-    """Load user context for educational responses."""
+    """Load user context including cross-chatbot memory for educational responses."""
     try:
         db = next(get_db())
         user_id = state["user_id"]
+        
+        # ══════════════════════════════════════════════════════════════
+        # NEW: Load unified cross-chatbot memory context
+        # ══════════════════════════════════════════════════════════════
+        unified_ctx = await get_unified_context(user_id, "know_my_body")
+        formatted_ctx = format_context_for_prompt(unified_ctx)
         
         # Get cycle info
         cycle_info = get_cycle_info(user_id, db)
@@ -186,6 +201,8 @@ async def load_context(state: KnowMyBodyState) -> KnowMyBodyState:
             "primary_hormone": cycle_info.get("primary_hormone"),
             "todays_action_plan": plan_data.get("items", []) if plan_data else [],
             "user_interests": interests,
+            "unified_context": unified_ctx,
+            "formatted_context": formatted_ctx,
             "bot_response": greeting,
             "messages": [{"role": "assistant", "content": greeting}],
             "phase": "loaded"

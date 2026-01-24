@@ -8,6 +8,7 @@ FIXES APPLIED:
 3. ✅ No state mutation in routing functions
 4. ✅ Database persistence for insights
 5. ✅ Pydantic model type fixes
+6. ✅ UNIFIED MEMORY: Cross-chatbot context awareness
 
 Features:
 - NO streak gating (removed per user feedback)
@@ -15,6 +16,7 @@ Features:
 - Multi-format input (tap/type/voice/slider)
 - LLM-powered question generation
 - Insights storage for insights page
+- Cross-chatbot memory for personalized questions
 """
 
 from typing import TypedDict, List, Dict, Any, Literal, Optional
@@ -31,6 +33,9 @@ from app.langgraph.helpers.database_helpers import (
 )
 from app.core.database import get_db, WeeklyCheckInSession
 from app.langgraph.helpers.ui_blocks_helper import generate_intelligent_ctas, create_confirmation_block
+
+# NEW: Unified memory for cross-chatbot context
+from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +81,10 @@ class WeeklyCheckInState(TypedDict):
     question_count: int
     topics_covered: List[str]
     should_complete: bool
+    
+    # UNIFIED MEMORY: Cross-chatbot context
+    unified_context: Optional[Dict[str, Any]]
+    formatted_context: Optional[str]
     
     # Current phase of conversation
     phase: Literal["init", "questioning", "processing_input", "complete"]
@@ -176,10 +185,18 @@ def create_initial_state(user_id: str, session_id: str = None) -> WeeklyCheckInS
 # ═══════════════════════════════════════════════════════════════════
 
 async def load_user_context(state: WeeklyCheckInState) -> WeeklyCheckInState:
-    """Load all contextual data for personalized conversation."""
+    """Load all contextual data including cross-chatbot memory for personalized conversation."""
     try:
         db = next(get_db())
         user_id = state["user_id"]
+        
+        # ══════════════════════════════════════════════════════════════
+        # NEW: Load unified cross-chatbot memory context
+        # This gives us EVERYTHING about the user - past conversations,
+        # preferences, feedback from other chatbots, etc.
+        # ══════════════════════════════════════════════════════════════
+        unified_ctx = await get_unified_context(user_id, "weekly_checkin")
+        formatted_ctx = format_context_for_prompt(unified_ctx)
         
         # Load cycle info
         cycle_info = get_cycle_info(user_id, db)
@@ -210,6 +227,8 @@ async def load_user_context(state: WeeklyCheckInState) -> WeeklyCheckInState:
             "recent_symptoms": recent_symptoms,
             "recent_completions": completions,
             "last_checkin_summary": last_checkin_summary,
+            "unified_context": unified_ctx,
+            "formatted_context": formatted_ctx,
             "phase": "init"
         }
     except Exception as e:

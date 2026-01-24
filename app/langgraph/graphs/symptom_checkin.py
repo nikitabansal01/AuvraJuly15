@@ -7,6 +7,7 @@ FIXES APPLIED:
 2. ✅ Database error handling with rollback
 3. ✅ Proper edge logic (no circular references)
 4. ✅ Natural completion detection
+5. ✅ UNIFIED MEMORY: Cross-chatbot context awareness
 
 Features (IDEAL MODEL):
 - NO turn limits (natural conversation flow)
@@ -15,6 +16,7 @@ Features (IDEAL MODEL):
 - Smart contextual tap options
 - Pattern detection across 30-day history
 - Natural completion detection
+- Cross-chatbot memory for personalized responses
 """
 
 from typing import TypedDict, List, Dict, Any, Optional, Literal
@@ -31,6 +33,9 @@ from app.langgraph.helpers.database_helpers import (
 )
 from app.core.database import get_db, SymptomLog
 from app.langgraph.helpers.ui_blocks_helper import create_severity_slider_block, create_confirmation_block
+
+# NEW: Unified memory for cross-chatbot context
+from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +102,10 @@ class SymptomCheckInState(TypedDict):
     past_symptoms: List[Dict[str, Any]]
     symptom_patterns: Dict[str, Any]
     todays_action_plan: List[Dict[str, Any]]
+    
+    # UNIFIED MEMORY: Cross-chatbot context
+    unified_context: Optional[Dict[str, Any]]
+    formatted_context: Optional[str]
     
     # Current user input
     user_input: Optional[str]
@@ -202,10 +211,18 @@ def create_initial_state(user_id: str, session_id: str = None) -> SymptomCheckIn
 # ═══════════════════════════════════════════════════════════════════
 
 async def load_context_and_greet(state: SymptomCheckInState) -> SymptomCheckInState:
-    """Load user context and generate Dr. Auvra greeting."""
+    """Load user context (including cross-chatbot memory) and generate Dr. Auvra greeting."""
     try:
         db = next(get_db())
         user_id = state["user_id"]
+        
+        # ══════════════════════════════════════════════════════════════
+        # NEW: Load unified cross-chatbot memory context
+        # This gives us EVERYTHING about the user - past conversations,
+        # preferences, feedback from other chatbots, etc.
+        # ══════════════════════════════════════════════════════════════
+        unified_ctx = await get_unified_context(user_id, "symptom_checkin")
+        formatted_ctx = format_context_for_prompt(unified_ctx)
         
         # Load cycle info
         cycle_info = get_cycle_info(user_id, db)
@@ -216,10 +233,14 @@ async def load_context_and_greet(state: SymptomCheckInState) -> SymptomCheckInSt
         # Load today's plan for context
         plan_data = get_todays_action_plan(user_id, db)
         
-        # Generate greeting
+        # Generate greeting with unified context
         past_symptoms_summary = ", ".join([
             s.get("type", "symptom") for s in past_symptoms[-3:]
         ]) if past_symptoms else "no recent symptoms"
+        
+        # Get user profile info from unified context for personalization
+        user_profile = unified_ctx.get("user_profile", {})
+        recent_convos = unified_ctx.get("recent_conversations", [])
         
         prompt = f"""You are Dr. Auvra greeting a user for symptom check-in.
 
@@ -228,17 +249,21 @@ User Context:
 - Primary Hormone: {cycle_info.get('primary_hormone', 'Unknown')}
 - Recent Symptoms (past 7 days): {past_symptoms_summary}
 
+Cross-Chatbot Memory (use this to personalize your greeting):
+{formatted_ctx[:2000] if formatted_ctx else "No previous conversation history"}
+
 Guidelines:
 1. Dr. Auvra speaks warmly and personally
 2. Reference current cycle phase (e.g., "In your luteal phase...")
 3. Use hormone buddy characterization (e.g., "Progesterone 🌙 is...")
 4. If recent symptoms, acknowledge briefly
-5. Transition to asking how they feel TODAY
+5. If you know something specific from their history, reference it naturally
+6. Transition to asking how they feel TODAY
 
 Example:
 "Hi love! I'm Dr. Auvra 💜 You're in your luteal phase (day 24), where progesterone is dipping - totally normal to feel a bit tired or moody. I see you logged bloating earlier this week. How are you feeling right now?"
 
-Keep it 2-3 sentences, warm.
+Keep it 2-3 sentences, warm. If you have context from other conversations, reference it naturally.
 """
         
         greeting = await call_llm(prompt, model="gpt-5-mini")
@@ -250,6 +275,8 @@ Keep it 2-3 sentences, warm.
             "primary_hormone": cycle_info.get("primary_hormone"),
             "past_symptoms": past_symptoms,
             "todays_action_plan": plan_data.get("items", []) if plan_data else [],
+            "unified_context": unified_ctx,
+            "formatted_context": formatted_ctx,
             "messages": [{"role": "assistant", "content": greeting}],
             "phase": "greeting"
         }

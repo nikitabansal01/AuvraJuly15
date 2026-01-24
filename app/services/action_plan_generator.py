@@ -34,6 +34,9 @@ from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
 from app.core.config import settings
 
+# NEW: Import unified memory for cross-chatbot context
+from app.langgraph.memory import get_unified_context, format_context_for_prompt
+
 # Get API keys from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
 
@@ -561,6 +564,22 @@ PERSONALIZATION FACTORS
 HORMONE CONTEXT FOR {cycle_phase} PHASE
 ======================================================================
 {hormone_phase_context}
+
+======================================================================
+⭐ UNIFIED CROSS-CHATBOT MEMORY (MOST IMPORTANT PERSONALIZATION DATA) ⭐
+======================================================================
+This is EVERYTHING we know about this user from ALL their interactions across
+ALL chatbots. Use this to create truly personalized recommendations:
+
+{unified_memory_context}
+
+USE THIS DATA TO:
+- Reference specific things the user said in past conversations
+- Avoid items they've complained about or disliked
+- Build on foods/exercises they've explicitly enjoyed
+- Address symptoms they've recently reported
+- Consider their learned preferences and past feedback
+- Make each recommendation feel like it was made FOR THIS SPECIFIC USER
 
 ======================================================================
 FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
@@ -3009,6 +3028,25 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             logger.info(f"[WHITELIST] FINAL ALLOWED CONDITIONS ({len(allowed_conditions_list)} total): {allowed_conditions_str}")
             logger.info(f"[WHITELIST] ===========================================================")
             
+            # ===================================================================
+            # NEW: LOAD UNIFIED CROSS-CHATBOT MEMORY
+            # This gives us access to ALL conversations across ALL chatbots,
+            # learned preferences, and episodic memory from past interactions.
+            # ===================================================================
+            try:
+                unified_ctx = await get_unified_context(user_id, "action_plan_generator")
+                formatted_unified = format_context_for_prompt(unified_ctx)
+                
+                context["unified_memory"] = unified_ctx
+                context["unified_memory_formatted"] = formatted_unified
+                
+                logger.info(f"[UNIFIED_MEMORY] Loaded cross-chatbot context for user {user_id}")
+                logger.info(f"[UNIFIED_MEMORY] Keys: {list(unified_ctx.keys()) if unified_ctx else 'None'}")
+            except Exception as mem_error:
+                logger.warning(f"[UNIFIED_MEMORY] Could not load unified memory: {mem_error}")
+                context["unified_memory"] = {}
+                context["unified_memory_formatted"] = ""
+            
             return context
             
         except Exception as e:
@@ -3679,6 +3717,8 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             daily_review_insights=user_context.get("daily_review_insights", "No daily review data yet"),
             care_plan_checkin_insights=user_context.get("care_plan_checkin_insights", "No care plan check-in data yet"),
             symptom_checkin_insights=user_context.get("symptom_checkin_insights", "No symptom check-in data yet"),
+            # NEW: Unified cross-chatbot memory
+            unified_memory_context=user_context.get("unified_memory_formatted", "No unified memory available yet"),
             # Anti-repetition and hallucination prevention
             recently_recommended=user_context.get("recently_recommended", "None (this is the users first plan)"),
             allowed_symptoms=user_context.get("allowed_symptoms", "general wellness support"),
