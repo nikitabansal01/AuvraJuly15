@@ -641,26 +641,40 @@ REQUIREMENTS (READ CAREFULLY)
 17. Recommend longer mindfulness for high stress users, shorter for low stress
 
 ======================================================================
- ANTI-REPETITION & HALLUCINATION RULES (CRITICAL)
+⚠️ ANTI-REPETITION & HALLUCINATION RULES (CRITICAL) ⚠️
 ======================================================================
-1. DO NOT COPY EXAMPLES: The examples in this prompt are for FORMATTING ONLY. You MUST select the BEST action for THIS specific user from your medical knowledge - NOT from the examples.
-2. AVOID RECENTLY RECOMMENDED: Check the "RECENTLY RECOMMENDED" section below. Do NOT suggest any item from that list.
-3. VARIETY IS KEY: Each days plan should feel fresh and different. Draw from the FULL spectrum of evidence-based interventions.
-4. STRICT SYMPTOM WHITELIST: In the 'symptoms' output array, you may ONLY use symptoms from this exact list:
+1. ⛔ FORBIDDEN DEFAULTS: The following items are BANNED because they appear too often:
+   - FOOD: pumpkin seeds, berries, blueberries, walnuts, salmon, quinoa, almonds, spinach, eggs, avocado
+   - MOVEMENT: HIIT, strength training (unless user specifically prefers high intensity)
+   - MINDFULNESS: generic "meditation" (be specific: body scan, loving kindness, etc.)
+   
+   These are good foods/exercises BUT we need VARIETY. Choose equally-beneficial alternatives like:
+   - FOOD: sardines, mackerel, chia seeds, hemp seeds, Brazil nuts, pistachios, kale, Swiss chard, arugula, buckwheat, millet, farro, tempeh, edamame, lentils, mung beans, turmeric root, ginger, beets, fennel
+   - MOVEMENT: Pilates, swimming, cycling, dancing, hiking, tai chi, barre, rock climbing, kayaking, rowing
+   - MINDFULNESS: progressive muscle relaxation, body scan, visualization, gratitude journaling, mindful eating, walking meditation, yoga nidra
+   
+2. ⛔ DO NOT COPY EXAMPLES: Examples in this prompt are for FORMATTING ONLY. Generate unique recommendations from your medical knowledge.
+
+3. ✅ VARIETY IS MANDATORY: Each day's plan should feel FRESH. Draw from the FULL spectrum of evidence-based interventions, not the most common ones.
+
+4. ✅ RESEARCH-BACKED VARIETY: Use the research findings above to discover LESS COMMON but equally effective interventions.
+
+5. STRICT SYMPTOM WHITELIST: In the 'symptoms' output array, you may ONLY use symptoms from this exact list:
    {allowed_symptoms}
    If a symptom is not in this list, DO NOT include it.
-5. STRICT CONDITION WHITELIST: In the 'conditions' output array, you may ONLY use conditions from this exact list:
+
+6. STRICT CONDITION WHITELIST: In the 'conditions' output array, you may ONLY use conditions from this exact list:
    {allowed_conditions}
    If no conditions are listed, this array MUST be empty [].
 
 ======================================================================
- RECENTLY RECOMMENDED (DO NOT REPEAT THESE)
+⚠️ RECENTLY RECOMMENDED (ABSOLUTE BAN - DO NOT REPEAT) ⚠️
 ======================================================================
 {recently_recommended}
-Choose DIFFERENT items that are equally or more beneficial for this user.
+You MUST choose DIFFERENT items. If you repeat anything from this list, the generation will fail.
 
 ======================================================================
- CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION
+⭐ CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION
 ======================================================================
 +---------------------------------------------------------------------+
 |  TITLE = WHAT it is (the thing itself - noun)                       |
@@ -668,16 +682,16 @@ Choose DIFFERENT items that are equally or more beneficial for this user.
 +---------------------------------------------------------------------+
 
 FOOD:
-   Title: Raw ingredient  "Salmon", "Quinoa", "Blueberries"
-   specific_action: 3 consumption methods  grilled, baked, in smoothie, etc.
+   Title: Raw ingredient name ONLY (no preparation method)
+   specific_action: 3 consumption methods - grilled, baked, in smoothie, etc.
 
 MOVEMENT:
-   Title: Activity type  "Yoga", "Walking", "Stretching"
-   specific_action: 3 ways to do it  gentle flow, hip openers, sun salutations, etc.
+   Title: Activity type name ONLY
+   specific_action: 3 ways to do it - gentle flow, hip openers, sun salutations, etc.
 
 MINDFULNESS:
-   Title: Technique name  "Deep Breathing", "Meditation", "Body Scan"
-   specific_action: 3 practice methods  4-7-8 technique, box breathing, belly breathing, etc.
+   Title: Specific technique name (NOT just "meditation")
+   specific_action: 3 practice methods - 4-7-8 technique, box breathing, belly breathing, etc.
 
 ======================================================================
 OUTPUT FORMAT (for each action)
@@ -689,13 +703,13 @@ OUTPUT FORMAT (for each action)
    FORMAT: Start with main benefit, then list 3 methods like:
    "Try it as: (1) [method 1], (2) [method 2], or (3) [method 3]."
    
-    GOOD EXAMPLE for "Walnuts":
-   "Walnuts are rich in omega-3s and melatonin precursors that support hormonal balance and sleep. Try them as: (1) Raw handful - eat 7-10 walnuts as a morning snack, (2) Salad topper - add chopped walnuts to your lunch salad with olive oil, or (3) Walnut butter - spread 1 tbsp on apple slices or whole grain toast."
+   ✅ GOOD EXAMPLE for "Sardines" (showing FORMAT, not the item to choose):
+   "Sardines are exceptionally rich in omega-3 EPA/DHA and vitamin D, which regulate inflammation and support hormone synthesis. Try them as: (1) Toast topper - mash on sourdough with lemon and olive oil, (2) Salad protein - add to a Mediterranean salad with olives and tomatoes, or (3) Pasta stir-in - toss with garlic, capers, and whole grain pasta."
    
-    GOOD EXAMPLE for "Spinach":
-   "Spinach is packed with magnesium and folate that support progesterone production. Try it as: (1) Green smoothie - blend 2 cups with banana and almond milk, (2) Sauted side - quickly saut with garlic and olive oil, or (3) Raw salad - use as a base for lunch topped with avocado."
+   ✅ GOOD EXAMPLE for "Swiss Chard" (showing FORMAT, not the item to choose):
+   "Swiss chard is loaded with magnesium and iron that support progesterone production and energy. Try it as: (1) Sautéed side - quickly cook with garlic and a squeeze of lemon, (2) Soup addition - add to minestrone or white bean soup, or (3) Egg wrap - use leaves as a wrap for scrambled eggs and feta."
    
-    BAD (no consumption methods): "Ginger helps reduce stress. Consume it daily."
+   ❌ BAD (no consumption methods): "Ginger helps reduce stress. Consume it daily."
    
 5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the users specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
 6. target_hormone: CRITICAL - You MUST set this exactly as follows:
@@ -710,35 +724,27 @@ OUTPUT FORMAT (for each action)
 12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
 
 ======================================================================
- TITLE RULES (CRITICAL - INGREDIENT/ACTIVITY NAME ONLY!)
+⭐ TITLE RULES (CRITICAL - INGREDIENT/ACTIVITY NAME ONLY!)
 ======================================================================
-REMINDER: The items below are EXAMPLES of formatting. Do NOT just pick from this list. Choose what is best for the user.
+⚠️ IMPORTANT: Generate UNIQUE recommendations based on the user's conditions. Do NOT default to common wellness foods.
 
 Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
- NO preparation methods (latte, tea, smoothie, etc.)
- NO adjectives (powerful, amazing, gentle, etc.)
+❌ NO preparation methods (latte, tea, smoothie, etc.)
+❌ NO adjectives (powerful, amazing, gentle, etc.)
 
- GOOD FOOD TITLES (RAW INGREDIENT ONLY - these are FORMAT examples, choose whats best for user):
-- "Walnuts" (NOT "Walnut Butter")
-- "Spinach" (NOT "Spinach Smoothie")
-- "Ginger" (NOT "Ginger Tea")
-- "Salmon" (NOT "Grilled Salmon")
-- "Avocado" (NOT "Avocado Toast")
-- "Quinoa" (NOT "Quinoa Salad")
-- "Berries" (NOT "Berry Smoothie")
-- "Eggs" (NOT "Scrambled Eggs")
-- "Almonds" (NOT "Almond Butter")
-- "Sweet Potato" (NOT "Baked Sweet Potato")
+FORMAT EXAMPLES (showing correct vs incorrect naming - DO NOT copy these items!):
+✅ "Sardines" (NOT "Canned Sardines")
+✅ "Fennel" (NOT "Fennel Tea")  
+✅ "Turmeric" (NOT "Golden Milk")
+✅ "Millet" (NOT "Millet Porridge")
+✅ "Tempeh" (NOT "Grilled Tempeh")
+✅ "Beets" (NOT "Beet Juice")
 
- BAD FOOD TITLES (includes preparation method - WRONG!):
-- "Ginger Tea"  should be "Ginger"
-- "Walnut Butter"  should be "Walnuts"
-- "Spinach Smoothie"  should be "Spinach"
-- "Grilled Salmon"  should be "Salmon"
-- "Avocado Toast"  should be "Avocado"
-- "Quinoa Bowl"  should be "Quinoa"
+❌ BAD FOOD TITLES (includes preparation method):
+- "Ginger Tea" → should be "Ginger"
+- "Golden Milk" → should be "Turmeric"
 
- GOOD MOVEMENT TITLES (simple activity name):
+✅ GOOD MOVEMENT TITLES (simple activity name):
 - "Post-Meal Walk"
 - "Morning Yoga"
 - "Gentle Stretching"
