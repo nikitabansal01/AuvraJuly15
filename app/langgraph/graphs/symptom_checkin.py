@@ -241,7 +241,7 @@ Example:
 Keep it 2-3 sentences, warm.
 """
         
-        greeting = await call_llm(prompt, model="gpt-4o-mini")
+        greeting = await call_llm(prompt, model="gpt-5-mini")
         
         return {
             **state,
@@ -568,7 +568,7 @@ Example:
 """
     
     try:
-        summary = await call_llm(summary_prompt, model="gpt-4o-mini")
+        summary = await call_llm(summary_prompt, model="gpt-5-mini")
     except Exception as e:
         logger.error(f"Error generating summary: {e}")
         symptom_list = ", ".join([f"{s['type']} ({s.get('severity', '?')}/9)" for s in symptoms])

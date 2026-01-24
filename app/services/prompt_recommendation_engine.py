@@ -16,7 +16,7 @@ Cost Savings:
 - Savings: 99.3-99.9%
 
 Architecture:
-- Pure prompt engineering with GPT-4o-mini
+- Pure prompt engineering with GPT-5-mini
 - Zero external knowledge retrieval
 - Few-shot examples for consistency
 - Structured JSON output
@@ -255,7 +255,7 @@ def get_category_distribution(lifestyle_focus: List[str]) -> Dict[str, int]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = "gpt-4o-mini"  # Cost-optimized: $0.00015/1K input, $0.0006/1K output
+MODEL = "gpt-5-mini"  # Upgraded: $0.25/1M input, $2.00/1M output
 
 # Groq fallback configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -591,9 +591,9 @@ class PromptRecommendationEngine:
     Pure prompt engineering recommendation engine.
     
     No RAG, no vector DB, no external retrieval.
-    Just GPT-4o-mini + carefully crafted prompts.
+    Just GPT-5-mini + carefully crafted prompts.
     
-    Cost: ~$0.002 per recommendation set (vs $0.05 with RAG)
+    Cost: ~$0.003 per recommendation set (vs $0.05 with RAG)
     """
     
     def __init__(self):
@@ -963,12 +963,12 @@ class PromptRecommendationEngine:
     
     def _estimate_cost(self, prompt: str, response: str) -> float:
         """Estimate API cost."""
-        # GPT-4o-mini pricing
+        # GPT-5-mini pricing
         input_tokens = len(prompt) / 4  # Rough estimate
         output_tokens = len(response) / 4
         
-        input_cost = (input_tokens / 1000) * 0.00015
-        output_cost = (output_tokens / 1000) * 0.0006
+        input_cost = (input_tokens / 1000) * 0.00025
+        output_cost = (output_tokens / 1000) * 0.002
         
         return input_cost + output_cost
     

@@ -612,7 +612,34 @@ class QuestionService:
                     return True
                 
                 # ---------------------------------------------------------
+                # FALLBACK: No guest plan found yet
+                # Check if background generation is still in progress
+                # ---------------------------------------------------------
+                
+                # CRITICAL FIX: Check if background generation (Thing 1) is still running
+                # If yes, just mark session as linked and let background task auto-transfer
+                # This prevents duplicate generate_new_plan() calls!
+                from app.services.processing_status_service import ProcessingStatusService
+                processing_service = ProcessingStatusService(self.db)
+                status = processing_service.get_processing_status(session_id)
+                
+                is_still_processing = status and status.processing_status in ["queued", "in_progress"]
+                
+                if is_still_processing:
+                    # ═══════════════════════════════════════════════════════════════════════
+                    # NON-BLOCKING: Generation still running from ResearchingScreen
+                    # Mark session as linked, background task will auto-transfer when done
+                    # ═══════════════════════════════════════════════════════════════════════
+                    logger.info(f"📍 [SESSION_LINK] Generation in progress for {session_id}. Marking as linked:{uid}")
+                    logger.info(f"📍 [SESSION_LINK] Background task will auto-transfer plan when ready - NO duplicate generation!")
+                    session.status = f"linked:{uid}"
+                    self.db.commit()
+                    logger.info(f"✅ [SESSION_LINK] Session marked for auto-transfer. User will see 'Plan Generating' UI on HomeScreen.")
+                    return True  # Success! Frontend will poll for plan availability
+                
+                # ---------------------------------------------------------
                 # FALLBACK: Legacy Mode (Lite Recommendations)
+                # Only reached if generation is NOT in progress (failed/never started)
                 # ---------------------------------------------------------
                 
                 # Find session-linked recommendations and update with uid
@@ -668,143 +695,17 @@ class QuestionService:
                 # Use only successful recommendations for schedule creation
                 successful_recommendations = [rec for rec in session_recommendations if rec.id in updated_recommendations]
                 
-                # 🚀 CRITICAL: Create ActionPlan IMMEDIATELY after signup using FULL-FEATURED ActionPlanGenerator
-                # This uses the SAME code path that runs "after signup" with ALL features:
-                # - Full ActionPlanGenerator.generate_new_plan()
-                # - Hormone personas, variants, image generation, research studies
-                # - All the carefully designed prompts and improvements
-                if len(successful_recommendations) >= 2:
-                    logger.info(f"🚀 [SESSION_LINK] Creating ActionPlan with FULL generate_new_plan() and {len(successful_recommendations)} recommendations")
-                    try:
-                        # Import and run the FULL-FEATURED generate_new_plan() method (same as after signup)
-                        import asyncio
-                        from app.services.action_plan_generator import get_action_plan_generator
-                        from app.core.database import get_async_session_maker
-                        from app.utils.timezone_utils import ZoneInfo
-                        from datetime import date
-                        
-                        # Get today's date in user's timezone
-                        try:
-                            tz = ZoneInfo(current_timezone)
-                            today = datetime.now(tz).date()
-                        except Exception:
-                            today = date.today()
-                        
-                        # Run the FULL generate_new_plan() method (NOT session conversion!)
-                        async def create_plan_async():
-                            async_session_maker = get_async_session_maker()
-                            async with async_session_maker() as db:
-                                generator = get_action_plan_generator()
-                                # Use generate_new_plan() - the FULL-FEATURED function with designed prompts
-                                result = await generator.generate_new_plan(
-                                    user_id=uid,
-                                    plan_date=today,
-                                    user_timezone=current_timezone,
-                                    db=db,
-                                    image_mode="full",  # Generate all 16 images in parallel
-                                    skip_quality_check=False  # Run full quality checks
-                                )
-                                
-                                # CRITICAL FIX: Mark new plan as reviewed if it's from the past
-                                try:
-                                    # Since generate_new_plan returns a dict, we need to find the plan object
-                                    # But generate_new_plan already commits. Let's find it by id.
-                                    if result and result.get("success") and result.get("plan_id"):
-                                        from app.core.database import ActionPlan
-                                        plan_id = result.get("plan_id")
-                                        # Use a fresh query within the same session
-                                        from sqlalchemy import select
-                                        stmt = select(ActionPlan).where(ActionPlan.id == plan_id)
-                                        db_plan = (await db.execute(stmt)).scalar_one_or_none()
-                                        if db_plan and db_plan.plan_date < today:
-                                            logger.info(f"⚠️ Newly generated plan {db_plan.id} is from the past ({db_plan.plan_date} < {today}). Marking as reviewed.")
-                                            db_plan.review_completed = True
-                                            await db.commit()
-                                except Exception as e:
-                                    logger.error(f"Failed to auto-review past plan: {e}")
-                                    
-                                return result
-                        
-                        # Run in event loop
-                        try:
-                            loop = asyncio.get_event_loop()
-                            if loop.is_running():
-                                # We're already in an async context, use run_until_complete carefully
-                                import concurrent.futures
-                                with concurrent.futures.ThreadPoolExecutor() as pool:
-                                    future = pool.submit(asyncio.run, create_plan_async())
-                                    plan_result = future.result(timeout=90)  # Inner timeout shorter than outer 120s
-                            else:
-                                plan_result = loop.run_until_complete(create_plan_async())
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            plan_result = loop.run_until_complete(create_plan_async())
-                        
-                        if plan_result:
-                            logger.info(f"✅ [SESSION_LINK] ActionPlan created with FULL generate_new_plan() - HomeScreen will load with proper action plan!")
-                        else:
-                            logger.warning(f"⚠️ [SESSION_LINK] generate_new_plan() returned None, will regenerate on HomeScreen")
-                    except Exception as ap_error:
-                        logger.error(f"❌ [SESSION_LINK] generate_new_plan() error: {ap_error}", exc_info=True)
-                        # Don't fail session linking if action plan creation fails
-                else:
-                    logger.info(f"⚠️ [SESSION_LINK] Only {len(successful_recommendations)} recommendations, ActionPlanGenerator will generate on HomeScreen")
+                # ═══════════════════════════════════════════════════════════════════════
+                # LEGACY FALLBACK: Only migrate recommendations, let HomeScreen generate plan
+                # ═══════════════════════════════════════════════════════════════════════
+                # If we reach here, generation failed or never started
+                # DON'T call generate_new_plan() here - HomeScreen will handle it
+                # This prevents duplicate GPT calls if user refreshes or network issues
+                logger.info(f"📍 [SESSION_LINK] Legacy mode: {len(successful_recommendations)} recommendations migrated to user {uid}")
+                logger.info(f"📍 [SESSION_LINK] HomeScreen will generate ActionPlan on first load")
                 
-                # Check if generation is still in progress
-                from app.services.processing_status_service import ProcessingStatusService
-                processing_service = ProcessingStatusService(self.db)
-                status = processing_service.get_processing_status(session_id)
-                
-                is_still_processing = status and status.processing_status in ["queued", "in_progress"]
-                
-                if is_still_processing:
-                    # ═══════════════════════════════════════════════════════════════════════
-                    # NON-BLOCKING: Mark session as linked and return immediately
-                    # Background worker will auto-transfer plan when generation completes
-                    # ═══════════════════════════════════════════════════════════════════════
-                    logger.info(f"📍 Generation in progress for {session_id}. Marking as linked:{uid}")
-                    session.status = f"linked:{uid}"
-                    self.db.commit()
-                    logger.info(f"✅ Session marked for auto-transfer. Background worker will transfer plan to {uid} when ready.")
-                    # Return success - frontend will poll for plan availability
-                else:
-                    # Generation done - check if plan exists already
-                    guest_plan = self.db.query(ActionPlan).filter(
-                        ActionPlan.session_id == session_id
-                    ).first()
-                    
-                    if guest_plan:
-                        logger.info(f"✅ Guest plan {guest_plan.id} already exists, transferring to user {uid}")
-                        
-                        # Transfer plan to user
-                        guest_plan.uid = uid
-                        guest_plan.session_id = None
-                        
-                        # Update plan date to user's local date
-                        try:
-                            from app.utils.timezone_utils import ZoneInfo
-                            tz = ZoneInfo(current_timezone)
-                            today = datetime.now(tz).date()
-                            if guest_plan.plan_date != today:
-                                logger.info(f"🔄 Updating guest plan date from {guest_plan.plan_date} to {today}")
-                                guest_plan.plan_date = today
-                        except Exception as e:
-                            logger.error(f"Failed to update plan date: {e}")
-                        
-                        # Transfer all plan items
-                        guest_items = self.db.query(ActionPlanItem).filter(
-                            ActionPlanItem.plan_id == guest_plan.id
-                        ).all()
-                        for item in guest_items:
-                            item.uid = uid
-                            item.session_id = None
-                        
-                        logger.info(f"🚀 Transferred guest plan {guest_plan.id} to user {uid}")
-                    
-                    # Delete session (generation is done)
-                    self.db.delete(session)
-                    logger.info(f"Session deletion completed: {session_id}")
+                # NOTE: is_still_processing check already done at top of fallback section
+                # If we reach here, generation failed/never started - legacy recommendations were migrated above
                 
                 # 7. Commit
                 self.db.commit()

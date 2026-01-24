@@ -1,7 +1,7 @@
 """
 AUVRA Action Plan Generator Service
 
-Generates 4 personalized daily actions using GPT-4o-mini:
+Generates 4 personalized daily actions using GPT-5-mini:
 - 2 actions targeting PRIMARY hormone
 - 2 actions targeting SECONDARY hormone  
 - Categories based on users lifestyle_focus (eat/move/pause)
@@ -1020,12 +1020,12 @@ class ActionPlanGenerator:
     Flow:
     1. Check if todays plan exists
     2. Get user context (hormones, cycle, preferences, feedback)
-    3. Generate 4 actions via GPT-4o-mini
+    3. Generate 4 actions via GPT-5-mini
     4. Generate images for each action (16 total)
     5. Store plan in database
     """
     
-    GPT_MODEL = "gpt-4o-mini"
+    GPT_MODEL = "gpt-5-mini"
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     
@@ -1355,7 +1355,7 @@ class ActionPlanGenerator:
                 logger.info(f"[GENERATE]  Carryforward plan ready with {len(actions)} items (no GPT cost)")
                 
             else:
-                # Step 2: Generate actions via GPT-4o-mini with retry logic
+                # Step 2: Generate actions via GPT-5-mini with retry logic
                 # Pydantic validation ensures complete data - no fallbacks
                 logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
                 actions = None
@@ -2489,7 +2489,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     client = openai.AsyncOpenAI(api_key=self.openai_api_key)
                     
                     response = await client.chat.completions.create(
-                        model="gpt-4o-mini",
+                        model="gpt-5-mini",
                         messages=[
                             {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
@@ -3441,7 +3441,7 @@ Format as bullet points."""
                                 "Content-Type": "application/json"
                             },
                             json={
-                                "model": "gpt-4o-mini",
+                                "model": "gpt-5-mini",
                                 "messages": [
                                     {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
                                     {"role": "user", "content": summary_prompt}
@@ -4393,7 +4393,7 @@ JSON ONLY:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "gpt-4o-mini",
+                    "model": "gpt-5-mini",
                     "messages": [
                         {"role": "system", "content": "You are a health plan quality evaluator. Output ONLY JSON, no explanation."},
                         {"role": "user", "content": prompt}

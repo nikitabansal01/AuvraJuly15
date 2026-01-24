@@ -477,7 +477,7 @@ Guidelines:
 """
     
     try:
-        explanation = await call_llm(prompt, model="gpt-4o-mini")
+        explanation = await call_llm(prompt, model="gpt-5-mini")
     except:
         explanation = "That's a great question! It relates to overall wellness. For specific medical concerns, please consult your healthcare provider. Is there anything about your cycle I can help with?"
     

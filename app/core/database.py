@@ -993,7 +993,7 @@ class ActionPlanEvaluation(Base):
     # Metadata
     evaluation_cost = Column(String(50), nullable=True)  # $ spent on LLM evaluation
     evaluation_time_ms = Column(Integer, nullable=True)
-    evaluator_model = Column(String(50), default="gpt-4o-mini")
+    evaluator_model = Column(String(50), default="gpt-5-mini")
     
     # Raw LLM evaluation response (for debugging)
     llm_evaluation_response = Column(JSONB, nullable=True)

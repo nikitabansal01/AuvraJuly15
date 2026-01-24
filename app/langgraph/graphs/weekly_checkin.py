@@ -242,7 +242,7 @@ Example:
 "Hi love! 💜 You're in your luteal phase (day 23), where progesterone can make energy levels dip - that's totally normal. How have you been feeling this past week?"
 """
     
-    greeting = await call_llm(prompt, model="gpt-4o-mini")
+    greeting = await call_llm(prompt, model="gpt-5-mini")
     
     return {
         **state,

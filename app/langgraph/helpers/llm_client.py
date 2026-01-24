@@ -21,7 +21,7 @@ T = TypeVar('T', bound=BaseModel)
 
 async def call_llm(
     prompt: str,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
     temperature: float = 0.7,
     max_tokens: int = 1000
 ) -> str:
@@ -55,7 +55,7 @@ async def call_llm(
 async def call_llm_structured(
     prompt: str,
     response_model: Type[T],
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
     temperature: float = 0.7,
     max_retries: int = 2
 ) -> T:
@@ -102,7 +102,7 @@ async def call_llm_structured(
 
 async def call_llm_with_retry(
     prompt: str,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
     max_retries: int = 3,
     fallback_response: Optional[str] = None
 ) -> str:

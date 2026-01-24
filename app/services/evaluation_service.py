@@ -369,7 +369,7 @@ class ActionPlanEvaluator:
         feedback_history: str
     ) -> tuple[Optional[Dict], float]:
         """
-        Run GPT-4o-mini to evaluate relevance metrics.
+        Run GPT-5-mini to evaluate relevance metrics.
         Returns (scores_dict, cost) or (None, cost) on failure.
         """
         if not self.openai_api_key and not GROQ_API_KEY:

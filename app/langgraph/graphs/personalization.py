@@ -333,7 +333,7 @@ Keep it 2-3 sentences, warm and personal.
 """
     
     try:
-        question = await call_llm(elicitation_prompt, model="gpt-4o-mini")
+        question = await call_llm(elicitation_prompt, model="gpt-5-mini")
     except:
         question = f"Could you tell me about your {gap_field.replace('_', ' ')}?"
     

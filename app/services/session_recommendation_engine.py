@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-5-mini"
 
 # Mapping
 LIFESTYLE_TO_CATEGORY = {

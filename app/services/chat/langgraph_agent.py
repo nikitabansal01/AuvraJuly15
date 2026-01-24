@@ -343,7 +343,7 @@ else:
     logger.info("Intelligence modules disabled")
 
 
-def get_llm(model: str = "gpt-4o-mini", temperature: float = 0.7, streaming: bool = False):
+def get_llm(model: str = "gpt-5-mini", temperature: float = 0.7, streaming: bool = False):
     """Get configured LLM instance with optional streaming."""
     return ChatOpenAI(
         model=model,
