@@ -1685,6 +1685,7 @@ async def _carry_forward_items_to_today(
                     variant_dicts.append({
                         "variant_type": v.variant_type,
                         "title": v.title,
+                        "description": v.description,
                         "image_url": v.image_url,
                         "image_prompt": v.image_prompt,
                     })

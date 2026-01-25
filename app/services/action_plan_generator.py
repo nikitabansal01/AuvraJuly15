@@ -1513,77 +1513,77 @@ class ActionPlanGenerator:
                 used_model = self.GPT_MODEL
                 model_switch_reason = None  # Track why we switched models
             
-            from app.services.evaluation_service import get_action_plan_evaluator
-            evaluator = get_action_plan_evaluator()
-            
-            for attempt in range(1, self.MAX_RETRIES + 1):
-                logger.info(f" Generation attempt {attempt}/{self.MAX_RETRIES}")
+                from app.services.evaluation_service import get_action_plan_evaluator
+                evaluator = get_action_plan_evaluator()
                 
-                # Generate actions with real citations from PubMed
-                # Pydantic validation happens inside _generate_actions_via_gpt
-                attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db)
-                gpt_cost += attempt_cost
+                for attempt in range(1, self.MAX_RETRIES + 1):
+                    logger.info(f" Generation attempt {attempt}/{self.MAX_RETRIES}")
                 
-                if attempt_actions:
-                    # Pydantic validated successfully
-                    logger.info(f" Attempt {attempt}: All {len(attempt_actions)} actions validated by Pydantic")
+                    # Generate actions with real citations from PubMed
+                    # Pydantic validation happens inside _generate_actions_via_gpt
+                    attempt_actions, attempt_cost = await self._generate_actions_via_gpt(user_context, db)
+                    gpt_cost += attempt_cost
                     
-                    # ---------------------------------------------------------
-                    # FAST QUALITY CHECK & MODEL SWITCHING
-                    # Only checks condition_appropriateness (safety-critical)
-                    # Full evaluation runs async after plan delivery
-                    # ---------------------------------------------------------
-                    try:
-                        # Fast check: only evaluate condition safety (not full 5 metrics)
-                        condition_score = await self._fast_condition_check(
-                            attempt_actions, user_context
-                        )
+                    if attempt_actions:
+                        # Pydantic validated successfully
+                        logger.info(f" Attempt {attempt}: All {len(attempt_actions)} actions validated by Pydantic")
                         
-                        # If medical safety is low, switch to fallback model
-                        if condition_score is not None and condition_score < 70:
-                            model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
-                            logger.warning(f" {model_switch_reason}. Switching to fallback model for better quality.")
+                        # ---------------------------------------------------------
+                        # FAST QUALITY CHECK & MODEL SWITCHING
+                        # Only checks condition_appropriateness (safety-critical)
+                        # Full evaluation runs async after plan delivery
+                        # ---------------------------------------------------------
+                        try:
+                            # Fast check: only evaluate condition safety (not full 5 metrics)
+                            condition_score = await self._fast_condition_check(
+                                attempt_actions, user_context
+                            )
                             
-                            # Use Groq fallback model for better medical accuracy
-                            fallback_model = GROQ_FALLBACK_MODEL
-                            
-                            try:
-                                fallback_actions, fallback_cost = await self._generate_actions_via_gpt(
-                                    user_context, db, model_override=fallback_model
-                                )
-                                gpt_cost += fallback_cost
+                            # If medical safety is low, switch to fallback model
+                            if condition_score is not None and condition_score < 70:
+                                model_switch_reason = f"Low condition_appropriateness: {condition_score}/100 (threshold: 70)"
+                                logger.warning(f" {model_switch_reason}. Switching to fallback model for better quality.")
                                 
-                                if fallback_actions:
-                                    logger.info(f" Fallback generation successful. Using {fallback_model} results.")
-                                    attempt_actions = fallback_actions
-                                    used_model = fallback_model
-                                else:
-                                    logger.error(" Fallback generation failed. Using original OpenAI results.")
-                                    model_switch_reason += " | Fallback returned None, using original"
-                            except Exception as fallback_err:
-                                logger.error(f" Fallback API error: {fallback_err}. Using original OpenAI results.")
-                                model_switch_reason += f" | Fallback error: {str(fallback_err)[:100]}"
-                        else:
-                            logger.info(f" Fast quality check passed (Condition: {condition_score})")
-                            
-                    except Exception as e:
-                        logger.warning(f" Fast quality check failed: {e}. Proceeding with OpenAI results.")
-                        model_switch_reason = f"Quality check error: {str(e)[:100]}"
-                    
-                    actions = attempt_actions
-                    break
-                else:
-                    logger.warning(f" Attempt {attempt}: Generation or validation failed")
-                    if attempt < self.MAX_RETRIES:
-                        # OPTIMIZED: Shorter delays (1-3s) instead of exponential (2-9s)
-                        # Attempt 1: ~1-2s
-                        # Attempt 2: ~2-3s
-                        delay = attempt + random.uniform(0, 1)
-                        logger.info(f" Retrying generation in {delay:.2f}s...")
-                        await asyncio.sleep(delay)
+                                # Use Groq fallback model for better medical accuracy
+                                fallback_model = GROQ_FALLBACK_MODEL
+                                
+                                try:
+                                    fallback_actions, fallback_cost = await self._generate_actions_via_gpt(
+                                        user_context, db, model_override=fallback_model
+                                    )
+                                    gpt_cost += fallback_cost
+                                    
+                                    if fallback_actions:
+                                        logger.info(f" Fallback generation successful. Using {fallback_model} results.")
+                                        attempt_actions = fallback_actions
+                                        used_model = fallback_model
+                                    else:
+                                        logger.error(" Fallback generation failed. Using original OpenAI results.")
+                                        model_switch_reason += " | Fallback returned None, using original"
+                                except Exception as fallback_err:
+                                    logger.error(f" Fallback API error: {fallback_err}. Using original OpenAI results.")
+                                    model_switch_reason += f" | Fallback error: {str(fallback_err)[:100]}"
+                            else:
+                                logger.info(f" Fast quality check passed (Condition: {condition_score})")
+                                
+                        except Exception as e:
+                            logger.warning(f" Fast quality check failed: {e}. Proceeding with OpenAI results.")
+                            model_switch_reason = f"Quality check error: {str(e)[:100]}"
+                        
+                        actions = attempt_actions
+                        break
                     else:
-                        # Max retries exceeded - FAIL CLEANLY, no fallbacks
-                        logger.error(f" Max retries ({self.MAX_RETRIES}) exceeded. Failing without fallbacks.")
+                        logger.warning(f" Attempt {attempt}: Generation or validation failed")
+                        if attempt < self.MAX_RETRIES:
+                            # OPTIMIZED: Shorter delays (1-3s) instead of exponential (2-9s)
+                            # Attempt 1: ~1-2s
+                            # Attempt 2: ~2-3s
+                            delay = attempt + random.uniform(0, 1)
+                            logger.info(f" Retrying generation in {delay:.2f}s...")
+                            await asyncio.sleep(delay)
+                        else:
+                            # Max retries exceeded - FAIL CLEANLY, no fallbacks
+                            logger.error(f" Max retries ({self.MAX_RETRIES}) exceeded. Failing without fallbacks.")
             
             total_cost += gpt_cost
             
@@ -2458,7 +2458,7 @@ class ActionPlanGenerator:
         """
         from datetime import timedelta
         from sqlalchemy import func
-        from app.core.database import ActionPlanFeedback, ActionPlanItem
+        from app.core.database import ActionPlanFeedback, ActionPlanItem, ActionPlanItemVariant
         
         yesterday = today - timedelta(days=1)
         
@@ -2531,9 +2531,29 @@ class ActionPlanGenerator:
                         # Research
                         "research_studies": item.research_studies or [],
                         
-                        # Variants will be loaded separately if needed
+                        # Variants - will be loaded below
                         "variants": [],
                     })
+                    
+                    # CRITICAL: Load variants with their images to avoid regeneration
+                    variant_result = await db.execute(
+                        select(ActionPlanItemVariant).where(
+                            ActionPlanItemVariant.item_id == item.id
+                        )
+                    )
+                    variants = variant_result.scalars().all()
+                    
+                    if variants:
+                        skipped_items[-1]["variants"] = [
+                            {
+                                "variant_type": v.variant_type,
+                                "title": v.title,
+                                "description": v.description,
+                                "image_url": v.image_url,  # Preserve existing image!
+                                "image_prompt": v.image_prompt,
+                            }
+                            for v in variants
+                        ]
             
             if skipped_items:
                 logger.info(f"Found {len(skipped_items)} chat-skipped items from yesterday to carry forward")
