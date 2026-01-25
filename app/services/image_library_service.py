@@ -40,10 +40,10 @@ class ImageLibraryService:
     Stores all images with embeddings for semantic reuse.
     """
     
-    # SIMILARITY_THRESHOLD increased from 0.85 to 0.92 to prevent
-    # false matches between different food items (e.g., spinach vs salmon)
-    # Higher threshold requires more specific semantic match
-    SIMILARITY_THRESHOLD = 0.95  # Cosine similarity threshold for semantic image matching
+    # SIMILARITY_THRESHOLD optimized for speed + quality balance
+    # 0.88 provides good semantic matching while maximizing cache hits
+    # Lower = more reuse (faster), Higher = more specificity
+    SIMILARITY_THRESHOLD = 0.88  # Cosine similarity threshold for semantic image matching
     
     # RunPod FLUX.1 Schnell pricing
     COST_PER_IMAGE = 0.005  # $0.005 per image
@@ -576,12 +576,13 @@ class ImageLibraryService:
     
     async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
-        Call RunPod FLUX.1 Schnell serverless endpoint using /run + /status async pattern.
+        Call RunPod FLUX.1 Schnell serverless endpoint using /runsync (synchronous).
         
-        FLUX.1 Schnell features:
-        - Fast 4-step inference
+        OPTIMIZED for speed:
+        - Uses /runsync instead of /run + polling (eliminates polling overhead)
+        - 2-step inference (vs 4) - 2x faster generation
+        - guidance=3.5 (vs 7) - faster processing with good quality
         - 512x512 resolution for action cards
-        - High-quality text-to-image generation
         - $0.005 per image, standard RunPod pricing
         """
         if not self.runpod_api_key:
@@ -594,13 +595,13 @@ class ImageLibraryService:
             # Enhanced prompt with category-specific styling
             enhanced_prompt = self._enhance_prompt(prompt, category)
             
-            # FLUX.1 Schnell payload format
+            # FLUX.1 Schnell payload - OPTIMIZED for speed
             payload = {
                 "input": {
                     "prompt": enhanced_prompt,
                     "seed": -1,  # Random seed
-                    "num_inference_steps": 4,  # Fast inference
-                    "guidance": 7,  # Guidance scale
+                    "num_inference_steps": 2,  # OPTIMIZED: 2 steps (was 4) - 2x faster
+                    "guidance": 3.5,  # OPTIMIZED: 3.5 (was 7) - faster processing
                     "negative_prompt": "",
                     "image_format": "png",
                     "width": 512,  # 512x512 resolution
@@ -613,120 +614,133 @@ class ImageLibraryService:
                 "Content-Type": "application/json"
             }
             
-            # Step 1: Submit job to /run endpoint
-            run_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
+            # Use /runsync for synchronous execution - no polling needed!
+            runsync_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/runsync"
             
-            logger.info(f"🎨 [FLUX] Submitting job: {prompt[:50]}...")
+            logger.info(f"🎨 [FLUX] runsync: {prompt[:50]}...")
             
             response = await self.client.post(
-                run_url,
+                runsync_url,
                 json=payload,
                 headers=headers,
-                timeout=10.0  # 10s timeout for job submission
+                timeout=60.0  # 60s timeout for runsync (includes generation time)
             )
             
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            
             if response.status_code != 200:
-                logger.error(f"❌ [FLUX] Submission failed: {response.status_code} - {response.text[:200]}")
+                logger.error(f"❌ [FLUX] runsync failed: {response.status_code} - {response.text[:200]}")
                 return await self._generate_placeholder_image(prompt)
             
             result = response.json()
-            job_id = result.get("id")
+            status = result.get("status")
             
-            if not job_id:
-                logger.error(f"❌ [FLUX] No job_id in response")
+            if status == "COMPLETED":
+                output = result.get("output", {})
+                logger.info(f"✅ [FLUX] Completed in {elapsed_ms}ms")
+                
+                # FLUX.1 Schnell returns image in various formats
+                if isinstance(output, dict):
+                    # Check for base64 encoded image (FLUX standard)
+                    if "image" in output:
+                        return (output, elapsed_ms)
+                    
+                    # Check for direct image URL
+                    image_url = output.get("image_url")
+                    if image_url and image_url.startswith("http"):
+                        return (image_url, elapsed_ms)
+                    
+                    # Check 'result' key (some RunPod formats)
+                    image_url = output.get("result")
+                    if image_url and isinstance(image_url, str) and image_url.startswith("http"):
+                        return (image_url, elapsed_ms)
+                    
+                    # Check images array (some FLUX versions)
+                    images = output.get("images")
+                    if images and isinstance(images, list) and len(images) > 0:
+                        return ({"image": images[0]}, elapsed_ms)
+                
+                # If output is a string (base64 or URL)
+                if isinstance(output, str):
+                    if output.startswith("http"):
+                        return (output, elapsed_ms)
+                    else:
+                        return ({"image": output}, elapsed_ms)
+                
+                logger.error(f"❌ [FLUX] Unexpected output format: {type(output)} - {str(output)[:200]}")
                 return await self._generate_placeholder_image(prompt)
             
-            logger.debug(f"[FLUX] Job ID: {job_id}")
+            elif status == "FAILED":
+                error = result.get("error", "Unknown error")
+                logger.error(f"❌ [FLUX] Job failed: {error}")
+                return await self._generate_placeholder_image(prompt)
             
-            # Step 2: Poll /status/{job_id} - FLUX.1 Schnell is fast but can be slow on cold start
-            status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
+            elif status == "IN_QUEUE":
+                # Job queued but not started within timeout - fall back to async pattern
+                job_id = result.get("id")
+                logger.warning(f"⚠️ [FLUX] Job queued (runsync timeout), falling back to polling: {job_id}")
+                return await self._poll_job_status(job_id, headers, start_time, prompt)
             
-            # Increased polling - allow up to 45s for cold start scenarios
-            max_polls = 90  # 45 seconds max (90 × 0.5s)
-            poll_interval = 0.5  # Poll every 0.5s for faster response
+            else:
+                logger.warning(f"⚠️ [FLUX] Unknown status: {status}")
+                return (None, 0)
             
-            for poll_num in range(max_polls):
-                await asyncio.sleep(poll_interval)
-                
-                try:
-                    status_response = await self.client.get(
-                        status_url,
-                        headers=headers,
-                        timeout=5.0
-                    )
-                    
-                    if status_response.status_code != 200:
-                        logger.warning(f"⚠️ [FLUX] Status check failed: {status_response.status_code}")
-                        continue
-                    
-                    status_result = status_response.json()
-                    status = status_result.get("status")
-                    
-                    if status == "COMPLETED":
-                        output = status_result.get("output", {})
-                        elapsed_ms = int((time.time() - start_time) * 1000)
-                        
-                        logger.info(f"✅ [FLUX] Completed in {elapsed_ms}ms")
-                        
-                        # FLUX.1 Schnell returns image in various formats
-                        if isinstance(output, dict):
-                            # Check for base64 encoded image (FLUX standard)
-                            if "image" in output:
-                                # Base64 image - will be handled by caller
-                                return (output, elapsed_ms)
-                            
-                            # Check for direct image URL
-                            image_url = output.get("image_url")
-                            if image_url and image_url.startswith("http"):
-                                return (image_url, elapsed_ms)
-                            
-                            # Check 'result' key (some RunPod formats)
-                            image_url = output.get("result")
-                            if image_url and isinstance(image_url, str) and image_url.startswith("http"):
-                                return (image_url, elapsed_ms)
-                            
-                            # Check images array (some FLUX versions)
-                            images = output.get("images")
-                            if images and isinstance(images, list) and len(images) > 0:
-                                return ({"image": images[0]}, elapsed_ms)
-                        
-                        # If output is a string (base64 or URL)
-                        if isinstance(output, str):
-                            if output.startswith("http"):
-                                return (output, elapsed_ms)
-                            else:
-                                return ({"image": output}, elapsed_ms)
-                        
-                        logger.error(f"❌ [FLUX] Unexpected output format: {type(output)} - {str(output)[:200]}")
-                        return await self._generate_placeholder_image(prompt)
-                    
-                    elif status == "FAILED":
-                        error = status_result.get("error", "Unknown error")
-                        logger.error(f"❌ [FLUX] Job failed: {error}")
-                        return await self._generate_placeholder_image(prompt)
-                    
-                    elif status in ["IN_QUEUE", "IN_PROGRESS"]:
-                        # Continue polling
-                        if poll_num % 10 == 0:  # Log every 5 seconds
-                            logger.debug(f"[FLUX] Poll {poll_num + 1}/{max_polls}: {status}")
-                        continue
-                    
-                    else:
-                        logger.warning(f"⚠️ [FLUX] Unknown status: {status}")
-                        continue
-                
-                except Exception as poll_error:
-                    logger.warning(f"⚠️ [FLUX] Poll error: {poll_error}")
-                    continue
-            
-            # Timeout - return None to trigger retry logic
+        except httpx.TimeoutException:
             elapsed = time.time() - start_time
-            logger.warning(f"⚠️ [FLUX] Timeout after {elapsed:.1f}s (job: {job_id}) - will retry")
-            return (None, 0)  # Return None to trigger retry in _call_runpod_flux_with_retry
+            logger.warning(f"⚠️ [FLUX] runsync timeout after {elapsed:.1f}s - will retry")
+            return (None, 0)
             
         except Exception as e:
             logger.warning(f"⚠️ [FLUX] Error: {type(e).__name__}: {e} - will retry")
-            return (None, 0)  # Return None to trigger retry
+            return (None, 0)
+    
+    async def _poll_job_status(self, job_id: str, headers: dict, start_time: float, prompt: str) -> Tuple[Optional[Any], int]:
+        """Poll job status as fallback when runsync times out (job queued)."""
+        if not job_id:
+            return await self._generate_placeholder_image(prompt)
+        
+        status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
+        max_polls = 60  # 30 seconds max (60 × 0.5s)
+        poll_interval = 0.5
+        
+        for poll_num in range(max_polls):
+            await asyncio.sleep(poll_interval)
+            
+            try:
+                status_response = await self.client.get(
+                    status_url,
+                    headers=headers,
+                    timeout=5.0
+                )
+                
+                if status_response.status_code != 200:
+                    continue
+                
+                status_result = status_response.json()
+                status = status_result.get("status")
+                
+                if status == "COMPLETED":
+                    output = status_result.get("output", {})
+                    elapsed_ms = int((time.time() - start_time) * 1000)
+                    logger.info(f"✅ [FLUX] Completed in {elapsed_ms}ms (via polling)")
+                    
+                    if isinstance(output, dict) and "image" in output:
+                        return (output, elapsed_ms)
+                    if isinstance(output, dict):
+                        images = output.get("images")
+                        if images and len(images) > 0:
+                            return ({"image": images[0]}, elapsed_ms)
+                    if isinstance(output, str):
+                        return ({"image": output}, elapsed_ms) if not output.startswith("http") else (output, elapsed_ms)
+                    return await self._generate_placeholder_image(prompt)
+                
+                elif status == "FAILED":
+                    return await self._generate_placeholder_image(prompt)
+                
+            except Exception:
+                continue
+        
+        return (None, 0)
 
     async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
         """
@@ -742,7 +756,7 @@ class ImageLibraryService:
                     "prompt": enhanced_prompt,
                     "width": 512,
                     "height": 512,
-                    "num_inference_steps": 4,
+                    "num_inference_steps": 2,  # OPTIMIZED: 2 steps (was 4)
                     "guidance": 3.5,
                     "seed": -1,
                     "image_format": "png"
