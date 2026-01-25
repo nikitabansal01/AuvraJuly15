@@ -208,7 +208,7 @@ class AIService:
                             {"role": "system", "content": "You are a helpful assistant specializing in women's hormone health and wellness."},
                             {"role": "user", "content": prompt}
                         ],
-                        max_tokens=1800,
+                        max_completion_tokens=1800,
                         temperature=0.7
                     )
                     

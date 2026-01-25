@@ -42,7 +42,7 @@ async def call_llm(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            max_tokens=max_tokens
+            max_completion_tokens=max_tokens
         )
         
         return response.choices[0].message.content

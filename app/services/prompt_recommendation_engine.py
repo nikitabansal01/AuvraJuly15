@@ -758,7 +758,7 @@ class PromptRecommendationEngine:
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.7,
-                    "max_tokens": 3000,
+                    "max_completion_tokens": 3000,
                     "response_format": {"type": "json_object"}  # Force JSON output
                 }
                 
@@ -1349,7 +1349,7 @@ Each action MUST have "variants" array (even if empty).
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 4000,
+                "max_completion_tokens": 4000,
                 "response_format": {"type": "json_object"}
             }
             

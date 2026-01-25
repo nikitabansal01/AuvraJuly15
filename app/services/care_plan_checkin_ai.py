@@ -705,7 +705,7 @@ CRITICAL: Keep responses SHORT (1-2 sentences max). No long explanations."""
                     {"role": "user", "content": prompt + context_msg}
                 ],
                 temperature=0.7,  # Slightly higher for natural variation
-                max_tokens=60  # Force brevity
+                max_completion_tokens=60  # Force brevity
             ),
             timeout=10.0
         )

@@ -2676,7 +2676,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             {"role": "user", "content": prompt}
                         ],
                         temperature=0.7,
-                        max_tokens=3000,
+                        max_completion_tokens=3000,
                         response_format={"type": "json_object"}
                     )
                     
@@ -3647,7 +3647,7 @@ Format as bullet points."""
                                     {"role": "user", "content": summary_prompt}
                                 ],
                                 "temperature": 0.3,
-                                "max_tokens": 500
+                                "max_completion_tokens": 500
                             }
                         )
                         
@@ -4131,7 +4131,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": self.GPT_TEMPERATURE,
-                "max_tokens": 4000,
+                "max_completion_tokens": 4000,
                 "response_format": {
                     "type": "json_schema",
                     "json_schema": {
@@ -4647,7 +4647,7 @@ JSON ONLY:
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.1,
-                    "max_tokens": 150,  # Enough for 5 scores
+                    "max_completion_tokens": 150,  # Enough for 5 scores
                 },
                 timeout=15.0  # Slightly longer for 5 factors
             )
@@ -5736,7 +5736,7 @@ Respond with valid JSON object only."""
                                 ],
                                 # No tools needed - research already pre-fetched
                                 "temperature": 0.7,
-                                "max_tokens": 2500,
+                                "max_completion_tokens": 2500,
                                 "response_format": {"type": "json_object"}
                             }
                         )
@@ -6268,7 +6268,7 @@ Respond with valid JSON only."""
                                 {"role": "user", "content": prompt},
                             ],
                             "temperature": 0.5,
-                            "max_tokens": 4500,
+                            "max_completion_tokens": 4500,
                             "response_format": {"type": "json_object"},
                         },
                     )
@@ -6856,7 +6856,7 @@ OUTPUT FORMAT (JSON Array):
                                 "tools": [PUBMED_SEARCH_TOOL],
                                 "tool_choice": "auto",
                                 "temperature": 0.3,
-                                "max_tokens": 8000
+                                "max_completion_tokens": 8000
                             }
                         )
                         
@@ -6942,7 +6942,7 @@ OUTPUT FORMAT (JSON Array):
                                             *tool_results
                                         ],
                                         "temperature": 0.3,
-                                        "max_tokens": 8000,
+                                        "max_completion_tokens": 8000,
                                         "response_format": {"type": "json_object"}
                                     }
                                 )

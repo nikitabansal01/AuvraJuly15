@@ -318,7 +318,7 @@ class ChatMemoryService:
                             {"role": "system", "content": "You are a healthcare AI summarizing patient conversations."},
                             {"role": "user", "content": summary_prompt}
                         ],
-                        max_tokens=500,
+                        max_completion_tokens=500,
                         temperature=0.7
                     )
                     summary_text = response.choices[0].message.content
@@ -459,7 +459,7 @@ class ChatMemoryService:
                             {"role": "system", "content": "You are a healthcare AI. Summarize conversations concisely."},
                             {"role": "user", "content": f"Summarize this health conversation in 2-3 sentences:\n{conversation}"}
                         ],
-                        max_tokens=150,
+                        max_completion_tokens=150,
                         temperature=0.7
                     )
                     summary = response.choices[0].message.content
