@@ -4817,14 +4817,30 @@ JSON ONLY:
             return (actions, 0.0)
 
         # Build list of all image generation task data
+        # SKIP actions that already have images (carryforward items)
         task_data_list = []
+        skipped_actions = 0
         
         for action_idx, action in enumerate(actions):
             action_title = action.get("title", "Wellness Action")
             action_category = action.get("category", "food")
             
-            # Hero image task data
-            if image_mode != "variants_only":
+            # Check if this action already has images (carryforward item)
+            has_hero = bool(action.get("hero_image_url"))
+            variants = action.get("variants", [])
+            has_all_variant_images = all(
+                isinstance(v, dict) and v.get("image_url")
+                for v in variants
+            ) if variants else False
+            
+            # Skip this action entirely if it has all images
+            if has_hero and has_all_variant_images:
+                skipped_actions += 1
+                logger.info(f"[IMAGES] ✅ Action '{action_title}' already has images (carryforward) - skipping")
+                continue
+            
+            # Hero image task data (only if no hero image yet)
+            if image_mode != "variants_only" and not has_hero:
                 task_data_list.append({
                     "prompt": action_title,
                     "category": action_category,
@@ -4832,11 +4848,13 @@ JSON ONLY:
                     "meta": {"action_idx": action_idx, "variant_idx": None}
                 })
             
-            # Variant image tasks data
+            # Variant image tasks data (only for variants without images)
             if image_mode in ["full", "variants_only"]:
-                variants = action.get("variants", [])
                 for variant_idx, variant in enumerate(variants):
                     if not isinstance(variant, dict):
+                        continue
+                    # Skip variants that already have images
+                    if variant.get("image_url"):
                         continue
                     variant_title = variant.get("title", f"{variant.get('variant_type', 'variant')} {action_title}")
                     task_data_list.append({
@@ -4845,6 +4863,9 @@ JSON ONLY:
                         "variant_type": variant.get("variant_type", f"variant_{variant_idx}"),
                         "meta": {"action_idx": action_idx, "variant_idx": variant_idx}
                     })
+        
+        if skipped_actions > 0:
+            logger.info(f"[IMAGES] 🔄 Skipped {skipped_actions} carryforward actions with existing images")
 
         if not task_data_list:
             return (actions, 0.0)
