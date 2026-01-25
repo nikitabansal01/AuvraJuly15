@@ -180,8 +180,8 @@ class AuvraUnifiedMemory:
             # Today's symptom logs
             symptoms = self.db.query(SymptomLog).filter(
                 and_(
-                    SymptomLog.uid == user_id,
-                    SymptomLog.log_date == today
+                    SymptomLog.user_id == user_id,
+                    SymptomLog.logged_date == today
                 )
             ).all()
             
