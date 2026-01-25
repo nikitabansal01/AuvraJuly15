@@ -40,6 +40,7 @@ from app.core.database import (
     ConversationSummary,
     UserProfile,
     UserResponse,
+    ActionPlan,
     ActionPlanItem,
     SymptomLog,
     WeeklyCheckIn,
@@ -165,11 +166,14 @@ class AuvraUnifiedMemory:
         today = date.today()
         
         try:
-            # Today's action plan items
-            action_items = self.db.query(ActionPlanItem).filter(
+            # Today's action plan items - need to join with ActionPlan to filter by plan_date
+            # ActionPlanItem doesn't have plan_date directly, it's on ActionPlan
+            action_items = self.db.query(ActionPlanItem).join(
+                ActionPlan, ActionPlanItem.plan_id == ActionPlan.id
+            ).filter(
                 and_(
-                    ActionPlanItem.uid == user_id,
-                    ActionPlanItem.plan_date == today
+                    ActionPlan.uid == user_id,
+                    ActionPlan.plan_date == today
                 )
             ).all()
             
@@ -302,9 +306,11 @@ class AuvraUnifiedMemory:
                 "daily_reviews": [
                     {
                         "date": dr.review_date.isoformat() if dr.review_date else None,
-                        "overall_rating": dr.overall_rating,
-                        "feedback_text": dr.feedback_text,
-                        "improvement_suggestions": dr.improvement_suggestions,
+                        # Note: overall_rating column doesn't exist in ActionPlanDailyReview
+                        # Using items_review_data for feedback summary instead
+                        "items_marked_complete": dr.items_marked_complete,
+                        "items_skipped": dr.items_skipped,
+                        "streak_action": dr.streak_action,
                     }
                     for dr in daily_reviews
                 ],
@@ -324,29 +330,39 @@ class AuvraUnifiedMemory:
                 UserProfile.uid == user_id
             ).first()
             
-            chatbot_memory = profile.chatbot_memory if profile else {}
+            chatbot_memory = profile.chatbot_memory if profile and profile.chatbot_memory else {}
+            
+            # Safely extract values from chatbot_memory with proper None handling
+            def safe_get(key: str, default=None):
+                """Safely get nested value from chatbot_memory."""
+                val = chatbot_memory.get(key)
+                if val is None:
+                    return default
+                if isinstance(val, dict):
+                    return val.get("value", default)
+                return val
             
             # Extract key preferences from chatbot memory
             return {
                 # Diet preferences (from personalization)
-                "diet_preference": chatbot_memory.get("diet_preference", {}).get("value"),
-                "food_allergies": chatbot_memory.get("food_allergies", {}).get("value"),
-                "cuisine_preference": chatbot_memory.get("cuisine_preference", {}).get("value"),
+                "diet_preference": safe_get("diet_preference"),
+                "food_allergies": safe_get("food_allergies"),
+                "cuisine_preference": safe_get("cuisine_preference"),
                 
                 # Communication preferences
-                "preferred_communication_style": chatbot_memory.get("communication_style", {}).get("value"),
+                "preferred_communication_style": safe_get("communication_style"),
                 
                 # Educational interests (from know_my_body)
-                "educational_interests": chatbot_memory.get("educational_interests", {}).get("value", []),
+                "educational_interests": safe_get("educational_interests", []),
                 
                 # What works/doesn't work (learned over time)
-                "foods_liked": chatbot_memory.get("foods_liked", {}).get("value", []),
-                "foods_disliked": chatbot_memory.get("foods_disliked", {}).get("value", []),
-                "activities_liked": chatbot_memory.get("activities_liked", {}).get("value", []),
-                "activities_disliked": chatbot_memory.get("activities_disliked", {}).get("value", []),
+                "foods_liked": safe_get("foods_liked", []),
+                "foods_disliked": safe_get("foods_disliked", []),
+                "activities_liked": safe_get("activities_liked", []),
+                "activities_disliked": safe_get("activities_disliked", []),
                 
                 # Barriers identified
-                "common_barriers": chatbot_memory.get("common_barriers", {}).get("value", []),
+                "common_barriers": safe_get("common_barriers", []),
             }
             
         except Exception as e:

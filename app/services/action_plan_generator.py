@@ -2493,15 +2493,46 @@ class ActionPlanGenerator:
                 
                 if item and not item.is_completed:
                     # Item was skipped and not completed - carry forward
+                    # CRITICAL: Include ALL fields so generator can use them directly
                     skipped_items.append({
+                        # Core identification
                         "id": item.id,
+                        "original_id": item.id,
+                        "carried_forward_from": item.id,
+                        
+                        # Core content - MUST have these
                         "title": item.title,
                         "category": item.category,
                         "specific_action": item.specific_action,
                         "purpose": item.purpose,
-                        "target_hormone": item.target_hormone,
                         "time_slot": item.time_slot,
-                        "carried_forward_from": item.id,
+                        
+                        # Hormone targeting - CRITICAL for hormone balance
+                        "target_hormone": item.target_hormone,
+                        "hormone_persona_intro": item.hormone_persona_intro,
+                        
+                        # Symptoms and conditions
+                        "symptoms": item.symptoms or [],
+                        "conditions": item.conditions or [],
+                        
+                        # Category-specific fields
+                        "food_items": item.food_items or [],
+                        "food_amounts": item.food_amounts or [],
+                        "exercise_types": item.exercise_types or [],
+                        "exercise_durations": item.exercise_durations or [],
+                        "exercise_intensities": item.exercise_intensities or [],
+                        "mindfulness_techniques": item.mindfulness_techniques or [],
+                        "mindfulness_durations": item.mindfulness_durations or [],
+                        
+                        # Images - preserve original images
+                        "hero_image_url": item.hero_image_url,
+                        "hero_image_prompt": item.hero_image_prompt,
+                        
+                        # Research
+                        "research_studies": item.research_studies or [],
+                        
+                        # Variants will be loaded separately if needed
+                        "variants": [],
                     })
             
             if skipped_items:

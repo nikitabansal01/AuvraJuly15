@@ -1670,17 +1670,66 @@ async def _carry_forward_items_to_today(
             user_timezone = user_profile.current_timezone if user_profile and user_profile.current_timezone else "Asia/Seoul"
             
             # Build carryforward_items list for generator
+            # CRITICAL: Must convert ORM objects to dictionaries with ALL required fields
+            # The generator expects: title, category, specific_action, purpose, target_hormone, etc.
             carryforward_items = []
             for item in source_items:
-                # Get variants for this item
+                # Get variants for this item and convert to dict
                 variants = db.query(ActionPlanItemVariant).filter(
                     ActionPlanItemVariant.item_id == item.id
                 ).all()
                 
+                # Convert variants to list of dicts
+                variant_dicts = []
+                for v in variants:
+                    variant_dicts.append({
+                        "variant_type": v.variant_type,
+                        "title": v.title,
+                        "image_url": v.image_url,
+                        "image_prompt": v.image_prompt,
+                    })
+                
+                # CRITICAL FIX: Convert ORM item to dictionary with ALL fields
+                # The generator accesses fields like cf_item.get("title"), cf_item.get("category")
                 carryforward_items.append({
-                    "source_item": item,
-                    "source_variants": variants,
-                    "original_id": item.id
+                    # Core identification
+                    "id": item.id,
+                    "original_id": item.id,
+                    "carried_forward_from": item.id,
+                    
+                    # Core content - MUST have these
+                    "title": item.title,
+                    "category": item.category,
+                    "specific_action": item.specific_action,
+                    "purpose": item.purpose,
+                    "time_slot": item.time_slot,
+                    
+                    # Hormone targeting - CRITICAL for hormone balance
+                    "target_hormone": item.target_hormone,
+                    "hormone_persona_intro": item.hormone_persona_intro,
+                    
+                    # Symptoms and conditions
+                    "symptoms": item.symptoms or [],
+                    "conditions": item.conditions or [],
+                    
+                    # Category-specific fields
+                    "food_items": item.food_items or [],
+                    "food_amounts": item.food_amounts or [],
+                    "exercise_types": item.exercise_types or [],
+                    "exercise_durations": item.exercise_durations or [],
+                    "exercise_intensities": item.exercise_intensities or [],
+                    "mindfulness_techniques": item.mindfulness_techniques or [],
+                    "mindfulness_durations": item.mindfulness_durations or [],
+                    
+                    # Images - preserve original images
+                    "hero_image_url": item.hero_image_url,
+                    "hero_image_prompt": item.hero_image_prompt,
+                    
+                    # Research
+                    "research_studies": item.research_studies or [],
+                    
+                    # Variants for the item
+                    "variants": variant_dicts,
                 })
             
             # Get async session for generator
