@@ -189,7 +189,7 @@ class AuvraUnifiedMemory:
             care_plan_thread = self.db.query(CarePlanCheckInThread).filter(
                 and_(
                     CarePlanCheckInThread.uid == user_id,
-                    CarePlanCheckInThread.plan_date == today
+                    CarePlanCheckInThread.local_date == today  # Fixed: was plan_date, should be local_date
                 )
             ).first()
             
