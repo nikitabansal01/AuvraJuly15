@@ -1469,17 +1469,11 @@ class ActionPlanGenerator:
             if num_carryforward > 0:
                 logger.info(f"[GENERATE]  Have {num_carryforward} carryforward items, will generate {num_to_generate} new actions")
             
-            # EDGE CASE: All 4 actions were skipped - no GPT generation needed
-            if num_to_generate == 0 and carryforward_items:
-                logger.info(f"[GENERATE]  All 4 slots filled by carryforward items - skipping GPT generation")
-                actions = []
-                gpt_cost = 0.0
-                used_model = "carryforward_only"
-                model_switch_reason = "All items carried forward from yesterday"
-                
-                # Build actions list from carryforward items
+            # Build carryforward actions list FIRST (used in all cases with carryforward)
+            carryforward_actions = []
+            if carryforward_items:
                 for cf_item in carryforward_items[:4]:
-                    actions.append({
+                    carryforward_actions.append({
                         "title": cf_item.get("title", "Action"),
                         "category": cf_item.get("category", "general"),
                         "specific_action": cf_item.get("specific_action", ""),
@@ -1501,13 +1495,92 @@ class ActionPlanGenerator:
                         "hero_image_url": cf_item.get("hero_image_url"),
                         "research_studies": cf_item.get("research_studies", []),
                     })
-                
+            
+            # CASE 1: All 4 items from carryforward - no GPT needed
+            if num_to_generate == 0:
+                logger.info(f"[GENERATE]  All 4 slots filled by carryforward items - skipping GPT generation")
+                actions = carryforward_actions
+                gpt_cost = 0.0
+                used_model = "carryforward_only"
+                model_switch_reason = "All items carried forward from yesterday"
                 logger.info(f"[GENERATE]  Carryforward plan ready with {len(actions)} items (no GPT cost)")
+            
+            # CASE 2: Partial carryforward (1-3 items) - generate only what's needed
+            elif num_to_generate < 4 and num_carryforward > 0:
+                logger.info(f"[GENERATE] Step 2: Generating {num_to_generate} NEW actions via GPT (partial)...")
+                gpt_cost = 0.0
+                used_model = self.GPT_MODEL
+                model_switch_reason = f"Partial generation: {num_carryforward} carried + {num_to_generate} new"
                 
+                # Calculate hormone requirements for new actions
+                # Check carryforward hormone distribution first
+                primary_hormone = user_context.get("primary_hormone", "cortisol").lower()
+                cf_primary = sum(1 for a in carryforward_actions if (a.get("target_hormone") or "").lower() == primary_hormone)
+                cf_secondary = num_carryforward - cf_primary
+                
+                # We want 2 primary + 2 secondary total
+                new_primary_needed = max(0, 2 - cf_primary)
+                new_secondary_needed = max(0, 2 - cf_secondary)
+                
+                # Ensure we generate exactly num_to_generate
+                if new_primary_needed + new_secondary_needed != num_to_generate:
+                    # Adjust to match num_to_generate
+                    if new_primary_needed + new_secondary_needed < num_to_generate:
+                        # Need more - add to whichever is less
+                        diff = num_to_generate - (new_primary_needed + new_secondary_needed)
+                        if new_primary_needed <= new_secondary_needed:
+                            new_primary_needed += diff
+                        else:
+                            new_secondary_needed += diff
+                    else:
+                        # Too many - reduce
+                        diff = (new_primary_needed + new_secondary_needed) - num_to_generate
+                        if new_secondary_needed >= diff:
+                            new_secondary_needed -= diff
+                        else:
+                            new_primary_needed -= (diff - new_secondary_needed)
+                            new_secondary_needed = 0
+                
+                hormone_requirements = {"primary": new_primary_needed, "secondary": new_secondary_needed}
+                logger.info(f"[GENERATE]  Hormone balance: need {new_primary_needed} primary + {new_secondary_needed} secondary new actions")
+                
+                # Generate ONLY the needed actions using partial generation
+                from app.services.evaluation_service import get_action_plan_evaluator
+                evaluator = get_action_plan_evaluator()
+                
+                for attempt in range(1, self.MAX_RETRIES + 1):
+                    logger.info(f" Partial generation attempt {attempt}/{self.MAX_RETRIES} for {num_to_generate} actions")
+                    
+                    new_actions, attempt_cost = await self._generate_partial_actions(
+                        user_context=user_context,
+                        num_actions=num_to_generate,
+                        existing_actions=carryforward_actions,
+                        db=db,
+                        hormone_requirements=hormone_requirements
+                    )
+                    gpt_cost += attempt_cost
+                    
+                    if new_actions and len(new_actions) >= num_to_generate:
+                        logger.info(f" Partial generation successful: got {len(new_actions)} new actions")
+                        # Combine: carryforward first, then new actions
+                        actions = carryforward_actions + new_actions[:num_to_generate]
+                        break
+                    else:
+                        logger.warning(f" Partial generation attempt {attempt} failed")
+                        if attempt < self.MAX_RETRIES:
+                            delay = attempt + random.uniform(0, 1)
+                            await asyncio.sleep(delay)
+                        else:
+                            # Fallback: use carryforward only
+                            logger.error(f" Partial generation failed after {self.MAX_RETRIES} attempts, using carryforward only")
+                            actions = carryforward_actions
+                            model_switch_reason += " | Partial gen failed, carryforward only"
+            
+            # CASE 3: No carryforward - generate all 4 actions
             else:
                 # Step 2: Generate actions via GPT-5-mini with retry logic
                 # Pydantic validation ensures complete data - no fallbacks
-                logger.info(f"[GENERATE] Step 2: Generating actions via GPT...")
+                logger.info(f"[GENERATE] Step 2: Generating all 4 actions via GPT...")
                 actions = None
                 gpt_cost = 0.0
                 used_model = self.GPT_MODEL
@@ -1591,49 +1664,16 @@ class ActionPlanGenerator:
                 logger.error("[GENERATE]  Failed to generate valid actions via GPT after all retries")
                 return {"success": False, "error": "Failed to generate actions. Please try again."}
             
-            # Combine carryforward items with newly generated actions (only if we have both)
-            if carryforward_items and num_to_generate > 0:
-                # Limit new actions to fill remaining slots
-                actions = actions[:num_to_generate]
-                
-                # Add carryforward items at the beginning (they take priority)
-                combined_actions = []
-                for cf_item in carryforward_items[:4]:  # Max 4 total
-                    combined_actions.append({
-                        "title": cf_item.get("title", "Action"),
-                        "category": cf_item.get("category", "general"),
-                        "specific_action": cf_item.get("specific_action", ""),
-                        "purpose": cf_item.get("purpose", ""),
-                        "target_hormone": cf_item.get("target_hormone", "cortisol"),
-                        "time_slot": cf_item.get("time_slot", "morning"),
-                        "carried_forward_from": cf_item.get("carried_forward_from") or cf_item.get("id"),
-                        "hormone_persona_intro": cf_item.get("hormone_persona_intro", ""),
-                        "symptoms": cf_item.get("symptoms", []),
-                        "conditions": cf_item.get("conditions", []),
-                        "food_items": cf_item.get("food_items", []),
-                        "food_amounts": cf_item.get("food_amounts", []),
-                        "exercise_types": cf_item.get("exercise_types", []),
-                        "exercise_durations": cf_item.get("exercise_durations", []),
-                        "exercise_intensities": cf_item.get("exercise_intensities", []),
-                        "mindfulness_techniques": cf_item.get("mindfulness_techniques", []),
-                        "mindfulness_durations": cf_item.get("mindfulness_durations", []),
-                        "variants": cf_item.get("variants", []),
-                        "hero_image_url": cf_item.get("hero_image_url"),
-                        "research_studies": cf_item.get("research_studies", []),
-                    })
-                
-                # Add new actions
-                combined_actions.extend(actions)
-                
-                # Ensure max 4 actions
-                actions = combined_actions[:4]
-                logger.info(f"[GENERATE]  Combined {len(carryforward_items)} carryforward + {num_to_generate} new = {len(actions)} total actions")
+            # NOTE: Carryforward combining is now handled in CASE 2 (partial generation)
+            # No need to combine here - actions already contains the right mix
             
             # Log the generated actions for debugging
             logger.info(f"[GENERATE] ==========================================================================")
             logger.info(f"[GENERATE]  GENERATED ACTIONS SUMMARY ({len(actions)} actions):")
             for i, action in enumerate(actions):
-                logger.info(f"[GENERATE]   Action {i+1}: '{action['title']}' | Category: {action['category']} | Hormone: {action['target_hormone']}")
+                is_carried = "carried_forward_from" in action and action.get("carried_forward_from")
+                label = " [CARRYFORWARD]" if is_carried else ""
+                logger.info(f"[GENERATE]   Action {i+1}: '{action['title']}' | Category: {action['category']} | Hormone: {action['target_hormone']}{label}")
                 logger.info(f"[GENERATE]     Symptoms: {action['symptoms']}")
                 logger.info(f"[GENERATE]     Conditions: {action['conditions']}")
             logger.info(f"[GENERATE] ==========================================================================")
