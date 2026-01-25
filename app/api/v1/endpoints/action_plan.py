@@ -1160,6 +1160,8 @@ async def get_pending_review(
         # If user only has ONE plan ever, skip review (it's their first day / signup)
         total_plan_count = db.query(ActionPlan).filter(ActionPlan.uid == uid).count()
         
+        logger.info(f"[PENDING_REVIEW] User {uid[:20]}... has {total_plan_count} total plans, today={today}")
+        
         if total_plan_count <= 1:
             logger.info(f"Skipping review for {uid} - user only has {total_plan_count} plan(s) (new user protection)")
             return PendingReviewResponse(needs_review=False)
