@@ -4868,6 +4868,7 @@ JSON ONLY:
             logger.info(f"[IMAGES] 🔄 Skipped {skipped_actions} carryforward actions with existing images")
 
         if not task_data_list:
+            logger.info(f"[IMAGES] ✅ All {len(actions)} actions already have images - NO GENERATION NEEDED ($0.00)")
             return (actions, 0.0)
 
         # 🚀 STEP 1: Fetch ALL embeddings in ONE batch call
