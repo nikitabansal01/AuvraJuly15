@@ -427,18 +427,61 @@ async def handle_complete_action(state: CarePlanCheckInState) -> CarePlanCheckIn
         streak_service = StreakService(db)
         current, longest = streak_service.update_streak_on_completion(state["user_id"])
         
-        # Celebration
+        # ═══════════════════════════════════════════════════════════════════════
+        # LLM-GENERATED CELEBRATION - Uses unified context for personalization
+        # ═══════════════════════════════════════════════════════════════════════
         hormone = (item.target_hormone or "hormone").capitalize()
-        response = f"🎉 {hormone} is celebrating! That's {current} days strong. "
+        action_title = item.title or "action"
+        formatted_context = state.get("formatted_context", "")
         
         action_items = state.get("action_items", [])
         completed_count = sum(1 for a in action_items if a.get("is_completed") or a.get("id") == action_id)
+        remaining = 4 - completed_count
         
-        if completed_count >= 4:
-            response += "You crushed your ENTIRE plan today! 🔥"
-        else:
-            remaining = 4 - completed_count
-            response += f"Just {remaining} more to go!"
+        celebration_prompt = f"""Generate a celebration message for completing an action.
+
+User Context (use to personalize):
+{formatted_context[:1500] if formatted_context else "New user"}
+
+Details:
+- Action completed: {action_title}
+- Target hormone: {hormone}
+- Current streak: {current} days
+- Longest streak: {longest} days
+- Actions completed today: {completed_count}/4
+- Remaining: {remaining}
+
+Guidelines:
+1. Use the hormone buddy voice (e.g., "I'm {hormone}!")
+2. Reference the specific action they completed
+3. If streak milestone (7, 14, 21, 30 days), celebrate extra
+4. If completed all 4, be EXTRA enthusiastic
+5. Keep it 2-3 sentences, warm and energetic
+6. Use an emoji that matches the hormone ({hormone})
+7. Vary the celebration style - don't always use same format
+
+Example variations (DON'T copy, just show variety):
+- Streak focus: "Your {current}-day streak is glowing!"
+- Action focus: "Those {action_title} are already working their magic!"
+- Momentum focus: "Just {remaining} more and you've nailed the day!"
+"""
+        
+        try:
+            response = await call_llm(celebration_prompt, max_tokens=150)
+            if not response or len(response.strip()) < 10:
+                # Fallback
+                response = f"🎉 {hormone} is celebrating! That's {current} days strong. "
+                if completed_count >= 4:
+                    response += "You crushed your ENTIRE plan today! 🔥"
+                else:
+                    response += f"Just {remaining} more to go!"
+        except Exception as llm_error:
+            logger.warning(f"Celebration LLM failed: {llm_error}")
+            response = f"🎉 {hormone} is celebrating! That's {current} days strong. "
+            if completed_count >= 4:
+                response += "You crushed your ENTIRE plan today! 🔥"
+            else:
+                response += f"Just {remaining} more to go!"
         
         return {
             **state,
@@ -454,17 +497,20 @@ async def handle_complete_action(state: CarePlanCheckInState) -> CarePlanCheckIn
 
 
 async def handle_skip_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Process skip with CRITICAL streak warning - ANY skip risks streak."""
+    """Process skip with CRITICAL streak warning - ANY skip risks streak. Uses LLM for personalized response."""
     
     user_message = state.get("user_message", "")
     targeted_idx = state.get("targeted_action_index")
     action_items = state.get("action_items", [])
+    formatted_context = state.get("formatted_context", "")
     
     # Get action title
     if targeted_idx is not None and 0 <= targeted_idx < len(action_items):
         action_title = action_items[targeted_idx].get("title", "this action")
+        action_category = action_items[targeted_idx].get("category", "action")
     else:
         action_title = "this action"
+        action_category = "action"
     
     # Extract skip reason
     try:
@@ -483,20 +529,53 @@ Output JSON: {{
 """
         reason_data = await call_llm_structured(reason_prompt, response_model=SkipReason)
         skip_category = reason_data.category
+        skip_reason = reason_data.detailed_reason
     except:
         skip_category = "other"
+        skip_reason = user_message
     
-    # Log skip (if we have the model)
-    # db.add(AssignmentSkipLog(...))
-    
-    # ⚠️ CRITICAL STREAK WARNING (USER FEEDBACK: ANY skip = streak at risk)
+    # ═══════════════════════════════════════════════════════════════════════
+    # LLM-GENERATED SKIP WARNING - Personalized and empathetic
+    # ═══════════════════════════════════════════════════════════════════════
     current_streak = state.get("current_streak", 0)
-    response = f"Heads up: skipping {action_title} will put your {current_streak}-day streak at risk. Even if you complete the other 3 actions, skipping counts against your streak. "
+    
+    skip_prompt = f"""Generate an empathetic but clear warning about skipping an action.
+
+User Context:
+{formatted_context[:1000] if formatted_context else "User with active streak"}
+
+Details:
+- Action to skip: {action_title} ({action_category})
+- User's reason: {skip_reason}
+- Skip category: {skip_category}
+- Current streak: {current_streak} days
+
+Guidelines:
+1. Acknowledge their reason empathetically FIRST
+2. Explain streak risk clearly (skipping ANY action affects streak)
+3. Offer alternatives based on their reason:
+   - no_time: Suggest quicker version
+   - dont_like: Suggest swap
+   - not_feeling_well: Suggest gentler option
+   - no_ingredients: Suggest substitution
+4. End with a question offering alternatives
+5. Keep it 2-3 sentences, warm but honest
+6. DON'T be preachy or guilt-tripping
+
+Example tone (don't copy exactly):
+"I totally get it - [action] isn't feeling right today. Just a heads up: skipping will affect your [X]-day streak. Want me to find something easier/quicker that works better for you?"
+"""
+    
+    try:
+        response = await call_llm(skip_prompt, max_tokens=150)
+        if not response or len(response.strip()) < 20:
+            response = f"Heads up: skipping {action_title} will put your {current_streak}-day streak at risk. Want a quicker or easier alternative instead?"
+    except Exception as llm_error:
+        logger.warning(f"Skip warning LLM failed: {llm_error}")
+        response = f"Heads up: skipping {action_title} will put your {current_streak}-day streak at risk. Want a quicker or easier alternative instead?"
     
     # Offer alternative based on reason
-    if skip_category in ["no_time", "dont_like", "not_feeling_well"]:
-        response += "Want a quicker or easier alternative instead of skipping?"
-        
+    if skip_category in ["no_time", "dont_like", "not_feeling_well", "no_ingredients"]:
         ui_blocks = [create_confirmation_block(
             confirm_text="Show me alternatives",
             cancel_text="I understand, skip it",
@@ -518,7 +597,6 @@ Output JSON: {{
             "phase": "awaiting_selection"
         }
     else:
-        response += "Do you still want to skip it?"
         return {**state, "bot_response": response, "phase": "complete"}
 
 

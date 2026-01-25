@@ -219,17 +219,26 @@ async def load_context(state: KnowMyBodyState) -> KnowMyBodyState:
 
 
 async def classify_question(state: KnowMyBodyState) -> KnowMyBodyState:
-    """Classify the educational question type."""
+    """Classify the educational question type with full user context."""
     
     user_question = state.get("user_question", "")
+    formatted_ctx = state.get("formatted_context", "")
+    
     if not user_question:
         return {**state, "error": "no_question"}
     
-    classification_prompt = f"""Classify this educational question.
+    classification_prompt = f"""Classify this educational question and personalize the response.
 
 User Question: "{user_question}"
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Use to personalize your answer!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CURRENT CONTEXT
+======================================================================
 - Current Phase: {state.get('cycle_phase')} (Day {state.get('cycle_day')})
 - Primary Hormone: {state.get('primary_hormone')}
 
@@ -254,7 +263,21 @@ Output JSON: {{
         classification = await call_llm_structured(classification_prompt, response_model=QuestionClassification)
         
         if not classification.is_in_scope:
-            response = "That's a great question, but it's outside my expertise. I focus on hormonal health and menstrual cycles. Is there anything about your cycle or hormones I can help explain?"
+            # Generate personalized out-of-scope response
+            oos_prompt = f"""User asked a question outside your expertise: "{user_question}"
+
+User Context:
+{formatted_ctx}
+
+Generate a warm, personalized response that:
+1. Gently explains this is outside your focus (hormonal health and cycles)
+2. Suggests a relevant topic they might be interested in based on their profile
+3. Keep it 2 sentences, friendly
+"""
+            try:
+                response = await call_llm(oos_prompt, model="gpt-5-mini")
+            except:
+                response = "That's a great question, but it's outside my expertise. I focus on hormonal health and menstrual cycles. Is there anything about your cycle or hormones I can help explain?"
             
             return {
                 **state,
@@ -288,24 +311,33 @@ Output JSON: {{
 
 
 async def explain_cycle_concept(state: KnowMyBodyState) -> KnowMyBodyState:
-    """Explain cycle/phase concepts."""
+    """Explain cycle/phase concepts with personalization."""
     
     topic = state.get("specific_topic", "cycle")
     user_question = state.get("user_question", "")
+    formatted_ctx = state.get("formatted_context", "")
     
     prompt = f"""Explain {topic} to a user asking: "{user_question}"
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Personalize your explanation!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CURRENT CONTEXT
+======================================================================
 - Current Phase: {state.get('cycle_phase')} (Day {state.get('cycle_day')})
 
 Guidelines:
 1. Simple language, no medical jargon
-2. Connect to user's CURRENT phase when relevant
+2. Connect to user's CURRENT phase and their specific conditions
 3. Use emojis for hormones (🌸 Estrogen, 🌙 Progesterone, 💪 Testosterone)
-4. 3-4 sentences, warm and educational
+4. If they have specific conditions (PCOS, endometriosis, etc.), mention how this topic relates
+5. 3-4 sentences, warm and educational
+6. Make it feel personalized to THEIR situation, not generic
 
-Example for "What happens in luteal phase?":
-"The luteal phase is the ~14 days after ovulation. Progesterone 🌙 rises to prepare your uterus for pregnancy. If no pregnancy occurs, progesterone drops, triggering your period. This hormone shift is why you might feel more tired or emotional during this time - totally normal!"
+Do NOT give a generic explanation - connect it to THIS user's health profile!
 """
     
     try:
@@ -324,10 +356,11 @@ Example for "What happens in luteal phase?":
 
 
 async def explain_hormone_mechanism(state: KnowMyBodyState) -> KnowMyBodyState:
-    """Hormone buddy explains themselves in first person."""
+    """Hormone buddy explains themselves in first person with personalization."""
     
     hormone = state.get("hormone_voice") or state.get("specific_topic", "").lower()
     user_question = state.get("user_question", "")
+    formatted_ctx = state.get("formatted_context", "")
     
     # Get hormone buddy info
     buddy = HORMONE_BUDDIES.get(hormone, {})
@@ -338,7 +371,14 @@ async def explain_hormone_mechanism(state: KnowMyBodyState) -> KnowMyBodyState:
 
 User Question: "{user_question}"
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Personalize your explanation!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CURRENT CONTEXT
+======================================================================
 - Current Phase: {state.get('cycle_phase')} (Day {state.get('cycle_day')})
 
 Hormone Personality: {personality}
@@ -346,13 +386,14 @@ Emoji: {emoji}
 
 Guidelines:
 1. Hormone speaks in FIRST PERSON ("I'm {hormone.capitalize()} {emoji}...")
-2. Explain what they do simply
-3. Connect to user's current phase
-4. Playful but scientifically accurate
-5. 3-4 sentences
+2. Explain what you do in the context of THEIR specific conditions
+3. If they have PCOS, endometriosis, thyroid issues, etc. - explain how you affect THEIR condition
+4. Connect to user's current phase
+5. Playful but scientifically accurate
+6. 3-4 sentences
+7. Make it feel like you're speaking to THIS user, not giving generic info
 
-Example for progesterone:
-"Hi! I'm Progesterone 🌙, the calming hormone. I show up after ovulation to help prepare your uterine lining and keep you relaxed. Right now in your luteal phase, I'm starting to drop, which can make you feel more emotional or tired - that's totally normal! My job is to keep things cozy."
+Do NOT be generic - reference their specific health situation!
 """
     
     try:
@@ -372,16 +413,24 @@ Example for progesterone:
 
 
 async def link_symptom_to_hormone(state: KnowMyBodyState) -> KnowMyBodyState:
-    """Explain why symptoms happen in hormonal context."""
+    """Explain why symptoms happen in hormonal context with personalization."""
     
     symptom = state.get("specific_topic", "symptom")
     user_question = state.get("user_question", "")
+    formatted_ctx = state.get("formatted_context", "")
     
     prompt = f"""Explain why the symptom "{symptom}" happens in hormonal context.
 
 User Question: "{user_question}"
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Personalize your explanation!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CURRENT CONTEXT
+======================================================================
 - Current Phase: {state.get('cycle_phase')} (Day {state.get('cycle_day')})
 - Primary Hormone: {state.get('primary_hormone')}
 
@@ -389,12 +438,13 @@ Guidelines:
 1. Connect symptom to specific hormone(s)
 2. Explain the mechanism simply
 3. Reference user's current phase
-4. Suggest if it's normal or concerning
+4. If they have conditions (PCOS, endometriosis, etc.), explain how this symptom relates
 5. Use hormone emojis (🌸 🌙 💪 ⚡)
-6. 3-4 sentences, supportive tone
+6. Suggest if it's normal or something to watch
+7. 3-4 sentences, supportive tone
+8. Reference their specific situation - don't be generic!
 
-Example for bloating:
-"Bloating is super common during the luteal phase! As Progesterone 🌙 rises, it slows down your digestion and causes water retention. Estrogen 🌸 fluctuations also contribute. This is completely normal and usually eases when your period starts. Eating smaller meals and reducing salt can help!"
+Do NOT give a generic explanation - make it specific to THIS user's health profile!
 """
     
     try:
@@ -413,11 +463,12 @@ Example for bloating:
 
 
 async def explain_action_rationale(state: KnowMyBodyState) -> KnowMyBodyState:
-    """Explain why a specific action is in the plan."""
+    """Explain why a specific action is in the plan with personalization."""
     
     topic = state.get("specific_topic", "action")
     user_question = state.get("user_question", "")
     action_plan = state.get("todays_action_plan", [])
+    formatted_ctx = state.get("formatted_context", "")
     
     # Try to find matching action
     matching_action = None
@@ -436,25 +487,31 @@ Purpose: {matching_action.get('purpose', 'Support hormonal health')}
     else:
         action_context = f"Topic: {topic}"
     
-    prompt = f"""Explain why this action is recommended.
+    prompt = f"""Explain why this action is recommended for THIS specific user.
 
 User Question: "{user_question}"
 
 {action_context}
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Explain why this is perfect for THEM!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CURRENT CONTEXT
+======================================================================
 - Current Phase: {state.get('cycle_phase')} (Day {state.get('cycle_day')})
 
 Guidelines:
-1. Explain the science behind why this helps
-2. Connect to specific hormone(s)
-3. Reference user's current phase
-4. Include any research if available
-5. Use hormone emojis
-6. 3-4 sentences, encouraging
+1. Explain the science behind why this helps THIS user specifically
+2. Connect to their diagnosed conditions if relevant
+3. Reference their current phase
+4. Use hormone emojis
+5. 3-4 sentences, encouraging
+6. Make it personal - don't just explain the general benefit
 
-Example for walnuts:
-"Walnuts are amazing for your luteal phase! They're rich in omega-3s which help Progesterone 🌙 do its job better - reducing inflammation and PMS symptoms. Research shows omega-3s can reduce cramp severity by up to 30%. Plus, the magnesium helps with mood and sleep!"
+Do NOT give a generic explanation - connect it to THIS user's specific health situation!
 """
     
     try:
@@ -473,24 +530,33 @@ Example for walnuts:
 
 
 async def handle_general_wellness(state: KnowMyBodyState) -> KnowMyBodyState:
-    """Handle general wellness questions."""
+    """Handle general wellness questions with personalization."""
     
     topic = state.get("specific_topic", "wellness")
     user_question = state.get("user_question", "")
+    formatted_ctx = state.get("formatted_context", "")
     
     prompt = f"""Answer this wellness question with cycle/hormone awareness.
 
 User Question: "{user_question}"
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Personalize your answer!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CURRENT CONTEXT
+======================================================================
 - Current Phase: {state.get('cycle_phase')} (Day {state.get('cycle_day')})
 
 Guidelines:
 1. Connect to hormonal health where relevant
-2. Be helpful and accurate
-3. If truly out of scope, gently redirect
-4. Use hormone emojis where relevant
-5. 3-4 sentences
+2. Reference their specific conditions if applicable
+3. Be helpful and accurate
+4. If truly out of scope, gently redirect
+5. Use hormone emojis where relevant
+6. 3-4 sentences
 """
     
     try:

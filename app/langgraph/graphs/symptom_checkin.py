@@ -408,14 +408,44 @@ If no symptoms mentioned, return empty array.
 
 
 async def ask_severity_or_continue(state: SymptomCheckInState) -> SymptomCheckInState:
-    """Ask for severity if symptoms pending, or continue conversation."""
+    """Ask for severity if symptoms pending, or continue conversation. Uses LLM for personalized responses."""
     
     pending = state.get("symptoms_pending_severity", [])
+    formatted_context = state.get("formatted_context", "")
+    cycle_phase = state.get("cycle_phase", "unknown")
     
     if pending:
-        # Ask about first pending symptom
+        # Ask about first pending symptom using LLM for natural language
         symptom = pending[0]
-        response = f"On a scale of 1-9, how would you rate your {symptom} today?"
+        
+        severity_prompt = f"""Generate a warm, empathetic question asking about symptom severity.
+
+User Context:
+{formatted_context[:800] if formatted_context else "User logging symptoms"}
+
+Details:
+- Symptom: {symptom}
+- Cycle phase: {cycle_phase}
+- Other pending symptoms: {pending[1:] if len(pending) > 1 else "none"}
+
+Guidelines:
+1. Acknowledge the symptom with empathy
+2. Ask about severity naturally (1-9 scale)
+3. Reference cycle phase if relevant to this symptom
+4. Keep it warm and conversational (1-2 sentences)
+5. DON'T use clinical language
+
+Example variations (don't copy exactly):
+- "That {symptom} sounds rough. On a scale of 1-9, how intense is it right now?"
+- "I'm sorry you're dealing with {symptom}. How bad would you say it is - mild, moderate, or severe?"
+"""
+        
+        try:
+            response = await call_llm(severity_prompt, max_tokens=100)
+            if not response or len(response.strip()) < 15:
+                response = f"On a scale of 1-9, how would you rate your {symptom} today?"
+        except:
+            response = f"On a scale of 1-9, how would you rate your {symptom} today?"
         
         tap_options = [
             "Mild (1-3)",
@@ -430,16 +460,44 @@ async def ask_severity_or_continue(state: SymptomCheckInState) -> SymptomCheckIn
             "phase": "asking_severity"
         }
     
-    # No pending symptoms - check if we should continue or offer to explore more
+    # No pending symptoms - generate contextual continuation
     symptoms_logged = state.get("symptoms_mentioned", [])
     
+    continue_prompt = f"""Generate a warm follow-up question for symptom check-in.
+
+User Context:
+{formatted_context[:800] if formatted_context else "User in symptom check-in"}
+
+Details:
+- Symptoms logged so far: {[s.get('symptom_type', 'symptom') for s in symptoms_logged] if symptoms_logged else "none yet"}
+- Cycle phase: {cycle_phase}
+
+Situation: {"User has shared symptoms, asking if there's more" if symptoms_logged else "User hasn't shared symptoms yet, gently encouraging"}
+
+Guidelines:
+1. Be warm and open (Dr. Auvra voice)
+2. If symptoms logged: Acknowledge them, ask if there's more
+3. If no symptoms: Gently invite sharing without pressure
+4. Keep it 1 sentence
+5. Reference cycle phase naturally if relevant
+"""
+    
+    try:
+        response = await call_llm(continue_prompt, max_tokens=80)
+        if not response or len(response.strip()) < 15:
+            if symptoms_logged:
+                response = "Thank you for sharing. Is there anything else you've been experiencing, or is that all for today?"
+            else:
+                response = "Is there anything specific bothering you today, or any symptoms you'd like to log?"
+    except:
+        if symptoms_logged:
+            response = "Thank you for sharing. Is there anything else you've been experiencing, or is that all for today?"
+        else:
+            response = "Is there anything specific bothering you today, or any symptoms you'd like to log?"
+    
     if symptoms_logged:
-        # We have symptoms, ask if there's more
-        response = "Thank you for sharing. Is there anything else you've been experiencing, or is that all for today?"
         tap_options = ["That's all", "There's more"]
     else:
-        # No symptoms yet, encourage sharing
-        response = "Is there anything specific bothering you today, or any symptoms you'd like to log?"
         tap_options = ["Yes, let me share", "No symptoms today"]
     
     return {

@@ -176,12 +176,108 @@ async def _create_async_session(engine_maker=None) -> AsyncSession:
 
 
 # ============================================================================
-# ACTION DEDUPLICATION HELPERS
-# Multi-layer approach: title normalization, similarity scoring, validation
+# ACTION DEDUPLICATION HELPERS - ENHANCED VERSION
+# Multi-layer approach: title normalization, SEMANTIC grouping, similarity scoring
 # ============================================================================
 
 import re
+import random
 from difflib import SequenceMatcher
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEMANTIC FOOD GROUPS - Items in same group are considered DUPLICATES
+# This prevents recommending "salmon" and "sardines" in the same plan (both fatty fish)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SEMANTIC_FOOD_GROUPS = {
+    "fatty_fish": ["salmon", "sardines", "mackerel", "herring", "anchovies", "trout", "tuna"],
+    "leafy_greens": ["spinach", "kale", "swiss chard", "arugula", "collard greens", "bok choy", "lettuce", "watercress"],
+    "nuts_walnuts_family": ["walnuts", "pecans"],  # Same omega-3 profile
+    "nuts_almonds_family": ["almonds", "cashews", "pistachios", "macadamia"],
+    "seeds_omega3": ["chia seeds", "flaxseed", "flax seeds", "hemp seeds"],
+    "seeds_zinc": ["pumpkin seeds", "sunflower seeds", "sesame seeds"],
+    "berries": ["blueberries", "strawberries", "raspberries", "blackberries", "acai", "goji berries", "cranberries"],
+    "cruciferous": ["broccoli", "cauliflower", "brussels sprouts", "cabbage"],
+    "whole_grains": ["quinoa", "oats", "oatmeal", "brown rice", "farro", "barley", "millet", "buckwheat"],
+    "legumes": ["lentils", "chickpeas", "black beans", "kidney beans", "edamame", "mung beans"],
+    "fermented": ["yogurt", "kefir", "sauerkraut", "kimchi", "miso", "tempeh", "kombucha"],
+    "eggs_dairy": ["eggs", "egg", "cheese", "milk"],
+    "root_vegetables": ["sweet potato", "beets", "carrots", "turnips", "parsnips"],
+    "avocado_healthy_fats": ["avocado", "olive oil", "coconut oil"],
+    "citrus": ["orange", "lemon", "lime", "grapefruit"],
+    "tropical": ["banana", "mango", "pineapple", "papaya"],
+}
+
+SEMANTIC_MOVEMENT_GROUPS = {
+    "yoga_family": ["yoga", "morning yoga", "evening yoga", "gentle yoga", "restorative yoga", "vinyasa", "yin yoga"],
+    "stretching": ["stretching", "gentle stretching", "hip stretches", "morning stretch", "evening stretch"],
+    "walking": ["walking", "morning walk", "evening walk", "post-meal walk", "nature walk", "hiking"],
+    "cardio_high": ["hiit", "running", "jogging", "sprinting", "jumping rope", "burpees"],
+    "cardio_moderate": ["cycling", "swimming", "rowing", "elliptical", "dancing", "zumba"],
+    "strength": ["strength training", "weight training", "resistance training", "weightlifting", "bodyweight"],
+    "pilates_barre": ["pilates", "barre", "core workout"],
+    "mind_body": ["tai chi", "qigong"],
+}
+
+SEMANTIC_MINDFULNESS_GROUPS = {
+    "breathing": ["deep breathing", "box breathing", "4-7-8 breathing", "belly breathing", "breath work", "pranayama"],
+    "meditation": ["meditation", "guided meditation", "silent meditation", "mindfulness meditation", "loving kindness"],
+    "body_awareness": ["body scan", "progressive relaxation", "progressive muscle relaxation"],
+    "journaling": ["journaling", "gratitude journal", "gratitude journaling", "reflection", "morning pages"],
+    "visualization": ["visualization", "guided imagery", "mental rehearsal"],
+}
+
+
+def get_semantic_group(title: str, category: str) -> Optional[str]:
+    """
+    Get the semantic group for an action title.
+    Returns None if not in any group.
+    """
+    if not title:
+        return None
+    
+    title_lower = title.lower().strip()
+    
+    if category == "food":
+        groups = SEMANTIC_FOOD_GROUPS
+    elif category == "movement":
+        groups = SEMANTIC_MOVEMENT_GROUPS
+    elif category == "mindfulness":
+        groups = SEMANTIC_MINDFULNESS_GROUPS
+    else:
+        return None
+    
+    for group_name, items in groups.items():
+        for item in items:
+            if item in title_lower or title_lower in item:
+                return group_name
+    
+    return None
+
+
+def is_semantic_duplicate(new_action: Dict[str, Any], existing_actions: List[Dict[str, Any]]) -> bool:
+    """
+    Check if new action is semantically a duplicate (same food group, etc.).
+    E.g., "salmon" and "sardines" are both fatty_fish → duplicate.
+    """
+    new_title = new_action.get("title", "")
+    new_category = new_action.get("category", "")
+    new_group = get_semantic_group(new_title, new_category)
+    
+    if not new_group:
+        return False  # Not in a known group, can't be semantic duplicate
+    
+    for existing in existing_actions:
+        existing_title = existing.get("title", "")
+        existing_category = existing.get("category", "")
+        existing_group = get_semantic_group(existing_title, existing_category)
+        
+        if existing_group and existing_group == new_group:
+            logger.debug(f"Semantic duplicate: '{new_title}' and '{existing_title}' both in group '{new_group}'")
+            return True
+    
+    return False
+
 
 def normalize_title(title: str) -> str:
     """
@@ -237,15 +333,16 @@ def calculate_similarity(action1: Dict[str, Any], action2: Dict[str, Any]) -> fl
 def is_duplicate(
     new_action: Dict[str, Any], 
     existing_actions: List[Dict[str, Any]], 
-    threshold: float = 0.70
+    threshold: float = 0.85  # INCREASED from 0.70 to 0.85 for stricter matching
 ) -> bool:
     """
     Check if new_action is a duplicate of any existing action.
+    Uses BOTH string similarity AND semantic grouping.
     
     Args:
         new_action: The action to check
         existing_actions: List of existing actions to compare against
-        threshold: Similarity threshold (0.0-1.0). Default 0.70 = 70% similar
+        threshold: Similarity threshold (0.0-1.0). Default 0.85 = 85% similar
         
     Returns: True if duplicate found, False otherwise
     """
@@ -254,15 +351,19 @@ def is_duplicate(
     
     new_title_normalized = normalize_title(new_action.get('title', ''))
     
+    # Check 1: SEMANTIC DUPLICATE (same food group, etc.)
+    if is_semantic_duplicate(new_action, existing_actions):
+        return True
+    
     for existing in existing_actions:
-        # Quick check: exact title match (normalized)
+        # Check 2: Exact title match (normalized)
         existing_title_normalized = normalize_title(existing.get('title', ''))
         if new_title_normalized and existing_title_normalized:
             if new_title_normalized == existing_title_normalized:
                 logger.debug(f"Duplicate: exact title match '{new_action.get('title')}' == '{existing.get('title')}'")
                 return True
         
-        # Full similarity check
+        # Check 3: Full similarity check
         similarity = calculate_similarity(new_action, existing)
         if similarity >= threshold:
             logger.debug(f"Duplicate: similarity {similarity:.2f} >= {threshold} for '{new_action.get('title')}' vs '{existing.get('title')}'")
@@ -277,6 +378,31 @@ def is_title_in_exclusion_set(title: str, exclusion_set: set) -> bool:
         return False
     normalized = normalize_title(title)
     return normalized in exclusion_set
+
+
+def get_alternative_from_group(banned_item: str, category: str) -> Optional[str]:
+    """
+    Get a random alternative from a different semantic group.
+    Used to suggest variety when an item is banned.
+    """
+    banned_group = get_semantic_group(banned_item, category)
+    
+    if category == "food":
+        all_groups = SEMANTIC_FOOD_GROUPS
+    elif category == "movement":
+        all_groups = SEMANTIC_MOVEMENT_GROUPS
+    elif category == "mindfulness":
+        all_groups = SEMANTIC_MINDFULNESS_GROUPS
+    else:
+        return None
+    
+    # Get items from DIFFERENT groups
+    alternatives = []
+    for group_name, items in all_groups.items():
+        if group_name != banned_group:
+            alternatives.extend(items)
+    
+    return random.choice(alternatives) if alternatives else None
 
 
 # ============================================================================
@@ -328,8 +454,8 @@ HORMONE_PERSONAS = {
         },
         "focus": "estrogen balance and vitality",
         "benefit": "glowing and energized",
-        "supportive_foods": ["phytoestrogen foods", "cruciferous vegetables", "flaxseed", "berries"],
-        "supportive_movement": ["strength training", "HIIT", "dancing", "cardio"],
+        "supportive_foods": ["phytoestrogen-rich foods", "cruciferous vegetables", "omega-3 rich seeds", "antioxidant-rich fruits"],
+        "supportive_movement": ["strength training", "high-intensity intervals", "dancing", "cardio"],
         "supportive_mindfulness": ["confidence building", "self-care rituals", "social connection", "creative expression"]
     },
     "testosterone": {
@@ -344,8 +470,8 @@ HORMONE_PERSONAS = {
         },
         "focus": "energy and vitality",
         "benefit": "stronger and more energized",
-        "supportive_foods": ["protein-rich foods", "zinc foods", "vitamin D foods", "healthy fats"],
-        "supportive_movement": ["weight training", "HIIT", "sprints", "power yoga"],
+        "supportive_foods": ["protein-rich foods", "zinc-rich foods", "vitamin D sources", "healthy fat sources"],
+        "supportive_movement": ["weight training", "high-intensity intervals", "sprint-based exercise", "power yoga"],
         "supportive_mindfulness": ["goal setting", "affirmations", "cold exposure", "achievement tracking"]
     },
     "insulin": {
@@ -660,29 +786,36 @@ REQUIREMENTS (READ CAREFULLY)
 17. Recommend longer mindfulness for high stress users, shorter for low stress
 
 ======================================================================
-⚠️ ANTI-REPETITION & HALLUCINATION RULES (CRITICAL) ⚠️
+⚠️ ANTI-REPETITION & PERSONALIZATION RULES (CRITICAL) ⚠️
 ======================================================================
-1. ⛔ FORBIDDEN DEFAULTS: The following items are BANNED because they appear too often:
-   - FOOD: pumpkin seeds, berries, blueberries, walnuts, salmon, quinoa, almonds, spinach, eggs, avocado
-   - MOVEMENT: HIIT, strength training (unless user specifically prefers high intensity)
-   - MINDFULNESS: generic "meditation" (be specific: body scan, loving kindness, etc.)
+1. ⛔ CONDITION-FIRST APPROACH: Your recommendations MUST be driven by the user's SPECIFIC diagnosed conditions above.
+   - If user has PCOS: Research and recommend foods that improve insulin sensitivity, reduce androgens
+   - If user has endometriosis: Research anti-inflammatory foods, avoid inflammatory triggers
+   - If user has thyroid issues: Research iodine-rich or goitrogenic foods as appropriate
+   - Each recommendation should have a CLEAR biochemical reason for THIS user
    
-   These are good foods/exercises BUT we need VARIETY. Choose equally-beneficial alternatives like:
-   - FOOD: sardines, mackerel, chia seeds, hemp seeds, Brazil nuts, pistachios, kale, Swiss chard, arugula, buckwheat, millet, farro, tempeh, edamame, lentils, mung beans, turmeric root, ginger, beets, fennel
-   - MOVEMENT: Pilates, swimming, cycling, dancing, hiking, tai chi, barre, rock climbing, kayaking, rowing
-   - MINDFULNESS: progressive muscle relaxation, body scan, visualization, gratitude journaling, mindful eating, walking meditation, yoga nidra
+2. ⛔ NEVER RECOMMEND RECENTLY BANNED ITEMS (see list below in ABSOLUTE BAN section)
+   The system tracks what this user received before - check and avoid repeating
+
+3. ⛔ NO GENERIC WELLNESS FOODS: Do NOT default to "safe" wellness foods that work for everyone.
+   Examples of GENERIC defaults to AVOID:
+   - Fatty fish (too common - be specific: mackerel, sardines, herring are different)
+   - "Seeds" (too vague - pick ONE specific seed with a reason)
+   - "Leafy greens" (too vague - pick ONE specific green with a mechanism)
    
-2. ⛔ DO NOT COPY EXAMPLES: Examples in this prompt are for FORMATTING ONLY. Generate unique recommendations from your medical knowledge.
+4. ✅ VARIETY THROUGH SPECIFICITY: Instead of generic categories, recommend:
+   - SPECIFIC foods from the user's cuisine_preference
+   - SPECIFIC exercises matching workout_intensity
+   - SPECIFIC mindfulness techniques for their stress_level
+   
+5. ✅ RESEARCH-DRIVEN: Use the PubMed research findings above to find LESS COMMON interventions
+   that are equally or more effective for this user's specific condition.
 
-3. ✅ VARIETY IS MANDATORY: Each day's plan should feel FRESH. Draw from the FULL spectrum of evidence-based interventions, not the most common ones.
-
-4. ✅ RESEARCH-BACKED VARIETY: Use the research findings above to discover LESS COMMON but equally effective interventions.
-
-5. STRICT SYMPTOM WHITELIST: In the 'symptoms' output array, you may ONLY use symptoms from this exact list:
+6. STRICT SYMPTOM WHITELIST: In the 'symptoms' output array, you may ONLY use symptoms from this exact list:
    {allowed_symptoms}
    If a symptom is not in this list, DO NOT include it.
 
-6. STRICT CONDITION WHITELIST: In the 'conditions' output array, you may ONLY use conditions from this exact list:
+7. STRICT CONDITION WHITELIST: In the 'conditions' output array, you may ONLY use conditions from this exact list:
    {allowed_conditions}
    If no conditions are listed, this array MUST be empty [].
 
@@ -719,16 +852,14 @@ OUTPUT FORMAT (for each action)
 2. category: "food", "movement", or "mindfulness"
 3. time_slot: "morning", "afternoon", or "evening"
 4. specific_action: MUST include 3 DIFFERENT WAYS to consume/do this action! (80-120 words)
-   FORMAT: Start with main benefit, then list 3 methods like:
-   "Try it as: (1) [method 1], (2) [method 2], or (3) [method 3]."
+   FORMAT: Start with scientific benefit for THIS user's condition, then list 3 methods:
+   "[Food/Exercise] provides [specific benefit for user's hormone/condition]. Try it as: (1) [method 1 with details], (2) [method 2 with details], or (3) [method 3 with details]."
    
-   ✅ GOOD EXAMPLE for "Sardines" (showing FORMAT, not the item to choose):
-   "Sardines are exceptionally rich in omega-3 EPA/DHA and vitamin D, which regulate inflammation and support hormone synthesis. Try them as: (1) Toast topper - mash on sourdough with lemon and olive oil, (2) Salad protein - add to a Mediterranean salad with olives and tomatoes, or (3) Pasta stir-in - toss with garlic, capers, and whole grain pasta."
+   STRUCTURE:
+   - Sentence 1: Why this helps THIS user's specific hormone/condition
+   - Sentence 2-3: Three numbered methods with specific instructions
    
-   ✅ GOOD EXAMPLE for "Swiss Chard" (showing FORMAT, not the item to choose):
-   "Swiss chard is loaded with magnesium and iron that support progesterone production and energy. Try it as: (1) Sautéed side - quickly cook with garlic and a squeeze of lemon, (2) Soup addition - add to minestrone or white bean soup, or (3) Egg wrap - use leaves as a wrap for scrambled eggs and feta."
-   
-   ❌ BAD (no consumption methods): "Ginger helps reduce stress. Consume it daily."
+   ❌ BAD (no consumption methods): "This food helps reduce stress. Consume it daily."
    
 5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the users specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
 6. target_hormone: CRITICAL - You MUST set this exactly as follows:
@@ -739,52 +870,35 @@ OUTPUT FORMAT (for each action)
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES. Fields: title, journal, year, participants (int), finding, pmid, verification_link.
 10. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action. CRITICAL: Do NOT include 'specific_action' in variants. Only: variant_type, title, description, image_prompt.
-11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., ["acne", "fatigue", "bloating"])
-12. conditions: Array of strings - specific conditions this action is beneficial for (e.g., ["PCOS", "endometriosis"])
+11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., taken from user's logged symptoms)
+12. conditions: Array of strings - specific conditions this action is beneficial for (taken from user's diagnosed_conditions)
 
 ======================================================================
 ⭐ TITLE RULES (CRITICAL - INGREDIENT/ACTIVITY NAME ONLY!)
 ======================================================================
-⚠️ IMPORTANT: Generate UNIQUE recommendations based on the user's conditions. Do NOT default to common wellness foods.
+⚠️ IMPORTANT: Generate UNIQUE recommendations based on the user's conditions. 
+Do NOT default to generic wellness foods - be specific to THIS user's health situation.
 
 Titles MUST be the RAW INGREDIENT or ACTIVITY NAME ONLY.
-❌ NO preparation methods (latte, tea, smoothie, etc.)
+❌ NO preparation methods (latte, tea, smoothie, porridge, etc.)
 ❌ NO adjectives (powerful, amazing, gentle, etc.)
+❌ NO brand names
 
-FORMAT EXAMPLES (showing correct vs incorrect naming - DO NOT copy these items!):
-✅ "Sardines" (NOT "Canned Sardines")
-✅ "Fennel" (NOT "Fennel Tea")  
-✅ "Turmeric" (NOT "Golden Milk")
-✅ "Millet" (NOT "Millet Porridge")
-✅ "Tempeh" (NOT "Grilled Tempeh")
-✅ "Beets" (NOT "Beet Juice")
+FORMAT RULES:
+✅ FOOD: Single ingredient name (e.g., the raw food item)
+✅ MOVEMENT: Simple activity name (e.g., type of exercise + optional time)
+✅ MINDFULNESS: Specific technique name (NOT just "Meditation")
 
 ❌ BAD FOOD TITLES (includes preparation method):
-- "Ginger Tea" → should be "Ginger"
-- "Golden Milk" → should be "Turmeric"
+- "[Food] Tea" → should be just "[Food]"
+- "[Food] Smoothie" → should be just "[Food]"
 
-✅ GOOD MOVEMENT TITLES (simple activity name):
-- "Post-Meal Walk"
-- "Morning Yoga"
-- "Gentle Stretching"
-- "Swimming"
-- "Pilates"
-- "Evening Walk"
-- "Hip Stretches"
-- "Strength Training"
+❌ BAD MOVEMENT TITLES (too descriptive):
+- "Gentle Morning Yoga Flow" → should be "Morning Yoga"
+- "Relaxing Evening Stretch" → should be "Evening Stretching"
 
- BAD MOVEMENT TITLES (too descriptive):
-- "Gentle Morning Yoga Flow"  should be "Morning Yoga"
-- "Relaxing Evening Stretch"  should be "Evening Stretching"
-
- GOOD MINDFULNESS TITLES (technique name only):
-- "Deep Breathing"
-- "Box Breathing"
-- "Body Scan"
-- "Gratitude Journal"
-- "Meditation"
-- "Progressive Relaxation"
-- "4-7-8 Breathing"
+❌ BAD MINDFULNESS TITLES (too generic):
+- Just "Meditation" → should be specific like "Body Scan" or "Loving Kindness"
 
  BAD MINDFULNESS TITLES (too wordy):
 - "Evening Calm Breathing Practice"  should be "Deep Breathing"
@@ -824,74 +938,84 @@ For MINDFULNESS actions:
 - exercise_intensities: [] (empty array)
 
 ======================================================================
-COMPLETE OUTPUT EXAMPLES (FOLLOW THIS EXACT STRUCTURE)
+JSON STRUCTURE TEMPLATE (NO COPYING - GENERATE UNIQUE)
 ======================================================================
 
-EXAMPLE FOOD ACTION (notice specific_action includes 3 ways to consume):
+⚠️ CRITICAL: The templates below show STRUCTURE ONLY. All placeholders marked 
+with {{GENERATE}} MUST be replaced with YOUR OWN unique recommendations based on:
+1. The user's SPECIFIC diagnosed conditions
+2. The user's EXACT hormone imbalances
+3. Research findings from PubMed for THEIR conditions
+4. Foods/exercises they have NOT received recently
+
+DO NOT use any food, exercise, or technique mentioned in these templates!
+These are FORMAT examples only - generate completely different items.
+
+FOOD ACTION TEMPLATE (structure only - generate unique food):
 {{
-  "title": "Walnuts",
+  "title": "{{GENERATE: Raw ingredient name based on users conditions}}",
   "category": "food",
-  "time_slot": "morning",
-  "specific_action": "Walnuts are rich in omega-3 fatty acids and melatonin precursors that support hormonal balance. Try them today as: (1) Raw handful - eat 7-10 walnuts as a quick morning snack with your coffee, (2) Smoothie boost - blend 1/4 cup into your morning smoothie with banana and spinach, or (3) Oatmeal topper - sprinkle 2 tbsp crushed walnuts on your oatmeal with a drizzle of honey.",
-  "purpose": "Walnuts contain alpha-linolenic acid (ALA) which converts to DHA, supporting brain-ovary communication and reducing inflammation that disrupts hormone signaling in your follicular phase.",
-  "target_hormone": "Estrogen",
-  "hormone_persona_intro": "Good morning! Its Estrogen here. I am rising in your follicular phase, and I need some healthy fats to help me do my job properly.",
-  "image_prompt": "Professional close-up food photography of whole walnuts and walnut halves in a small white ceramic bowl, showing the brain-like texture of the walnut meat clearly visible, warm wooden table surface, soft morning window light creating gentle shadows, some cracked shells beside the bowl, the distinctive brown wrinkled walnut texture is the unmistakable hero filling 70% of frame, appetizing natural food styling, 4K quality",
-  "food_items": ["walnuts", "raw walnuts", "walnut halves"],
-  "food_amounts": ["7-10 pieces", "a handful (30g)", "1/4 cup"],
-  "research_studies": [{{"title": "Walnut consumption and hormonal health", "journal": "J Nutr Biochem", "year": 2023, "participants": 90, "finding": "Walnut consumption improved estrogen metabolism in premenopausal women", "pmid": "36789012"}}],
+  "time_slot": "{{GENERATE: morning/afternoon/evening}}",
+  "specific_action": "{{GENERATE: Explain why THIS food helps THIS users hormone. Then: Try it today as: (1) [method 1], (2) [method 2], or (3) [method 3].}}",
+  "purpose": "{{GENERATE: Scientific mechanism - how this food affects the users SPECIFIC hormone and condition}}",
+  "target_hormone": "{{FROM REQUIREMENTS: primary or secondary hormone}}",
+  "hormone_persona_intro": "{{GENERATE: Personalized greeting from the hormone persona}}",
+  "image_prompt": "{{GENERATE: FLUX.1 prompt showing THIS specific food clearly}}",
+  "food_items": ["{{GENERATE: forms of the food}}"],
+  "food_amounts": ["{{GENERATE: daily portions}}"],
+  "research_studies": [{{GENERATE: Real study from PubMed}}],
   "variants": [
-    {{"variant_type": "tasty", "title": "Maple Candied Walnuts", "description": "Toast walnuts in a pan with maple syrup and a pinch of sea salt until caramelized", "image_prompt": "Professional food photography of golden-brown candied walnuts glistening with maple glaze in a rustic ceramic dish, caramelized coating clearly visible, sea salt crystals sparkling on top, warm kitchen lighting, irresistible sweet snack presentation with maple syrup bottle blurred in background, 4K quality"}},
-    {{"variant_type": "easy", "title": "Grab-and-Go Portion", "description": "Pre-portion walnuts into small containers for easy daily snacking", "image_prompt": "Professional food photography of raw walnut halves in a small clear glass jar with cork lid, portable snack container on a clean white desk surface, office-friendly healthy snack setup, natural daylight, convenient wellness moment clearly shown, 4K quality"}},
-    {{"variant_type": "healthy", "title": "Soaked Walnuts", "description": "Soak walnuts overnight in water to reduce phytic acid and improve nutrient absorption", "image_prompt": "Professional food photography of plump soaked walnuts in a clear glass bowl filled with water, some drained walnuts on a white plate beside it, fresh morning light through window, clean kitchen counter, health-conscious preparation with visible softened texture, 4K quality"}}
+    {{"variant_type": "tasty", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}},
+    {{"variant_type": "easy", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}},
+    {{"variant_type": "healthy", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}}
   ],
-  "symptoms": ["fatigue", "low mood"],
-  "conditions": []
+  "symptoms": ["{{FROM USER: symptoms this addresses}}"],
+  "conditions": ["{{FROM USER: conditions this helps}}"]
 }}
 
-EXAMPLE MOVEMENT ACTION (notice specific_action includes 3 ways to do the exercise):
+MOVEMENT ACTION TEMPLATE (structure only - generate unique exercise):
 {{
-  "title": "Morning Yoga",
+  "title": "{{GENERATE: Activity name based on users workout_intensity and conditions}}",
   "category": "movement",
-  "time_slot": "morning",
-  "specific_action": "Morning yoga activates your parasympathetic nervous system to reduce cortisol and calm your mind. Try it today as: (1) Gentle flow - 15 min of cat-cow, childs pose, and forward folds, (2) Hip openers - focus on pigeon pose and butterfly stretch for 10 min, or (3) Energizing sequence - 5 rounds of sun salutations to wake up your body and boost circulation.",
-  "purpose": "Forward folds and hip openers activate the parasympathetic nervous system, directly lowering cortisol release and helping prevent the stress-induced disruption of your reproductive hormones.",
-  "target_hormone": "Cortisol",
-  "hormone_persona_intro": "Good morning! Its Cortisol here. Instead of spiking your stress, lets channel my energy into something calming that will help you feel centered all day.",
-  "image_prompt": "Serene photograph of woman in childs pose on a purple yoga mat in a bright living room, arms stretched forward, forehead resting on mat, wearing comfortable grey athletic wear, green indoor plants visible, soft morning sunlight through sheer white curtains, clearly showing the exact yoga pose, peaceful wellness aesthetic, 4K quality",
-  "exercise_types": ["yoga", "gentle stretching", "sun salutations"],
-  "exercise_durations": ["15 minutes", "10 min", "5 min"],
-  "exercise_intensities": ["low", "gentle", "moderate"],
-  "research_studies": [{{"title": "Yoga and cortisol reduction in women", "journal": "Psychoneuroendocrinology", "year": 2021, "participants": 80, "finding": "Yoga reduced cortisol levels significantly", "pmid": "98765432"}}],
+  "time_slot": "{{GENERATE: morning/afternoon/evening}}",
+  "specific_action": "{{GENERATE: Explain benefit. Then: Try it today as: (1) [variation 1], (2) [variation 2], or (3) [variation 3].}}",
+  "purpose": "{{GENERATE: How this movement helps THIS users hormone balance}}",
+  "target_hormone": "{{FROM REQUIREMENTS}}",
+  "hormone_persona_intro": "{{GENERATE}}",
+  "image_prompt": "{{GENERATE: FLUX.1 prompt showing woman doing THIS exercise}}",
+  "exercise_types": ["{{GENERATE}}"],
+  "exercise_durations": ["{{GENERATE}}"],
+  "exercise_intensities": ["{{GENERATE: match users workout_intensity}}"],
+  "research_studies": [{{GENERATE: Real study}}],
   "variants": [
-    {{"variant_type": "gentle", "title": "Restorative Yoga", "description": "Use blankets and bolsters for fully supported poses, hold each for 3-5 minutes", "image_prompt": "Serene photograph of woman lying in supported bridge pose with a yoga bolster under her lower back, cozy blanket draped over legs, soft candles in background, eyes closed in relaxation, peaceful bedroom setting, restorative yoga clearly shown, 4K quality"}},
-    {{"variant_type": "energizing", "title": "Vinyasa Flow", "description": "Link breath with movement through flowing sun salutations and warrior poses", "image_prompt": "Dynamic photograph of woman in warrior II pose on yoga mat, arms extended strongly, looking over front hand, bright morning light, powerful athletic stance clearly visible, energetic wellness moment, vibrant colors, 4K quality"}},
-    {{"variant_type": "quick", "title": "5-Minute Stretch", "description": "Cat-cow (1 min), childs pose (2 min), forward fold (2 min) - perfect for busy mornings", "image_prompt": "Serene photograph of woman doing cat-cow pose on yoga mat, back arched upward in cat position, comfortable clothing, minimalist bright room, quick morning stretch clearly demonstrated, efficient wellness moment, 4K quality"}}
+    {{"variant_type": "gentle", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}},
+    {{"variant_type": "energizing", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}},
+    {{"variant_type": "quick", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}}
   ],
-  "symptoms": ["stress", "tension"],
-  "conditions": []
+  "symptoms": ["{{FROM USER}}"],
+  "conditions": ["{{FROM USER}}"]
 }}
 
-EXAMPLE MINDFULNESS ACTION (notice specific_action includes 3 ways to practice):
+MINDFULNESS ACTION TEMPLATE (structure only - generate unique technique):
 {{
-  "title": "Deep Breathing",
+  "title": "{{GENERATE: Specific technique name - NOT generic meditation}}",
   "category": "mindfulness",
-  "time_slot": "evening",
-  "specific_action": "Deep breathing activates your vagus nerve to signal safety and reduce cortisol for better sleep. Try it tonight as: (1) 4-4-6 technique - inhale 4 counts, hold 4 counts, exhale 6 counts for 5 minutes, (2) Box breathing - inhale 4, hold 4, exhale 4, hold 4 for 10 cycles, or (3) Belly breathing - place hands on belly, breathe deeply until hands rise, exhale slowly for 3 minutes.",
-  "purpose": "Deep breathing signals safety to your nervous system, helping me (Cortisol) decrease so you can rest and restore.",
-  "target_hormone": "Cortisol",
-  "hormone_persona_intro": "Hey, its Cortisol checking in for the evening. Lets work together to wind down so you can get the restorative sleep you deserve.",
-  "image_prompt": "Peaceful close-up photograph of woman sitting cross-legged on a meditation cushion with both hands placed on her belly, practicing deep diaphragmatic breathing, eyes gently closed, serene peaceful expression, soft candlelight glowing nearby, cozy bedroom with string lights in background, clearly showing the belly breathing technique, calming atmosphere, 4K quality",
-  "mindfulness_techniques": ["4-4-6 breathing", "box breathing", "belly breathing"],
-  "mindfulness_durations": ["5 minutes", "10 cycles", "3 minutes"],
-  "research_studies": [{{"title": "Breathing exercises and stress reduction", "journal": "Frontiers Psychol", "year": 2023, "participants": 95, "finding": "Deep breathing reduced perceived stress in women", "pmid": "11223344"}}],
+  "time_slot": "{{GENERATE}}",
+  "specific_action": "{{GENERATE: Explain how technique helps. Then: Try it as: (1) [method 1], (2) [method 2], or (3) [method 3].}}",
+  "purpose": "{{GENERATE: Mechanism for stress/hormone regulation}}",
+  "target_hormone": "{{FROM REQUIREMENTS}}",
+  "hormone_persona_intro": "{{GENERATE}}",
+  "image_prompt": "{{GENERATE: FLUX.1 prompt showing woman practicing THIS technique}}",
+  "mindfulness_techniques": ["{{GENERATE}}"],
+  "mindfulness_durations": ["{{GENERATE: adjust for users stress_level}}"],
+  "research_studies": [{{GENERATE: Real study}}],
   "variants": [
-    {{"variant_type": "guided", "title": "App-Guided", "description": "Follow along with a breathing app like Calm or Headspace for guided sessions", "image_prompt": "Peaceful photograph of woman wearing headphones practicing guided breathing meditation, eyes closed, phone showing meditation app on cushion beside her, soft ambient lighting, cozy corner setup, relaxation moment, 4K quality"}},
-    {{"variant_type": "solo", "title": "Silent Practice", "description": "Practice in complete silence, focusing only on your breath counts", "image_prompt": "Peaceful photograph of woman sitting in meditation pose in complete silence, hands on knees in mudra position, minimal zen room with single plant, early morning soft light, deep focus expression, tranquil atmosphere, 4K quality"}},
-    {{"variant_type": "brief", "title": "5-Breath Reset", "description": "Take just 5 slow, deep breaths whenever you feel stressed during the day", "image_prompt": "Peaceful photograph of woman taking a deep breath at her desk, one hand on chest, eyes briefly closed, office or home workspace background, moment of calm during busy day, stress relief break, 4K quality"}}
+    {{"variant_type": "guided", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}},
+    {{"variant_type": "solo", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}},
+    {{"variant_type": "brief", "title": "{{GENERATE}}", "description": "{{GENERATE}}", "image_prompt": "{{GENERATE}}"}}
   ],
-  "symptoms": ["anxiety", "insomnia"],
-  "conditions": []
+  "symptoms": ["{{FROM USER}}"],
+  "conditions": ["{{FROM USER}}"]
 }}
 
 CRITICAL: Every action MUST include ALL of its category-specific fields (food_items/food_amounts for food, exercise_types/exercise_durations/exercise_intensities for movement, mindfulness_techniques/mindfulness_durations for mindfulness).
@@ -920,13 +1044,14 @@ FOR FOOD - Make the FOOD ITEM the HERO (clearly visible, close-up):
 =======================================================================
 Template: "Professional close-up food photography of [EXACT FOOD ITEM in detail], [texture/color description], [simple serving context], natural lighting, shallow depth of field, the [food item] is clearly the main subject filling most of the frame, 4K quality"
 
- GOOD EXAMPLES (food is the clear hero, instantly recognizable - USE SIMILAR STRUCTURE):
-- "Professional close-up food photography of whole walnuts and walnut halves showing their distinctive brain-like wrinkled texture, in a small wooden bowl on marble surface, warm morning light highlighting the brown ridges, the walnuts fill 70% of the frame and are unmistakably identifiable, shallow depth of field, 4K quality"
-- "Professional close-up food photography of fresh vibrant green spinach leaves piled in a white ceramic colander, water droplets visible on leaves showing freshness, bright kitchen lighting, the spinach is clearly recognizable with its distinctive leaf shape filling most of frame, healthy green color prominent, 4K quality"
-- "Professional close-up food photography of fresh ginger root with one piece sliced to show the fibrous yellow interior, on a light wooden cutting board, the distinctive knobby tan skin texture is clearly visible, natural kitchen lighting, ginger fills 65% of frame making it instantly identifiable, 4K quality"
-- "Professional close-up food photography of fresh salmon fillet showing vibrant pink-orange flesh with distinctive white fat marbling lines, on a slate serving board with lemon wedge, the fish texture and color are appetizing and unmistakable, 4K quality"
+STRUCTURE (apply to YOUR chosen food):
+- Describe the food's distinctive visual features (color, texture, shape)
+- Show it in a simple, elegant presentation (small bowl, cutting board, etc.)
+- Use natural lighting that highlights the food's qualities
+- Fill 60-70% of frame with the food
+- Make the food instantly recognizable
 
- BAD EXAMPLES (food not clear, too generic, or too zoomed out):
+❌ BAD EXAMPLES (food not clear, too generic, or too zoomed out):
 - "Professional food photography of healthy food" (What food?!)
 - "Bowl of food on a table" (Can't tell whats in it!)
 - "Overhead shot of breakfast spread" (Too much, can't focus on any item)
@@ -936,13 +1061,13 @@ FOR MOVEMENT - Show a WOMAN DOING the exact exercise/pose:
 =======================================================================
 Template: "Serene photograph of woman [EXACT POSE/MOVEMENT DESCRIPTION], [setting], soft natural lighting, wellness aesthetic, warm earth tones, 4K quality"
 
- GOOD EXAMPLES (specific and illustrative):
-- "Serene photograph of woman in childs pose on a yoga mat, arms extended forward, peaceful living room with plants, soft morning light through window, wellness aesthetic, 4K quality"
-- "Serene photograph of woman walking briskly in a park after eating, casual athletic wear, trees and greenery, golden hour lighting, healthy active lifestyle, 4K quality"
-- "Serene photograph of woman doing hip stretches on a yoga mat, one leg extended, peaceful bedroom setting, soft natural lighting, relaxed atmosphere, 4K quality"
-- "Serene photograph of woman doing gentle swimming laps in a pool, clear blue water, peaceful indoor pool setting, natural lighting, refreshing wellness vibe, 4K quality"
+STRUCTURE (apply to YOUR chosen exercise):
+- Show the EXACT pose/position clearly from a good viewing angle
+- Woman should be wearing appropriate athletic wear
+- Background should match the activity (home for yoga, outdoors for walking, etc.)
+- The pose/movement should be immediately recognizable
 
- BAD EXAMPLES (too generic):
+❌ BAD EXAMPLES (too generic):
 - "Woman exercising" (What exercise?!)
 - "Yoga pose" (Which one?!)
 
@@ -951,13 +1076,13 @@ FOR MINDFULNESS - Show the TECHNIQUE/SETUP clearly:
 =======================================================================
 Template: "Peaceful photograph of [EXACT MINDFULNESS SETUP/TECHNIQUE visualization], [calming elements], soft diffused lighting, minimalist aesthetic, calming colors, 4K quality"
 
- GOOD EXAMPLES (specific and illustrative):
-- "Peaceful photograph of woman sitting cross-legged with hands on belly practicing deep breathing, eyes closed, serene expression, soft candles nearby, minimalist room, calming atmosphere, 4K quality"
-- "Peaceful close-up of hands writing in a gratitude journal with a cup of tea nearby, cozy blanket, soft evening lighting, peaceful bedroom setting, journaling moment, 4K quality"
-- "Peaceful photograph of woman lying down with eyes closed doing body scan meditation, comfortable cushion, dim peaceful room with fairy lights, relaxation moment, 4K quality"
-- "Peaceful photograph of woman practicing 4-7-8 breathing with one hand on chest, peaceful expression, morning light, zen corner with plants, calming wellness aesthetic, 4K quality"
+STRUCTURE (apply to YOUR chosen technique):
+- Show the specific hand position, posture, or setup for THIS technique
+- Include calming elements appropriate to the time of day
+- Peaceful facial expression if face is visible
+- The technique should be clearly identifiable
 
- BAD EXAMPLES (too generic):
+❌ BAD EXAMPLES (too generic):
 - "Peaceful zen scene" (What technique?!)
 - "Meditation" (Show what KIND!)
 
@@ -3797,26 +3922,72 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
         
         total_cost = 0.0
         
-        # Get users conditions for research queries
-        diagnosed_conditions = ", ".join(user_context.get("diagnosed_conditions", [])) or "womens health"
+        # Get users conditions for research queries - ENHANCED with fallbacks
+        conditions_list = user_context.get("diagnosed_conditions", [])
+        diagnosed_conditions = ", ".join(conditions_list) if conditions_list else ""
+        
+        # If no conditions, use top_concern or symptoms as fallback
+        if not diagnosed_conditions:
+            top_concern = user_context.get("top_concern", "")
+            if top_concern:
+                diagnosed_conditions = top_concern
+            else:
+                # Use period concerns as last resort
+                period_concerns = user_context.get("period_concerns", {})
+                if period_concerns:
+                    diagnosed_conditions = ", ".join(list(period_concerns.keys())[:3])
+                else:
+                    diagnosed_conditions = "hormone balance menstrual cycle"
         
         try:
             # =======================================================================
-            # STEP 1: RESEARCH DISCOVERY PHASE
-            # Search for evidence-based interventions BEFORE deciding what to recommend
+            # STEP 1: RESEARCH DISCOVERY PHASE (ENHANCED)
+            # Search for evidence-based interventions with VARIETY
             # =======================================================================
             logger.info(" STEP 1: Research Discovery Phase - Finding what works for this user...")
             
-            # Define research queries based on users specific context
+            # ═══════════════════════════════════════════════════════════════════════
+            # ENHANCED RESEARCH QUERIES - Add variety to avoid repetitive results
+            # ═══════════════════════════════════════════════════════════════════════
+            
+            import random
+            
+            # Food variety modifiers - pick random ones each day for variety
+            food_varieties = [
+                "whole grain", "fermented food", "fatty fish", "legume", "leafy green",
+                "root vegetable", "seed", "nut", "cruciferous vegetable", "citrus",
+                "berry", "probiotic", "prebiotic", "anti-inflammatory", "antioxidant"
+            ]
+            
+            # Movement variety modifiers
+            movement_varieties = [
+                "yoga", "walking", "pilates", "swimming", "dancing", "stretching",
+                "tai chi", "cycling", "resistance training", "gentle exercise"
+            ]
+            
+            # Mindfulness variety modifiers
+            mindfulness_varieties = [
+                "breathing exercise", "meditation", "body scan", "relaxation technique",
+                "mindful eating", "gratitude practice", "journaling", "visualization"
+            ]
+            
+            # Randomly select variety modifiers for TODAY (ensures different results each day)
+            random.shuffle(food_varieties)
+            random.shuffle(movement_varieties)
+            random.shuffle(mindfulness_varieties)
+            
+            today_str = date.today().isoformat()  # Add date to cache key for variety
+            
+            # Build SPECIFIC research queries with variety
             research_queries = [
-                # Food interventions for primary hormone + condition
-                f"{primary_hormone} food nutrition {diagnosed_conditions} women intervention",
-                # Food interventions for secondary hormone
-                f"{secondary_hormone} diet nutrition {diagnosed_conditions} women",
-                # Movement interventions
-                f"exercise physical activity {primary_hormone} {diagnosed_conditions} women",
-                # Mindfulness interventions
-                f"mindfulness stress reduction {primary_hormone} {diagnosed_conditions} women"
+                # Food 1: Primary hormone with specific food type
+                f"{food_varieties[0]} {primary_hormone} {diagnosed_conditions} women RCT",
+                # Food 2: Secondary hormone with different food type
+                f"{food_varieties[1]} {secondary_hormone} {diagnosed_conditions} women intervention",
+                # Movement: Specific type for hormone support
+                f"{movement_varieties[0]} {primary_hormone} {diagnosed_conditions} women effect",
+                # Mindfulness: Specific technique
+                f"{mindfulness_varieties[0]} stress {primary_hormone} women clinical trial"
             ]
             
             categories = ["food", "food", "movement", "mindfulness"]

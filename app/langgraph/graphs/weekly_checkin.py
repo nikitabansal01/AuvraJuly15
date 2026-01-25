@@ -237,28 +237,38 @@ async def load_user_context(state: WeeklyCheckInState) -> WeeklyCheckInState:
 
 
 async def generate_greeting(state: WeeklyCheckInState) -> WeeklyCheckInState:
-    """Create warm, cycle-aware opening message."""
+    """Create warm, cycle-aware opening message with full user context."""
     
     # Safe access with defaults
     completions = state.get("recent_completions", {})
     completed = completions.get("completed", 0)
     total = completions.get("total", 0)
+    formatted_ctx = state.get("formatted_context", "")
     
     prompt = f"""You are Dr. Auvra conducting a weekly check-in.
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Use this to personalize your greeting!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+THIS WEEK'S SUMMARY
+======================================================================
 - Cycle Phase: {state.get('cycle_phase', 'Unknown')} (Day {state.get('cycle_day', '?')})
-- Primary Hormone: {state.get('primary_hormone', 'Unknown')}
+- Primary Hormone to Support: {state.get('primary_hormone', 'Unknown')}
 - Recent Symptoms (past week): {len(state.get('recent_symptoms', []))} logged
 - Action Plan Completions: {completed}/{total}
+- Last Check-in Summary: {state.get('last_checkin_summary', 'No previous check-in')}
 
-Create a warm greeting that:
-1. References their current cycle phase naturally
-2. Transitions smoothly into asking how they've been
-3. Keep it 2-3 sentences, conversational
+Create a personalized greeting that:
+1. References their name if you know it
+2. Mentions their current cycle phase naturally
+3. Acknowledges something specific from their recent activity (completed actions, symptoms logged)
+4. Transitions warmly into asking how they've been
+5. Keep it 2-3 sentences, conversational and warm
 
-Example:
-"Hi love! 💜 You're in your luteal phase (day 23), where progesterone can make energy levels dip - that's totally normal. How have you been feeling this past week?"
+Do NOT give a generic greeting - make it feel like you KNOW this user!
 """
     
     greeting = await call_llm(prompt, model="gpt-5-mini")
@@ -271,7 +281,7 @@ Example:
 
 
 async def generate_next_question(state: WeeklyCheckInState) -> WeeklyCheckInState:
-    """Dynamically generate next question - RESPECTING 3-4 LIMIT."""
+    """Dynamically generate personalized next question with full user context."""
     
     question_count = state.get("question_count", 0)
    
@@ -279,40 +289,56 @@ async def generate_next_question(state: WeeklyCheckInState) -> WeeklyCheckInStat
     if question_count >= 4:
         return {**state, "should_complete": True, "phase": "complete"}
     
+    # Get unified context for personalization
+    formatted_ctx = state.get("formatted_context", "")
+    
     # Generate question with LLM
     recent_messages = state["messages"][-6:] if len(state["messages"]) > 6 else state["messages"]
     
-    prompt = f"""Generate the BEST next question for weekly check-in.
+    prompt = f"""Generate the BEST personalized next question for weekly check-in.
 
+======================================================================
+COMPLETE USER CONTEXT (Use this to ask RELEVANT questions!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CONVERSATION CONTEXT
+======================================================================
 Conversation So Far:
 {recent_messages}
 
 Questions Asked So Far: {question_count}/4 (MAX: 4, target: 3-4)
-
 Topics Covered: {state.get('topics_covered', [])}
 
-User Context:
-- Cycle Phase: {state.get('cycle_phase')}
-- Recent Symptoms: {len(state.get('recent_symptoms', []))}
+Recent Symptoms: {state.get('recent_symptoms', [])}
+Last Week Summary: {state.get('last_checkin_summary', 'None')}
 
-Guidelines:
-1. **IMPORTANT**: We aim for 3-4 questions total. Currently at {question_count}.
-2. Ask about areas NOT covered: symptoms, triggers, mood, energy, action_feedback
-3. Be specific based on their cycle phase
+======================================================================
+QUESTION GUIDELINES
+======================================================================
+1. **PERSONALIZATION**: Ask about things specific to THIS user:
+   - Their diagnosed conditions (if any)
+   - Symptoms they've logged before
+   - Actions they completed or skipped this week
+   - Things they mentioned in past conversations
+   
+2. **VARIETY**: Ask about areas NOT covered: symptoms, triggers, mood, energy, action_feedback
+
+3. **CYCLE-AWARE**: Reference their current cycle phase if relevant
+
 4. If at question 3, prepare for natural wrap-up
 5. If at question 4, this MUST be final question
 
-Priority Topics:
-- Dominant symptoms/challenges this week
-- Triggers or patterns noticed
-- What helped (actions completed, etc.)
-- Action plan feedback
+Generate tap_options that are SPECIFIC to this user, not generic.
+Example for someone with PCOS: ["Bloating was rough", "Cravings were intense", "Energy was low", "Something else..."]
+Example for someone with stress: ["Work stress", "Sleep issues", "Anxiety", "Something else..."]
 
 Output JSON:
 {{
   "question_text": "...",
   "question_category": "symptoms|triggers|relief|action_feedback",
-  "tap_options": ["option1", "option2", "option3", "Something else..."],
+  "tap_options": ["option1 specific to user", "option2 specific to user", "option3 specific to user", "Something else..."],
   "is_final_question": {str(question_count >= 3).lower()}
 }}
 """

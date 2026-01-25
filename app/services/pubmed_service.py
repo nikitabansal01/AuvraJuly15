@@ -130,9 +130,9 @@ class PubMedService:
     _MAX_RETRIES = 2 
     _RETRY_DELAYS = [0.5, 1.0]
     
-    # IN-MEMORY CACHE
+    # IN-MEMORY CACHE - REDUCED TTL for variety
     _memory_cache: Dict[str, Tuple[Dict, float]] = {}
-    _CACHE_TTL = 86400  # 24 hours
+    _CACHE_TTL = 3600  # 1 hour (reduced from 24 hours for more variety)
     
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=10.0)

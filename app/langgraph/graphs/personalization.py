@@ -317,9 +317,10 @@ async def load_profile_and_check_unlocks(state: PersonalizationState) -> Persona
 
 
 async def generate_discovery_question(state: PersonalizationState) -> PersonalizationState:
-    """Generate conversational question for next gap."""
+    """Generate personalized conversational question with full user context."""
     
     gaps = state.get("profile_gaps", [])
+    formatted_ctx = state.get("formatted_context", "")
     
     if not gaps:
         response = "Your profile is complete! 🎉 Is there anything you'd like to update?"
@@ -335,18 +336,32 @@ async def generate_discovery_question(state: PersonalizationState) -> Personaliz
     
     elicitation_prompt = f"""Ask a warm, conversational question to discover: {gap_field}
 
-User Context:
+======================================================================
+COMPLETE USER CONTEXT (Use this to personalize your question!)
+======================================================================
+{formatted_ctx}
+
+======================================================================
+CURRENT SESSION CONTEXT
+======================================================================
 - Cycle Phase: {state.get('cycle_phase')} (Day {state.get('cycle_day')})
 - Streak: {state.get('current_streak')} days
+- Topics Already Covered: {state.get('topics_covered', [])}
 
-Guidelines:
+======================================================================
+QUESTION GUIDELINES
+======================================================================
 1. Make it conversational, NOT clinical
-2. Briefly explain WHY you're asking
-3. Make it optional
-4. Cycle-aware where relevant
-5. Warm tone (Dr. Auvra style)
+2. Reference something you know about them (from the context above)
+3. Briefly explain WHY you're asking (connect to their health goals/concerns)
+4. Make it optional - they can skip
+5. Cycle-aware where relevant
+6. Use their name if you know it
 
-Keep it 2-3 sentences, warm and personal.
+Example for someone with PCOS asking about diet preference:
+"I noticed you mentioned PCOS in your profile. Diet can really help manage symptoms - do you follow any specific eating style, like low-carb or Mediterranean?"
+
+Keep it 2-3 sentences, warm and personal. DO NOT be generic!
 """
     
     try:
@@ -364,21 +379,65 @@ Keep it 2-3 sentences, warm and personal.
 
 
 async def process_profile_response(state: PersonalizationState) -> PersonalizationState:
-    """Extract and validate profile data from user response."""
+    """Extract and validate profile data from user response using LLM."""
     
     user_input = state.get("user_input", "")
     current_topic = state.get("current_topic")
+    formatted_ctx = state.get("formatted_context", "")
     
     if not user_input or not current_topic:
         return {**state, "error": "missing_input_or_topic", "phase": "asking"}
     
-    # Check for skip signals
-    skip_signals = ["skip", "pass", "don't want to", "later", "not now"]
-    if any(signal in user_input.lower() for signal in skip_signals):
-        # Remove from gaps and move on
+    # Use LLM to detect if user wants to skip (handles natural language variations)
+    skip_detection_prompt = f"""Determine if the user wants to skip this question.
+
+User said: "{user_input}"
+Question was about: {current_topic}
+
+Is the user trying to skip/avoid answering? Look for:
+- Direct skip words (skip, pass, later, not now)
+- Deflection (I don't know, maybe later, can we move on)
+- Discomfort (I'd rather not, don't want to share)
+
+Output JSON:
+{{"wants_to_skip": true/false, "reason": "skip reason or null"}}
+"""
+    
+    try:
+        from pydantic import BaseModel
+        class SkipCheck(BaseModel):
+            wants_to_skip: bool
+            reason: Optional[str] = None
+        
+        skip_result = await call_llm_structured(skip_detection_prompt, response_model=SkipCheck)
+        wants_to_skip = skip_result.wants_to_skip
+    except:
+        # Fallback to simple keyword check
+        skip_signals = ["skip", "pass", "don't want to", "later", "not now", "rather not", "move on"]
+        wants_to_skip = any(signal in user_input.lower() for signal in skip_signals)
+    
+    if wants_to_skip:
+        # Remove from gaps and generate personalized response
         gaps = [g for g in state.get("profile_gaps", []) if g != current_topic]
         
-        response = "No problem! We can come back to that later."
+        skip_response_prompt = f"""Generate a warm response acknowledging user wants to skip this topic.
+
+User Context:
+{formatted_ctx}
+
+Topic they're skipping: {current_topic}
+Their message: "{user_input}"
+
+Generate a warm, understanding response that:
+1. Acknowledges their choice without judgment
+2. Reassures they can come back later
+3. Keeps it brief (1 sentence)
+"""
+        
+        try:
+            response = await call_llm(skip_response_prompt, model="gpt-5-mini")
+        except:
+            response = "No problem! We can come back to that later."
         
         return {
             **state,
