@@ -533,32 +533,68 @@ DEFAULT_PERSONA = {
 # GPT PROMPT TEMPLATES
 # ============================================================================
 
-SYSTEM_PROMPT = """You are AUVRA, a hormone health specialist creating personalized daily action plans.
+SYSTEM_PROMPT = """
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  ⚠️  STOP! READ THIS USER'S PROFILE FIRST - BEFORE ANYTHING ELSE  ⚠️           ║
+╠═══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  👤 USER NAME: {user_name}                                                    ║
+║  🩺 DIAGNOSED CONDITIONS: {diagnosed_conditions_summary}                      ║
+║  🎯 TOP CONCERN: {top_concern}                                                ║
+║  📅 CYCLE: Day {cycle_day}, {cycle_phase} Phase                              ║
+║  💊 TARGET HORMONES: {primary_hormone} (primary), {secondary_hormone} (secondary) ║
+║                                                                               ║
+║  ❌ ALLERGIES: {food_allergies}                                               ║
+║  🥗 DIET: {diet_preference}                                                   ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
 
-===============================================================================
- YOUR TASK: Make this user feel TRULY UNDERSTOOD
-===============================================================================
-You will receive a COMPLETE PROFILE of this user below. Your job is to:
-1. READ their diagnosed_conditions - these MUST drive your recommendations
-2. READ their feedback_memory - avoid what they disliked, repeat what worked
-3. READ their cycle_phase and hormones - time recommendations appropriately
-4. READ their preferences (diet, cuisine, allergies) - respect them completely
+YOU ARE CREATING A PLAN FOR {user_name} WHO HAS {diagnosed_conditions_summary}.
 
-The user sees your output. They should think: "Wow, this was made specifically for ME."
+Every single recommendation you make MUST:
+1. Be SPECIFIC to {diagnosed_conditions_summary} - not generic wellness
+2. Name their condition in the 'purpose' field
+3. Explain WHY this helps THEIR specific condition
 
-===============================================================================
- CORE PRINCIPLE: CONDITION-FIRST PERSONALIZATION
-===============================================================================
-WRONG approach: Pick generic wellness foods → try to connect to user
-RIGHT approach: Read user's conditions → research what helps THAT condition → recommend
+═══════════════════════════════════════════════════════════════════════════════
+YOUR ROLE
+═══════════════════════════════════════════════════════════════════════════════
+You are AUVRA, creating personalized daily actions for {user_name}.
 
-Example thinking:
-- User has PCOS + high androgens
-- PCOS research shows: spearmint reduces androgens, inositol improves insulin
-- Recommend spearmint tea, mention "for your PCOS" in purpose
-- NOT: Recommend salmon because "it's healthy"
+This user has {diagnosed_conditions_summary}. 
+Your recommendations must TARGET this condition specifically.
 
-DO NOT give generic recommendations. Every action should feel made FOR THIS USER.
+═══════════════════════════════════════════════════════════════════════════════
+PERSONALIZATION ENFORCEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+The 'hormone_persona_intro' field MUST follow this pattern:
+"Hey {user_name}! I'm [Hormone] 💜 - I know dealing with {diagnosed_conditions_summary} 
+can be tough, especially during your {cycle_phase} phase when I [behavior]. 
+This [food/exercise/technique] is specifically chosen to help with your condition..."
+
+The 'purpose' field MUST follow this pattern:
+"For your {diagnosed_conditions_summary}: [food/action] contains [compound] which 
+[mechanism]. Studies show this specifically helps women with [their condition] by [benefit]."
+
+REJECTION CRITERIA - Your output will be REJECTED if:
+- Any 'purpose' field doesn't mention their diagnosed condition by name
+- Any 'hormone_persona_intro' doesn't address them by name or condition
+- Recommendations are generic wellness that could apply to anyone
+
+═══════════════════════════════════════════════════════════════════════════════
+CONDITION-SPECIFIC RECOMMENDATIONS
+═══════════════════════════════════════════════════════════════════════════════
+WRONG: Pick salmon because "omega-3s are healthy"
+RIGHT: Pick spearmint for PCOS because "it reduces androgens"
+
+For {diagnosed_conditions_summary}, research what SPECIFICALLY helps:
+- PCOS → insulin sensitizers (cinnamon, inositol), anti-androgens (spearmint, saw palmetto)
+- Endometriosis → anti-inflammatory (turmeric, omega-3s), avoid inflammatory foods
+- Thyroid → selenium (brazil nuts), iodine (seaweed), avoid goitrogens if needed
+- High Cortisol → adaptogens (ashwagandha), stress reducers (magnesium)
+- Estrogen Dominance → cruciferous vegetables (broccoli, cauliflower), fiber
+- Low Progesterone → vitamin B6, zinc, vitex/chasteberry
 
 ===============================================================================
  CRITICAL - CATEGORY-SPECIFIC REQUIRED FIELDS (READ THIS FIRST!) 
@@ -894,7 +930,21 @@ OUTPUT FORMAT (for each action)
    - Action 1 and 2: MUST be "{primary_hormone}" (the PRIMARY hormone)
    - Action 3 and 4: MUST be "{secondary_hormone}" (the SECONDARY hormone)
    DO NOT deviate from this. The mascot image shown depends on this field matching correctly.
-7. hormone_persona_intro: Write naturally following the example style in system prompt
+7. hormone_persona_intro: MUST BE PERSONAL AND SPECIFIC TO THIS USER!
+   
+   MANDATORY PATTERN:
+   "Hey [user's name]! I'm [Hormone] 💜 - I know your [their diagnosed condition] can make things challenging, 
+   especially during your [cycle_phase] phase when I [hormone behavior]. That's why I picked [this action] 
+   for you today - it specifically targets [mechanism related to their condition]."
+   
+   ✅ GOOD EXAMPLE:
+   "Hey Sarah! I'm Progesterone 💜 - I know your PCOS can make things challenging, especially during your 
+   luteal phase when I tend to dip. That's why I picked spearmint for you today - it specifically reduces 
+   androgens which helps with your PCOS symptoms."
+   
+   ❌ BAD EXAMPLE (too generic):
+   "I am Progesterone - in your luteal phase I dip. This food is healthy."
+   
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES. Fields: title, journal, year, participants (int), finding, pmid, verification_link.
 10. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action. CRITICAL: Do NOT include 'specific_action' in variants. Only: variant_type, title, description, image_prompt.
@@ -3041,9 +3091,16 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             # Format as string for prompt
             recently_recommended_str = ", ".join(recently_recommended[:30]) if recently_recommended else "None (this is the users first plan)"
             
+            # Extract user's name from profile for personalization
+            user_name = profile.name if profile and profile.name else None
+            # Try to get first name only (more personal)
+            if user_name:
+                user_name = user_name.split()[0] if user_name else None
+            
             # Load base context with defaults
             context = {
                 "user_id": user_id,
+                "user_name": user_name or "there",  # "Hey there" if no name
                 "primary_hormone": "cortisol",
                 "secondary_hormone": "progesterone",
                 "cycle_day": 1,
@@ -3999,18 +4056,39 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
         logger.info(f"[PROMPT]   current_streak: {user_context.get('current_streak')}, longest_streak: {user_context.get('longest_streak')}")
         logger.info(f"[PROMPT] ==========================================================================")
         
+        # Get user name from profile or fallback
+        user_name = user_context.get("user_name", "there")  # "Hey there" if no name
+        
+        # Get diagnosed conditions for the personalized system prompt
+        conditions_list_for_prompt = user_context.get("diagnosed_conditions", [])
+        diagnosed_conditions_summary = ", ".join(conditions_list_for_prompt) if conditions_list_for_prompt else user_context.get("top_concern", "hormone imbalance")
+        
+        # Format SYSTEM_PROMPT with user's specific data AT THE TOP
+        personalized_system = SYSTEM_PROMPT.format(
+            user_name=user_name,
+            diagnosed_conditions_summary=diagnosed_conditions_summary,
+            top_concern=user_context.get("top_concern", "general wellness"),
+            cycle_day=user_context.get("cycle_day", "?"),
+            cycle_phase=cycle_phase,
+            primary_hormone=primary_hormone,
+            secondary_hormone=secondary_hormone,
+            food_allergies=user_context.get("food_allergies", "none"),
+            diet_preference=user_context.get("diet_preference", "no preference")
+        )
+        
         # Enhanced system prompt with tool calling instructions
-        enhanced_system = SYSTEM_PROMPT + f"""
+        enhanced_system = personalized_system + f"""
 
-CURRENT USERS HORMONE CONTEXT:
+CURRENT USER'S HORMONE CONTEXT:
 - Cycle Phase: {cycle_phase}
 - Primary Hormone: {user_context["primary_hormone"]} - {primary_behavior}
 - Secondary Hormone: {user_context["secondary_hormone"]} - {secondary_behavior}
 
-Write the hormone_persona_intro naturally, following the example style above. The hormone should:
-1. Introduce itself by name ("I am Progesterone...")
-2. Explain what is happening in this cycle phase
-3. Connect the recommended action to how it helps the hormone and the user
+Write the hormone_persona_intro to be PERSONAL:
+1. Address user by name: "Hey {user_name}!"
+2. Acknowledge their condition: "I know your {diagnosed_conditions_summary} can be challenging..."
+3. Explain what's happening in this cycle phase
+4. Connect the action to how it helps THEIR specific situation
 
 CRITICAL - RESEARCH CITATIONS:
 You MUST use the 'search_research_paper' tool for EACH action to get a REAL citation.
@@ -4548,14 +4626,17 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
     def _validate_action_fields(
         self,
         action: Dict[str, Any],
-        category: str
+        category: str,
+        user_conditions: List[str] = None
     ) -> Tuple[bool, List[str]]:
         """
         Validate that all required fields are present for the given category.
+        Also validates personalization quality.
         
         Args:
             action: Action dictionary from GPT
             category: Category type (food/movement/mindfulness)
+            user_conditions: User's diagnosed conditions for personalization check
             
         Returns:
             Tuple of (is_valid, missing_fields)
@@ -4586,6 +4667,36 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             value = action.get(field)
             if not value or (isinstance(value, list) and len(value) == 0):
                 missing.append(field)
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # PERSONALIZATION QUALITY CHECK
+        # Warn (but don't fail) if purpose field is too generic
+        # ═══════════════════════════════════════════════════════════════════════
+        purpose = action.get("purpose", "").lower()
+        
+        # Check for generic phrases that indicate low personalization
+        GENERIC_PHRASES = [
+            "supports hormonal balance",
+            "helps with hormone balance", 
+            "good for women's health",
+            "promotes wellness",
+            "supports overall health",
+            "beneficial for hormones",
+            "helps regulate hormones"
+        ]
+        
+        is_generic = any(phrase in purpose for phrase in GENERIC_PHRASES)
+        
+        # Check if purpose mentions a specific condition
+        mentions_condition = False
+        if user_conditions:
+            for condition in user_conditions:
+                if condition.lower() in purpose:
+                    mentions_condition = True
+                    break
+        
+        if is_generic and not mentions_condition:
+            logger.warning(f"⚠️ PERSONALIZATION ISSUE: Purpose for '{action.get('title')}' is too generic and doesn't mention user's condition")
         
         # research_studies validation - optional, will be filled by fallback
         # (removed strict validation to allow generation to proceed)
