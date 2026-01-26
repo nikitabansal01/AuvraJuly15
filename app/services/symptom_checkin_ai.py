@@ -117,6 +117,7 @@ class SymptomCheckInAI:
         recent_care_plan_checkin_context: str,
         recent_weekly_checkin_context: str,
         recent_symptom_logs_context: str,
+        historical_memory_context: str = "",  # NEW: Past triggers, relief factors, symptom patterns
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
     ) -> Tuple[SymptomAIResponse, str]:
@@ -144,6 +145,7 @@ class SymptomCheckInAI:
             action_plan_context=action_plan_context,
             recent_weekly_checkin_context=recent_weekly_checkin_context,
             recent_symptom_logs_context=recent_symptom_logs_context,
+            historical_memory_context=historical_memory_context,  # NEW: Historical symptom memory
             rolling_summary=rolling_summary,
             recent_messages=recent_messages,
             user_turns=user_turns,
@@ -269,6 +271,7 @@ class SymptomCheckInAI:
         action_plan_context: str,
         recent_weekly_checkin_context: str,
         recent_symptom_logs_context: str,
+        historical_memory_context: str = "",  # NEW: Past triggers/relief/patterns
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
         user_turns: int,
@@ -353,6 +356,19 @@ You ARE:
 ✅ Someone who references their conditions: "With your {conditions_str}..."
 ✅ Someone who connects symptoms to their cycle: "{cycle_phase or 'Your'} phase affects..."
 ✅ Warm, curious, and genuinely interested in helping {user_name}
+
+═══════════════════════════════════════════════════════════════════════════════
+⭐ HISTORICAL MEMORY (USE THIS TO PERSONALIZE!) ⭐
+═══════════════════════════════════════════════════════════════════════════════
+This is what {user_name} has shared with you before. REFERENCE THIS!
+
+{historical_memory_context}
+
+HOW TO USE THIS DATA:
+• If they have KNOWN TRIGGERS → Connect current symptoms: "{user_name}, I remember stress triggered your bloating before - has that been a factor?"
+• If they have RELIEF FACTORS → Recommend them: "Last time, walking really helped - would you like to try that again?"
+• If they mentioned SYMPTOMS BEFORE → Track progress: "How's your headache compared to last time?"
+• If they had WINS → Celebrate continuity: "Remember when that tea helped? Let's build on that!"
 
 ═══════════════════════════════════════════════════════════════════════════════
 PERSONALIZATION RULES (CRITICAL!)

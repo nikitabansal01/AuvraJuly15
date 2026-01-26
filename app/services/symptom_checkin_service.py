@@ -23,7 +23,7 @@ from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.database import ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, SymptomLog, UserProfile, WeeklyCheckIn
+from app.core.database import ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, SymptomLog, UserProfile, UserResponse, WeeklyCheckIn
 from app.services.symptom_checkin_ai import SymptomCheckInAI, SymptomAIResponse
 from app.services.cycle_service import CycleService
 from app.utils.timezone_utils import get_user_current_date
@@ -308,6 +308,7 @@ class SymptomCheckInService:
         recent_care_plan_checkin_context = self._build_recent_care_plan_checkin_context(uid)
         recent_weekly_checkin_context = self._build_recent_weekly_checkin_context(uid)
         recent_symptom_logs_context = self._build_recent_symptom_logs_context(uid)
+        historical_memory_context = self._build_historical_memory_context(uid)  # NEW: Past triggers/relief factors
         recent_messages = list(thread.raw_messages or [])[-self.TAIL_SIZE :]
 
         ai_response, _model_used = await self.ai.generate_reply(
@@ -317,6 +318,7 @@ class SymptomCheckInService:
             recent_care_plan_checkin_context=recent_care_plan_checkin_context,
             recent_weekly_checkin_context=recent_weekly_checkin_context,
             recent_symptom_logs_context=recent_symptom_logs_context,
+            historical_memory_context=historical_memory_context,  # NEW: Historical symptom patterns
             rolling_summary=thread.rolling_summary,
             recent_messages=recent_messages,
         )
@@ -700,20 +702,136 @@ NEW MESSAGES (JSON list in order):
             self.db.refresh(thread)
 
     def _build_user_profile_context(self, uid: str) -> str:
+        """Build comprehensive user profile context with ALL relevant data."""
         profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
-        if not profile:
+        user_response = self.db.query(UserResponse).filter(
+            UserResponse.uid == uid
+        ).order_by(desc(UserResponse.created_at)).first()
+        
+        if not profile and not user_response:
             return ""
 
-        mem = profile.chatbot_memory or {}
-        name = getattr(profile, "name", None)
-        top = mem.get("top_concern") or mem.get("primary_concern")
-
-        parts = []
+        lines = []
+        
+        # Core identity
+        name = getattr(profile, "name", None) if profile else None
         if name:
-            parts.append(f"name={name}")
-        if top:
-            parts.append(f"top_concern={top}")
-        return "\n".join(parts).strip()
+            lines.append(f"name={name}")
+        
+        if user_response:
+            # Health conditions (CRITICAL for personalization)
+            if user_response.diagnosed_conditions:
+                lines.append(f"diagnosed_conditions={user_response.diagnosed_conditions}")
+            if user_response.top_concern:
+                lines.append(f"top_concern={user_response.top_concern}")
+            if user_response.primary_hormone:
+                lines.append(f"primary_hormone={user_response.primary_hormone}")
+            
+            # Concerns
+            if user_response.period_concerns:
+                lines.append(f"period_concerns={user_response.period_concerns}")
+            if user_response.body_concerns:
+                lines.append(f"body_concerns={user_response.body_concerns}")
+            
+            # Lifestyle
+            if user_response.stress_level:
+                lines.append(f"stress_level={user_response.stress_level}")
+            if user_response.workout_intensity:
+                lines.append(f"workout_intensity={user_response.workout_intensity}")
+        
+        # Chatbot memory preferences
+        if profile:
+            mem = profile.chatbot_memory or {}
+            if mem.get("diet_preference"):
+                lines.append(f"diet_preference={mem.get('diet_preference')}")
+            if mem.get("food_allergies"):
+                lines.append(f"food_allergies={mem.get('food_allergies')}")
+            if mem.get("foods_liked"):
+                lines.append(f"foods_liked={mem.get('foods_liked')}")
+            if mem.get("foods_disliked"):
+                lines.append(f"foods_disliked={mem.get('foods_disliked')}")
+
+        return "\n".join(lines)
+    
+    def _build_historical_memory_context(self, uid: str) -> str:
+        """Build context from past conversations: triggers, relief factors, symptom patterns."""
+        lines = []
+        user_today = get_user_current_date(uid, self.db)
+        
+        try:
+            # Get past symptom check-in insights (last 7 days)
+            past_symptom_threads = self.db.query(SymptomCheckInThread).filter(
+                and_(
+                    SymptomCheckInThread.uid == uid,
+                    SymptomCheckInThread.local_date < user_today,
+                    SymptomCheckInThread.local_date >= user_today - timedelta(days=7)
+                )
+            ).order_by(desc(SymptomCheckInThread.local_date)).limit(5).all()
+            
+            all_symptoms_mentioned = []
+            all_progress_notes = []
+            
+            for thread in past_symptom_threads:
+                insights = thread.actionable_insights or {}
+                symptoms = insights.get("symptoms_mentioned", [])
+                progress = insights.get("progress", "")
+                
+                if symptoms:
+                    all_symptoms_mentioned.extend(symptoms[:3])
+                if progress:
+                    all_progress_notes.append(f"[{thread.local_date}]: {progress[:100]}")
+            
+            if all_symptoms_mentioned:
+                lines.append(f"RECENT SYMPTOMS MENTIONED: {list(set(all_symptoms_mentioned))[:8]}")
+            if all_progress_notes:
+                lines.append(f"SYMPTOM PROGRESS NOTES: {all_progress_notes[:3]}")
+            
+            # Get recent weekly check-in insights for triggers/relief factors
+            recent_weekly = self.db.query(WeeklyCheckIn).filter(
+                and_(
+                    WeeklyCheckIn.uid == uid,
+                    WeeklyCheckIn.is_complete == True
+                )
+            ).order_by(desc(WeeklyCheckIn.completed_at)).first()
+            
+            if recent_weekly:
+                factors_pos = recent_weekly.factors_positive or []
+                factors_neg = recent_weekly.factors_negative or []
+                insights = recent_weekly.actionable_insights or {}
+                
+                if factors_pos:
+                    lines.append(f"WHAT HELPED SYMPTOMS: {factors_pos[:5]}")
+                if factors_neg:
+                    lines.append(f"WHAT MADE SYMPTOMS WORSE: {factors_neg[:5]}")
+                
+                triggers = insights.get("triggers_identified", [])
+                relief = insights.get("relief_factors_identified", [])
+                if triggers:
+                    lines.append(f"KNOWN TRIGGERS: {triggers[:5]}")
+                if relief:
+                    lines.append(f"KNOWN RELIEF FACTORS: {relief[:5]}")
+            
+            # Get care plan wins/blockers for context
+            recent_care_thread = self.db.query(CarePlanCheckInThread).filter(
+                and_(
+                    CarePlanCheckInThread.uid == uid,
+                    CarePlanCheckInThread.local_date < user_today
+                )
+            ).order_by(desc(CarePlanCheckInThread.local_date)).first()
+            
+            if recent_care_thread:
+                care_insights = recent_care_thread.actionable_insights or {}
+                wins = care_insights.get("wins", [])
+                blockers = care_insights.get("blockers", [])
+                if wins:
+                    lines.append(f"RECENT WINS FROM CARE PLAN: {wins[:3]}")
+                if blockers:
+                    lines.append(f"RECENT BLOCKERS: {blockers[:3]}")
+            
+        except Exception as e:
+            logger.warning(f"[SymptomService] Error building historical memory: {e}")
+        
+        return "\n".join(lines) if lines else "No historical symptom data yet"
 
     def _build_recent_symptom_logs_context(self, uid: str) -> str:
         try:

@@ -120,6 +120,7 @@ class CarePlanCheckInAI:
         action_plan_context: str,
         recent_symptom_checkin_context: str,
         recent_symptom_logs_context: str,
+        historical_memory_context: str = "",  # NEW: Past wins, blockers, triggers
         rolling_summary: Optional[str],
         recent_messages: List[Dict[str, Any]],
     ) -> Tuple[CarePlanAIResponse, str]:
@@ -240,6 +241,20 @@ RECENT SYMPTOM CHECK-INS:
 
 RECENT SYMPTOM LOGS:
 {recent_symptom_logs_context}
+
+═══════════════════════════════════════════════════════════════════════════════
+⭐ HISTORICAL MEMORY (CRITICAL - USE THIS TO PERSONALIZE!) ⭐
+═══════════════════════════════════════════════════════════════════════════════
+This is what {user_name} has told you in past conversations. REFERENCE THIS!
+
+{historical_memory_context}
+
+HOW TO USE THIS DATA:
+• If they said something WORKED before → Recommend it again! "Remember how walking helped last time? Try that again today!"
+• If they had BLOCKERS → Be empathetic: "I know you mentioned feeling too tired before - how about something lighter?"
+• If they have TRIGGERS → Avoid them: "Since stress made your symptoms worse, let's focus on calming activities"
+• If they expressed PREFERENCES → Honor them: "You mentioned liking yoga - here's a gentle option!"
+═══════════════════════════════════════════════════════════════════════════════
 
 CONVERSATION SUMMARY:
 {summary_block or "Fresh conversation"}
