@@ -533,20 +533,32 @@ DEFAULT_PERSONA = {
 # GPT PROMPT TEMPLATES
 # ============================================================================
 
-SYSTEM_PROMPT = """You are AUVRAs personalized wellness AI that creates daily action plans for womens hormonal health.
+SYSTEM_PROMPT = """You are AUVRA, a hormone health specialist creating personalized daily action plans.
 
 ===============================================================================
- CORE PRINCIPLE: TRUE PERSONALIZATION
+ YOUR TASK: Make this user feel TRULY UNDERSTOOD
 ===============================================================================
-You must create UNIQUE, TAILORED recommendations based on:
-- Users specific diagnosed conditions (PCOS, endometriosis, thyroid issues, etc.)
-- Their health concerns and symptoms
-- Their cycle phase and hormones to support
-- Their diet preferences and allergies
-- Their feedback history (what they liked/disliked before)
-- Their stress level, sleep, and workout intensity
+You will receive a COMPLETE PROFILE of this user below. Your job is to:
+1. READ their diagnosed_conditions - these MUST drive your recommendations
+2. READ their feedback_memory - avoid what they disliked, repeat what worked
+3. READ their cycle_phase and hormones - time recommendations appropriately
+4. READ their preferences (diet, cuisine, allergies) - respect them completely
 
-DO NOT give generic recommendations. Every action should feel like it was made FOR THIS USER.
+The user sees your output. They should think: "Wow, this was made specifically for ME."
+
+===============================================================================
+ CORE PRINCIPLE: CONDITION-FIRST PERSONALIZATION
+===============================================================================
+WRONG approach: Pick generic wellness foods → try to connect to user
+RIGHT approach: Read user's conditions → research what helps THAT condition → recommend
+
+Example thinking:
+- User has PCOS + high androgens
+- PCOS research shows: spearmint reduces androgens, inositol improves insulin
+- Recommend spearmint tea, mention "for your PCOS" in purpose
+- NOT: Recommend salmon because "it's healthy"
+
+DO NOT give generic recommendations. Every action should feel made FOR THIS USER.
 
 ===============================================================================
  CRITICAL - CATEGORY-SPECIFIC REQUIRED FIELDS (READ THIS FIRST!) 
@@ -861,7 +873,23 @@ OUTPUT FORMAT (for each action)
    
    ❌ BAD (no consumption methods): "This food helps reduce stress. Consume it daily."
    
-5. purpose: CRITICAL - Explain the SCIENTIFIC MECHANISM of how this action helps the users specific condition + hormone. Be specific about WHY this works for THEIR situation. Avoid generic phrases like "promotes wellness" - instead explain the actual biochemical/physiological benefit.
+5. purpose: CRITICAL - The purpose field is WHERE YOU PROVE PERSONALIZATION.
+   
+   MANDATORY STRUCTURE (follow exactly):
+   a) START by naming their EXACT condition: "With your [diagnosed_condition from profile]..."
+   b) EXPLAIN the mechanism in simple terms: "...this helps because [biochemical reason]"
+   c) CONNECT to their symptoms: "...which addresses your [symptom from their profile]"
+   d) CITE the evidence briefly: "Research shows [finding] for women with [their condition]"
+   
+   ✅ GOOD PURPOSE EXAMPLES:
+   "With your PCOS, insulin sensitivity is a key challenge. Cinnamon contains cinnamaldehyde which mimics insulin action—studies show it improves glucose uptake by up to 20% in women with PCOS, directly helping those afternoon energy crashes."
+   
+   "Since you have endometriosis and inflammation is a major driver of your symptoms, turmeric's curcumin acts as a natural COX-2 inhibitor. A 2019 study found it reduced pelvic pain by 45% in women with endo."
+   
+   ❌ BAD PURPOSE EXAMPLES (rejected - too generic):
+   "This supports hormonal balance." → WHERE IS THEIR CONDITION?
+   "Good for women's health." → WHICH WOMAN? WHAT CONDITION?
+   "Helps reduce inflammation." → HOW? FOR WHAT CONDITION?
 6. target_hormone: CRITICAL - You MUST set this exactly as follows:
    - Action 1 and 2: MUST be "{primary_hormone}" (the PRIMARY hormone)
    - Action 3 and 4: MUST be "{secondary_hormone}" (the SECONDARY hormone)
@@ -1453,18 +1481,24 @@ class ActionPlanGenerator:
             
             logger.info(f"[GENERATE]  Lock acquired, proceeding with plan generation")
             
-            # Step 1: Load user context
-            logger.info(f"[GENERATE] Step 1: Loading user context...")
-            user_context = await self._load_user_context(user_id, db, session_id=session_id)
-            
-            if not user_context:
-                logger.error(f"[GENERATE]  Could not load user context for {user_id}")
-                return {"success": False, "error": "User profile not found"}
-            logger.info(f"[GENERATE]  User context loaded successfully")
-            
             # Determine how many new actions to generate based on carryforward items
             num_carryforward = len(carryforward_items) if carryforward_items else 0
             num_to_generate = max(0, 4 - num_carryforward)  # Standard plan is 4 items
+            
+            # OPTIMIZATION: For pure carryforward (all 4 items), skip heavy user context loading
+            # We only need minimal context for storing the plan, not for GPT generation
+            if num_to_generate == 0 and num_carryforward == 4:
+                logger.info(f"[GENERATE] ⚡ FAST PATH: All 4 items from carryforward - skipping user context loading")
+                user_context = {"user_id": user_id, "user_timezone": user_timezone}  # Minimal context
+            else:
+                # Step 1: Load user context (needed for GPT generation)
+                logger.info(f"[GENERATE] Step 1: Loading user context...")
+                user_context = await self._load_user_context(user_id, db, session_id=session_id)
+                
+                if not user_context:
+                    logger.error(f"[GENERATE]  Could not load user context for {user_id}")
+                    return {"success": False, "error": "User profile not found"}
+                logger.info(f"[GENERATE]  User context loaded successfully")
             
             if num_carryforward > 0:
                 logger.info(f"[GENERATE]  Have {num_carryforward} carryforward items, will generate {num_to_generate} new actions")
@@ -1738,23 +1772,27 @@ class ActionPlanGenerator:
             
             # Step 5: Fire-and-forget quality evaluation (async, non-blocking)
             # This stores metrics for trend monitoring without impacting UX
-            try:
-                from app.services.evaluation_service import get_action_plan_evaluator
-                evaluator = get_action_plan_evaluator()
-                asyncio.create_task(
-                    evaluator.evaluate_plan(
-                        plan_id=plan.id,
-                        user_id=user_id,
-                        actions=actions_with_images,
-                        user_context=user_context,
-                        structure_valid=True,  # Pydantic validated already
-                        db=self.async_session_maker(),  # New session for async task
-                        session_id=session_id
+            # OPTIMIZATION: Skip evaluation for pure carryforward plans (already evaluated)
+            if used_model == "carryforward_only":
+                logger.info(f"⚡ Skipping evaluation for carryforward-only plan {plan.id}")
+            else:
+                try:
+                    from app.services.evaluation_service import get_action_plan_evaluator
+                    evaluator = get_action_plan_evaluator()
+                    asyncio.create_task(
+                        evaluator.evaluate_plan(
+                            plan_id=plan.id,
+                            user_id=user_id,
+                            actions=actions_with_images,
+                            user_context=user_context,
+                            structure_valid=True,  # Pydantic validated already
+                            db=self.async_session_maker(),  # New session for async task
+                            session_id=session_id
+                        )
                     )
-                )
-                logger.info(f" Evaluation task queued for plan {plan.id}")
-            except Exception as eval_err:
-                logger.warning(f"Failed to queue evaluation: {eval_err}")
+                    logger.info(f" Evaluation task queued for plan {plan.id}")
+                except Exception as eval_err:
+                    logger.warning(f"Failed to queue evaluation: {eval_err}")
             
             elapsed = time.time() - start_time
             logger.info(f"[GENERATE] ==========================================================================")
