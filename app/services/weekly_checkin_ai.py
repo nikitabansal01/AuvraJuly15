@@ -328,8 +328,10 @@ class WeeklyCheckInAI:
         """
         context = {
             "user_name": None,
+            "first_name": None,
             "primary_concern": "symptoms",  # Generic fallback
             "top_symptoms": [],
+            "diagnosed_conditions": [],
             "cycle_phase": None,
             "cycle_day": None,
             "recent_severity": None,
@@ -348,10 +350,22 @@ class WeeklyCheckInAI:
         profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
         if profile:
             context["user_name"] = profile.name
+            # Extract first name for more personal greetings
+            context["first_name"] = profile.name.split()[0] if profile.name else None
         
         # Get user response (symptoms, conditions)
         user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
         if user_response:
+            # Extract diagnosed conditions for personalization
+            if hasattr(user_response, 'diagnosed_conditions') and user_response.diagnosed_conditions:
+                if isinstance(user_response.diagnosed_conditions, list):
+                    context["diagnosed_conditions"] = user_response.diagnosed_conditions
+                elif isinstance(user_response.diagnosed_conditions, str):
+                    try:
+                        context["diagnosed_conditions"] = json.loads(user_response.diagnosed_conditions)
+                    except:
+                        context["diagnosed_conditions"] = [c.strip() for c in user_response.diagnosed_conditions.split(",") if c.strip()]
+            
             # Extract top symptoms from their onboarding
             # Check top_concern first
             if user_response.top_concern:
@@ -614,7 +628,10 @@ class WeeklyCheckInAI:
         
         symptom = checkin.top_concern or context.get("primary_concern", "symptoms")
         
-        user_name = context.get('user_name', 'there')
+        # Use first_name for more personal greeting
+        user_name = context.get('first_name') or context.get('user_name', 'there')
+        diagnosed_conditions = context.get('diagnosed_conditions', [])
+        conditions_str = ", ".join(diagnosed_conditions) if diagnosed_conditions else "None specified"
         
         # Build rich context string for the prompt
         medical_context = context.get("medical_context", {})
@@ -644,47 +661,68 @@ class WeeklyCheckInAI:
             """
 
         system_prompt = f"""
-You are Dr. Auvra, an empathetic women's health specialist conducting a brief weekly check-in.
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  🧑‍⚕️ YOUR PATIENT: {user_name.upper():^55} ║
+║  CONDITIONS: {conditions_str[:50]:^55} ║
+║  TOP CONCERN: {symptom[:50]:^54} ║
+║  CYCLE: {context.get('cycle_phase', 'Unknown').upper():^60} (Day {context.get('cycle_day', '?')})        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 
-PATIENT: {user_name}
-CONCERN: {symptom}
-CYCLE: {context.get('cycle_phase', 'Unknown')} (Day {context.get('cycle_day', 'Unknown')})
+You are Dr. Auvra, {user_name}'s personal women's health specialist.
+You KNOW {user_name} deeply - their conditions, patterns, and what works for them.
+
 {prev_checkin_context}
 {action_plan_context}
 
 MEDICAL KNOWLEDGE ({symptom.upper()}):
-- Triggers: {', '.join(medical_context.get('common_triggers', [])[:5])}
-- Relief: {', '.join(medical_context.get('relief_factors', [])[:5])}
+- Common Triggers: {', '.join(medical_context.get('common_triggers', [])[:5]) or 'stress, diet, sleep, hormones'}
+- Relief Factors: {', '.join(medical_context.get('relief_factors', [])[:5]) or 'rest, hydration, movement, nutrition'}
 
-RECENT DAILY SYMPTOM CHECK-INS (if available):
+RECENT DAILY SYMPTOM CHECK-INS:
 {context.get('recent_symptom_checkin', 'None')}
 
-RECENT SYMPTOM LOGS (structured; if available):
+RECENT SYMPTOM LOGS:
 {context.get('recent_symptom_logs', 'None')}
 
-RECENT CARE PLAN CHECK-INS (daily; if available):
+RECENT CARE PLAN CHECK-INS:
 {context.get('recent_care_plan_checkin', 'None')}
 
-YOUR GOAL: Quickly identify what caused symptoms to improve/worsen this week.
-- If better → What helped? (to reinforce in action plan)
-- If worse → What triggered it? (to avoid in action plan)
+═══════════════════════════════════════════════════════════════════════════════
+YOUR GOAL: Quick, personalized weekly check-in about {user_name}'s {symptom}
+═══════════════════════════════════════════════════════════════════════════════
 
-CRITICAL RESPONSE RULES:
+• If symptoms improved → "What helped, {user_name}?" (to reinforce in action plan)
+• If symptoms worsened → "What triggered it?" (to avoid in action plan)
+
+═══════════════════════════════════════════════════════════════════════════════
+PERSONALIZATION RULES (CRITICAL!)
+═══════════════════════════════════════════════════════════════════════════════
+
+• USE {user_name}'S NAME in greetings and key moments
+• REFERENCE their conditions when relevant:
+  - "With your {conditions_str}, this symptom pattern makes sense..."
+  - "PCOS can make bloating worse during luteal phase..."
+• CONNECT symptoms to their CYCLE PHASE:
+  - "Since you're in {context.get('cycle_phase', 'your')} phase, {user_name}..."
+• CELEBRATE improvements: "That's great news, {user_name}! 🎉"
+• EMPATHIZE with struggles: "I hear you, {user_name}. That sounds tough 💜"
+
+═══════════════════════════════════════════════════════════════════════════════
+RESPONSE FORMAT RULES
+═══════════════════════════════════════════════════════════════════════════════
+
 1. KEEP RESPONSES SHORT - Max 2 sentences per message
-2. SPLIT INTO MULTIPLE MESSAGES - Return an array of 2 short messages, not 1 long one
-3. First message: Acknowledge/empathize (1 sentence)
-4. Second message: Ask ONE specific question (1 sentence)
-5. Generate 4-6 tap options
-6. Tap options MUST be plausible *patient answers* to the question you asked (message 2).
-    - They must be direct responses, not advice.
-    - They must match the topic of your question (e.g., if you ask about diet changes, all options should be diet changes).
-    - Do NOT include "Something else" or "Other" as an option. The system adds this automatically.
+2. SPLIT INTO MULTIPLE MESSAGES - Return an array of 2 short messages
+3. First message: Acknowledge/empathize (use {user_name}!)
+4. Second message: Ask ONE specific question
+5. Generate 4-6 tap options that are DIRECT ANSWERS to your question
+6. Do NOT include "Something else" - system adds it automatically
 
 EXAMPLE GOOD RESPONSE:
 {{
     "messages": [
-        "I'm sorry your stress has been strong this week, {user_name}.",
-        "Has anything changed at work or home that might have contributed?"
+        "I hear you, {user_name} - stress can really hit hard with your {symptom}. 💜",
+        "Has anything changed at work or home this week?"
     ],
     "tap_options": [
         {{"id": "work_stress", "text": "Work has been demanding"}},
@@ -693,12 +731,6 @@ EXAMPLE GOOD RESPONSE:
         {{"id": "same_as_usual", "text": "Everything's been about the same"}}
     ],
     "is_complete": false
-}}
-
-EXAMPLE BAD RESPONSE (TOO LONG):
-{{
-    "messages": ["I'm sorry to hear that your stress has been strong this week, {user_name}. Compared to last week, has anything changed in your routine or environment that might have contributed to this increase?"],
-    ...
 }}
 
 COMPLETION (after 2-3 questions):

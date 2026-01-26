@@ -451,34 +451,45 @@ def format_basic_context(
     """Format basic context that's always available."""
     sections = []
     
-    # Patient info
+    # Extract first name for personal greetings
+    first_name = "there"
+    full_name = patient_profile.get("name", "") if patient_profile else ""
+    if full_name:
+        first_name = full_name.split()[0]
+    
+    # Patient info - PROMINENTLY DISPLAYED AT TOP
     if patient_profile:
-        patient_parts = []
+        # Get diagnosed conditions for personalization
+        conditions = patient_profile.get("diagnosed_conditions", [])
+        conditions_str = ", ".join(conditions[:3]) if conditions else "None specified"
+        top_concern = patient_profile.get("top_concern", "general wellness")
         
-        if patient_profile.get("name"):
-            patient_parts.append(f"Name: {patient_profile['name']}")
+        # Get cycle info
+        phase = patient_profile.get("phase", "unknown")
+        cycle_day = patient_profile.get("cycle_day", "?")
+        
+        # Create prominent user profile box
+        header = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  🧑‍⚕️ YOU ARE TALKING TO: {first_name.upper():^52} ║
+║  CONDITIONS: {conditions_str[:50]:^55} ║
+║  TOP CONCERN: {top_concern[:50]:^54} ║
+║  CYCLE: {phase.upper():^60} (Day {cycle_day})        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+"""
+        sections.append(header)
+        
+        # Additional patient details
+        patient_parts = []
         
         if patient_profile.get("age"):
             patient_parts.append(f"Age: {patient_profile['age']}")
         
-        if patient_profile.get("phase"):
-            phase = patient_profile['phase']
-            day = patient_profile.get('cycle_day', '?')
-            patient_parts.append(f"Cycle: Day {day}, {phase} Phase")
-        
-        if patient_profile.get("top_concern"):
-            patient_parts.append(f"Primary concern: {patient_profile['top_concern']}")
-        
         if patient_profile.get("primary_hormone"):
             patient_parts.append(f"Hormone focus: {patient_profile['primary_hormone']}")
         
-        # Diagnosed conditions (important for personalization)
-        conditions = patient_profile.get("diagnosed_conditions", [])
-        if conditions:
-            patient_parts.append(f"Conditions: {', '.join(conditions[:3])}")
-        
         if patient_parts:
-            sections.append("═══ PATIENT PROFILE ═══\n" + "\n".join(patient_parts))
+            sections.append("Additional Info:\n" + "\n".join(patient_parts))
     
     # Today's plan
     if todays_plan:
@@ -486,7 +497,7 @@ def format_basic_context(
         completed = todays_plan.get("completed_assignments", 0)
         rate = todays_plan.get("completion_rate", 0)
         
-        plan_text = f"═══ TODAY'S PLAN ═══\nProgress: {completed}/{total} ({rate*100:.0f}%)"
+        plan_text = f"═══ {first_name.upper()}'S TODAY'S PLAN ═══\nProgress: {completed}/{total} ({rate*100:.0f}%)"
         
         # Add specific assignments by time slot
         assignments = []
@@ -517,7 +528,7 @@ def format_basic_context(
             recent_parts.append(f"7-day completion: {completions['rate']*100:.0f}%")
         
         if recent_parts:
-            sections.append("═══ RECENT ACTIVITY ═══\n" + "\n".join(recent_parts))
+            sections.append(f"═══ {first_name.upper()}'S RECENT ACTIVITY ═══\n" + "\n".join(recent_parts))
     
     return "\n\n".join(sections) if sections else "New user - first interaction"
 
