@@ -69,6 +69,95 @@ class CarePlanCheckInService:
     # ──────────────────────────────────────────────────────────────────────────
     # Thread lifecycle
     # ──────────────────────────────────────────────────────────────────────────
+    
+    def _generate_personalized_opening(self, uid: str) -> str:
+        """Generate a personalized opening message based on user's context.
+        
+        Instead of generic 'how are your actions going?', we create something like:
+        'Hey Sarah! Since you're in luteal phase, I've got some calming activities 
+        for your PCOS today. How are you feeling? 💜'
+        """
+        try:
+            # Get user profile
+            profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+            user_response = self.db.query(UserResponse).filter(
+                UserResponse.uid == uid
+            ).order_by(desc(UserResponse.created_at)).first()
+            
+            # Extract key info
+            name = "there"
+            if profile and profile.name:
+                name = profile.name.split()[0]  # First name only
+            
+            conditions = []
+            top_concern = None
+            if user_response:
+                conditions = user_response.diagnosed_conditions or []
+                top_concern = user_response.top_concern
+            
+            # Get cycle phase from recent weekly check-in
+            cycle_phase = None
+            try:
+                recent_weekly = self.db.query(WeeklyCheckIn).filter(
+                    WeeklyCheckIn.uid == uid
+                ).order_by(desc(WeeklyCheckIn.completed_at)).first()
+                if recent_weekly:
+                    insights = recent_weekly.actionable_insights or {}
+                    cycle_phase = insights.get("cycle_phase")
+            except:
+                pass
+            
+            # Get today's action plan items
+            user_today = get_user_current_date(uid, self.db)
+            plan = self.db.query(ActionPlan).filter(
+                and_(ActionPlan.uid == uid, ActionPlan.plan_date == user_today)
+            ).order_by(desc(ActionPlan.created_at)).first()
+            
+            action_titles = []
+            if plan:
+                items = self.db.query(ActionPlanItem).filter(
+                    ActionPlanItem.plan_id == plan.id,
+                    ActionPlanItem.is_replaced != True
+                ).limit(4).all()
+                action_titles = [it.title for it in items if it.title]
+            
+            # Build personalized opening
+            opening_parts = [f"Hey {name}! 💜"]
+            
+            # Add cycle phase context if available
+            if cycle_phase:
+                phase_contexts = {
+                    "menstrual": "I know your period can be tough",
+                    "follicular": "Your energy is building this week",
+                    "ovulation": "You're at peak energy right now",
+                    "luteal": "Luteal phase can bring some challenges"
+                }
+                if cycle_phase.lower() in phase_contexts:
+                    opening_parts.append(f"{phase_contexts[cycle_phase.lower()]}.")
+            
+            # Add condition acknowledgment
+            if conditions and len(conditions) > 0:
+                main_condition = conditions[0] if isinstance(conditions, list) else conditions
+                opening_parts.append(f"I've tailored today's plan specifically for your {main_condition}.")
+            elif top_concern:
+                opening_parts.append(f"Today's plan focuses on {top_concern}.")
+            
+            # Add action preview
+            if action_titles:
+                if len(action_titles) >= 2:
+                    preview = f"{action_titles[0]} and {action_titles[1]}"
+                else:
+                    preview = action_titles[0]
+                opening_parts.append(f"You've got {preview} on your list.")
+            
+            # Add warm closing question
+            opening_parts.append("How are you feeling today?")
+            
+            return " ".join(opening_parts)
+            
+        except Exception as e:
+            logger.warning(f"[CarePlanService] Error generating personalized opening: {e}")
+            return "Hey! 💜 How are today's actions going for you?"
 
     def get_or_create_today_thread(self, uid: str) -> CarePlanCheckInThread:
         user_today = get_user_current_date(uid, self.db)
@@ -85,11 +174,11 @@ class CarePlanCheckInService:
             return thread
 
         thread = CarePlanCheckInThread(uid=uid, local_date=user_today, timezone=tz)
-        # Seed an opening message
+        # Seed a PERSONALIZED opening message
         opening = {
             "id": self._new_message_id(),
             "role": "bot",
-            "content": "Quick care plan check-in for today — how did your actions feel so far?",
+            "content": self._generate_personalized_opening(uid),
             "created_at": datetime.utcnow().isoformat(),
         }
         thread.raw_messages = [opening]
@@ -106,11 +195,11 @@ class CarePlanCheckInService:
         tz = getattr(profile, "timezone", None) if profile else None
 
         thread = CarePlanCheckInThread(uid=uid, local_date=user_today, timezone=tz)
-        # Seed an opening message
+        # Seed a PERSONALIZED opening message
         opening = {
             "id": self._new_message_id(),
             "role": "bot",
-            "content": "Quick care plan check-in for today — how did your actions feel so far?",
+            "content": self._generate_personalized_opening(uid),
             "created_at": datetime.utcnow().isoformat(),
         }
         thread.raw_messages = [opening]
