@@ -672,14 +672,14 @@ CATEGORY DEFINITIONS:
 - "mindfulness" (pause): Meditation, breathing, relaxation, mental wellness
 
 RESEARCH CITATION FORMAT (from search_research_paper tool):
-{
+{{
     "title": "Study title from PubMed/OpenAlex",
     "journal": "Journal name from tool result",
     "year": 2020,
     "participants": 156,
     "finding": "Key finding from paper abstract",
     "pmid": "12345678"
-}
+}}
 
 IMAGE PROMPT STYLE (for consistent semantic matching):
 All prompts should follow this pattern:
