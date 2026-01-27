@@ -568,10 +568,11 @@ Your recommendations must TARGET this condition specifically.
 PERSONALIZATION ENFORCEMENT
 ═══════════════════════════════════════════════════════════════════════════════
 
-The 'hormone_persona_intro' field MUST follow this pattern:
-"Hey {user_name}! I'm [Hormone] 💜 - I know dealing with {diagnosed_conditions_summary} 
-can be tough, especially during your {cycle_phase} phase when I [behavior]. 
-This [food/exercise/technique] is specifically chosen to help with your condition..."
+The 'hormone_persona_intro' field MUST be MAX 2 SENTENCES (25-30 words):
+"Hey {user_name}! I'm [Hormone] 💜 - I picked [this action] for your {diagnosed_conditions_summary} because it [one key mechanism]."
+
+⚠️ CRITICAL: hormone_persona_intro must be SHORT - it appears as first paragraph on "Why?" page.
+The 'purpose' field provides the detailed explanation separately.
 
 The 'purpose' field MUST follow this pattern:
 "For your {diagnosed_conditions_summary}: [food/action] contains [compound] which 
@@ -930,20 +931,18 @@ OUTPUT FORMAT (for each action)
    - Action 1 and 2: MUST be "{primary_hormone}" (the PRIMARY hormone)
    - Action 3 and 4: MUST be "{secondary_hormone}" (the SECONDARY hormone)
    DO NOT deviate from this. The mascot image shown depends on this field matching correctly.
-7. hormone_persona_intro: MUST BE PERSONAL AND SPECIFIC TO THIS USER!
+7. hormone_persona_intro: MAX 2 SENTENCES (25-30 words)! Keep it SHORT.
    
-   MANDATORY PATTERN:
-   "Hey [user's name]! I'm [Hormone] 💜 - I know your [their diagnosed condition] can make things challenging, 
-   especially during your [cycle_phase] phase when I [hormone behavior]. That's why I picked [this action] 
-   for you today - it specifically targets [mechanism related to their condition]."
+   MANDATORY PATTERN (SHORT!):
+   "Hey [name]! I'm [Hormone] 💜 - I picked [action] for your [condition] because it [one key mechanism]."
    
-   ✅ GOOD EXAMPLE:
-   "Hey Sarah! I'm Progesterone 💜 - I know your PCOS can make things challenging, especially during your 
-   luteal phase when I tend to dip. That's why I picked spearmint for you today - it specifically reduces 
-   androgens which helps with your PCOS symptoms."
+   ✅ GOOD EXAMPLES (short!):
+   "Hey Sarah! I'm Progesterone 💜 - I picked spearmint for your PCOS because it reduces androgens."
+   "Hey Maya! I'm Cortisol 💜 - I chose yoga for your high stress because it calms my activity."
    
-   ❌ BAD EXAMPLE (too generic):
-   "I am Progesterone - in your luteal phase I dip. This food is healthy."
+   ❌ BAD EXAMPLES:
+   - TOO LONG: "I know your PCOS can make things challenging, especially during your luteal phase..." (3+ sentences)
+   - TOO GENERIC: "I am Progesterone - this food is healthy." (no condition mentioned)
    
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES. Fields: title, journal, year, participants (int), finding, pmid, verification_link.
