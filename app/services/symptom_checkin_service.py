@@ -548,6 +548,14 @@ class SymptomCheckInService:
         }
 
     def _build_todays_action_plan_context(self, uid: str) -> str:
+        """Build COMPREHENSIVE action plan context with scientific reasoning.
+        
+        This gives the chatbot FULL knowledge of:
+        - What actions are in the plan
+        - WHY each action was chosen (purpose)
+        - Which conditions each action targets
+        - Scientific backing (research studies)
+        """
         user_today = get_user_current_date(uid, self.db)
 
         plan = (
@@ -568,17 +576,39 @@ class SymptomCheckInService:
         if not plan:
             return "No action plan found."
 
-        items = self.db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).all()
+        items = self.db.query(ActionPlanItem).filter(
+            ActionPlanItem.plan_id == plan.id,
+            ActionPlanItem.is_replaced != True  # noqa: E712
+        ).all()
         if not items:
             return "Action plan exists, but has no items."
 
-        lines = [f"Plan date: {plan.plan_date}"]
-        for it in items[:10]:
+        lines = [
+            f"═══════════════════════════════════════════════════════════════",
+            f"TODAY'S ACTION PLAN (Date: {plan.plan_date})",
+            f"═══════════════════════════════════════════════════════════════",
+        ]
+        
+        for idx, it in enumerate(items[:6], 1):
             title = (it.title or "").strip()
-            if title:
-                lines.append(f"- {title}")
-        if len(items) > 10:
-            lines.append(f"(+{len(items) - 10} more)")
+            if not title:
+                continue
+            
+            category = getattr(it, "category", "general") or "general"
+            target_hormone = getattr(it, "target_hormone", None) or "hormones"
+            purpose = getattr(it, "purpose", None) or ""
+            conditions = getattr(it, "conditions", None) or []
+            
+            lines.append(f"")
+            lines.append(f"ACTION {idx}: {title.upper()} ({category})")
+            lines.append(f"  🎯 Target: {target_hormone}")
+            if conditions:
+                lines.append(f"  🩺 For: {', '.join(conditions)}")
+            if purpose:
+                # Truncate purpose to save tokens
+                purpose_short = purpose.strip()[:200]
+                lines.append(f"  📖 Why: {purpose_short}{'...' if len(purpose) > 200 else ''}")
+        
         return "\n".join(lines)
 
     def _build_recent_care_plan_checkin_context(self, uid: str, limit: int = 2) -> str:

@@ -491,6 +491,17 @@ NEW MESSAGES (JSON list in order):
         return "\n".join(lines) if lines else "No historical data yet"
 
     def _build_todays_action_plan_context(self, uid: str) -> str:
+        """Build COMPREHENSIVE action plan context with scientific reasoning.
+        
+        This gives the chatbot FULL knowledge of:
+        - What actions are in the plan
+        - WHY each action was chosen (purpose)
+        - Which conditions each action targets
+        - Scientific backing (research studies)
+        - Target hormones
+        
+        This enables the chatbot to DEFEND and EXPLAIN the plan when users question it.
+        """
         user_today = get_user_current_date(uid, self.db)
 
         plan = (
@@ -520,22 +531,76 @@ NEW MESSAGES (JSON list in order):
         if not items:
             return "Action plan exists, but has no items."
 
-        lines = [f"Plan date: {plan.plan_date} (plan_id={plan.id})"]
-        for it in items[:12]:
+        lines = [
+            f"═══════════════════════════════════════════════════════════════",
+            f"TODAY'S ACTION PLAN (Date: {plan.plan_date})",
+            f"═══════════════════════════════════════════════════════════════",
+            f"",
+            f"This plan was SPECIFICALLY created for this user's conditions.",
+            f"Each item has scientific reasoning - USE THIS to explain when asked!",
+            f"",
+        ]
+        
+        for idx, it in enumerate(items[:8], 1):
             title = (it.title or "").strip()
             if not title:
                 continue
-            # Include stable identifiers so downstream tools/UI can target items.
-            slot = getattr(it, "slot", None)
-            time_slot = getattr(it, "time_slot", None)
-            parts = [f"id={it.id}"]
-            if slot is not None:
-                parts.append(f"slot={slot}")
-            if time_slot:
-                parts.append(f"time_slot={time_slot}")
-            lines.append(f"- [{', '.join(parts)}] {title}")
-        if len(items) > 12:
-            lines.append(f"(+{len(items) - 12} more)")
+            
+            category = getattr(it, "category", "general") or "general"
+            target_hormone = getattr(it, "target_hormone", None) or "hormones"
+            purpose = getattr(it, "purpose", None) or ""
+            conditions = getattr(it, "conditions", None) or []
+            symptoms = getattr(it, "symptoms", None) or []
+            time_slot = getattr(it, "time_slot", None) or "anytime"
+            research_studies = getattr(it, "research_studies", None) or []
+            
+            lines.append(f"───────────────────────────────────────────────────────────────")
+            lines.append(f"ACTION {idx}: {title.upper()}")
+            lines.append(f"───────────────────────────────────────────────────────────────")
+            lines.append(f"  📋 Category: {category}")
+            lines.append(f"  ⏰ Time: {time_slot}")
+            lines.append(f"  🎯 Target Hormone: {target_hormone}")
+            
+            if conditions:
+                lines.append(f"  🩺 Conditions Targeted: {', '.join(conditions)}")
+            if symptoms:
+                lines.append(f"  💊 Symptoms Addressed: {', '.join(symptoms)}")
+            
+            # The PURPOSE is the key explanation - this is what the chatbot should cite
+            if purpose:
+                lines.append(f"  ")
+                lines.append(f"  📖 WHY THIS WAS CHOSEN:")
+                # Split purpose into manageable chunks
+                purpose_clean = purpose.strip()
+                lines.append(f"  {purpose_clean}")
+            
+            # Research studies - critical for credibility
+            if research_studies and isinstance(research_studies, list):
+                lines.append(f"  ")
+                lines.append(f"  🔬 SCIENTIFIC BACKING:")
+                for study in research_studies[:2]:  # Limit to 2 studies per item
+                    if isinstance(study, dict):
+                        study_title = study.get("title", "Research Study")
+                        journal = study.get("journal", "")
+                        year = study.get("year", "")
+                        finding = study.get("finding", "")
+                        participants = study.get("participants", "")
+                        
+                        study_ref = f"{study_title}"
+                        if journal and year:
+                            study_ref += f" ({journal}, {year})"
+                        lines.append(f"    • {study_ref}")
+                        if participants:
+                            lines.append(f"      Participants: {participants} women")
+                        if finding:
+                            lines.append(f"      Finding: {finding[:150]}{'...' if len(finding) > 150 else ''}")
+            
+            lines.append(f"")
+        
+        lines.append(f"═══════════════════════════════════════════════════════════════")
+        lines.append(f"USE THE ABOVE DATA to explain WHY each item is personalized!")
+        lines.append(f"═══════════════════════════════════════════════════════════════")
+        
         return "\n".join(lines)
 
     def get_plan_items_for_ui(self, uid: str, limit: int = 8) -> List[Dict[str, Any]]:
