@@ -1222,6 +1222,9 @@ NEVER just acknowledge preferences without saving them. The user expects their i
                 final_content = composed.content
                 response_type = composed.response_type.value
                 choices = composed.choices
+                # CRITICAL: If composer returned None for choices, fall back to generate_choices
+                if not choices:
+                    choices = generate_choices(raw_content, conversation_context, message, tool_calls_made)
                 if composed.slider_config:
                     slider_config = composed.slider_config.to_dict()
             except Exception as e:

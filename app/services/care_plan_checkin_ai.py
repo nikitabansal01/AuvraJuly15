@@ -216,21 +216,45 @@ Return JSON with:
         raw, model_used = await AIService.call_ai_model(prompt, with_fallback=True)
         raw = (raw or "").strip()
 
+        # Context-aware fallback tap options - personalized to user
+        def get_fallback_tap_options() -> List[CarePlanTapOption]:
+            """Generate personalized fallback tap options based on user context."""
+            options = [
+                CarePlanTapOption(id="going_well", text="✅ Going well!"),
+                CarePlanTapOption(id="need_help", text=f"🤔 Need help with something"),
+            ]
+            # Add context-specific options
+            if conditions_str and conditions_str != "general wellness":
+                options.append(CarePlanTapOption(id="symptom_update", text=f"💬 Update on {conditions_str.split(',')[0].strip()}"))
+            else:
+                options.append(CarePlanTapOption(id="how_feeling", text="💭 Share how I'm feeling"))
+            options.append(CarePlanTapOption(id="manage_plan", text="🧩 Manage my plan"))
+            return options
+
         extracted = _extract_json_object(raw)
         if not extracted:
             logger.warning("[CarePlanCheckInAI] Non-JSON response; falling back to plain message")
-            return CarePlanAIResponse(messages=[raw or "Got it — tell me a bit more about what feels hardest today."], tap_options=[]), model_used
+            return CarePlanAIResponse(
+                messages=[raw or f"Got it {user_name} — tell me a bit more about what feels hardest today."],
+                tap_options=get_fallback_tap_options()
+            ), model_used
 
         try:
             data = json.loads(extracted)
             parsed = CarePlanAIResponse.model_validate(data)
             # Ensure we always return at least one message
             if not parsed.messages:
-                parsed.messages = ["Got it. What would you like to adjust about today?"]
+                parsed.messages = [f"Got it {user_name}. What would you like to adjust about today?"]
+            # Ensure we always return tap options (use AI-generated if available, else fallback)
+            if not parsed.tap_options:
+                parsed.tap_options = get_fallback_tap_options()
             return parsed, model_used
         except (json.JSONDecodeError, ValidationError) as e:
             logger.warning(f"[CarePlanCheckInAI] Failed to parse structured output: {e}")
-            return CarePlanAIResponse(messages=[raw or "Got it — what would you like to adjust about today?"], tap_options=[]), model_used
+            return CarePlanAIResponse(
+                messages=[raw or f"Got it {user_name} — what would you like to adjust about today?"],
+                tap_options=get_fallback_tap_options()
+            ), model_used
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -1031,16 +1031,36 @@ CRITICAL RULES:
         
         if severity >= 7:
             message = f"I'm sorry to hear that {symptom.lower()} is bothering you. Can you tell me more about what's happening?"
+            tap_options = [
+                {"id": "worse_than_usual", "text": "It's worse than usual"},
+                {"id": "stress_related", "text": "I think stress is making it worse"},
+                {"id": "not_sure", "text": "I'm not sure what's causing it"},
+                {"id": "something_else", "text": "Something else..."},
+            ]
         elif severity >= 4:
             message = f"I see. What do you think might be contributing to your {symptom.lower()} this week?"
+            tap_options = [
+                {"id": "diet_changes", "text": "Diet changes"},
+                {"id": "sleep_issues", "text": "Sleep issues"},
+                {"id": "stress", "text": "Stress or anxiety"},
+                {"id": "not_sure", "text": "Not sure"},
+                {"id": "something_else", "text": "Something else..."},
+            ]
         else:
             message = f"That's good! What have you been doing differently that might be helping?"
+            tap_options = [
+                {"id": "better_sleep", "text": "Better sleep"},
+                {"id": "healthier_eating", "text": "Healthier eating"},
+                {"id": "less_stress", "text": "Less stress"},
+                {"id": "exercise", "text": "More exercise"},
+                {"id": "not_sure", "text": "Not sure, just feeling better!"},
+            ]
             
         return AIQuestion(
             question_key="fallback_followup",
-            question_type=QuestionType.FREE_TEXT,
+            question_type=QuestionType.TAP_CHOICE,
             message=message,
-            tap_options=[],
+            tap_options=tap_options,
             is_required=True
         )
     

@@ -172,7 +172,7 @@ class ResponseComposer:
         )
         
         # 3. Post-process content
-        polished_content = self._polish_content(raw_content, emotional_reading)
+        polished_content = self._polish_content(raw_content, emotional_reading, conversation_context)
         
         # 4. Generate any actions
         actions = self._generate_actions(raw_content, conversation_context)
@@ -308,13 +308,19 @@ class ResponseComposer:
             if pattern in content_lower:
                 return choices
         
-        # Default choices for context
-        return context_choices.get("general")
+        # Default choices for context (with fallback for unknown contexts)
+        default_choices = context_choices.get("general")
+        if default_choices:
+            return default_choices
+        
+        # Ultimate fallback for any unknown context - NEVER return None
+        return ["Yes please! 💜", "No thanks", "Tell me more 🤔"]
     
     def _polish_content(
         self, 
         content: str,
-        emotional_reading: Optional[Dict[str, Any]]
+        emotional_reading: Optional[Dict[str, Any]],
+        conversation_context: str = ""
     ) -> str:
         """Polish the response content for optimal delivery."""
         polished = content.strip()
@@ -361,8 +367,6 @@ class ResponseComposer:
              if any(w in polished.lower() for w in ["protein", "diet", "eating", "food"]) and "tomorrow" not in polished.lower():
                  polished += " (Your action plan will update from tomorrow onwards! 📅)"
 
-        return polished
-        
         return polished
     
     def _generate_actions(
