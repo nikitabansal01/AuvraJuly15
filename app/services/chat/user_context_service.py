@@ -87,7 +87,13 @@ class UserContextService:
                 
                 # Hormone analysis
                 primary_hormone=user_response.primary_hormone if user_response else None,
-                secondary_hormones=user_response.secondary_hormones or [] if user_response else []
+                secondary_hormones=user_response.secondary_hormones or [] if user_response else [],
+                
+                # CHATBOT MEMORY - User preferences (diet, allergies, etc.)
+                chatbot_memory=user_profile.chatbot_memory if user_profile and user_profile.chatbot_memory else {},
+                
+                # Timezone for context
+                timezone=user_profile.current_timezone if user_profile else "UTC"
             )
             
             return profile

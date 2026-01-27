@@ -208,6 +208,12 @@ class PatientProfile(BaseModel):
     # Hormone analysis
     primary_hormone: Optional[str] = None
     secondary_hormones: List[str] = []
+    
+    # User preferences from chatbot_memory (diet, allergies, etc.)
+    chatbot_memory: Dict[str, Any] = {}
+    
+    # Timezone
+    timezone: str = "UTC"
 
 
 class TodaysPlan(BaseModel):

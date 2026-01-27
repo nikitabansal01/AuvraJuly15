@@ -479,6 +479,38 @@ def format_basic_context(
 """
         sections.append(header)
         
+        # USER PREFERENCES from chatbot_memory - CRITICAL FOR PERSONALIZATION
+        chatbot_memory = patient_profile.get("chatbot_memory", {})
+        if chatbot_memory:
+            prefs_parts = []
+            if chatbot_memory.get("diet_preference"):
+                prefs_parts.append(f"🥗 Diet: {chatbot_memory['diet_preference']}")
+            if chatbot_memory.get("food_allergies"):
+                allergies = chatbot_memory['food_allergies']
+                if isinstance(allergies, list):
+                    prefs_parts.append(f"🚫 Allergies: {', '.join(allergies)}")
+                else:
+                    prefs_parts.append(f"🚫 Allergies: {allergies}")
+            if chatbot_memory.get("cuisine_preference"):
+                cuisines = chatbot_memory['cuisine_preference']
+                if isinstance(cuisines, list):
+                    prefs_parts.append(f"🍜 Cuisines: {', '.join(cuisines[:3])}")
+                else:
+                    prefs_parts.append(f"🍜 Cuisines: {cuisines}")
+            if chatbot_memory.get("cultural_background"):
+                prefs_parts.append(f"🌍 Cultural: {chatbot_memory['cultural_background']}")
+            if chatbot_memory.get("body_metrics"):
+                metrics = chatbot_memory['body_metrics']
+                if isinstance(metrics, dict) and metrics.get("bmi"):
+                    prefs_parts.append(f"📏 BMI: {metrics['bmi']} ({metrics.get('bmi_category', 'unknown')})")
+            if chatbot_memory.get("cravings"):
+                cravings = chatbot_memory['cravings']
+                if isinstance(cravings, list):
+                    prefs_parts.append(f"🍫 Cravings: {', '.join(cravings[:3])}")
+            
+            if prefs_parts:
+                sections.append(f"═══ {first_name.upper()}'S PREFERENCES ═══\n" + "\n".join(prefs_parts))
+        
         # Additional patient details
         patient_parts = []
         
@@ -976,10 +1008,75 @@ async def run_chat_agent(
         # STEP 4: BUILD THE INTELLIGENT PROMPT
         # ═══════════════════════════════════════════════════════════════════
         
-        conversation_guidance = CONVERSATION_PROMPTS.get(
+        # Extract user-specific data for prompt personalization
+        user_name = "there"
+        user_phase = "unknown"
+        user_conditions = []
+        user_symptoms = []
+        user_streak = 0
+        user_preferences = {}
+        
+        if patient_profile:
+            full_name = patient_profile.get("name", "")
+            user_name = full_name.split()[0] if full_name else "there"
+            user_phase = patient_profile.get("phase", "unknown")
+            user_conditions = patient_profile.get("diagnosed_conditions", [])
+            # Get preferences from chatbot_memory
+            chatbot_memory = patient_profile.get("chatbot_memory", {})
+            if chatbot_memory:
+                user_preferences = {
+                    "diet": chatbot_memory.get("diet_preference"),
+                    "allergies": chatbot_memory.get("food_allergies"),
+                    "cuisine": chatbot_memory.get("cuisine_preference"),
+                }
+        
+        if recent_summary:
+            symptoms_data = recent_summary.get("symptoms_reported", [])
+            user_symptoms = [s.get("type", "") for s in symptoms_data[:3]]
+            user_streak = recent_summary.get("streak", {}).get("current", 0)
+        
+        # Build personalized conversation guidance with ACTUAL user data
+        conversation_guidance_template = CONVERSATION_PROMPTS.get(
             conversation_context, 
             CONVERSATION_PROMPTS["care_plan_modal"]
         )
+        
+        # Replace placeholders with actual user data
+        conversation_guidance = conversation_guidance_template.replace(
+            "{phase}", user_phase
+        ).replace(
+            "{name}", user_name
+        ).replace(
+            "{symptom}", user_symptoms[0] if user_symptoms else "symptoms"
+        ).replace(
+            "{streak_days}", str(user_streak)
+        ).replace(
+            "{preference}", str(user_preferences.get("diet", "your preferences"))
+        ).replace(
+            "{previous_symptom}", user_symptoms[0] if user_symptoms else "your symptoms"
+        ).replace(
+            "{day}", str(patient_profile.get("cycle_day", "?")) if patient_profile else "?"
+        ).replace(
+            "{hormone}", "estrogen" if user_phase in ["follicular", "ovulation"] else "progesterone"
+        ).replace(
+            "{hormone reason}", "hormone fluctuations during this phase"
+        ).replace(
+            "{factor}", "preferences"
+        ).replace(
+            "{benefit}", "personalized recommendations"
+        ).replace(
+            "{doing this}", "at its peak" if user_phase == "ovulation" else "fluctuating"
+        ).replace(
+            "{practical benefit}", "plan your activities better"
+        )
+        
+        # Add user's actual conditions and symptoms to guidance
+        if user_conditions:
+            conversation_guidance += f"\n\n🎯 USER'S CONDITIONS: {', '.join(user_conditions[:3])}"
+        if user_symptoms:
+            conversation_guidance += f"\n🩺 RECENT SYMPTOMS: {', '.join(user_symptoms)}"
+        if user_preferences.get("diet"):
+            conversation_guidance += f"\n🥗 DIET: {user_preferences['diet']}"
         
         # Relationship stage adjustments
         relationship_notes = {
