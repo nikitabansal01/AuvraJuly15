@@ -2792,6 +2792,90 @@ Total: {num_actions} actions
         existing_summary = json.dumps(existing_actions, indent=2) if existing_actions else "None"
         user_conditions = user_context.get('diagnosed_conditions', [])
         top_concern = user_context.get('top_concern', 'general wellness')
+        condition_str = user_conditions[0] if user_conditions else "womens health"
+        
+        # ========================================================
+        # RESEARCH-FIRST: Fetch PubMed research BEFORE generating actions
+        # This ensures real citations, not hallucinated ones
+        # ========================================================
+        research_context = ""
+        if db:
+            try:
+                import asyncio
+                import random
+                
+                # Build research queries based on num_actions needed
+                food_varieties = ["omega-3", "antioxidant", "fiber", "protein", "vitamin", "mineral"]
+                movement_varieties = ["yoga", "walking", "stretching", "strength", "cardio"]
+                mindfulness_varieties = ["breathing", "meditation", "relaxation", "mindfulness"]
+                
+                random.shuffle(food_varieties)
+                random.shuffle(movement_varieties)
+                random.shuffle(mindfulness_varieties)
+                
+                # Create queries for the number of actions needed
+                research_queries = []
+                categories_needed = []
+                hormones_needed = []
+                
+                for i in range(num_actions):
+                    hormone = primary_hormone if i < primary_count else secondary_hormone
+                    # Rotate through categories
+                    if i % 3 == 0:
+                        query = f"{food_varieties[i % len(food_varieties)]} {hormone} {condition_str} women"
+                        categories_needed.append("food")
+                    elif i % 3 == 1:
+                        query = f"{movement_varieties[i % len(movement_varieties)]} {hormone} {condition_str} women"
+                        categories_needed.append("movement")
+                    else:
+                        query = f"{mindfulness_varieties[i % len(mindfulness_varieties)]} stress {hormone} women"
+                        categories_needed.append("mindfulness")
+                    research_queries.append(query)
+                    hormones_needed.append(hormone)
+                
+                # Fetch research in parallel
+                async def fetch_paper(idx: int, query: str):
+                    try:
+                        paper = await execute_pubmed_tool({
+                            "query": query,
+                            "action_title": f"Partial action {idx + 1}",
+                            "category": categories_needed[idx],
+                            "target_hormone": hormones_needed[idx]
+                        }, db=db)
+                        if paper and paper.get("title"):
+                            return {"paper": paper, "category": categories_needed[idx], "hormone": hormones_needed[idx]}
+                    except Exception as e:
+                        logger.warning(f"Partial gen research query failed: {e}")
+                    return None
+                
+                logger.info(f"[PARTIAL] Fetching {len(research_queries)} research papers in parallel...")
+                results = await asyncio.gather(*[fetch_paper(i, q) for i, q in enumerate(research_queries)], return_exceptions=True)
+                
+                research_findings = [r for r in results if r and not isinstance(r, Exception)]
+                logger.info(f"[PARTIAL] Found {len(research_findings)} research papers")
+                
+                if research_findings:
+                    research_context = """
+======================================================================
+RESEARCH FINDINGS - USE THESE TO INFORM YOUR RECOMMENDATIONS
+======================================================================
+"""
+                    for finding in research_findings:
+                        paper = finding["paper"]
+                        research_context += f"""
+📚 Research for {finding['hormone'].upper()} ({finding['category']}):
+   Title: {paper.get('title', 'Unknown')}
+   Journal: {paper.get('journal', 'Unknown')} ({paper.get('year', 'N/A')})
+   Finding: {paper.get('finding', 'Evidence-based intervention')}
+   PMID: {paper.get('pmid', 'N/A')}
+   
+   → Use this to inform your {finding['category']} recommendation for {finding['hormone']}
+"""
+                    research_context += """
+IMPORTANT: Base your recommendations on the research above. Include paper details in research_studies field.
+"""
+            except Exception as e:
+                logger.warning(f"[PARTIAL] Research fetch failed: {e}, proceeding without")
         
         prompt = f"""Generate exactly {num_actions} personalized wellness action(s) for this user.
 
@@ -2824,6 +2908,8 @@ RECENT INSIGHTS
 Weekly Check-ins: {user_context.get('weekly_checkin_insights', 'None')}
 Daily Reviews: {user_context.get('daily_review_insights', 'None')}
 Feedback Memory: {user_context.get('feedback_memory', 'None')}
+
+{research_context}
 
 ======================================================================
 {hormone_instruction}
