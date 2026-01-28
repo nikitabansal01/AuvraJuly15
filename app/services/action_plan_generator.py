@@ -2830,21 +2830,40 @@ REQUIREMENTS
 1. Generate exactly {num_actions} NEW action(s) - DIFFERENT content from existing ones
 2. Mix categories (food, movement, mindfulness) to complement existing
 3. STRICTLY follow the hormone count requirement above
+
+⭐ TITLE RULES (CRITICAL - SHORT INGREDIENT/ACTIVITY NAME ONLY!):
+- FOOD: Just the ingredient name (e.g., "Salmon", "Oatmeal", "Spearmint")
+- MOVEMENT: Simple activity (e.g., "Brisk Walking", "Morning Yoga", "Stretching")
+- MINDFULNESS: Technique name (e.g., "Deep Breathing", "Body Scan", "Journaling")
+❌ NO long phrases, NO preparation methods ("tea", "smoothie"), NO adjectives
+
 4. Each action needs:
-   - title: Clear action title
+   - title: SHORT 1-3 word noun (ingredient or activity name ONLY)
    - category: "food" or "movement" or "mindfulness"
    - time_slot: "morning" or "afternoon" or "evening"
-   - specific_action: Detailed instruction
-   - purpose: Why this helps the user
+   - specific_action: Detailed instruction (2-3 sentences)
+   - purpose: Why this helps user's specific condition (2-3 sentences, mention their condition)
    - target_hormone: "{primary_hormone}" OR "{secondary_hormone}" (follow counts above)
-   - hormone_persona_intro: Brief hormone benefit statement
-   - image_prompt: Description for image generation
-   - research_studies: [] (empty array)
-   - variants: [] (empty array - will be filled later)
-   - food_items/food_amounts for food category
-   - exercise_types/exercise_durations/exercise_intensities for movement category
-   - mindfulness_techniques/mindfulness_durations for mindfulness category
-   - symptoms: ["symptom1", "symptom2"] (2 from user concerns)
+   - hormone_persona_intro: "Hey! I'm [Hormone] 💜 - I picked [action] for your [condition] because [1 reason]."
+   - image_prompt: "Professional photo of [action], natural lighting, 4K quality"
+   - research_studies: [{{
+       "title": "Study on [topic] in women",
+       "journal": "Journal Name",
+       "year": 2023,
+       "participants": 100,
+       "finding": "Key finding for women",
+       "pmid": "",
+       "verification_link": ""
+     }}]
+   - variants: [
+       {{"variant_type": "gentle", "title": "Gentle [variation]", "description": "Easier version...", "image_prompt": "..."}},
+       {{"variant_type": "energizing", "title": "Energizing [variation]", "description": "More active version...", "image_prompt": "..."}},
+       {{"variant_type": "quick", "title": "Quick [variation]", "description": "Shorter version...", "image_prompt": "..."}}
+     ]
+   - food_items/food_amounts for food category (or empty [] for other categories)
+   - exercise_types/exercise_durations/exercise_intensities for movement category (or empty [])
+   - mindfulness_techniques/mindfulness_durations for mindfulness category (or empty [])
+   - symptoms: ["symptom1", "symptom2"] (from user concerns)
    - conditions: [] (empty array)
 
 Return as JSON: {{"actions": [array of {num_actions} action objects]}}
