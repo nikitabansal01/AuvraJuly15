@@ -41,13 +41,27 @@ STUDY_TYPE_PRIORITY = {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# API ENDPOINTS
+# API ENDPOINTS - Multiple free sources for scaling
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Primary - NIH PubMed (biomedical focus, 3/sec without key, 10/sec with key)
 PUBMED_SEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_FETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+
+# Secondary - OpenAlex (broad coverage, 100k/day free, polite pool)
 OPENALEX_SEARCH_URL = "https://api.openalex.org/works"
+
+# Tertiary - Semantic Scholar (AI relevance, 100 req/5min unauthenticated)
 SEMANTIC_SCHOLAR_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+
+# Fallback 1 - Europe PMC (EU biomedical, 25 req/sec, no auth needed)
+EUROPE_PMC_SEARCH_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+# Fallback 2 - CORE (open access papers, 10k/month free tier)
+CORE_SEARCH_URL = "https://api.core.ac.uk/v3/search/works"
+
+# Fallback 3 - Unpaywall (finds open access versions, 100k/day)
+UNPAYWALL_URL = "https://api.unpaywall.org/v2"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -126,12 +140,25 @@ class PubMedService:
     """
     Multi-API research citation service with intelligent fallback.
     
-    Priority order:
+    Designed to scale to 100+ concurrent users using only FREE APIs.
+    
+    Priority order (all free):
     1. In-memory cache (instant - for common hormone+condition combos)
     2. Database cache lookup (fast)
-    3. PubMed (primary - biomedical focus)
-    4. OpenAlex (secondary - broad coverage)
-    5. Semantic Scholar (tertiary - AI-powered relevance)
+    3. PubMed (primary - biomedical focus, 10/sec with key)
+    4. OpenAlex (secondary - broad coverage, 100k/day)
+    5. Europe PMC (fallback 1 - EU biomedical, 25/sec)
+    6. CORE (fallback 2 - open access, 10k/month)
+    7. Semantic Scholar (tertiary - AI-powered, 100/5min)
+    
+    Rate limit capacity for free tier:
+    - PubMed: ~10/sec = 36,000/hour
+    - OpenAlex: ~100k/day = ~4,166/hour
+    - Europe PMC: ~25/sec = 90,000/hour
+    - CORE: ~10k/month = ~14/hour (last resort)
+    - Semantic Scholar: ~100/5min = 1,200/hour
+    
+    Combined: Can handle 100+ users easily with cascading fallback.
     """
     
     # Class-level semaphores for rate limiting per provider
@@ -235,7 +262,27 @@ class PubMedService:
                 await self._cache_citation(cache_key, paper, db)
             return paper
         
-        # Step 4: Try Semantic Scholar (tertiary - AI relevance)
+        # Step 4: Try Europe PMC (EU biomedical, 25/sec free)
+        await asyncio.sleep(self._rate_limit_delay)
+        paper = await self._search_europe_pmc(query)
+        if paper:
+            logger.info(f"✅ Europe PMC found: {paper.get('title', '')[:50]}...")
+            self._memory_cache[cache_key] = (paper, time.time())
+            if db:
+                await self._cache_citation(cache_key, paper, db)
+            return paper
+        
+        # Step 5: Try CORE (open access papers, 10k/month free)
+        await asyncio.sleep(self._rate_limit_delay)
+        paper = await self._search_core(query)
+        if paper:
+            logger.info(f"✅ CORE found: {paper.get('title', '')[:50]}...")
+            self._memory_cache[cache_key] = (paper, time.time())
+            if db:
+                await self._cache_citation(cache_key, paper, db)
+            return paper
+        
+        # Step 6: Try Semantic Scholar (last resort - AI relevance, 100/5min)
         await asyncio.sleep(self._rate_limit_delay)
         paper = await self._search_semantic_scholar(query)
         if paper:
@@ -245,7 +292,7 @@ class PubMedService:
                 await self._cache_citation(cache_key, paper, db)
             return paper
         
-        # Step 5: No results - try simpler query
+        # Step 7: No results - try simpler query
         logger.warning(f"⚠️ No results for '{action_title}', trying simpler query...")
         simple_query = self._simplify_query(query, category, hormone)
         
@@ -322,7 +369,30 @@ class PubMedService:
         
         # If we don't have enough from PubMed, try OpenAlex
         if len(all_papers) < 2:
+            logger.info(f"  🔄 Need more papers, trying OpenAlex...")
             papers = await self._search_openalex_multiple(query, max_results=3)
+            for paper in papers:
+                if len(all_papers) >= max_citations:
+                    break
+                paper["study_type"] = self._detect_study_type(paper)
+                paper["study_type_label"] = self._get_study_type_label(paper["study_type"])
+                all_papers.append(paper)
+        
+        # If still not enough, try Europe PMC
+        if len(all_papers) < 2:
+            logger.info(f"  🔄 Need more papers, trying Europe PMC...")
+            papers = await self._search_europe_pmc_multiple(query, max_results=3)
+            for paper in papers:
+                if len(all_papers) >= max_citations:
+                    break
+                paper["study_type"] = self._detect_study_type(paper)
+                paper["study_type_label"] = self._get_study_type_label(paper["study_type"])
+                all_papers.append(paper)
+        
+        # If still not enough, try CORE
+        if len(all_papers) < 2:
+            logger.info(f"  🔄 Need more papers, trying CORE...")
+            papers = await self._search_core_multiple(query, max_results=3)
             for paper in papers:
                 if len(all_papers) >= max_citations:
                     break
@@ -973,6 +1043,249 @@ class PubMedService:
                 logger.error(f"Semantic Scholar search error: {e}")
                 return None
     
+    # ═══════════════════════════════════════════════════════════════════════════
+    # EUROPE PMC API (Fallback 1 - EU biomedical, 25 req/sec, free)
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    async def _search_europe_pmc(self, query: str) -> Optional[Dict]:
+        """Search Europe PMC for papers (25/sec free, EU biomedical focus)."""
+        try:
+            # Clean query for Europe PMC
+            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+            clean_query = re.sub(r'[()]', '', clean_query)
+            
+            params = {
+                "query": clean_query,
+                "format": "json",
+                "pageSize": 1,
+                "resultType": "core",  # Get full metadata
+                "sort": "CITED desc"  # Most cited first
+            }
+            
+            response = await self.client.get(EUROPE_PMC_SEARCH_URL, params=params)
+            
+            if response.status_code == 429:
+                logger.warning("Europe PMC rate limited")
+                return None
+            
+            response.raise_for_status()
+            
+            data = response.json()
+            results = data.get("resultList", {}).get("result", [])
+            
+            if not results:
+                return None
+            
+            paper = results[0]
+            abstract = paper.get("abstractText", "") or ""
+            
+            # Get PMID if available
+            pmid = paper.get("pmid", "") or ""
+            doi = paper.get("doi", "") or ""
+            
+            return {
+                "title": paper.get("title", "Unknown"),
+                "journal": paper.get("journalTitle", "Unknown") or "Unknown",
+                "year": int(paper.get("pubYear", 2020)) if paper.get("pubYear") else 2020,
+                "participants": self._extract_participant_count(abstract),
+                "finding": self._extract_finding(abstract, paper.get("title", "")),
+                "pmid": str(pmid) if pmid else "",
+                "doi": doi,
+                "verification_link": f"https://europepmc.org/article/MED/{pmid}" if pmid else (f"https://doi.org/{doi}" if doi else ""),
+                "source": "europe_pmc"
+            }
+            
+        except Exception as e:
+            logger.error(f"Europe PMC search error: {e}")
+            return None
+    
+    async def _search_europe_pmc_multiple(self, query: str, max_results: int = 3) -> List[Dict]:
+        """Search Europe PMC for multiple papers."""
+        results = []
+        try:
+            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+            clean_query = re.sub(r'[()]', '', clean_query)
+            
+            params = {
+                "query": clean_query,
+                "format": "json",
+                "pageSize": max_results + 2,
+                "resultType": "core",
+                "sort": "CITED desc"
+            }
+            
+            response = await self.client.get(EUROPE_PMC_SEARCH_URL, params=params)
+            
+            if response.status_code == 429:
+                logger.warning("Europe PMC rate limited in multiple search")
+                return []
+            
+            response.raise_for_status()
+            
+            data = response.json()
+            papers = data.get("resultList", {}).get("result", [])
+            
+            for paper in papers[:max_results]:
+                abstract = paper.get("abstractText", "") or ""
+                pmid = paper.get("pmid", "") or ""
+                doi = paper.get("doi", "") or ""
+                
+                results.append({
+                    "title": paper.get("title", "Unknown"),
+                    "journal": paper.get("journalTitle", "Unknown") or "Unknown",
+                    "year": int(paper.get("pubYear", 2020)) if paper.get("pubYear") else 2020,
+                    "participants": self._extract_participant_count(abstract),
+                    "finding": self._extract_finding(abstract, paper.get("title", "")),
+                    "pmid": str(pmid) if pmid else "",
+                    "doi": doi,
+                    "verification_link": f"https://europepmc.org/article/MED/{pmid}" if pmid else (f"https://doi.org/{doi}" if doi else ""),
+                    "source": "europe_pmc"
+                })
+                
+        except Exception as e:
+            logger.error(f"Europe PMC multiple search error: {e}")
+        
+        return results
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # CORE API (Fallback 2 - Open access papers, 10k/month free)
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    async def _search_core(self, query: str) -> Optional[Dict]:
+        """Search CORE for open access papers (10k/month free tier)."""
+        try:
+            # Clean query
+            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+            clean_query = re.sub(r'[()]', '', clean_query)
+            
+            # CORE uses POST for search
+            payload = {
+                "q": clean_query,
+                "limit": 1,
+                "sort": [{"citationCount": "desc"}]  # Most cited first
+            }
+            
+            headers = {
+                "Content-Type": "application/json"
+            }
+            
+            # Note: CORE API v3 requires no auth for basic search
+            response = await self.client.post(
+                CORE_SEARCH_URL, 
+                json=payload, 
+                headers=headers,
+                timeout=10.0  # CORE can be slow
+            )
+            
+            if response.status_code == 429:
+                logger.warning("CORE rate limited")
+                return None
+            
+            if response.status_code == 401:
+                logger.warning("CORE requires API key for this query")
+                return None
+            
+            response.raise_for_status()
+            
+            data = response.json()
+            results = data.get("results", [])
+            
+            if not results:
+                return None
+            
+            paper = results[0]
+            abstract = paper.get("abstract", "") or ""
+            
+            # CORE has different ID structures
+            doi = paper.get("doi", "") or ""
+            core_id = paper.get("id", "")
+            
+            # Try to find PMID from identifiers
+            pmid = ""
+            for identifier in paper.get("identifiers", []):
+                if identifier and "pubmed" in identifier.lower():
+                    # Extract PMID from URL or identifier
+                    match = re.search(r'(\d+)', identifier)
+                    if match:
+                        pmid = match.group(1)
+                        break
+            
+            return {
+                "title": paper.get("title", "Unknown"),
+                "journal": paper.get("publisher", "Unknown") or paper.get("journals", [{}])[0].get("title", "Unknown") if paper.get("journals") else "Unknown",
+                "year": paper.get("yearPublished", 2020) or 2020,
+                "participants": self._extract_participant_count(abstract),
+                "finding": self._extract_finding(abstract, paper.get("title", "")),
+                "pmid": pmid,
+                "doi": doi,
+                "verification_link": f"https://core.ac.uk/works/{core_id}" if core_id else (f"https://doi.org/{doi}" if doi else ""),
+                "source": "core"
+            }
+            
+        except Exception as e:
+            logger.error(f"CORE search error: {e}")
+            return None
+    
+    async def _search_core_multiple(self, query: str, max_results: int = 3) -> List[Dict]:
+        """Search CORE for multiple open access papers."""
+        results = []
+        try:
+            clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
+            clean_query = re.sub(r'[()]', '', clean_query)
+            
+            payload = {
+                "q": clean_query,
+                "limit": max_results + 2,
+                "sort": [{"citationCount": "desc"}]
+            }
+            
+            headers = {"Content-Type": "application/json"}
+            
+            response = await self.client.post(
+                CORE_SEARCH_URL, 
+                json=payload, 
+                headers=headers,
+                timeout=10.0
+            )
+            
+            if response.status_code in [429, 401]:
+                return []
+            
+            response.raise_for_status()
+            
+            data = response.json()
+            papers = data.get("results", [])
+            
+            for paper in papers[:max_results]:
+                abstract = paper.get("abstract", "") or ""
+                doi = paper.get("doi", "") or ""
+                core_id = paper.get("id", "")
+                
+                pmid = ""
+                for identifier in paper.get("identifiers", []):
+                    if identifier and "pubmed" in identifier.lower():
+                        match = re.search(r'(\d+)', identifier)
+                        if match:
+                            pmid = match.group(1)
+                            break
+                
+                results.append({
+                    "title": paper.get("title", "Unknown"),
+                    "journal": paper.get("publisher", "Unknown") or "Unknown",
+                    "year": paper.get("yearPublished", 2020) or 2020,
+                    "participants": self._extract_participant_count(abstract),
+                    "finding": self._extract_finding(abstract, paper.get("title", "")),
+                    "pmid": pmid,
+                    "doi": doi,
+                    "verification_link": f"https://core.ac.uk/works/{core_id}" if core_id else (f"https://doi.org/{doi}" if doi else ""),
+                    "source": "core"
+                })
+                
+        except Exception as e:
+            logger.error(f"CORE multiple search error: {e}")
+        
+        return results
+
     # ═══════════════════════════════════════════════════════════════════════════
     # CACHE LAYER
     # ═══════════════════════════════════════════════════════════════════════════
