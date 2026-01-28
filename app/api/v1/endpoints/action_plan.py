@@ -125,10 +125,15 @@ async def get_today_assignments(
         
         # Find the LAST plan that hasn't been reviewed
         # Query automatically handles signup day: plan_date < today_date finds nothing on day 1
-        total_plan_count = db.query(ActionPlan).filter(ActionPlan.uid == uid).count()
+        # CRITICAL FIX: Check for plans BEFORE today, not total plan count
+        # User could have 1 plan from yesterday that still needs review!
+        plans_before_today_count = db.query(ActionPlan).filter(
+            ActionPlan.uid == uid,
+            ActionPlan.plan_date < today_date
+        ).count()
         pending_review = None
 
-        if total_plan_count > 1:
+        if plans_before_today_count > 0:
             # CRITICAL FIX: Force absolutely fresh DB read using raw SQL
             # db.expire_all() isn't enough because Supabase pooler can return stale connections
             # Using raw SQL with text() bypasses SQLAlchemy's identity map AND forces fresh read
@@ -1178,14 +1183,21 @@ async def get_pending_review(
         
         today = get_user_current_date(uid, db)
         
-        # CRITICAL FIX: Check how many plans this user has
-        # If user only has ONE plan ever, skip review (it's their first day / signup)
-        total_plan_count = db.query(ActionPlan).filter(ActionPlan.uid == uid).count()
+        # CRITICAL FIX: Check for plans BEFORE today that need review
+        # Old logic was wrong: it checked total plan count, but user could have 1 plan from YESTERDAY
+        # that still needs review!
+        # 
+        # NEW LOGIC: Skip review ONLY if user has NO plans from before today
+        # (meaning their only plan is from today - just signed up)
+        plans_before_today = db.query(ActionPlan).filter(
+            ActionPlan.uid == uid,
+            ActionPlan.plan_date < today
+        ).count()
         
-        logger.info(f"[PENDING_REVIEW] User {uid[:20]}... has {total_plan_count} total plans, today={today}")
+        logger.info(f"[PENDING_REVIEW] User {uid[:20]}... has {plans_before_today} plans before today ({today})")
         
-        if total_plan_count <= 1:
-            logger.info(f"Skipping review for {uid} - user only has {total_plan_count} plan(s) (new user protection)")
+        if plans_before_today == 0:
+            logger.info(f"Skipping review for {uid} - no plans before today (new user, first day)")
             return PendingReviewResponse(needs_review=False)
         
         # CRITICAL FIX: Use raw SQL to absolutely ensure fresh DB read
