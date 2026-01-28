@@ -246,6 +246,20 @@ async def respond_care_plan_checkin(
         thread = service.get_thread_by_id(uid, payload.thread_id)
         if not thread:
             raise HTTPException(status_code=404, detail="Thread not found")
+        
+        # CRITICAL FIX: Save user message to raw_messages IMMEDIATELY
+        # This ensures user messages always appear in chat history, even if processing fails
+        raw = list(thread.raw_messages or [])
+        raw.append({
+            "id": str(uuid4()),
+            "role": "user",
+            "content": message_text,
+            "created_at": datetime.datetime.utcnow().isoformat()
+        })
+        thread.raw_messages = raw
+        db.add(thread)
+        db.commit()
+        db.refresh(thread)
             
         # 2. Reconstruct State
         state = _reconstruct_state(thread, uid, service)
@@ -254,12 +268,17 @@ async def respond_care_plan_checkin(
         final_state = await process_care_plan_message(state, message_text, thread_id=thread.id)
 
         # 4. Save Result to DB
-        # Identify new messages
-        new_msgs_count = len(final_state["messages"]) - len(state["messages"])
+        # NOTE: User message was already saved above, so we only save bot messages here
         raw = list(thread.raw_messages or [])
+        
+        # Only append new bot/assistant messages from the graph (skip user messages - already saved)
+        new_msgs_count = len(final_state["messages"]) - len(state["messages"])
         if new_msgs_count > 0:
             new_msgs = final_state["messages"][-new_msgs_count:]
             for msg in new_msgs:
+                # Skip user messages - already saved at the start
+                if msg.get("role") == "user":
+                    continue
                 role = "bot" if msg["role"] == "assistant" else msg["role"]
                 raw.append({
                     "id": str(uuid4()),

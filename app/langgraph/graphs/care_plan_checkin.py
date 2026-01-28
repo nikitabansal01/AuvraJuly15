@@ -300,6 +300,83 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
     if not user_message:
         return {**state, "error": "no_user_message", "phase": "complete"}
     
+    # ════════════════════════════════════════════════════════════════════════
+    # PRE-CLASSIFICATION: Catch clear feedback/science cases BEFORE LLM
+    # This prevents misclassification of important user concerns
+    # ════════════════════════════════════════════════════════════════════════
+    msg_lower = user_message.lower()
+    
+    # Keywords that STRONGLY indicate plan_feedback (about overall plan quality)
+    plan_feedback_keywords = [
+        "generic", "not personalized", "not personalised", "generic to do", "random", 
+        "same as yesterday", "doesn't match my", "doesn't fit my", "not specific",
+        "looks like a template", "feels generic", "not tailored", "cookie cutter",
+        "one size fits all", "not for me", "doesn't address my", "my symptoms",
+        "my condition", "particularly for"
+    ]
+    
+    # Keywords that STRONGLY indicate challenge_science
+    science_keywords = [
+        "research", "study", "studies", "evidence", "proof", "backed by",
+        "scientific", "is this proven", "random suggestions", "just guessing",
+        "thorough research", "made up", "where did you get"
+    ]
+    
+    # Keywords that STRONGLY indicate health_question (general health education)
+    # These are questions about health topics, not about the specific plan items
+    health_question_keywords = [
+        "how can i regulate", "how do i regulate", "regulate my period",
+        "why do i feel", "what causes", "what helps with", "how to improve",
+        "what should i eat for", "what foods help", "tips for", "advice for",
+        "how to reduce", "how to manage", "natural ways to", "best way to",
+        "is it normal to", "why am i", "what can i do about",
+        "how does my cycle", "during my period", "before my period"
+    ]
+    
+    # Check for health_question FIRST (higher priority than plan_feedback for period questions)
+    if any(kw in msg_lower for kw in health_question_keywords):
+        logger.info(f"[INTENT] Pre-classified as health_question due to keywords")
+        return {
+            **state,
+            "current_intent": "health_question",
+            "targeted_action_id": None,
+            "targeted_action_index": None,
+            "feedback_topic": None,
+            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
+            "phase": "processing"
+        }
+    
+    # Check for plan_feedback
+    if any(kw in msg_lower for kw in plan_feedback_keywords):
+        feedback_topic = "not_personalized" if "period" in msg_lower or "symptom" in msg_lower else "generic"
+        logger.info(f"[INTENT] Pre-classified as plan_feedback due to keywords. Topic: {feedback_topic}")
+        return {
+            **state,
+            "current_intent": "plan_feedback",
+            "targeted_action_id": None,
+            "targeted_action_index": None,
+            "feedback_topic": feedback_topic,
+            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
+            "phase": "processing"
+        }
+    
+    # Check for challenge_science
+    if any(kw in msg_lower for kw in science_keywords):
+        logger.info(f"[INTENT] Pre-classified as challenge_science due to keywords")
+        return {
+            **state,
+            "current_intent": "challenge_science",
+            "targeted_action_id": None,
+            "targeted_action_index": None,
+            "feedback_topic": "science_question",
+            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
+            "phase": "processing"
+        }
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # FALLBACK: Use LLM for other cases
+    # ════════════════════════════════════════════════════════════════════════
+    
     # Build action list for context
     messages = state.get("messages", [])
     recent_msgs = messages[-6:]
@@ -310,10 +387,20 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
         f"{i+1}. {item.get('title', 'Unknown')} ({item.get('category', 'general')})"
         for i, item in enumerate(state.get("action_items", []))
     ])
+    
+    # Get user profile context to help with classification
+    unified_context = state.get("unified_context", {})
+    user_profile = unified_context.get("user_profile", {})
+    user_conditions = user_profile.get("conditions", [])
+    user_symptoms = user_profile.get("primary_symptoms", [])
 
     prompt = f"""Classify the user's intent for this care plan check-in message.
 
 User Message: "{user_message}"
+
+User's Health Context:
+- Conditions: {", ".join(user_conditions) if user_conditions else "Not specified"}
+- Primary symptoms: {", ".join(user_symptoms) if user_symptoms else "Not specified"}
 
 Recent Chat History:
 {chat_context}
@@ -334,13 +421,17 @@ Intent Categories:
 9. **challenge_science**: User is questioning the RESEARCH or SCIENCE behind recommendations
    Examples: "Is this backed by research?", "Have you done thorough research?", "Just random suggestions?"
 10. **explain_plan**: User wants to understand HOW the whole plan was created
-   Examples: "How did you make this?", "Why these specific items?", "What's the logic?"
-11. **general**: General chat or unclear
+    Examples: "How did you make this?", "Why these specific items?", "What's the logic?"
+11. **health_question**: User is asking a GENERAL HEALTH QUESTION not specifically about today's plan
+    Examples: "How can I regulate my periods?", "What helps with cramps?", "Why do I feel bloated?"
+12. **general**: Casual conversation, acknowledgments, or unclear intent
 
-⚠️ CRITICAL DISTINCTION:
-- If user says "Why walnuts?" → ask_why (about ONE action)
-- If user says "Why these items?" or "My plan looks generic" → plan_feedback (about WHOLE plan)
-- If user says "All four of them" or "The whole plan" → This is about the ENTIRE plan, NOT a specific action!
+⚠️ CRITICAL DISTINCTIONS:
+- "Why walnuts?" → ask_why (about ONE action)
+- "Why these items?" or "My plan looks generic" → plan_feedback (about WHOLE plan)
+- "How can I regulate my periods?" → health_question (general health, not about specific plan items)
+- "All four of them" or "The whole plan" → This is about the ENTIRE plan, NOT a specific action!
+- "Thanks!" or "ok" → general
 
 Rules for targeted_action_index:
 - ONLY set this if user clearly refers to ONE specific action by name/number
@@ -356,7 +447,7 @@ Rules for feedback_topic (only for plan_feedback/challenge_science intents):
 
 Output JSON:
 {{
-  "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|cancel_action|plan_feedback|challenge_science|explain_plan|general",
+  "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|cancel_action|plan_feedback|challenge_science|explain_plan|health_question|general",
   "targeted_action_index": 1-4 or null,
   "proposed_replacement": "string" or null,
   "confidence": 0.0-1.0,
@@ -615,7 +706,9 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
         ]
 
         if not available_actions:
-            response = "Looks like you've already completed all your actions for today. 🎉"
+            # All completed - celebrate with personality
+            streak = state.get("current_streak", 0)
+            response = f"Amazing! You've completed all your actions for today! 🎉 That's {streak} days strong. You're doing incredible work for your health."
             return {
                 **state,
                 "bot_response": response,
@@ -625,7 +718,8 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
 
         current_intent = state.get("current_intent") or "change_action"
         is_alternates = current_intent in {"request_alternates", "negotiate"}
-        response = "Which action would you like alternates for?" if is_alternates else "Which action would you like to change?"
+        # More natural language
+        response = "Sure! Which action would you like to see alternatives for?" if is_alternates else "Of course! Which action isn't working for you today?"
         title = "Choose action for alternates" if is_alternates else "Choose action to change"
         subtitle = "Select from your remaining actions"
         ui_blocks = [
@@ -758,10 +852,37 @@ async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePla
             }
 
         alternates = result.get("actions", [])
+        
+        # Generate personalized introduction for alternatives
+        barrier_type = state.get("barrier_type", "preference")
+        original_title = action.get('title', 'that action')
+        
+        intro_prompt = f"""Generate a brief, warm introduction for showing alternative actions.
+
+Context:
+- Original action: {original_title}
+- User's reason for change: {barrier_type}
+- Number of alternatives: {len(alternates)}
+
+Guidelines:
+1. Acknowledge their reason briefly
+2. Express you found great alternatives
+3. Keep it 1 short sentence
+4. Be encouraging
+
+Example: "I found 3 options that should work better with your schedule!"
+"""
+        
+        try:
+            intro = await call_llm(intro_prompt, max_tokens=50)
+            if not intro or len(intro.strip()) < 10:
+                intro = f"Here are {len(alternates)} alternatives that might fit you better:"
+        except:
+            intro = f"Here are {len(alternates)} alternatives that might fit you better:"
 
         ui_block = create_alternates_selection_block(
             alternates=[{"title": alt.get("title"), "specific_action": alt.get("specific_action"), "why_better": alt.get("purpose") or ""} for alt in alternates],
-            title=f"3 Alternatives for {action.get('title', 'action')}"
+            title=f"Alternatives for {action.get('title', 'action')}"
         )
 
         return {
@@ -769,14 +890,14 @@ async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePla
             "alternate_candidates": alternates,
             "ui_blocks": [ui_block],
             "workflow_stage": "awaiting_alternate_selection",
-            "bot_response": "Here are 3 options that might work better:",
+            "bot_response": intro,
             "phase": "awaiting_selection"
         }
     except Exception as e:
         logger.error(f"Error generating alternates: {e}")
         return {
             **state,
-            "bot_response": "I couldn't generate alternatives. Please try again.",
+            "bot_response": "Hmm, I'm having trouble finding alternatives right now. Would you like to try a different action, or should we keep this one for today?",
             "error": str(e),
             "phase": "complete"
         }
@@ -794,7 +915,7 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
         logger.warning(f"[GRAPH_NODE] Invalid selection: idx={selected_idx}, alternates={len(alternates)}")
         return {
             **state,
-            "bot_response": "Invalid selection. Please choose again.",
+            "bot_response": "I didn't catch which option you wanted. Could you tap on one of the alternatives above?",
             "error": "invalid_selection",
             "phase": "awaiting_selection"
         }
@@ -803,10 +924,11 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
     if state.get("refresh_tokens_available", 0) <= 0:
         logger.info(f"[GRAPH_NODE] No refresh tokens available")
         current_streak = state.get("current_streak", 0)
-        response = (
-            f"Oops! You need to complete a {16 - current_streak if current_streak < 16 else 0}-day streak "
-            f"to unlock 'Refresh Action' credits. You currently have {current_streak} days."
-        )
+        days_needed = max(0, 16 - current_streak)
+        if days_needed > 0:
+            response = f"You're so close! Just {days_needed} more day{'s' if days_needed > 1 else ''} to unlock refresh credits. Keep that {current_streak}-day streak going! 💪"
+        else:
+            response = "You've used all your refresh credits for today. They'll reset tomorrow - you've got this! 💜"
         return {
             **state,
             "bot_response": response,
@@ -914,12 +1036,16 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
                 logger.warning(f"[GRAPH_NODE] Refresh failed: {refresh_result.get('error')}")
                 tokens_remaining = max(0, (state.get("refresh_tokens_available", 0) - 1))
                 response = (
-                    f"Perfect! I've replaced {original.title} with {replacement_title}. "
-                    "Your refresh count will sync shortly."
+                    f"Done! Swapped {original.title} → {replacement_title}. "
+                    f"This one should fit you better. Your refresh count will sync shortly."
                 )
             else:
                 tokens_remaining = refresh_result.get("remaining", 0)
-                response = f"Perfect! I've replaced {original.title} with {replacement_title}. You have {tokens_remaining} refresh(es) left today."
+                # More personalized message
+                if tokens_remaining > 0:
+                    response = f"Done! Swapped {original.title} → {replacement_title}. This one should work better for you. You have {tokens_remaining} refresh(es) left if you need more changes."
+                else:
+                    response = f"Done! Swapped {original.title} → {replacement_title}. This one should fit you better. That's your last refresh for today - make it count! 💪"
 
             logger.info(f"[GRAPH_NODE] Committing to database")
             db.commit()
@@ -1336,28 +1462,150 @@ async def _get_user_context_for_explanation(user_id: int) -> dict:
         }
 
 
+async def handle_health_question(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """
+    Handle general health questions that aren't specifically about today's plan.
+    
+    ARCHITECTURAL FIX: When user asks "How can I regulate my periods?" or similar 
+    health questions, this handler provides knowledgeable, personalized responses
+    using the unified cross-chatbot context.
+    
+    This bridges the gap between care_plan_checkin and know_my_body chatbots,
+    letting users ask health questions from any context.
+    """
+    
+    user_message = state.get("user_message", "")
+    user_id = state.get("user_id")
+    action_items = state.get("action_items", [])
+    
+    # Get unified cross-chatbot context
+    formatted_context = state.get("formatted_context", "")
+    unified_context = state.get("unified_context", {})
+    
+    # Get user profile for personalization
+    user_profile = unified_context.get("user_profile", {})
+    cycle_phase = state.get("cycle_phase", "unknown")
+    cycle_day = state.get("cycle_day")
+    
+    # Build today's plan context
+    actions_text = "\n".join([
+        f"- {item.get('title', 'Unknown')} ({item.get('category', 'general')})"
+        for item in action_items[:4]
+    ]) if action_items else "No actions loaded"
+    
+    prompt = f"""<role>
+You are Auvra, a knowledgeable and warm hormone health companion. You're answering a health question from a user who is viewing their daily care plan.
+</role>
+
+<user_context>
+{formatted_context if formatted_context else "User context not available."}
+
+Current Cycle Info:
+- Cycle Day: {cycle_day}
+- Phase: {cycle_phase}
+</user_context>
+
+<todays_plan>
+{actions_text}
+</todays_plan>
+
+<question>
+User asked: "{user_message}"
+</question>
+
+<task>
+Answer their health question as a knowledgeable hormone health expert. Your response should:
+
+1. **Be educational and informative** - Give real, helpful information
+2. **Personalize to their situation** - Reference their specific conditions, symptoms, or cycle phase
+3. **Connect to their plan if relevant** - If any of today's actions relate to their question, mention it
+4. **Be warm but authoritative** - You know this topic well
+
+Guidelines:
+- For period regulation questions: Discuss hormonal balance, lifestyle factors, nutrition
+- For symptom questions: Explain the hormonal connection and what helps
+- For general wellness: Connect to their cycle phase and hormones
+- Keep response 100-150 words
+- End with a gentle check-in or offer to explain more
+
+Do NOT say things like:
+❌ "I'm not a medical professional" (you ARE a hormone health companion)
+❌ "Got it" without actually answering
+❌ Generic wellness advice without personalization
+</task>
+
+<output>
+Respond as Auvra with a helpful, personalized answer.
+</output>"""
+
+    try:
+        from app.services.llm_service import call_llm
+        response = await call_llm(prompt, max_tokens=300)
+        
+        if not response or len(response.strip()) < 20:
+            logger.warning(f"LLM returned empty response for health question")
+            response = f"That's a great question about your health! Based on your {cycle_phase} phase, there are several approaches that can help. Would you like me to explain some strategies that work well with your cycle?"
+    except Exception as e:
+        logger.error(f"Error in handle_health_question LLM call: {e}")
+        response = f"I'd love to help you with that. Your hormones and cycle phase definitely play a role. Would you like me to explain how your current {cycle_phase} phase affects this?"
+    
+    # Add helpful follow-up options
+    ui_blocks = [
+        {
+            "type": "quick_replies",
+            "replies": [
+                {"label": "Tell me more", "value": "Please explain more about this"},
+                {"label": "How does my plan help?", "value": "How does today's plan help with this?"},
+                {"label": "Back to my plan", "value": "Let's go back to my daily plan"}
+            ]
+        }
+    ]
+    
+    return {
+        **state,
+        "bot_response": response,
+        "ui_blocks": ui_blocks,
+        "phase": "complete"
+    }
+
+
 async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Handle general/unclear intents."""
+    """
+    Handle general/unclear intents with FULL LLM INTELLIGENCE.
+    
+    ARCHITECTURAL FIX: This was previously hardcoded with "Got it. Want to adjust anything?"
+    Now uses LLM with full user context to give personalized, intelligent responses.
+    
+    This is the fallback handler - if we can't classify the intent clearly, we let
+    the LLM respond naturally using all available context about the user.
+    """
     
     user_message = state.get("user_message", "")
     action_items = state.get("action_items", [])
-
-    # Check if user is asking an informational question - NO UI blocks for these
-    msg_lower = user_message.lower()
-    is_question = any(word in msg_lower for word in ["what", "which", "how many", "remaining", "left", "show", "tell me"])
+    user_id = state.get("user_id")
     
-    if is_question:
+    # Get unified cross-chatbot context (should already be loaded)
+    formatted_context = state.get("formatted_context", "")
+    unified_context = state.get("unified_context", {})
+    
+    # Build action plan context
+    actions_with_status = []
+    for i, item in enumerate(action_items[:4], 1):
+        status = "✓ Done" if item.get("is_completed") else "○ Pending"
+        actions_with_status.append(f"{i}. {item.get('title', 'Unknown')} [{status}]")
+    actions_text = "\n".join(actions_with_status) if actions_with_status else "No actions loaded"
+    
+    # Check for simple status questions that can be answered quickly
+    msg_lower = user_message.lower()
+    status_keywords = ["remaining", "left", "not completed", "how many", "what's left"]
+    
+    if any(kw in msg_lower for kw in status_keywords):
         incomplete = [item for item in action_items if not item.get("is_completed")]
-        if "remaining" in msg_lower or "left" in msg_lower or "not completed" in msg_lower:
-            if not incomplete:
-                response = "Great work! You've completed all your actions for today. 🎉"
-            else:
-                titles = ", ".join([item.get("title", "action") for item in incomplete])
-                response = f"You have {len(incomplete)} action(s) remaining: {titles}."
+        if not incomplete:
+            response = "Great work! You've completed all your actions for today. 🎉 How are you feeling about your progress?"
         else:
-            actions_list = ", ".join([item.get("title", "action") for item in action_items[:4]])
-            completed_count = len([item for item in action_items if item.get("is_completed")])
-            response = f"Today's plan: {actions_list}. You've completed {completed_count}/{len(action_items)} so far."
+            titles = ", ".join([item.get("title", "action") for item in incomplete])
+            response = f"You have {len(incomplete)} action(s) remaining: {titles}. Would you like to start one, or do you need help with any of them?"
         
         return {
             **state,
@@ -1366,10 +1614,77 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
             "phase": "complete"
         }
     
-    # For unclear intents, offer help
-    actions_list = ", ".join([item.get("title", "action") for item in action_items[:4]])
-    response = f"Got it. Want to adjust anything in today's plan? Your actions are: {actions_list}. You can mark one done, ask for a swap, or ask why it's here."
-    ui_blocks = await _maybe_add_ctas(state, response, user_message)
+    # For ALL other messages - use LLM with full context
+    # This handles questions, feedback, conversation, ANYTHING
+    prompt = f"""<role>
+You are Auvra, a warm and knowledgeable hormone health companion. You're having a conversation with a user about their daily wellness plan.
+</role>
+
+<user_context>
+{formatted_context if formatted_context else "User context not available."}
+</user_context>
+
+<todays_plan>
+{actions_text}
+</todays_plan>
+
+<conversation>
+User just said: "{user_message}"
+</conversation>
+
+<task>
+Respond naturally and helpfully as Auvra. Your response should:
+
+1. **Actually answer their question or address their concern** - don't give a generic reply
+2. **Use their context** - reference their specific conditions, symptoms, cycle phase if relevant
+3. **Be conversational** - like talking to a supportive friend who happens to know about hormone health
+4. **Stay helpful** - if they're asking about something health-related, provide useful information
+5. **If truly unclear what they want** - ask a clarifying question, but make it natural
+
+IMPORTANT:
+- NEVER respond with generic templates like "Got it. Want to adjust anything?"
+- If they ask about periods, hormones, symptoms - answer with knowledge
+- If they're giving feedback - acknowledge it genuinely
+- If they're confused - help clarify
+- Keep response under 100 words unless detailed explanation needed
+
+Examples of what NOT to do:
+❌ "Got it. Want to adjust anything in today's plan?"
+❌ "I'm here to help with your plan. What would you like to do?"
+
+Examples of good responses:
+✓ For "Why these items for regulating my period?" → Answer about how the specific items help with period regulation
+✓ For "I don't understand this" → Ask what specifically is confusing
+✓ For "thanks!" → Acknowledge warmly and check if they need anything else
+</task>
+
+<output>
+Respond directly as Auvra. Be warm, helpful, and specific to this user.
+</output>"""
+
+    try:
+        from app.services.llm_service import call_llm
+        response = await call_llm(prompt, max_tokens=250)
+        
+        if not response or len(response.strip()) < 10:
+            # Fallback only if LLM completely fails
+            logger.warning(f"LLM returned empty/short response for general handler")
+            incomplete = [item for item in action_items if not item.get("is_completed")]
+            if incomplete:
+                response = f"I'd love to help! You have {len(incomplete)} actions for today. What would you like to know or discuss?"
+            else:
+                response = "I'm here to help! What would you like to know about your plan or your health?"
+    except Exception as e:
+        logger.error(f"Error in handle_general_response LLM call: {e}")
+        response = "I'm here to help! Is there something specific about your plan or health you'd like to discuss?"
+    
+    # Smart UI blocks based on whether response is a question
+    ui_blocks = []
+    if "?" in response:
+        # Don't add CTA buttons when Auvra asked a question - wait for user response
+        pass
+    else:
+        ui_blocks = await _maybe_add_ctas(state, response, user_message)
     
     return {
         **state,
@@ -1395,9 +1710,10 @@ def route_by_intent(state: CarePlanCheckInState) -> str:
         "negotiate": "handle_change_action",  # Treat negotiate as change
         "ask_why": "handle_ask_why",
         "cancel_action": "handle_cancel_action",
-        "plan_feedback": "handle_plan_feedback",  # NEW: Overall plan quality feedback
-        "challenge_science": "handle_challenge_science",  # NEW: Questioning research
-        "explain_plan": "handle_explain_plan",  # NEW: How was plan created
+        "plan_feedback": "handle_plan_feedback",  # Overall plan quality feedback
+        "challenge_science": "handle_challenge_science",  # Questioning research
+        "explain_plan": "handle_explain_plan",  # How was plan created
+        "health_question": "handle_health_question",  # NEW: General health questions
         "general": "handle_general_response"
     }
     
@@ -1488,39 +1804,120 @@ async def generate_direct_replacement_suggestion(state: CarePlanCheckInState) ->
 
 
 async def handle_cancel_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Handle user cancellation."""
+    """Handle user cancellation with personalized acknowledgment."""
+    
+    user_message = state.get("user_message", "")
+    formatted_context = state.get("formatted_context", "")
+    action_items = state.get("action_items", [])
+    
+    # Get what they might have been changing
+    targeted_idx = state.get("targeted_action_index")
+    action_title = "your plan"
+    if targeted_idx is not None and 0 <= targeted_idx < len(action_items):
+        action_title = action_items[targeted_idx].get("title", "that action")
+    
+    cancel_prompt = f"""Generate a warm acknowledgment for user canceling a change request.
+
+User Context:
+{formatted_context[:500] if formatted_context else "User in care plan chat"}
+
+Details:
+- They were considering changing: {action_title}
+- They decided to cancel/keep as is
+
+Guidelines:
+1. Acknowledge their decision warmly
+2. Reassure them they can change later
+3. Briefly mention why the current item might be good (if context available)
+4. Keep it 1-2 sentences
+5. End positively
+"""
+    
+    try:
+        response = await call_llm(cancel_prompt, max_tokens=100)
+        if not response or len(response.strip()) < 10:
+            response = f"No problem! We'll keep {action_title} as is. You can always adjust things later if you need to."
+    except:
+        response = f"No problem! We'll keep {action_title} as is. You can always adjust things later if you need to."
+    
     return {
         **state,
-        "bot_response": "No problem! We'll keep things exactly as they are. You can always make changes later if you need to.",
-        "ui_blocks": [], # Clear any previous buttons
+        "bot_response": response,
+        "ui_blocks": [],
         "phase": "complete"
     }
 
 
 async def handle_ask_why(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Handle user asking 'why' about an action."""
+    """Handle user asking 'why' about an action with detailed, personalized explanation."""
     
     targeted_idx = state.get("targeted_action_index")
     action_items = state.get("action_items", [])
+    formatted_context = state.get("formatted_context", "")
+    user_message = state.get("user_message", "")
     
     if targeted_idx is None or not (0 <= targeted_idx < len(action_items)):
+        # Ask which action they want to know about
+        actions_list = "\n".join([f"{i+1}. {item.get('title', 'Action')}" for i, item in enumerate(action_items[:4])])
         return {
             **state,
-            "bot_response": "Which action are you asking about?",
+            "bot_response": f"I'd love to explain! Which action are you curious about?\n{actions_list}",
             "ui_blocks": [],
             "phase": "complete"
         }
 
     action = action_items[targeted_idx]
-    
-    # Use existing purpose/hormone metadata for explanation
-    hormone = action.get('target_hormone', 'your health')
-    purpose = action.get('purpose', 'support your goals')
     title = action.get('title', 'this action')
+    category = action.get('category', 'action')
+    hormone = action.get('target_hormone', 'hormonal health')
+    purpose = action.get('purpose', '')
+    why_it_works = action.get('why_it_works', action.get('evidence_summary', ''))
+    citations = action.get('citations', [])
     
-    explanation = f"{title} was chosen to support your {hormone}. {purpose}"
-    response = f"{explanation} Want a simpler alternative or keep it as is?"
-    ui_blocks = await _maybe_add_ctas(state, response, state.get("user_message"))
+    why_prompt = f"""Explain WHY this specific action was chosen for THIS specific user.
+
+User Context:
+{formatted_context if formatted_context else "User asking about their action plan"}
+
+Action Details:
+- Title: {title}
+- Category: {category}
+- Target Hormone: {hormone}
+- Purpose: {purpose}
+- Scientific Rationale: {why_it_works}
+- Research Citations: {citations[:2] if citations else "evidence-based recommendation"}
+
+User asked: "{user_message}"
+
+Guidelines:
+1. Explain why THIS action for THIS user specifically
+2. Reference their conditions/symptoms if relevant
+3. Connect to their current cycle phase
+4. Include 1-2 specific benefits backed by the science
+5. Keep it conversational and educational (3-4 sentences)
+6. End by asking if they want alternatives or have more questions
+
+Do NOT be generic - make them understand why this is FOR THEM.
+"""
+    
+    try:
+        response = await call_llm(why_prompt, max_tokens=250)
+        if not response or len(response.strip()) < 20:
+            response = f"{title} was chosen specifically for your {hormone} support during this phase. {purpose} Would you like more details or prefer an alternative?"
+    except Exception as e:
+        logger.warning(f"LLM failed for ask_why: {e}")
+        response = f"{title} was chosen specifically for your {hormone} support during this phase. {purpose} Would you like more details or prefer an alternative?"
+    
+    ui_blocks = [
+        {
+            "type": "quick_replies",
+            "replies": [
+                {"label": "Tell me more", "value": f"Tell me more about why {title} helps"},
+                {"label": "Show alternatives", "value": f"Show me alternatives to {title}"},
+                {"label": "Keep it", "value": "That makes sense, keep it"}
+            ]
+        }
+    ]
 
     return {
         **state,
@@ -1568,10 +1965,12 @@ def create_process_message_graph():
     workflow.add_node("handle_general_response", handle_general_response)
     workflow.add_node("handle_cancel_action", handle_cancel_action)
     workflow.add_node("handle_ask_why", handle_ask_why)
-    # NEW: Feedback handling nodes
+    # Feedback handling nodes
     workflow.add_node("handle_plan_feedback", handle_plan_feedback)
     workflow.add_node("handle_challenge_science", handle_challenge_science)
     workflow.add_node("handle_explain_plan", handle_explain_plan)
+    # NEW: Health question handler for cross-chatbot functionality
+    workflow.add_node("handle_health_question", handle_health_question)
     
     # Set entry point
     workflow.set_entry_point("classify_user_intent")
@@ -1588,10 +1987,12 @@ def create_process_message_graph():
             "handle_general_response": "handle_general_response",
             "handle_cancel_action": "handle_cancel_action",
             "handle_ask_why": "handle_ask_why",
-            # NEW: Feedback routes
+            # Feedback routes
             "handle_plan_feedback": "handle_plan_feedback",
             "handle_challenge_science": "handle_challenge_science",
-            "handle_explain_plan": "handle_explain_plan"
+            "handle_explain_plan": "handle_explain_plan",
+            # NEW: Health question route
+            "handle_health_question": "handle_health_question"
         }
     )
     
@@ -1603,10 +2004,12 @@ def create_process_message_graph():
     workflow.add_edge("handle_ask_why", END)
     workflow.add_edge("generate_alternate_suggestions", END)
     workflow.add_edge("generate_direct_replacement_suggestion", END)
-    # NEW: Feedback handlers go to END
+    # Feedback handlers go to END
     workflow.add_edge("handle_plan_feedback", END)
     workflow.add_edge("handle_challenge_science", END)
     workflow.add_edge("handle_explain_plan", END)
+    # NEW: Health question handler goes to END
+    workflow.add_edge("handle_health_question", END)
     
     # Change action → alternates
     workflow.add_conditional_edges(

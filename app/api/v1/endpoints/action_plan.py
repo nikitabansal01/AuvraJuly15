@@ -134,6 +134,12 @@ async def get_today_assignments(
             # Using raw SQL with text() bypasses SQLAlchemy's identity map AND forces fresh read
             from sqlalchemy import text
             
+            # CRITICAL: Set statement timeout low and ensure we read committed data
+            try:
+                db.execute(text("SET LOCAL statement_timeout = '5000'"))  # 5 second timeout
+            except Exception:
+                pass
+            
             raw_result = db.execute(
                 text("""
                     SELECT id, plan_date, review_completed 
@@ -150,18 +156,34 @@ async def get_today_assignments(
                 pending_plan_id = raw_result[0]
                 logger.info(f"[PENDING_CHECK] Raw SQL found pending plan id={pending_plan_id}, date={raw_result[1]}, review_completed={raw_result[2]}")
                 
-                # Force expire any cached version and fetch fresh
-                db.expire_all()
-                pending_review = db.query(ActionPlan).filter(
-                    ActionPlan.id == pending_plan_id
-                ).first()
+                # CRITICAL FIX: Do a fresh raw SQL query to double-verify
+                # This catches cases where the first query hit a stale pooler connection
+                verify_result = db.execute(
+                    text("""
+                        SELECT review_completed 
+                        FROM action_plans 
+                        WHERE id = :plan_id
+                    """),
+                    {"plan_id": pending_plan_id}
+                ).fetchone()
                 
-                # Double-check the review status after ORM load
-                if pending_review:
-                    logger.info(f"[PENDING_CHECK] ORM loaded plan {pending_review.id}: review_completed={pending_review.review_completed}")
-                    if pending_review.review_completed:
-                        logger.info(f"[PENDING_CHECK] ORM says review_completed=True! Raw SQL was stale. Clearing pending_review.")
-                        pending_review = None
+                if verify_result and verify_result[0]:
+                    # Review was actually completed! First query was stale
+                    logger.info(f"[PENDING_CHECK] Second query shows plan {pending_plan_id} review_completed=True. First query was stale!")
+                    pending_review = None
+                else:
+                    # Force expire any cached version and fetch fresh
+                    db.expire_all()
+                    pending_review = db.query(ActionPlan).filter(
+                        ActionPlan.id == pending_plan_id
+                    ).first()
+                    
+                    # Triple-check the review status after ORM load
+                    if pending_review:
+                        logger.info(f"[PENDING_CHECK] ORM loaded plan {pending_review.id}: review_completed={pending_review.review_completed}")
+                        if pending_review.review_completed:
+                            logger.info(f"[PENDING_CHECK] ORM says review_completed=True! Raw SQL was stale. Clearing pending_review.")
+                            pending_review = None
             else:
                 logger.info(f"[PENDING_CHECK] Raw SQL found no pending plans for {uid}")
         
@@ -1539,11 +1561,23 @@ async def submit_daily_review(
         db.add(review_record)
         
         logger.info(f"[SUBMIT_REVIEW] About to commit review for plan {plan.id}. review_completed={plan.review_completed}")
+        
+        # CRITICAL FIX: Ensure synchronous commit to PostgreSQL
+        # Supabase pooler can buffer commits - force immediate write to WAL
+        from sqlalchemy import text
+        try:
+            # Force synchronous commit for this transaction
+            db.execute(text("SET LOCAL synchronous_commit = 'on'"))
+        except Exception as sync_err:
+            logger.warning(f"[SUBMIT_REVIEW] Could not set synchronous_commit: {sync_err}")
+        
         db.commit()
         
-        # CRITICAL: Verify the commit actually persisted using raw SQL
-        # This catches any issues with Supabase pooler not committing properly
-        from sqlalchemy import text
+        # CRITICAL: Force new transaction to read fresh data
+        # The pooler might give us a connection that hasn't seen the commit yet
+        db.expire_all()  # Clear ORM cache
+        
+        # Use a new transaction to verify the commit
         verify_result = db.execute(
             text("SELECT id, review_completed FROM action_plans WHERE id = :plan_id"),
             {"plan_id": plan.id}
@@ -1553,10 +1587,23 @@ async def submit_daily_review(
             logger.info(f"[SUBMIT_REVIEW] Post-commit verification: plan {verify_result[0]} review_completed={verify_result[1]}")
             if not verify_result[1]:
                 logger.error(f"[SUBMIT_REVIEW] CRITICAL: Commit failed! Plan {plan.id} still has review_completed=False in DB!")
-                # Force another commit attempt
+                # Force another commit attempt with explicit synchronous commit
+                try:
+                    db.execute(text("SET LOCAL synchronous_commit = 'on'"))
+                except Exception:
+                    pass
                 plan.review_completed = True
                 db.commit()
+                db.expire_all()
                 logger.info(f"[SUBMIT_REVIEW] Forced second commit for plan {plan.id}")
+                
+                # Verify second commit
+                verify_result2 = db.execute(
+                    text("SELECT review_completed FROM action_plans WHERE id = :plan_id"),
+                    {"plan_id": plan.id}
+                ).fetchone()
+                if verify_result2 and not verify_result2[0]:
+                    logger.critical(f"[SUBMIT_REVIEW] DOUBLE COMMIT FAILED! Plan {plan.id} still not committed. Database issue.")
         
         # Carry forward skipped items to today's plan
         today_plan_updated = False

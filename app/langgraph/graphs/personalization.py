@@ -323,7 +323,29 @@ async def generate_discovery_question(state: PersonalizationState) -> Personaliz
     formatted_ctx = state.get("formatted_context", "")
     
     if not gaps:
-        response = "Your profile is complete! 🎉 Is there anything you'd like to update?"
+        # Profile complete - generate personalized celebration
+        formatted_ctx = state.get("formatted_context", "")
+        
+        complete_prompt = f"""Generate a warm celebration for completing profile setup.
+
+User Context:
+{formatted_ctx[:500] if formatted_ctx else "User completed their profile"}
+
+Guidelines:
+1. Celebrate their completion warmly
+2. Mention something specific you learned about them
+3. Explain briefly how this helps personalize their experience
+4. Ask if they want to update anything
+5. Keep it 2 sentences
+"""
+        
+        try:
+            response = await call_llm(complete_prompt, max_tokens=100)
+            if not response or len(response.strip()) < 15:
+                response = "Your profile is looking great! 🎉 Now I can personalize everything just for you. Is there anything you'd like to update?"
+        except:
+            response = "Your profile is looking great! 🎉 Now I can personalize everything just for you. Is there anything you'd like to update?"
+        
         return {
             **state,
             "bot_response": response,
@@ -436,8 +458,10 @@ Generate a warm, understanding response that:
         
         try:
             response = await call_llm(skip_response_prompt, model="gpt-5-mini")
+            if not response or len(response.strip()) < 10:
+                response = "No worries at all! We can circle back to that whenever you're ready."
         except:
-            response = "No problem! We can come back to that later."
+            response = "No worries at all! We can circle back to that whenever you're ready."
         
         return {
             **state,
@@ -472,7 +496,27 @@ Output JSON:
         validation = validate_profile_field(current_topic, extracted.field_value)
         
         if not validation.is_valid:
-            response = f"I didn't quite catch that. {validation.error_message}"
+            # Generate helpful clarification using LLM
+            clarify_prompt = f"""Generate a gentle clarification request for invalid profile input.
+
+Field: {current_topic}
+User said: "{user_input}"
+Validation error: {validation.error_message}
+
+Guidelines:
+1. Don't make them feel bad
+2. Explain what format/info you need
+3. Give an example
+4. Keep it 1-2 sentences
+"""
+            
+            try:
+                response = await call_llm(clarify_prompt, max_tokens=80)
+                if not response or len(response.strip()) < 15:
+                    response = f"I want to make sure I understand correctly. {validation.error_message}"
+            except:
+                response = f"I want to make sure I understand correctly. {validation.error_message}"
+            
             return {
                 **state,
                 "bot_response": response,
