@@ -2790,11 +2790,13 @@ Total: {num_actions} actions
         
         # Build prompt for partial generation
         existing_summary = json.dumps(existing_actions, indent=2) if existing_actions else "None"
+        user_conditions = user_context.get('diagnosed_conditions', [])
+        top_concern = user_context.get('top_concern', 'general wellness')
         
-        prompt = f"""Generate exactly {num_actions} wellness action(s) for this user.
+        prompt = f"""Generate exactly {num_actions} personalized wellness action(s) for this user.
 
 ======================================================================
-EXISTING ACTIONS (user already has these - DO NOT duplicate similar content)
+EXISTING ACTIONS (user already has these - DO NOT duplicate)
 ======================================================================
 {existing_summary}
 
@@ -2806,65 +2808,143 @@ USER PROFILE
 - Cycle Phase: {cycle_phase}
 - Primary Hormone: {primary_hormone}
 - Secondary Hormone: {secondary_hormone}
-- Top Concern: {user_context.get('top_concern', 'general wellness')}
-- Conditions: {', '.join(user_context.get('diagnosed_conditions', [])) or 'none'}
+- Top Concern: {top_concern}
+- Diagnosed Conditions: {', '.join(user_conditions) if user_conditions else 'none'}
+- Lifestyle Focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
+- Diet Preference: {user_context.get('diet_preference', 'none')}
+- Food Allergies: {user_context.get('food_allergies', 'none')}
+- Stress Level: {user_context.get('stress_level', 'moderate')}
+- Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
 - Current Streak: {user_context.get('current_streak', 0)} days
 - Longest Streak: {user_context.get('longest_streak', 0)} days
 
 ======================================================================
 RECENT INSIGHTS
 ======================================================================
-Weekly Check-ins:
-{user_context.get('weekly_checkin_insights', 'None')}
-
-Daily Reviews:
-{user_context.get('daily_review_insights', 'None')}
+Weekly Check-ins: {user_context.get('weekly_checkin_insights', 'None')}
+Daily Reviews: {user_context.get('daily_review_insights', 'None')}
+Feedback Memory: {user_context.get('feedback_memory', 'None')}
 
 ======================================================================
 {hormone_instruction}
 ======================================================================
 
 ======================================================================
-REQUIREMENTS
+⭐ TITLE RULES (CRITICAL - 1-3 WORDS ONLY!)
 ======================================================================
-1. Generate exactly {num_actions} NEW action(s) - DIFFERENT content from existing ones
-2. Mix categories (food, movement, mindfulness) to complement existing
-3. STRICTLY follow the hormone count requirement above
+✅ FOOD: Raw ingredient name ONLY (e.g., "Salmon", "Quinoa", "Spearmint")
+✅ MOVEMENT: Simple activity name (e.g., "Morning Yoga", "Brisk Walking")
+✅ MINDFULNESS: Technique name (e.g., "Deep Breathing", "Body Scan")
 
-⭐ TITLE RULES (CRITICAL - SHORT INGREDIENT/ACTIVITY NAME ONLY!):
-- FOOD: Just the ingredient name (e.g., "Salmon", "Oatmeal", "Spearmint")
-- MOVEMENT: Simple activity (e.g., "Brisk Walking", "Morning Yoga", "Stretching")
-- MINDFULNESS: Technique name (e.g., "Deep Breathing", "Body Scan", "Journaling")
-❌ NO long phrases, NO preparation methods ("tea", "smoothie"), NO adjectives
+❌ NO preparation methods ("tea", "smoothie", "salad")
+❌ NO adjectives ("powerful", "amazing", "gentle")
+❌ NO long phrases
 
-4. Each action needs:
-   - title: SHORT 1-3 word noun (ingredient or activity name ONLY)
-   - category: "food" or "movement" or "mindfulness"
-   - time_slot: "morning" or "afternoon" or "evening"
-   - specific_action: Detailed instruction (2-3 sentences)
-   - purpose: Why this helps user's specific condition (2-3 sentences, mention their condition)
-   - target_hormone: "{primary_hormone}" OR "{secondary_hormone}" (follow counts above)
-   - hormone_persona_intro: "Hey! I'm [Hormone] 💜 - I picked [action] for your [condition] because [1 reason]."
-   - image_prompt: "Professional photo of [action], natural lighting, 4K quality"
-   - research_studies: [{{
-       "title": "Study on [topic] in women",
-       "journal": "Journal Name",
-       "year": 2023,
-       "participants": 100,
-       "finding": "Key finding for women",
-       "pmid": "",
-       "verification_link": ""
-     }}]
-   - variants: [
-       {{"variant_type": "gentle", "title": "Gentle [variation]", "description": "Easier version...", "image_prompt": "..."}},
-       {{"variant_type": "energizing", "title": "Energizing [variation]", "description": "More active version...", "image_prompt": "..."}},
-       {{"variant_type": "quick", "title": "Quick [variation]", "description": "Shorter version...", "image_prompt": "..."}}
-     ]
-   - food_items/food_amounts for food category (or empty [] for other categories)
-   - exercise_types/exercise_durations/exercise_intensities for movement category (or empty [])
-   - mindfulness_techniques/mindfulness_durations for mindfulness category (or empty [])
-   - symptoms: ["symptom1", "symptom2"] (from user concerns)
-   - conditions: [] (empty array)
+======================================================================
+OUTPUT STRUCTURE FOR EACH ACTION
+======================================================================
+
+1. title: SHORT 1-3 word noun (see TITLE RULES above)
+
+2. category: "food" or "movement" or "mindfulness"
+
+3. time_slot: "morning" or "afternoon" or "evening"
+
+4. specific_action: MUST include 3 DIFFERENT WAYS to consume/do this action (80-120 words)
+   FORMAT: Start with scientific benefit, then list 3 methods:
+   "[Food/Exercise] provides [benefit for user's {top_concern}]. Try it as: (1) [method with details], (2) [method with details], or (3) [method with details]."
+
+5. purpose: CONDITION-SPECIFIC explanation (2-3 sentences)
+   MANDATORY: Start with "With your [condition]..." and explain the mechanism.
+   Example: "With your PCOS, insulin sensitivity is key. Cinnamon contains cinnamaldehyde which mimics insulin action, helping reduce those afternoon energy crashes."
+
+6. target_hormone: MUST be exactly "{primary_hormone}" or "{secondary_hormone}" (follow hormone counts above)
+
+7. hormone_persona_intro: MAX 2 SENTENCES (25-30 words)
+   Pattern: "Hey! I'm [Hormone] 💜 - I picked [action] for your [condition] because it [mechanism]."
+
+8. image_prompt: FLUX.1 optimized prompt for the action
+   - FOOD: "Professional close-up food photography of [EXACT FOOD], [texture/color], on [surface], natural lighting, 4K quality"
+   - MOVEMENT: "Serene photograph of woman doing [EXACT POSE], [setting], soft natural lighting, wellness aesthetic"
+   - MINDFULNESS: "Calm photograph of woman practicing [TECHNIQUE], peaceful setting, soft lighting"
+
+9. research_studies: Array with EXACTLY 1 research study object:
+   [{{
+     "title": "[Specific study title about this intervention for women]",
+     "journal": "[Real journal name like J Clin Endocrinol Metab]",
+     "year": [recent year like 2023],
+     "participants": [integer like 150],
+     "finding": "[Key finding for women with this condition]",
+     "pmid": "",
+     "verification_link": ""
+   }}]
+
+10. variants: Array of EXACTLY 3 variant objects showing DIFFERENT WAYS to do the action:
+
+    FOR FOOD ACTIONS:
+    [
+      {{"variant_type": "tasty", "title": "[Delicious version]", "description": "[How to make it tasty - 2 sentences]", "image_prompt": "[FLUX prompt for this variant]"}},
+      {{"variant_type": "easy", "title": "[Quick/simple version]", "description": "[Easy preparation - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "healthy", "title": "[Healthiest version]", "description": "[Maximum nutrition - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+    
+    FOR MOVEMENT ACTIONS:
+    [
+      {{"variant_type": "gentle", "title": "[Gentle version]", "description": "[Low intensity option - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "energizing", "title": "[Active version]", "description": "[Higher energy option - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "quick", "title": "[Short version]", "description": "[5-10 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+    
+    FOR MINDFULNESS ACTIONS:
+    [
+      {{"variant_type": "guided", "title": "[Guided version]", "description": "[With audio/app guidance - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "solo", "title": "[Self-guided version]", "description": "[Independent practice - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "brief", "title": "[Quick version]", "description": "[3-5 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+
+11. symptoms: Array of 1-3 symptoms this addresses (from user's concerns)
+
+12. conditions: Array of conditions this helps (from user's diagnosed_conditions) or []
+
+======================================================================
+⚠️ CATEGORY-SPECIFIC FIELDS (MANDATORY - DO NOT SKIP!)
+======================================================================
+
+FOR FOOD ACTIONS (MUST include both):
+- food_items: ["ingredient1", "ingredient2"] (the actual food items)
+- food_amounts: ["portion1", "portion2"] (TODAY's portions like "4 oz", "1 cup", "2 tbsp")
+- exercise_types: []
+- exercise_durations: []
+- exercise_intensities: []
+- mindfulness_techniques: []
+- mindfulness_durations: []
+
+FOR MOVEMENT ACTIONS (MUST include all three):
+- exercise_types: ["yoga", "walking", etc.]
+- exercise_durations: ["15 min", "20 min"]
+- exercise_intensities: ["low", "moderate", "gentle"]
+- food_items: []
+- food_amounts: []
+- mindfulness_techniques: []
+- mindfulness_durations: []
+
+FOR MINDFULNESS ACTIONS (MUST include both):
+- mindfulness_techniques: ["deep breathing", "body scan", etc.]
+- mindfulness_durations: ["5 min", "10 min"]
+- food_items: []
+- food_amounts: []
+- exercise_types: []
+- exercise_durations: []
+- exercise_intensities: []
+
+======================================================================
+FINAL REQUIREMENTS
+======================================================================
+1. Generate exactly {num_actions} NEW action(s) - DIFFERENT from existing ones
+2. Mix categories to complement existing actions
+3. STRICTLY follow hormone count: {primary_count} for {primary_hormone}, {secondary_count} for {secondary_hormone}
+4. Each action MUST have ALL fields listed above
+5. Variants MUST be meaningful alternatives, not just renamed copies
 
 Return as JSON: {{"actions": [array of {num_actions} action objects]}}
 """
