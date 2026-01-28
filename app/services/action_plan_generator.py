@@ -807,13 +807,27 @@ Use these insights to:
 - Reinforce wins and remove friction from difficult items
 
 ======================================================================
+🚨 CRITICAL: EVERY ACTION MUST BE COMPLETELY UNIQUE 🚨
+======================================================================
+Even if "Strength Training" is great for BOTH cortisol AND testosterone,
+you can ONLY use it for ONE hormone. Pick something DIFFERENT for the other.
+
+Duplicate detection runs AFTER you respond - if you generate duplicates,
+the entire response will be REJECTED and you'll have to regenerate.
+
+EXAMPLES OF WHAT WILL BE REJECTED:
+❌ "Salmon" for cortisol + "Salmon" for progesterone (same food)
+❌ "Yoga" for estrogen + "Morning Yoga" for testosterone (same activity)
+❌ "Meditation" for cortisol + "Mindful Meditation" for progesterone (same practice)
+
+======================================================================
 REQUIREMENTS (READ CAREFULLY)
 ======================================================================
 1. Generate exactly {num_actions} actions total
 2. Actions targeting PRIMARY hormone ({primary_hormone}): {primary_count}
 3. Actions targeting SECONDARY hormone ({secondary_hormone}): {secondary_count}
 4. Category distribution based on lifestyle_focus: {category_guidance}
-5. Each action must be UNIQUE - no two actions should have similar foods/exercises
+5. 🔴 EACH ACTION TITLE MUST BE COMPLETELY DIFFERENT - NO SIMILAR FOODS/EXERCISES
 6. Time slots should be varied (mix of morning, afternoon, evening)
 7. RESPECT food allergies - NEVER recommend foods the user is allergic to
 8. RESPECT diet preferences - if vegetarian, no meat; if vegan, no animal products
@@ -2898,12 +2912,30 @@ IMPORTANT: Base your recommendations on the research above. Include paper detail
             except Exception as e:
                 logger.warning(f"[PARTIAL] Research fetch failed: {e}, proceeding without")
         
+        # Format existing actions more clearly so GPT understands what NOT to generate
+        existing_titles = [a.get('title', 'Unknown') for a in existing_actions] if existing_actions else []
+        existing_categories = [a.get('category', 'unknown') for a in existing_actions] if existing_actions else []
+        existing_hormones = [a.get('target_hormone', 'unknown') for a in existing_actions] if existing_actions else []
+        
         prompt = f"""Generate exactly {num_actions} personalized wellness action(s) for this user.
 
 ======================================================================
-EXISTING ACTIONS (user already has these - DO NOT duplicate)
+🚨 ABSOLUTE BAN - DO NOT GENERATE ANYTHING SIMILAR TO THESE 🚨
 ======================================================================
+The user already has these actions in their plan today. Your new actions
+MUST be COMPLETELY DIFFERENT. If you generate anything similar, the entire
+response will be REJECTED.
+
+EXISTING ACTION TITLES (BANNED): {existing_titles}
+EXISTING CATEGORIES: {existing_categories}
+EXISTING HORMONES: {existing_hormones}
+
+FULL DETAILS OF EXISTING ACTIONS:
 {existing_summary}
+
+❌ Do NOT suggest similar foods (e.g., if they have "Salmon", don't suggest "Mackerel" - both are fatty fish)
+❌ Do NOT suggest similar exercises (e.g., if they have "Yoga", don't suggest "Stretching")
+❌ Do NOT suggest similar mindfulness (e.g., if they have "Meditation", don't suggest "Mindful Breathing")
 
 ======================================================================
 USER PROFILE
@@ -6195,6 +6227,32 @@ JSON ONLY:
                 return {"success": False, "error": "Could not load user context"}
             
             # ========================================================
+            # FETCH ALL OTHER ACTIVE ACTIONS TODAY - TO TELL GPT NOT TO DUPLICATE
+            # ========================================================
+            other_active_actions = []
+            other_action_titles = []
+            try:
+                other_items_result = await db.execute(
+                    select(ActionPlanItem).where(
+                        ActionPlanItem.plan_id == original.plan_id,
+                        ActionPlanItem.uid == user_id,
+                        ActionPlanItem.id != item_id,  # Exclude the one being replaced
+                        ActionPlanItem.is_replaced != True  # Only active items
+                    )
+                )
+                for item in other_items_result.scalars().all():
+                    other_active_actions.append({
+                        "title": item.title,
+                        "category": item.category,
+                        "specific_action": item.specific_action[:100] if item.specific_action else "",
+                        "target_hormone": item.target_hormone
+                    })
+                    other_action_titles.append(item.title)
+                logger.info(f"[REPLACEMENT] Found {len(other_active_actions)} other active actions: {other_action_titles}")
+            except Exception as e:
+                logger.warning(f"Could not load other plan items: {e}")
+            
+            # ========================================================
             # RESEARCH-FIRST APPROACH: Get research BEFORE generating action
             # ========================================================
             
@@ -6236,11 +6294,35 @@ that this study shows is effective, and create your action based on that.
                 research_paper = {}
             
             # Step 2: Generate replacement action based on research findings
+            # Build OTHER ACTIVE ACTIONS context for GPT
+            other_actions_context = ""
+            if other_active_actions:
+                other_actions_json = json.dumps(other_active_actions, indent=2)
+                other_actions_context = f"""
+======================================================================
+🚨 OTHER ACTIVE ACTIONS TODAY - DO NOT DUPLICATE ANY OF THESE 🚨
+======================================================================
+The user already has these actions in their plan. Your replacement MUST be
+COMPLETELY DIFFERENT from all of these. If you suggest anything similar,
+the response will be REJECTED.
+
+BANNED TITLES: {other_action_titles}
+
+FULL DETAILS:
+{other_actions_json}
+
+❌ Do NOT suggest similar foods (e.g., if they have "Salmon", don't suggest "Mackerel")
+❌ Do NOT suggest similar exercises (e.g., if they have "Yoga", don't suggest "Stretching")
+❌ Do NOT suggest the same type of thing in a different form
+"""
+            
             replacement_prompt = f"""Generate 1 replacement wellness action BASED ON THE RESEARCH BELOW.
 
- CRITICAL WARNING 
+🛑 CRITICAL WARNING 🛑
 You MUST include ALL category-specific fields or your response will be REJECTED and regenerated.
 Previous failures happened because you forgot exercise_types, exercise_durations, exercise_intensities for movement.
+
+{other_actions_context}
 
 {research_context}
 
@@ -6252,6 +6334,7 @@ REQUIREMENTS:
 - AVOID generating same category as disliked ({original.category}) unless users lifestyle_focus only includes that category
 - Prefer different category from: {original.category}
 - Users lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
+- 🔴 MUST NOT DUPLICATE any of the other active actions listed above
 
 ======================================================================
 HEALTH PROFILE
@@ -6784,6 +6867,31 @@ Respond with valid JSON object only."""
             if not user_context:
                 return {"success": False, "error": "Could not load user context"}
 
+            # ========================================================
+            # FETCH ALL OTHER ACTIVE ACTIONS TODAY - TO TELL GPT NOT TO DUPLICATE
+            # ========================================================
+            other_active_actions = []
+            other_action_titles = []
+            try:
+                other_items_result = await db.execute(
+                    select(ActionPlanItem).where(
+                        ActionPlanItem.plan_id == original.plan_id,
+                        ActionPlanItem.uid == user_id,
+                        ActionPlanItem.id != item_id,  # Exclude the one being replaced
+                        ActionPlanItem.is_replaced != True  # Only active items
+                    )
+                )
+                for item in other_items_result.scalars().all():
+                    other_active_actions.append({
+                        "title": item.title,
+                        "category": item.category,
+                        "target_hormone": item.target_hormone
+                    })
+                    other_action_titles.append(item.title)
+                logger.info(f"[CANDIDATES] Found {len(other_active_actions)} other active actions: {other_action_titles}")
+            except Exception as e:
+                logger.warning(f"Could not load other plan items: {e}")
+
             # Fetch research paper for same category + hormone + user condition
             from app.services.pubmed_service import execute_pubmed_tool
 
@@ -6825,7 +6933,23 @@ PMID: {research_paper.get('pmid', '')}
             }
             required_fields = category_fields.get(original_category, "")
 
+            # Build OTHER ACTIVE ACTIONS context for GPT
+            other_actions_context = ""
+            if other_active_actions:
+                other_actions_context = f"""
+======================================================================
+🚨 OTHER ACTIVE ACTIONS TODAY - NONE OF YOUR CANDIDATES CAN BE SIMILAR 🚨
+======================================================================
+The user already has these in their plan. ALL your candidate replacements
+MUST be COMPLETELY DIFFERENT from all of these.
+
+BANNED TITLES: {other_action_titles}
+❌ Do NOT suggest similar foods/exercises/mindfulness to any of these
+"""
+
             prompt = f"""Generate {n} DIFFERENT replacement wellness actions.
+
+{other_actions_context}
 
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  CRITICAL: ALL alternatives MUST be {original_category.upper()} category!              ║
