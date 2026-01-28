@@ -1256,6 +1256,18 @@ class ActionPlanGenerator:
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     
+    # Models that don't support temperature parameter (reasoning models)
+    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini", "gpt-5-mini"]
+    
+    @classmethod
+    def model_supports_temperature(cls, model_name: str) -> bool:
+        """Check if a model supports the temperature parameter."""
+        model_lower = model_name.lower()
+        for no_temp_model in cls.NO_TEMPERATURE_MODELS:
+            if no_temp_model.lower() in model_lower:
+                return False
+        return True
+    
     def __init__(self):
         """Initialize the generator."""
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -1292,6 +1304,37 @@ class ActionPlanGenerator:
         logger.info(f"ActionPlanGenerator initialized with shared engine")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
     
+    def build_openai_payload(
+        self,
+        model: str,
+        messages: list,
+        max_tokens: int = 4000,
+        response_format: dict = None,
+        temperature: float = None,
+        tools: list = None
+    ) -> dict:
+        """
+        Build OpenAI API payload, conditionally including temperature.
+        Some models (o1, o3-mini, gpt-5-mini) don't support temperature.
+        """
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_completion_tokens": max_tokens,
+        }
+        
+        # Only add temperature if model supports it
+        if temperature is not None and self.model_supports_temperature(model):
+            payload["temperature"] = temperature
+        
+        if response_format:
+            payload["response_format"] = response_format
+            
+        if tools:
+            payload["tools"] = tools
+            
+        return payload
+
     async def get_or_generate_today_plan(
         self,
         user_id: str,
@@ -1534,11 +1577,15 @@ class ActionPlanGenerator:
             num_carryforward = len(carryforward_items) if carryforward_items else 0
             num_to_generate = max(0, 4 - num_carryforward)  # Standard plan is 4 items
             
-            # OPTIMIZATION: For pure carryforward (all 4 items), skip heavy user context loading
-            # We only need minimal context for storing the plan, not for GPT generation
+            # OPTIMIZATION: For pure carryforward (all 4 items), skip heavy GPT context loading
+            # But we still need to load MINIMAL context for storing the plan
             if num_to_generate == 0 and num_carryforward == 4:
-                logger.info(f"[GENERATE] ⚡ FAST PATH: All 4 items from carryforward - skipping user context loading")
-                user_context = {"user_id": user_id, "user_timezone": user_timezone}  # Minimal context
+                logger.info(f"[GENERATE] ⚡ FAST PATH: All 4 items from carryforward - loading minimal context only")
+                # Load MINIMAL context required for _store_plan (primary_hormone, cycle info, etc.)
+                user_context = await self._load_minimal_context_for_carryforward(user_id, db, user_timezone)
+                if not user_context:
+                    logger.error(f"[GENERATE]  Could not load minimal context for {user_id}")
+                    return {"success": False, "error": "User profile not found"}
             else:
                 # Step 1: Load user context (needed for GPT generation)
                 logger.info(f"[GENERATE] Step 1: Loading user context...")
@@ -2912,6 +2959,122 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             logger.error(f"Failed to generate partial actions: {e}")
             return (None, 0.0)
     
+    async def _load_minimal_context_for_carryforward(
+        self,
+        user_id: str,
+        db: AsyncSession,
+        user_timezone: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Load MINIMAL context needed for storing carryforward-only plans.
+        This is much faster than _load_user_context since we skip:
+        - Feedback history
+        - Weekly check-ins
+        - Daily reviews
+        - Anti-repetition data
+        - Chatbot context
+        
+        Only loads: profile, primary/secondary hormones, cycle info, conditions
+        """
+        from app.core.database import UserProfile, UserResponse
+        from app.services.cycle_service import get_cycle_service
+        from sqlalchemy.future import select
+        
+        try:
+            # Get user profile
+            profile_result = await db.execute(
+                select(UserProfile).where(UserProfile.uid == user_id)
+            )
+            profile = profile_result.scalar_one_or_none()
+            
+            if not profile:
+                logger.warning(f"[MINIMAL_CONTEXT] No UserProfile found for user {user_id}")
+                return None
+            
+            # Get user responses (for diagnosed conditions)
+            response_result = await db.execute(
+                select(UserResponse)
+                .where(UserResponse.uid == user_id)
+                .order_by(UserResponse.created_at.desc())
+                .limit(1)
+            )
+            user_response = response_result.scalar_one_or_none()
+            
+            # Get cycle info
+            cycle_service = get_cycle_service()
+            cycle_info = await cycle_service.get_cycle_phase_info_async(user_id, db)
+            
+            cycle_day = cycle_info.get("cycle_day", 1) if cycle_info else 1
+            cycle_phase = cycle_info.get("phase", "follicular") if cycle_info else "follicular"
+            
+            # Determine primary/secondary hormones from conditions/phase
+            diagnosed_conditions = []
+            if user_response and user_response.response_data:
+                diagnosed_conditions = user_response.response_data.get("diagnosed_conditions", [])
+            
+            primary_hormone, secondary_hormone = self._determine_hormones_from_conditions(
+                diagnosed_conditions, cycle_phase
+            )
+            
+            # Build minimal context
+            context = {
+                "user_id": user_id,
+                "user_timezone": user_timezone or profile.current_timezone or "UTC",
+                "primary_hormone": primary_hormone,
+                "secondary_hormone": secondary_hormone,
+                "cycle_day": cycle_day,
+                "cycle_phase": cycle_phase,
+                "diagnosed_conditions": diagnosed_conditions,
+                "lifestyle_focus": profile.lifestyle_focus or ["eat", "move", "pause"],
+                "top_concern": user_response.response_data.get("top_concern", "General Wellness") if user_response and user_response.response_data else "General Wellness",
+            }
+            
+            logger.info(f"[MINIMAL_CONTEXT] Loaded for {user_id}: primary={primary_hormone}, phase={cycle_phase}")
+            return context
+            
+        except Exception as e:
+            logger.error(f"[MINIMAL_CONTEXT] Failed to load: {e}")
+            return None
+    
+    def _determine_hormones_from_conditions(
+        self, 
+        conditions: List[str], 
+        cycle_phase: str
+    ) -> tuple:
+        """Determine primary/secondary hormones based on conditions and cycle phase."""
+        # Condition-to-hormone mapping
+        condition_hormone_map = {
+            "pcos": ("androgens", "insulin"),
+            "polycystic ovary syndrome": ("androgens", "insulin"),
+            "endometriosis": ("estrogen", "progesterone"),
+            "thyroid": ("thyroid", "cortisol"),
+            "hypothyroidism": ("thyroid", "cortisol"),
+            "hyperthyroidism": ("thyroid", "cortisol"),
+            "diabetes": ("insulin", "cortisol"),
+            "cushing": ("cortisol", "androgens"),
+            "adrenal": ("cortisol", "androgens"),
+            "menopause": ("estrogen", "progesterone"),
+            "perimenopause": ("estrogen", "progesterone"),
+        }
+        
+        # Check conditions first
+        for condition in conditions:
+            condition_lower = condition.lower()
+            for key, hormones in condition_hormone_map.items():
+                if key in condition_lower:
+                    return hormones
+        
+        # Default based on cycle phase
+        phase_lower = cycle_phase.lower() if cycle_phase else "follicular"
+        if "luteal" in phase_lower:
+            return ("progesterone", "cortisol")
+        elif "ovula" in phase_lower:
+            return ("estrogen", "LH")
+        elif "menstr" in phase_lower:
+            return ("estrogen", "prostaglandins")
+        else:  # follicular
+            return ("estrogen", "FSH")
+
     async def _load_user_context(
         self,
         user_id: Optional[str],
@@ -3788,21 +3951,22 @@ Format as bullet points."""
                 
                 if self.openai_api_key:
                     try:
+                        payload = self.build_openai_payload(
+                            model="gpt-5-mini",
+                            messages=[
+                                {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
+                                {"role": "user", "content": summary_prompt}
+                            ],
+                            max_tokens=500,
+                            temperature=0.3
+                        )
                         response = await self.client.post(
                             "https://api.openai.com/v1/chat/completions",
                             headers={
                                 "Authorization": f"Bearer {self.openai_api_key}",
                                 "Content-Type": "application/json"
                             },
-                            json={
-                                "model": "gpt-5-mini",
-                                "messages": [
-                                    {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
-                                    {"role": "user", "content": summary_prompt}
-                                ],
-                                "temperature": 0.3,
-                                "max_completion_tokens": 500
-                            }
+                            json=payload
                         )
                         
                         if response.status_code != 200:
@@ -4299,13 +4463,13 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
+            # NOTE: Some models (o1, o3-mini, gpt-5-mini) don't support temperature
             openai_payload = {
                 "model": self.GPT_MODEL,
                 "messages": [
                     {"role": "system", "content": enhanced_system_with_research},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": self.GPT_TEMPERATURE,
                 "max_completion_tokens": 4000,
                 "response_format": {
                     "type": "json_schema",
@@ -4316,6 +4480,10 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     }
                 }
             }
+            
+            # Only add temperature if model supports it
+            if self.model_supports_temperature(self.GPT_MODEL):
+                openai_payload["temperature"] = self.GPT_TEMPERATURE
             
             # Try OpenAI first
             logger.info(f" Trying OpenAI with model: {self.GPT_MODEL}")
@@ -5952,23 +6120,23 @@ Respond with valid JSON object only."""
                 
                 if self.openai_api_key:
                     try:
+                        payload = self.build_openai_payload(
+                            model=self.GPT_MODEL,
+                            messages=[
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": replacement_prompt}
+                            ],
+                            max_tokens=2500,
+                            temperature=0.7,
+                            response_format={"type": "json_object"}
+                        )
                         response = await self.client.post(
                             "https://api.openai.com/v1/chat/completions",
                             headers={
                                 "Authorization": f"Bearer {self.openai_api_key}",
                                 "Content-Type": "application/json"
                             },
-                            json={
-                                "model": self.GPT_MODEL,
-                                "messages": [
-                                    {"role": "system", "content": SYSTEM_PROMPT},
-                                    {"role": "user", "content": replacement_prompt}
-                                ],
-                                # No tools needed - research already pre-fetched
-                                "temperature": 0.7,
-                                "max_completion_tokens": 2500,
-                                "response_format": {"type": "json_object"}
-                            }
+                            json=payload
                         )
                         
                         if response.status_code != 200:
@@ -6485,22 +6653,23 @@ Respond with valid JSON only."""
 
             if self.openai_api_key:
                 try:
+                    payload = self.build_openai_payload(
+                        model=self.GPT_MODEL,
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": prompt},
+                        ],
+                        max_tokens=4500,
+                        temperature=0.5,
+                        response_format={"type": "json_object"}
+                    )
                     response = await self.client.post(
                         "https://api.openai.com/v1/chat/completions",
                         headers={
                             "Authorization": f"Bearer {self.openai_api_key}",
                             "Content-Type": "application/json",
                         },
-                        json={
-                            "model": self.GPT_MODEL,
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT},
-                                {"role": "user", "content": prompt},
-                            ],
-                            "temperature": 0.5,
-                            "max_completion_tokens": 4500,
-                            "response_format": {"type": "json_object"},
-                        },
+                        json=payload,
                     )
 
                     if response.status_code != 200:
