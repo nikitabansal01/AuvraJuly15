@@ -2863,16 +2863,22 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 try:
                     client = openai.AsyncOpenAI(api_key=self.openai_api_key)
                     
-                    response = await client.chat.completions.create(
-                        model="gpt-5-mini",
-                        messages=[
+                    # Build payload with conditional temperature
+                    create_kwargs = {
+                        "model": "gpt-5-mini",
+                        "messages": [
                             {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
                         ],
-                        temperature=0.7,
-                        max_completion_tokens=3000,
-                        response_format={"type": "json_object"}
-                    )
+                        "max_completion_tokens": 3000,
+                        "response_format": {"type": "json_object"}
+                    }
+                    
+                    # Only add temperature if model supports it
+                    if self.model_supports_temperature("gpt-5-mini"):
+                        create_kwargs["temperature"] = 0.7
+                    
+                    response = await client.chat.completions.create(**create_kwargs)
                     
                     content = response.choices[0].message.content
                     cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
@@ -2891,12 +2897,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     
                     # gpt-oss-120b is a reasoning model - doesn't support response_format
                     is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
-                    enhanced_prompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown." if is_reasoning_model else prompt
+                    enhanced_prompt = prompt + "\n\nCRITICAL: Return ONLY valid JSON in this exact format: {\"actions\": [{...}]}. No markdown, no explanation, just JSON." if is_reasoning_model else prompt
                     
                     response = await groq_client.chat.completions.create(
                         model=GROQ_FALLBACK_MODEL,
                         messages=[
-                            {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
+                            {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY. Return ONLY valid JSON."},
                             {"role": "user", "content": enhanced_prompt}
                         ],
                         temperature=0.7,
@@ -2905,14 +2911,17 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     
                     content = response.choices[0].message.content
                     
-                    # Clean reasoning model output
-                    if is_reasoning_model:
-                        if content.startswith("```json"):
-                            content = content[7:]
-                        if content.startswith("```"):
-                            content = content[3:]
-                        if content.endswith("```"):
-                            content = content[:-3]
+                    # Clean Groq output - more robust cleaning
+                    if content:
+                        # Remove markdown code blocks
+                        if "```json" in content:
+                            content = content.split("```json", 1)[1]
+                            if "```" in content:
+                                content = content.split("```", 1)[0]
+                        elif "```" in content:
+                            content = content.split("```", 1)[1]
+                            if "```" in content:
+                                content = content.split("```", 1)[0]
                         content = content.strip()
                     
                     logger.info(" Partial actions generated via Groq fallback")
@@ -2927,7 +2936,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 return (None, 0.0)
             
             # Parse response
-            parsed = json.loads(content)
+            try:
+                parsed = json.loads(content)
+            except json.JSONDecodeError as e:
+                logger.error(f" JSON parse error: {e}. Content received: {content[:500]}")
+                return (None, 0.0)
+            
             actions = parsed.get("actions", parsed if isinstance(parsed, list) else [parsed])
             
             # Ensure we have a list
