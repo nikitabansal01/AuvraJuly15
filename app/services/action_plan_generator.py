@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update, text, or_
 
 from app.services.image_library_service import get_image_library_service
-from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool
+from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool, execute_pubmed_tool_multiple
 from app.core.config import settings
 
 # NEW: Import unified memory for cross-chatbot context
@@ -945,7 +945,28 @@ OUTPUT FORMAT (for each action)
    - TOO GENERIC: "I am Progesterone - this food is healthy." (no condition mentioned)
    
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
-9. research_studies: Array with EXACTLY 1 REAL research citation focused on WOMEN/FEMALES. Fields: title, journal, year, participants (int), finding, pmid, verification_link.
+9. research_studies: Array with 2-4 REAL research citations focused on WOMEN/FEMALES.
+   PRIORITY ORDER (include highest quality sources first):
+   - Meta-analysis (combines multiple studies - HIGHEST quality)
+   - Systematic review (rigorous literature review)
+   - Randomized controlled trial (RCT - gold standard experiment)
+   - Clinical trial (experimental study)
+   - Review paper (narrative review)
+   
+   EACH CITATION MUST HAVE:
+   {{
+     "title": "Full paper title",
+     "journal": "Journal name",
+     "year": 2023,
+     "participants": 150,
+     "finding": "Key finding for women",
+     "pmid": "12345678",
+     "verification_link": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+     "study_type": "meta_analysis" | "systematic_review" | "rct" | "clinical_trial" | "review",
+     "study_type_label": "Meta-Analysis" | "Systematic Review" | "Randomized Controlled Trial" | etc.
+   }}
+   
+   Use the research papers provided in the RESEARCH FINDINGS section above!
 10. variants: Array of 3 variants showing DIFFERENT WAYS to consume/do this action. CRITICAL: Do NOT include 'specific_action' in variants. Only: variant_type, title, description, image_prompt.
 11. symptoms: Array of strings - specific user symptoms this action addresses (e.g., taken from user's logged symptoms)
 12. conditions: Array of strings - specific conditions this action is beneficial for (taken from user's diagnosed_conditions)
@@ -2954,16 +2975,22 @@ OUTPUT STRUCTURE FOR EACH ACTION
    - MOVEMENT: "Serene photograph of woman doing [EXACT POSE], [setting], soft natural lighting, wellness aesthetic"
    - MINDFULNESS: "Calm photograph of woman practicing [TECHNIQUE], peaceful setting, soft lighting"
 
-9. research_studies: Array with EXACTLY 1 research study object:
-   [{{
-     "title": "[Specific study title about this intervention for women]",
-     "journal": "[Real journal name like J Clin Endocrinol Metab]",
-     "year": [recent year like 2023],
-     "participants": [integer like 150],
-     "finding": "[Key finding for women with this condition]",
-     "pmid": "",
-     "verification_link": ""
-   }}]
+9. research_studies: Array with 2-4 research citations (use papers from RESEARCH FINDINGS above if available):
+   PRIORITY: Meta-analysis > Systematic Review > RCT > Clinical Trial > Review
+   [
+     {{
+       "title": "[Study title]",
+       "journal": "[Journal name]",
+       "year": [year],
+       "participants": [integer],
+       "finding": "[Key finding]",
+       "pmid": "[PMID if available]",
+       "verification_link": "[PubMed URL if available]",
+       "study_type": "meta_analysis" | "systematic_review" | "rct" | "clinical_trial" | "review",
+       "study_type_label": "Meta-Analysis" | "Systematic Review" | "RCT" | etc.
+     }},
+     ... (2-4 total)
+   ]
 
 10. variants: Array of EXACTLY 3 variant objects showing DIFFERENT WAYS to do the action:
 
@@ -4563,26 +4590,26 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
             hormones = [primary_hormone, secondary_hormone, primary_hormone, primary_hormone]
             
             # =======================================================================
-            # PARALLEL EXECUTION: Run all PubMed searches concurrently for speed
-            # Before: ~2000ms (4 x 500ms sequential)
-            # After:  ~500ms  (parallel)
+            # PARALLEL EXECUTION: Run all PubMed searches for MULTIPLE papers per action
+            # Priority: Meta-analysis > Systematic Review > RCT > Clinical Trial > Review
+            # Returns 2-4 citations per action for the collapsible references section
             # =======================================================================
-            async def fetch_research_paper(index: int, query: str) -> Dict[str, Any]:
-                """Fetch a single research paper for a query."""
+            async def fetch_multiple_research_papers(index: int, query: str) -> Dict[str, Any]:
+                """Fetch 2-4 research papers for a query, prioritized by study type."""
                 try:
-                    paper = await execute_pubmed_tool({
+                    papers = await execute_pubmed_tool_multiple({
                         "query": query,
                         "action_title": f"Research {index + 1}",
                         "category": categories[index],
                         "target_hormone": hormones[index]
-                    }, db=db)
+                    }, db=db, max_citations=4)
                     
-                    if paper and paper.get("title"):
+                    if papers and len(papers) > 0:
                         return {
                             "query": query,
                             "category": categories[index],
                             "hormone": hormones[index],
-                            "paper": paper
+                            "papers": papers  # List of 2-4 papers
                         }
                     return None
                 except Exception as e:
@@ -4590,9 +4617,9 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
                     return None
             
             # Execute all searches in parallel
-            logger.info(f"   Searching {len(research_queries)} queries in parallel...")
+            logger.info(f"   Searching {len(research_queries)} queries for multiple citations each...")
             results = await asyncio.gather(
-                *[fetch_research_paper(i, q) for i, q in enumerate(research_queries)],
+                *[fetch_multiple_research_papers(i, q) for i, q in enumerate(research_queries)],
                 return_exceptions=True
             )
             
@@ -4605,29 +4632,38 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
                     logger.warning(f"Research query {i} exception: {result}")
                     continue
                 research_findings.append(result)
-                logger.info(f"   Found: {result['paper'].get('title', '')[:50]}...")
+                papers = result.get("papers", [])
+                logger.info(f"   Found {len(papers)} papers for action {i+1}: {[p.get('study_type_label', 'Unknown') for p in papers]}")
             
-            logger.info(f" Research complete: Found {len(research_findings)} relevant papers")
+            total_papers = sum(len(r.get("papers", [])) for r in research_findings)
+            logger.info(f" Research complete: Found {total_papers} total papers across {len(research_findings)} actions")
             
-            # Build research summary for GPT
+            # Build research summary for GPT - now with multiple papers per action
             research_summary = "\\n\\n======================================================================\\n"
             research_summary += "RESEARCH FINDINGS - USE THESE TO INFORM YOUR RECOMMENDATIONS\\n"
+            research_summary += "(Priority: Meta-analysis > Systematic Review > RCT > Clinical Trial > Review)\\n"
             research_summary += "======================================================================\\n"
             
             for finding in research_findings:
-                paper = finding["paper"]
+                papers = finding.get("papers", [])
                 research_summary += f"""
- Research for {finding['hormone'].upper()} ({finding['category']}):
-   Title: {paper.get('title', 'Unknown')}
-   Journal: {paper.get('journal', 'Unknown')} ({paper.get('year', 'N/A')})
-   Finding: {paper.get('finding', 'No finding extracted')}
-   PMID: {paper.get('pmid', 'N/A')}
-   
-    Use this to inform your {finding['category']} recommendation for {finding['hormone']}
+📚 Research for {finding['hormone'].upper()} ({finding['category']}) - {len(papers)} sources:
+"""
+                for idx, paper in enumerate(papers, 1):
+                    study_type_label = paper.get('study_type_label', 'Research Study')
+                    research_summary += f"""
+   [{idx}] {study_type_label}
+       Title: {paper.get('title', 'Unknown')}
+       Journal: {paper.get('journal', 'Unknown')} ({paper.get('year', 'N/A')})
+       Finding: {paper.get('finding', 'No finding extracted')}
+       PMID: {paper.get('pmid', 'N/A')}
+"""
+                research_summary += f"""
+   → Use these {len(papers)} sources in research_studies for your {finding['category']} recommendation for {finding['hormone']}
 """
             
             research_summary += "\nIMPORTANT: Your recommendations MUST be based on the research findings above.\n"
-            research_summary += "Include the paper details in the research_studies field for each action.\n"
+            research_summary += "Include 2-4 papers in research_studies field for each action (with study_type field).\n"
             
             # =======================================================================
             # STEP 2: RECOMMENDATION GENERATION - Based on research findings

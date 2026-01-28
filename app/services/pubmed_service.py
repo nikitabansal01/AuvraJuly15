@@ -8,6 +8,8 @@ Features:
 - PostgreSQL caching to avoid rate limits
 - Full abstract extraction for real findings
 - PMID/DOI links for verification
+- STUDY TYPE PRIORITIZATION: Meta-analysis > Systematic Review > RCT > Clinical Trial > Review
+- MULTIPLE SOURCES: Returns 2-4 research papers per action
 """
 import asyncio
 import hashlib
@@ -22,6 +24,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STUDY TYPE HIERARCHY (for prioritization)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+STUDY_TYPE_PRIORITY = {
+    "meta_analysis": 1,       # Highest priority - combines multiple studies
+    "systematic_review": 2,   # Rigorous review of literature
+    "rct": 3,                 # Randomized controlled trial - gold standard
+    "clinical_trial": 4,      # Clinical trial (non-randomized)
+    "cohort_study": 5,        # Observational cohort
+    "review": 6,              # Narrative review
+    "observational": 7,       # Cross-sectional, case-control
+    "unknown": 8              # Lowest priority
+}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # API ENDPOINTS
@@ -244,6 +261,222 @@ class PubMedService:
         logger.warning(f"❌ No citation found for '{action_title}'")
         return {}
     
+    async def find_multiple_citations(
+        self,
+        query: str,
+        action_title: str,
+        category: str = "food",
+        hormone: str = "cortisol",
+        db: Optional[AsyncSession] = None,
+        max_citations: int = 4
+    ) -> List[Dict[str, Any]]:
+        """
+        Find 2-4 real research papers, prioritized by study type quality.
+        
+        Priority order (your mam's requirement):
+        1. Meta-analysis (combines multiple studies)
+        2. Systematic review (rigorous literature review)
+        3. Review papers on interventions
+        4. Clinical trials/RCTs on interventions for women
+        5. Regular research papers
+        
+        Returns:
+            List of 2-4 paper dictionaries, sorted by study type quality
+        """
+        query = self._normalize_query(query)
+        logger.info(f"🔍 Finding {max_citations} citations for '{action_title}': {query[:60]}...")
+        
+        all_papers = []
+        
+        # Strategy: Search PubMed with different filters to get variety of study types
+        search_strategies = [
+            # Priority 1: Meta-analyses and systematic reviews
+            f"({query}) AND (meta-analysis[pt] OR systematic review[pt])",
+            # Priority 2: Reviews  
+            f"({query}) AND (review[pt])",
+            # Priority 3: Clinical trials
+            f"({query}) AND (clinical trial[pt] OR randomized controlled trial[pt])",
+            # Priority 4: General research
+            query
+        ]
+        
+        seen_pmids = set()
+        
+        for strategy_query in search_strategies:
+            if len(all_papers) >= max_citations:
+                break
+            
+            papers = await self._search_pubmed_multiple(strategy_query, max_results=5)
+            
+            for paper in papers:
+                if len(all_papers) >= max_citations:
+                    break
+                pmid = paper.get("pmid", "")
+                if pmid and pmid not in seen_pmids:
+                    # Detect and add study type
+                    paper["study_type"] = self._detect_study_type(paper)
+                    paper["study_type_label"] = self._get_study_type_label(paper["study_type"])
+                    all_papers.append(paper)
+                    seen_pmids.add(pmid)
+                    logger.info(f"  ✅ Found [{paper['study_type_label']}]: {paper.get('title', '')[:50]}...")
+        
+        # If we don't have enough from PubMed, try OpenAlex
+        if len(all_papers) < 2:
+            papers = await self._search_openalex_multiple(query, max_results=3)
+            for paper in papers:
+                if len(all_papers) >= max_citations:
+                    break
+                paper["study_type"] = self._detect_study_type(paper)
+                paper["study_type_label"] = self._get_study_type_label(paper["study_type"])
+                all_papers.append(paper)
+        
+        # Sort by study type priority (meta-analysis first, etc.)
+        all_papers.sort(key=lambda p: STUDY_TYPE_PRIORITY.get(p.get("study_type", "unknown"), 8))
+        
+        # Ensure we have at least 2 papers, max 4
+        final_papers = all_papers[:max_citations]
+        
+        # Cache each paper
+        if db and final_papers:
+            for paper in final_papers:
+                cache_key = self._generate_cache_key(paper.get("pmid", paper.get("title", "")), category, hormone)
+                try:
+                    await self._cache_citation(cache_key, paper, db)
+                except Exception:
+                    pass
+        
+        logger.info(f"📚 Found {len(final_papers)} citations for '{action_title}'")
+        return final_papers
+    
+    def _detect_study_type(self, paper: Dict) -> str:
+        """Detect the study type from title and abstract."""
+        title = paper.get("title", "").lower()
+        finding = paper.get("finding", "").lower()
+        full_text = f"{title} {finding}"
+        
+        # Meta-analysis detection
+        if "meta-analysis" in full_text or "meta analysis" in full_text:
+            return "meta_analysis"
+        
+        # Systematic review detection
+        if "systematic review" in full_text:
+            return "systematic_review"
+        
+        # RCT detection
+        if "randomized controlled trial" in full_text or "randomised controlled trial" in full_text:
+            return "rct"
+        if "rct" in title or "randomized" in title or "randomised" in title:
+            return "rct"
+        
+        # Clinical trial detection
+        if "clinical trial" in full_text or "controlled trial" in full_text:
+            return "clinical_trial"
+        
+        # Cohort study detection
+        if "cohort study" in full_text or "longitudinal study" in full_text:
+            return "cohort_study"
+        
+        # General review detection
+        if "review" in title:
+            return "review"
+        
+        # Observational study detection
+        if "cross-sectional" in full_text or "case-control" in full_text:
+            return "observational"
+        
+        return "unknown"
+    
+    def _get_study_type_label(self, study_type: str) -> str:
+        """Get human-readable label for study type."""
+        labels = {
+            "meta_analysis": "Meta-Analysis",
+            "systematic_review": "Systematic Review",
+            "rct": "Randomized Controlled Trial",
+            "clinical_trial": "Clinical Trial",
+            "cohort_study": "Cohort Study",
+            "review": "Review",
+            "observational": "Observational Study",
+            "unknown": "Research Study"
+        }
+        return labels.get(study_type, "Research Study")
+    
+    async def _search_pubmed_multiple(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Search PubMed and return multiple papers."""
+        async with self._pubmed_semaphore:
+            try:
+                # Population/topic exclusions
+                population_exclusions = "pregnant[ti] OR pregnancy[ti] OR prenatal[ti] OR children[ti] OR pediatric[ti] OR men[ti] OR male[ti] OR postmenopausal[ti]"
+                topic_exclusions = "guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti]"
+                enhanced_query = f"({query}) NOT ({population_exclusions}) NOT ({topic_exclusions})"
+                
+                params = {
+                    "db": "pubmed",
+                    "term": enhanced_query,
+                    "retmax": max_results,
+                    "retmode": "json",
+                    "sort": "relevance",
+                    "datetype": "pdat",
+                    "mindate": "2010",
+                    "maxdate": "2025"
+                }
+                
+                if self.pubmed_api_key:
+                    params["api_key"] = self.pubmed_api_key
+                
+                await asyncio.sleep(self._rate_limit_delay)
+                response = await self.client.get(PUBMED_SEARCH_URL, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                pmids = data.get("esearchresult", {}).get("idlist", [])
+                
+                if not pmids:
+                    return []
+                
+                # Fetch all papers
+                papers = []
+                for pmid in pmids:
+                    await asyncio.sleep(self._rate_limit_delay)
+                    paper = await self._fetch_pubmed_paper(pmid)
+                    if paper and self._is_relevant_paper(paper):
+                        papers.append(paper)
+                
+                return papers
+                
+            except Exception as e:
+                logger.error(f"PubMed multi-search error: {e}")
+                return []
+    
+    async def _search_openalex_multiple(self, query: str, max_results: int = 3) -> List[Dict]:
+        """Search OpenAlex and return multiple papers."""
+        async with self._openalex_semaphore:
+            try:
+                params = {
+                    "search": query,
+                    "filter": "has_abstract:true,is_retracted:false",
+                    "per_page": max_results,
+                    "mailto": "support@auvra.health"
+                }
+                
+                await asyncio.sleep(self._rate_limit_delay)
+                response = await self.client.get(OPENALEX_SEARCH_URL, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                results = data.get("results", [])
+                
+                papers = []
+                for work in results:
+                    paper = self._parse_openalex_work(work)
+                    if paper:
+                        papers.append(paper)
+                
+                return papers
+                
+            except Exception as e:
+                logger.error(f"OpenAlex multi-search error: {e}")
+                return []
+
     def _normalize_query(self, query: str) -> str:
         """Normalize and enhance query for better results."""
         query = query.lower().strip()
@@ -840,7 +1073,7 @@ async def execute_pubmed_tool(
     db: Optional[AsyncSession] = None
 ) -> Dict[str, Any]:
     """
-    Execute the search_research_paper tool.
+    Execute the search_research_paper tool (single citation - backward compatible).
     Called by action_plan_generator when GPT requests the tool.
     
     Args:
@@ -861,3 +1094,34 @@ async def execute_pubmed_tool(
     )
     
     return result
+
+
+async def execute_pubmed_tool_multiple(
+    arguments: Dict[str, Any],
+    db: Optional[AsyncSession] = None,
+    max_citations: int = 4
+) -> List[Dict[str, Any]]:
+    """
+    Execute the search_research_paper tool and return MULTIPLE citations (2-4).
+    Prioritizes: Meta-analysis > Systematic Review > RCT > Clinical Trial > Review
+    
+    Args:
+        arguments: Tool arguments from GPT (query, action_title, category, target_hormone)
+        db: Database session for caching
+        max_citations: Maximum number of citations to return (2-4)
+        
+    Returns:
+        List of paper details dicts, sorted by study type quality
+    """
+    service = get_pubmed_service()
+    
+    results = await service.find_multiple_citations(
+        query=arguments.get("query", ""),
+        action_title=arguments.get("action_title", ""),
+        category=arguments.get("category", "food"),
+        hormone=arguments.get("target_hormone", "cortisol"),
+        db=db,
+        max_citations=max_citations
+    )
+    
+    return results
