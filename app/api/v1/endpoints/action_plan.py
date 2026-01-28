@@ -149,7 +149,7 @@ async def get_today_assignments(
                 text("""
                     SELECT id, plan_date, review_completed 
                     FROM action_plans 
-                    WHERE uid = :uid AND plan_date < :today AND review_completed = false
+                    WHERE uid = :uid AND plan_date < :today
                     ORDER BY plan_date DESC
                     LIMIT 1
                 """),
@@ -157,38 +157,48 @@ async def get_today_assignments(
             ).fetchone()
             
             if raw_result:
-                # Found pending plan via raw SQL, now get the ORM object
+                # Check if the LAST plan (most recent) is unreviewed
+                # Only block if the LAST plan is unreviewed, not random old plans
                 pending_plan_id = raw_result[0]
-                logger.info(f"[PENDING_CHECK] Raw SQL found pending plan id={pending_plan_id}, date={raw_result[1]}, review_completed={raw_result[2]}")
+                last_plan_date = raw_result[1]
+                last_plan_reviewed = raw_result[2]
+                logger.info(f"[PENDING_CHECK] Last plan: id={pending_plan_id}, date={last_plan_date}, reviewed={last_plan_reviewed}")
                 
-                # CRITICAL FIX: Do a fresh raw SQL query to double-verify
-                # This catches cases where the first query hit a stale pooler connection
-                verify_result = db.execute(
-                    text("""
-                        SELECT review_completed 
-                        FROM action_plans 
-                        WHERE id = :plan_id
-                    """),
-                    {"plan_id": pending_plan_id}
-                ).fetchone()
-                
-                if verify_result and verify_result[0]:
-                    # Review was actually completed! First query was stale
-                    logger.info(f"[PENDING_CHECK] Second query shows plan {pending_plan_id} review_completed=True. First query was stale!")
+                # If the last plan IS reviewed, no pending review needed
+                if last_plan_reviewed:
+                    logger.info(f"[PENDING_CHECK] Last plan {pending_plan_id} is already reviewed. No blocking.")
                     pending_review = None
                 else:
-                    # Force expire any cached version and fetch fresh
-                    db.expire_all()
-                    pending_review = db.query(ActionPlan).filter(
-                        ActionPlan.id == pending_plan_id
-                    ).first()
+                    logger.info(f"[PENDING_CHECK] Last plan {pending_plan_id} needs review")
                     
-                    # Triple-check the review status after ORM load
-                    if pending_review:
-                        logger.info(f"[PENDING_CHECK] ORM loaded plan {pending_review.id}: review_completed={pending_review.review_completed}")
-                        if pending_review.review_completed:
-                            logger.info(f"[PENDING_CHECK] ORM says review_completed=True! Raw SQL was stale. Clearing pending_review.")
-                            pending_review = None
+                    # CRITICAL FIX: Do a fresh raw SQL query to double-verify
+                    # This catches cases where the first query hit a stale pooler connection
+                    verify_result = db.execute(
+                        text("""
+                            SELECT review_completed 
+                            FROM action_plans 
+                            WHERE id = :plan_id
+                        """),
+                        {"plan_id": pending_plan_id}
+                    ).fetchone()
+                    
+                    if verify_result and verify_result[0]:
+                        # Review was actually completed! First query was stale
+                        logger.info(f"[PENDING_CHECK] Second query shows plan {pending_plan_id} review_completed=True. First query was stale!")
+                        pending_review = None
+                    else:
+                        # Force expire any cached version and fetch fresh
+                        db.expire_all()
+                        pending_review = db.query(ActionPlan).filter(
+                            ActionPlan.id == pending_plan_id
+                        ).first()
+                        
+                        # Triple-check the review status after ORM load
+                        if pending_review:
+                            logger.info(f"[PENDING_CHECK] ORM loaded plan {pending_review.id}: review_completed={pending_review.review_completed}")
+                            if pending_review.review_completed:
+                                logger.info(f"[PENDING_CHECK] ORM says review_completed=True! Raw SQL was stale. Clearing pending_review.")
+                                pending_review = None
             else:
                 logger.info(f"[PENDING_CHECK] Raw SQL found no pending plans for {uid}")
         
@@ -1200,15 +1210,16 @@ async def get_pending_review(
             logger.info(f"Skipping review for {uid} - no plans before today (new user, first day)")
             return PendingReviewResponse(needs_review=False)
         
-        # CRITICAL FIX: Use raw SQL to absolutely ensure fresh DB read
-        # db.expire_all() isn't enough because Supabase pooler can return stale connections
+        # CRITICAL FIX: Check the LAST (most recent) plan before today
+        # Only require review if that SPECIFIC plan is unreviewed
+        # Don't dig through old historical plans - only check the most recent one
         from sqlalchemy import text
         
         raw_result = db.execute(
             text("""
                 SELECT id, plan_date, review_completed 
                 FROM action_plans 
-                WHERE uid = :uid AND plan_date < :today AND review_completed = false
+                WHERE uid = :uid AND plan_date < :today
                 ORDER BY plan_date DESC
                 LIMIT 1
             """),
@@ -1216,11 +1227,20 @@ async def get_pending_review(
         ).fetchone()
         
         if not raw_result:
-            logger.info(f"[PENDING_REVIEW] Raw SQL found no pending plans for {uid}")
+            logger.info(f"[PENDING_REVIEW] Raw SQL found no plans before today for {uid}")
             return PendingReviewResponse(needs_review=False)
         
-        pending_plan_id = raw_result[0]
-        logger.info(f"[PENDING_REVIEW] Raw SQL found pending plan id={pending_plan_id}, date={raw_result[1]}, review_completed={raw_result[2]}")
+        # Check if the LAST plan is reviewed
+        last_plan_id, last_plan_date, last_plan_reviewed = raw_result[0], raw_result[1], raw_result[2]
+        logger.info(f"[PENDING_REVIEW] Last plan: id={last_plan_id}, date={last_plan_date}, reviewed={last_plan_reviewed}")
+        
+        if last_plan_reviewed:
+            logger.info(f"[PENDING_REVIEW] Last plan {last_plan_id} is already reviewed. No pending review.")
+            return PendingReviewResponse(needs_review=False)
+        
+        # Last plan needs review - load it via ORM
+        pending_plan_id = last_plan_id
+        logger.info(f"[PENDING_REVIEW] Last plan {pending_plan_id} needs review (date={last_plan_date})")
         
         # Expire cache and get ORM object
         db.expire_all()
