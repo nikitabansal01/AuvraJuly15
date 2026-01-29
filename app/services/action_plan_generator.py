@@ -2855,23 +2855,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             if not isinstance(actions, list):
                 actions = [actions]
             
-            # ================================================================
-            # POST-GENERATION DEDUPLICATION
-            # Validate each action against existing_actions to prevent duplicates
-            # ================================================================
-            validated_actions = []
-            existing_for_dedup = list(existing_actions) if existing_actions else []
-            
-            for action in actions[:num_actions]:
-                if is_duplicate(action, existing_for_dedup + validated_actions):
-                    logger.warning(f"⚠️ Duplicate detected in generated action: '{action.get('title')}' - skipping")
-                    continue
-                validated_actions.append(action)
-            
-            # Log deduplication results
-            if len(validated_actions) < len(actions[:num_actions]):
-                removed_count = len(actions[:num_actions]) - len(validated_actions)
-                logger.info(f"🔍 Deduplication: removed {removed_count} duplicate action(s)")
+            # Just take the actions GPT returned - the prompt already told it what to avoid
+            # No deduplication needed since prompt includes carryforward items to avoid
+            validated_actions = actions[:num_actions]
             
             logger.info(f"✅ Generated {len(validated_actions)} partial actions for carryforward plan (requested: {num_actions})")
             return (validated_actions, cost)
@@ -4721,27 +4707,11 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                            f"conditions={action.get('conditions')}, "
                            f"hormone_persona_intro={bool(action.get('hormone_persona_intro'))}")
             
-            # ================================================================
-            # POST-GENERATION DEDUPLICATION FOR INITIAL PLAN
-            # Validate generated actions against each other to catch duplicates
-            # (e.g., same action targeting different hormones)
-            # ================================================================
-            deduped_actions = []
-            duplicates_found = 0
-            for action in actions:
-                if is_duplicate(action, deduped_actions):
-                    duplicates_found += 1
-                    logger.warning(f"⚠️ Duplicate detected in initial generation: '{action.get('title')}' - removing")
-                    continue
-                deduped_actions.append(action)
+            # Trust the prompt to generate unique actions - no post-generation deduplication
+            # The prompt already tells GPT to generate diverse actions across categories
             
-            if duplicates_found > 0:
-                logger.warning(f"🔍 Deduplication: removed {duplicates_found} duplicate action(s) from initial generation")
-                # If we removed duplicates, we should have fewer than 4 actions
-                # This will be handled by the caller who may request regeneration
-            
-            logger.info(f"✅ Generated {len(deduped_actions)} unique actions (cost: ${total_cost:.4f})")
-            return (deduped_actions, total_cost)
+            logger.info(f"✅ Generated {len(actions)} actions (cost: ${total_cost:.4f})")
+            return (actions, total_cost)
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse GPT response as JSON: {e}")
@@ -6307,11 +6277,7 @@ Respond with valid JSON object only."""
                         "target_hormone": item.target_hormone
                     })
             except Exception as e:
-                logger.warning(f"Could not load other plan items for dedup: {e}")
-            
-            if is_duplicate(replacement_action, other_plan_items):
-                logger.warning(f"⚠️ Replacement duplicates existing plan item: '{replacement_action.get('title')}' - proceeding but flagging")
-                # We proceed anyway since user requested a replacement, but log this
+                logger.warning(f"Could not load other plan items: {e}")
             
             # Generate images for replacement using TITLE for cache matching with retry
             replacement_title = replacement_action.get("title", "Wellness Action")
@@ -6867,22 +6833,11 @@ Respond with valid JSON only."""
                         "target_hormone": item.target_hormone
                     })
             except Exception as e:
-                logger.warning(f"Could not load other plan items for dedup: {e}")
+                logger.warning(f"Could not load other plan items: {e}")
             
-            # Filter candidates that duplicate other plan items or each other
-            deduped_candidates = []
-            for candidate in valid_actions:
-                if is_duplicate(candidate, other_plan_items + deduped_candidates):
-                    logger.warning(f"⚠️ Candidate duplicate detected: '{candidate.get('title')}' - skipping")
-                    continue
-                deduped_candidates.append(candidate)
-            
-            if not deduped_candidates:
-                # If all were filtered, return originals with warning
-                logger.warning("All candidates were duplicates - returning originals anyway")
-                return {"success": True, "actions": valid_actions[:n]}
-
-            return {"success": True, "actions": deduped_candidates[:n]}
+            # Trust the prompt - just return valid actions without extra deduplication
+            logger.info(f"✅ Generated {len(valid_actions)} replacement candidates")
+            return {"success": True, "actions": valid_actions[:n]}
 
         except Exception as e:
             import traceback
@@ -6953,10 +6908,7 @@ Respond with valid JSON only."""
                         "target_hormone": item.target_hormone
                     })
             except Exception as e:
-                logger.warning(f"Could not load other plan items for dedup: {e}")
-            
-            if is_duplicate(replacement_action, other_plan_items):
-                logger.warning(f"⚠️ Selected candidate duplicates existing plan item: '{replacement_action.get('title')}' - proceeding but flagging")
+                logger.warning(f"Could not load other plan items: {e}")
 
             # Record feedback
             feedback = ActionPlanFeedback(
@@ -7581,22 +7533,11 @@ OUTPUT FORMAT (JSON Array):
             if not replacement_actions:
                 return {"success": False, "error": "Failed to generate replacement actions"}
             
-            # ================================================================
-            # POST-GENERATION DEDUPLICATION FOR BATCH REPLACEMENT
-            # Validate each replacement against other_current_actions (not being replaced)
-            # ================================================================
-            validated_replacements = []
-            for replacement in replacement_actions:
-                if is_duplicate(replacement, other_current_actions + validated_replacements):
-                    logger.warning(f"⚠️ Duplicate replacement detected: '{replacement.get('title')}' - keeping but flagging")
-                    # Note: We keep it because batch replacement must return same count as requested
-                    # The LLM should have generated unique ones if prompted correctly
-                validated_replacements.append(replacement)
-            
-            replacement_actions = validated_replacements
+            # Trust the prompt to generate unique replacements - no deduplication needed
+            # The prompt already includes other_current_actions to avoid
             
             # Debug: Log all fields for each replacement action to verify GPT response
-            logger.info(f"✅ GPT returned {len(replacement_actions)} replacement actions (dedup validated)")
+            logger.info(f"✅ GPT returned {len(replacement_actions)} replacement actions")
             for i, replacement_action in enumerate(replacement_actions):
                 research = replacement_action.get("research_studies", [])
                 category = replacement_action.get("category", "unknown")
