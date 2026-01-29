@@ -2789,7 +2789,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     
                     content = response.choices[0].message.content
                     cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
-                    logger.info(" Partial actions generated via OpenAI")
+                    logger.info(f" Partial actions generated via OpenAI (tokens: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens})")
                     logger.info(f" DEBUG: Raw OpenAI response content length: {len(content) if content else 0}")
                     if content:
                         logger.info(f" DEBUG: Raw OpenAI content (first 500 chars): {content[:500]}")
@@ -2875,6 +2875,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             
             if not validated_actions:
                 logger.warning(f" ⚠️ EMPTY RESULT: GPT returned no actions. actions={actions}, num_actions={num_actions}, validated_actions={validated_actions}")
+                logger.warning(f" ⚠️ FULL PARSED CONTENT: {json.dumps(parsed, indent=2)[:2000] if parsed else 'NULL'}")
                 return (None, cost)  # Return None for empty result to trigger retry
             
             logger.info(f"✅ Generated {len(validated_actions)} partial actions for carryforward plan (requested: {num_actions})")
