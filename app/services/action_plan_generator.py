@@ -2790,6 +2790,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     content = response.choices[0].message.content
                     cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
                     logger.info(" Partial actions generated via OpenAI")
+                    logger.info(f" DEBUG: Raw OpenAI response content length: {len(content) if content else 0}")
+                    if content:
+                        logger.info(f" DEBUG: Raw OpenAI content (first 500 chars): {content[:500]}")
                 except Exception as e:
                     openai_error = str(e)
                     logger.warning(f" OpenAI exception: {openai_error[:200]}")
@@ -2820,6 +2823,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     
                     # Clean Groq output - more robust cleaning
                     if content:
+                        logger.info(f" DEBUG: Raw Groq content (first 500 chars): {content[:500]}")
                         # Remove markdown code blocks
                         if "```json" in content:
                             content = content.split("```json", 1)[1]
@@ -2830,6 +2834,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             if "```" in content:
                                 content = content.split("```", 1)[0]
                         content = content.strip()
+                        logger.info(f" DEBUG: Cleaned Groq content (first 500 chars): {content[:500]}")
                     
                     logger.info(" Partial actions generated via Groq fallback")
                 except Exception as e:
@@ -2840,6 +2845,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 return (None, 0.0)
             
             if not content:
+                logger.error(" No content returned from LLM")
                 return (None, 0.0)
             
             # Parse response
@@ -2849,15 +2855,26 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 logger.error(f" JSON parse error: {e}. Content received: {content[:500]}")
                 return (None, 0.0)
             
+            # DEBUG: Log parsed JSON structure
+            logger.info(f" DEBUG: Parsed JSON keys: {list(parsed.keys()) if isinstance(parsed, dict) else f'type={type(parsed).__name__}'}")
+            if isinstance(parsed, dict):
+                logger.info(f" DEBUG: Full parsed dict: {json.dumps(parsed, indent=2)[:1000]}")
+            
             actions = parsed.get("actions", parsed if isinstance(parsed, list) else [parsed])
             
             # Ensure we have a list
             if not isinstance(actions, list):
-                actions = [actions]
+                logger.warning(f" DEBUG: actions is not a list, converting from {type(actions).__name__}")
+                actions = [actions] if actions else []
+            
+            logger.info(f" DEBUG: actions list length = {len(actions)}, content: {json.dumps(actions, indent=2)[:500] if actions else 'EMPTY'}")
             
             # Just take the actions GPT returned - the prompt already told it what to avoid
             # No deduplication needed since prompt includes carryforward items to avoid
             validated_actions = actions[:num_actions]
+            
+            if not validated_actions:
+                logger.warning(f" ⚠️ EMPTY RESULT: GPT returned no actions. actions={actions}, num_actions={num_actions}, validated_actions={validated_actions}")
             
             logger.info(f"✅ Generated {len(validated_actions)} partial actions for carryforward plan (requested: {num_actions})")
             return (validated_actions, cost)
