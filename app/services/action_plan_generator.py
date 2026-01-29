@@ -62,7 +62,7 @@ class ResearchStudyModel(BaseModel):
     pmid: str
     verification_link: str = Field(default="")  # Default empty if LLM doesn't provide
     
-    model_config = {"extra": "forbid"}  # additionalProperties: false
+    model_config = {"extra": "ignore"}  # Changed from "forbid" to handle Groq's extra fields like study_type
 
 
 class ActionVariantModel(BaseModel):
