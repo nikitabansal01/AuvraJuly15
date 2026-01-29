@@ -163,7 +163,7 @@ class PubMedService:
     
     # Class-level semaphores for rate limiting per provider
     # PubMed: 3 req/s without key, 10 req/s with key. We'll set to 5 (or 10 if key present).
-    _pubmed_semaphore = asyncio.Semaphore(3) 
+    _pubmed_semaphore = asyncio.Semaphore(1)  # Serialize all PubMed calls to prevent 429 
     
     # OpenAlex: 10 req/s (polite pool).
     _openalex_semaphore = asyncio.Semaphore(8)
@@ -180,7 +180,7 @@ class PubMedService:
     
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=10.0)
-        self._rate_limit_delay = 0.2
+        self._rate_limit_delay = 0.4  # Increased from 0.2 to prevent 429 rate limiting
         
         # Check for PubMed API Key (increases rate limit to 10/s)
         # We can dynamically adjust the semaphore capacity if needed, 

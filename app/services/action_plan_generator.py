@@ -1706,13 +1706,19 @@ class ActionPlanGenerator:
                     )
                     gpt_cost += attempt_cost
                     
-                    if new_actions and len(new_actions) >= num_to_generate:
-                        logger.info(f" Partial generation successful: got {len(new_actions)} new actions")
-                        # Combine: carryforward first, then new actions
-                        actions = carryforward_actions + new_actions[:num_to_generate]
+                    if new_actions:
+                        # Accept ANY valid actions we got, even if fewer than requested
+                        actual_count = len(new_actions)
+                        if actual_count >= num_to_generate:
+                            logger.info(f" Partial generation successful: got {actual_count} new actions (requested: {num_to_generate})")
+                            actions = carryforward_actions + new_actions[:num_to_generate]
+                        else:
+                            # Got fewer than requested, but still use what we have
+                            logger.warning(f" Partial generation got {actual_count}/{num_to_generate} actions - using all available")
+                            actions = carryforward_actions + new_actions
                         break
                     else:
-                        logger.warning(f" Partial generation attempt {attempt} failed")
+                        logger.warning(f" Partial generation attempt {attempt} failed - no valid actions returned")
                         if attempt < self.MAX_RETRIES:
                             delay = attempt + random.uniform(0, 1)
                             await asyncio.sleep(delay)
