@@ -192,6 +192,114 @@ class PubMedService:
         # but changing a class-level asyncio.Semaphore is tricky safely.
         # We'll rely on the API key to reduce 429s.
     
+    def build_pubmed_search_params(
+        self,
+        query: str,
+        max_results: int = 5,
+        min_date: str = "2010",
+        max_date: str = "2025",
+        add_api_key: bool = True
+    ) -> dict:
+        """
+        Build PubMed esearch API parameters in one place.
+        Similar to build_openai_payload in ActionPlanGenerator.
+        
+        Args:
+            query: Enhanced search query with exclusions
+            max_results: Number of results to return
+            min_date: Minimum publication year
+            max_date: Maximum publication year
+            add_api_key: Whether to include API key if available
+        
+        Returns:
+            Dictionary ready for httpx.get(PUBMED_SEARCH_URL, params=params)
+        """
+        params = {
+            "db": "pubmed",
+            "term": query,
+            "retmax": max_results,
+            "retmode": "json",
+            "sort": "relevance",
+            "datetype": "pdat",
+            "mindate": min_date,
+            "maxdate": max_date
+        }
+        
+        if add_api_key and self.pubmed_api_key:
+            params["api_key"] = self.pubmed_api_key
+        
+        return params
+    
+    def build_pubmed_fetch_params(
+        self,
+        pmids: List[str],
+        add_api_key: bool = True
+    ) -> dict:
+        """
+        Build PubMed efetch API parameters.
+        
+        Args:
+            pmids: List of PubMed IDs to fetch
+            add_api_key: Whether to include API key if available
+        
+        Returns:
+            Dictionary ready for httpx.get(PUBMED_FETCH_URL, params=params)
+        """
+        params = {
+            "db": "pubmed",
+            "id": ",".join(pmids),
+            "retmode": "xml",
+            "rettype": "full"
+        }
+        
+        if add_api_key and self.pubmed_api_key:
+            params["api_key"] = self.pubmed_api_key
+        
+        return params
+    
+    def build_openalex_search_params(
+        self,
+        query: str,
+        max_results: int = 5
+    ) -> dict:
+        """
+        Build OpenAlex search parameters.
+        
+        Args:
+            query: Search query
+            max_results: Number of results to return
+        
+        Returns:
+            Dictionary ready for httpx.get(OPENALEX_SEARCH_URL, params=params)
+        """
+        return {
+            "search": query,
+            "per_page": max_results,
+            "sort": "cited_by_count:desc",  # Sort by citations
+            "select": "id,title,authorships,publication_year,abstract_inverted_index,primary_journal,type_crossref"
+        }
+    
+    def build_semantic_scholar_params(
+        self,
+        query: str,
+        max_results: int = 5
+    ) -> dict:
+        """
+        Build Semantic Scholar search parameters.
+        
+        Args:
+            query: Search query
+            max_results: Number of results to return
+        
+        Returns:
+            Dictionary ready for httpx.get(SEMANTIC_SCHOLAR_URL, params=params)
+        """
+        return {
+            "query": query,
+            "limit": max_results,
+            "fields": "title,year,authors,abstract,venue,publicationVenue,externalIds"
+        }
+    
     async def find_citation(
         self,
         query: str,
@@ -479,19 +587,11 @@ class PubMedService:
                 topic_exclusions = "guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti]"
                 enhanced_query = f"({query}) NOT ({population_exclusions}) NOT ({topic_exclusions})"
                 
-                params = {
-                    "db": "pubmed",
-                    "term": enhanced_query,
-                    "retmax": max_results,
-                    "retmode": "json",
-                    "sort": "relevance",
-                    "datetype": "pdat",
-                    "mindate": "2010",
-                    "maxdate": "2025"
-                }
-                
-                if self.pubmed_api_key:
-                    params["api_key"] = self.pubmed_api_key
+                # Use helper to build params
+                params = self.build_pubmed_search_params(
+                    query=enhanced_query,
+                    max_results=max_results
+                )
                 
                 await asyncio.sleep(self._rate_limit_delay)
                 response = await self.client.get(PUBMED_SEARCH_URL, params=params)
@@ -521,12 +621,13 @@ class PubMedService:
         """Search OpenAlex and return multiple papers."""
         async with self._openalex_semaphore:
             try:
-                params = {
-                    "search": query,
-                    "filter": "has_abstract:true,is_retracted:false",
-                    "per_page": max_results,
-                    "mailto": "support@auvra.health"
-                }
+                # Use helper to build params
+                params = self.build_openalex_search_params(
+                    query=query,
+                    max_results=max_results
+                )
+                params["filter"] = "has_abstract:true,is_retracted:false"
+                params["mailto"] = "support@auvra.health"
                 
                 await asyncio.sleep(self._rate_limit_delay)
                 response = await self.client.get(OPENALEX_SEARCH_URL, params=params)
@@ -600,20 +701,11 @@ class PubMedService:
                     topic_exclusions = "guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti] OR chemotherapy[ti] OR tumor[ti] OR carcinoma[ti]"
                     enhanced_query = f"({query}) NOT ({population_exclusions}) NOT ({topic_exclusions})"
                     
-                    # Search for PMIDs
-                    params = {
-                        "db": "pubmed",
-                        "term": enhanced_query,
-                        "retmax": max_results,
-                        "retmode": "json",
-                        "sort": "relevance",
-                        "datetype": "pdat",
-                        "mindate": "2010",
-                        "maxdate": "2025"
-                    }
-                    
-                    if self.pubmed_api_key:
-                        params["api_key"] = self.pubmed_api_key
+                    # Build PubMed search parameters using helper (like build_openai_payload)
+                    params = self.build_pubmed_search_params(
+                        query=enhanced_query,
+                        max_results=max_results
+                    )
                     
                     await asyncio.sleep(self._rate_limit_delay)  # Pre-request delay
                     response = await self.client.get(PUBMED_SEARCH_URL, params=params)
@@ -922,12 +1014,13 @@ class PubMedService:
                 clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
                 clean_query = re.sub(r'[()]', '', clean_query)
                 
-                params = {
-                    "search": clean_query,
-                    "filter": "type:article,from_publication_date:2010-01-01",
-                    "per-page": 1,
-                    "mailto": "auvra@app.com"  # Polite pool for faster responses
-                }
+                # Use helper to build params
+                params = self.build_openalex_search_params(
+                    query=clean_query,
+                    max_results=1
+                )
+                params["filter"] = "type:article,from_publication_date:2010-01-01"
+                params["mailto"] = "auvra@app.com"  # Polite pool for faster responses
                 
                 response = await self.client.get(OPENALEX_SEARCH_URL, params=params)
                 response.raise_for_status()
@@ -993,11 +1086,11 @@ class PubMedService:
                 clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
                 clean_query = re.sub(r'[()]', '', clean_query)
                 
-                params = {
-                    "query": clean_query,
-                    "limit": 1,
-                    "fields": "title,abstract,year,venue,externalIds,citationCount"
-                }
+                # Use helper to build params
+                params = self.build_semantic_scholar_params(
+                    query=clean_query,
+                    max_results=1
+                )
                 
                 response = await self.client.get(SEMANTIC_SCHOLAR_URL, params=params)
                 

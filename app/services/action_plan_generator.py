@@ -2777,7 +2777,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
                         ],
-                        "max_completion_tokens": 3000,
+                        "max_completion_tokens": 6000,  # Increased from 3000 to accommodate detailed actions + variants
                         "response_format": {"type": "json_object"}
                     }
                     
