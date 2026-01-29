@@ -1618,8 +1618,9 @@ class ActionPlanGenerator:
             # Build carryforward actions list FIRST (used in all cases with carryforward)
             carryforward_actions = []
             if carryforward_items:
+                raw_carryforward = []
                 for cf_item in carryforward_items[:4]:
-                    carryforward_actions.append({
+                    raw_carryforward.append({
                         "title": cf_item.get("title", "Action"),
                         "category": cf_item.get("category", "general"),
                         "specific_action": cf_item.get("specific_action", ""),
@@ -1641,6 +1642,43 @@ class ActionPlanGenerator:
                         "hero_image_url": cf_item.get("hero_image_url"),
                         "research_studies": cf_item.get("research_studies", []),
                     })
+                
+                # STRICT HORMONE FILTERING: Only allow carryforward items that match today's top 2 hormones
+                # This ensures we never exceed 2 hormone types in a plan
+                if user_context:
+                    primary = (user_context.get("primary_hormone") or "cortisol").lower()
+                    secondary = (user_context.get("secondary_hormone") or "progesterone").lower()
+                    allowed_hormones = {primary, secondary}
+                    
+                    filtered_carryforward = []
+                    for action in raw_carryforward:
+                        target = (action.get("target_hormone") or "").lower()
+                        if target in allowed_hormones:
+                            filtered_carryforward.append(action)
+                        else:
+                            logger.info(f"[GENERATE] ⚠️ Dropping carryforward action '{action['title']}' - target '{target}' not in top 2 ({allowed_hormones})")
+                    
+                    carryforward_actions = filtered_carryforward
+                    
+                    # Update counts if items were dropped
+                    if len(carryforward_actions) < len(raw_carryforward):
+                        new_cf_count = len(carryforward_actions)
+                        new_to_gen = max(0, 4 - new_cf_count)
+                        
+                        # Handle Fast Path invalidation
+                        if num_to_generate == 0 and new_to_gen > 0:
+                            logger.info(f"[GENERATE] ⚠️ Fast Path invalidated by filtering. Switching to full generation (need {new_to_gen} actions).")
+                            # Upgrade minimal context to full context
+                            if user_id:  # Only if not session
+                                full_context = await self._load_user_context(user_id, db, session_id=session_id)
+                                if full_context:
+                                    user_context = full_context
+                                    logger.info("[GENERATE] ✅ Upgraded to full user context")
+                        
+                        num_carryforward = new_cf_count
+                        num_to_generate = new_to_gen
+                else:
+                    carryforward_actions = raw_carryforward
             
             # CASE 1: All 4 items from carryforward - no GPT needed
             if num_to_generate == 0:
