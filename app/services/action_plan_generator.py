@@ -2777,7 +2777,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
                         ],
-                        "max_completion_tokens": 6000,  # Increased from 3000 to accommodate detailed actions + variants
+                        "max_completion_tokens": 16000,  # GPT-5-mini has 128K context - allow proper output
                         "response_format": {"type": "json_object"}
                     }
                     
@@ -2816,7 +2816,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             {"role": "user", "content": enhanced_prompt}
                         ],
                         temperature=0.7,
-                        max_tokens=3000
+                        max_tokens=16000  # Groq llama-3.3-70b supports large outputs
                     )
                     
                     content = response.choices[0].message.content
