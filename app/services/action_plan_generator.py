@@ -2971,14 +2971,25 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             cycle_day = cycle_info.get("cycle_day", 1) if cycle_info else 1
             cycle_phase = cycle_info.get("phase", "follicular") if cycle_info else "follicular"
             
-            # Determine primary/secondary hormones from conditions/phase
+            # Extract conditions (needed for context and fallback)
             diagnosed_conditions = []
             if user_response and user_response.response_data:
                 diagnosed_conditions = user_response.response_data.get("diagnosed_conditions", [])
-            
-            primary_hormone, secondary_hormone = self._determine_hormones_from_conditions(
-                diagnosed_conditions, cycle_phase
-            )
+
+            # Determine primary/secondary hormones
+            # CRITICAL: Always use stored hormones from signup (UserResponse) as Source of Truth
+            # Only fall back to calculation if data is missing
+            if user_response and user_response.primary_hormone:
+                primary_hormone = user_response.primary_hormone
+                secondaries = user_response.secondary_hormones or []
+                secondary_hormone = secondaries[0] if secondaries else "progesterone"
+                logger.info(f"[MINIMAL_CONTEXT] Using stored hormones: {primary_hormone}, {secondary_hormone}")
+            else:
+                # Fallback to calculation if not in profile
+                logger.warning(f"[MINIMAL_CONTEXT] Stored hormones missing, calculating from conditions")
+                primary_hormone, secondary_hormone = self._determine_hormones_from_conditions(
+                    diagnosed_conditions, cycle_phase
+                )
             
             # Build minimal context
             context = {
