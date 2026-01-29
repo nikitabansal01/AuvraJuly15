@@ -2875,6 +2875,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             
             if not validated_actions:
                 logger.warning(f" ⚠️ EMPTY RESULT: GPT returned no actions. actions={actions}, num_actions={num_actions}, validated_actions={validated_actions}")
+                return (None, cost)  # Return None for empty result to trigger retry
             
             logger.info(f"✅ Generated {len(validated_actions)} partial actions for carryforward plan (requested: {num_actions})")
             return (validated_actions, cost)
