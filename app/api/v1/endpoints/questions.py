@@ -44,22 +44,11 @@ def get_cached_hormone_analysis(session_id: str, temp_user_profile: Dict) -> Dic
     Returns:
         Full hormone analysis result dict with all_scores, levels, etc.
     """
-    from app.utils.cache_utils import session_hormone_analysis_cache
     from app.services.root_cause_engine import RootCauseEngine
     
-    # Check session-level cache first
-    cached = session_hormone_analysis_cache.get(session_id)
-    if cached is not None:
-        logger.info(f"✅ [HormoneAnalysis] SESSION CACHE HIT for {session_id[:8]}... (saved full re-computation)")
-        return cached
-    
-    # Cache miss - run full analysis
-    logger.info(f"🔬 [HormoneAnalysis] SESSION CACHE MISS for {session_id[:8]}... running full analysis")
+    # Run analysis directly - no caching needed for this fast operation
+    logger.info(f"🔬 [HormoneAnalysis] Running analysis for session {session_id[:8]}...")
     result = RootCauseEngine.analyze_hormone_imbalance(temp_user_profile)
-    
-    # Cache the full result by session_id
-    session_hormone_analysis_cache.set(session_id, result)
-    logger.info(f"💾 [HormoneAnalysis] Cached full result for session {session_id[:8]}...")
     
     return result
 
