@@ -218,6 +218,73 @@ async def get_today_assignments(
 
         t_review_ms = int((time.perf_counter() - t0) * 1000)
         
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # CRITICAL FIX: Check for linked session BEFORE calling generator
+        # If a guest session is already generating a plan for this user, DON'T START ANOTHER!
+        # This prevents duplicate generation when user signs up during guest plan generation.
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        from app.core.database import QuestionSession, SessionProcessingStatus
+        
+        linked_session = db.query(QuestionSession).filter(
+            QuestionSession.status == f"linked:{uid}"
+        ).order_by(QuestionSession.created_at.desc()).first()
+        
+        if linked_session:
+            # Check if session is still being processed
+            processing = db.query(SessionProcessingStatus).filter(
+                SessionProcessingStatus.session_id == linked_session.session_id
+            ).first()
+            
+            if processing and processing.processing_status in ["queued", "in_progress"]:
+                # Session is still generating - return 202 with progress info
+                elapsed = 0
+                if processing.started_at:
+                    elapsed = (datetime.utcnow() - processing.started_at).total_seconds()
+                
+                progress = processing.progress or 0
+                phase = processing.phase or "Generating"
+                
+                # Calculate estimated remaining time
+                if progress <= 15:
+                    estimated_total = 60
+                elif progress <= 35:
+                    estimated_total = 90
+                elif progress <= 60:
+                    estimated_total = 120
+                elif progress <= 95:
+                    estimated_total = 140
+                else:
+                    estimated_total = 150
+                
+                if progress > 0:
+                    remaining_ratio = (100 - progress) / 100
+                    estimated_remaining = estimated_total * remaining_ratio
+                else:
+                    estimated_remaining = estimated_total
+                
+                estimated_remaining = min(estimated_remaining, 180)
+                
+                logger.info(f"[DUPLICATE_PREVENTION] Session {linked_session.session_id} is generating for {uid} ({progress}% complete). Returning 202 instead of duplicating.")
+                
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=202,
+                    content={
+                        "success": True,
+                        "generating": True,
+                        "plan_exists": False,
+                        "session_id": linked_session.session_id,
+                        "processing_status": processing.processing_status,
+                        "progress": progress,
+                        "phase": phase,
+                        "elapsed_seconds": int(elapsed),
+                        "estimated_remaining_seconds": int(estimated_remaining),
+                        "message": f"Your personalized plan is {progress}% complete...",
+                        "poll_endpoint": "/action-plan/assignments/today/status",
+                        "poll_interval_ms": 3000,
+                    }
+                )
+        
         # Get async session for generator
         async_db = await get_async_db_session()
 
