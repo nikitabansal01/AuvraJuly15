@@ -515,9 +515,17 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
         logger.info("🔬 ===== HORMONE ANALYSIS STARTED =====")
         logger.info(f"🔬 Input data keys: {list(user_data.keys())}")
         logger.info(f"🔬 period_description: {user_data.get('period_description')}")
+        logger.info(f"🔬 cycle_length: {user_data.get('cycle_length')}")
         logger.info(f"🔬 period_concerns: {user_data.get('period_concerns')}")
+        logger.info(f"🔬 body_concerns: {user_data.get('body_concerns')}")
+        logger.info(f"🔬 skin_hair_concerns: {user_data.get('skin_hair_concerns')}")
         logger.info(f"🔬 mental_health_concerns: {user_data.get('mental_health_concerns')}")
         logger.info(f"🔬 other_concerns: {user_data.get('other_concerns')}")
+        logger.info(f"🔬 diagnosed_conditions: {user_data.get('diagnosed_conditions')}")
+        logger.info(f"🔬 family_history: {user_data.get('family_history')}")
+        logger.info(f"🔬 workout_intensity: {user_data.get('workout_intensity')}")
+        logger.info(f"🔬 sleep_duration: {user_data.get('sleep_duration')}")
+        logger.info(f"🔬 stress_level: {user_data.get('stress_level')}")
         
         # Initialize scores for 8 hormone states
         scores = {
