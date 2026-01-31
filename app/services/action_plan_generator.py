@@ -4044,9 +4044,9 @@ Format as bullet points."""
         +-----------------+-------+----------+-------------+
         | Selection       | Food  | Movement | Mindfulness |
         +-----------------+-------+----------+-------------+
-        | Eat only        |   2   |    1     |      1      |
-        | Move only       |   1   |    2     |      1      |
-        | Pause only      |   1   |    1     |      2      |
+        | Eat only        |   4   |    0     |      0      |
+        | Move only       |   0   |    4     |      0      |
+        | Pause only      |   0   |    0     |      4      |
         | Eat + Move      |   2   |    2     |      0      |
         | Eat + Pause     |   2   |    0     |      2      |
         | Move + Pause    |   0   |    2     |      2      |
@@ -4062,11 +4062,11 @@ Format as bullet points."""
         
         if num_selected == 1:
             if has_eat:
-                return "Food focus (STRICT): Generate 2 Food + 1 Movement + 1 Mindfulness = 4 total"
+                return "Food focus ONLY (STRICT): Generate 4 Food + 0 Movement + 0 Mindfulness = 4 total. User ONLY wants food recommendations!"
             elif has_move:
-                return "Movement focus (STRICT): Generate 1 Food + 2 Movement + 1 Mindfulness = 4 total"
+                return "Movement focus ONLY (STRICT): Generate 0 Food + 4 Movement + 0 Mindfulness = 4 total. User ONLY wants movement recommendations!"
             elif has_pause:
-                return "Mindfulness focus (STRICT): Generate 1 Food + 1 Movement + 2 Mindfulness = 4 total"
+                return "Mindfulness focus ONLY (STRICT): Generate 0 Food + 0 Movement + 4 Mindfulness = 4 total. User ONLY wants mindfulness recommendations!"
         elif num_selected == 2:
             if has_eat and has_move:
                 return "Food and movement focus (STRICT): Generate 2 Food + 2 Movement + 0 Mindfulness = 4 total (NO mindfulness!)"

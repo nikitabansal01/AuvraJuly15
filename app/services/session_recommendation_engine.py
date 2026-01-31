@@ -10,9 +10,9 @@ Distribution based on user preference:
 │ User Preference         │ Food │ Movement │ Mindfulness │ Total │
 ├─────────────────────────┼──────┼──────────┼─────────────┼───────┤
 │ None (default)          │  2   │    1     │      1      │   4   │
-│ "Eat" only              │  2   │    1     │      1      │   4   │
-│ "Move" only             │  1   │    2     │      1      │   4   │
-│ "Pause" only            │  1   │    1     │      2      │   4   │
+│ "Eat" only              │  4   │    0     │      0      │   4   │
+│ "Move" only             │  0   │    4     │      0      │   4   │
+│ "Pause" only            │  0   │    0     │      4      │   4   │
 │ "Eat" + "Move"          │  2   │    2     │      0      │   4   │
 │ "Eat" + "Pause"         │  2   │    0     │      2      │   4   │
 │ "Move" + "Pause"        │  0   │    2     │      2      │   4   │
@@ -45,23 +45,28 @@ def get_category_distribution(lifestyle_focus: List[str]) -> Dict[str, int]:
     """
     Get how many recommendations per category based on user's lifestyle_focus.
     Total is ALWAYS 4.
+    
+    Distribution Rules:
+    - 1 selected: Show 4 items of that category only
+    - 2 selected: Show 2 items from each selected category
+    - 3 or 0 selected: 2 food + 1 movement + 1 mindfulness
     """
     focus = [f.lower() for f in lifestyle_focus] if lifestyle_focus else []
     
-    # Default: 2 food, 1 movement, 1 mindfulness
+    # Default: 2 food, 1 movement, 1 mindfulness (for none or all 3 selected)
     if not focus or len(focus) == 3:
         return {"food": 2, "movement": 1, "mindfulness": 1}
     
-    # Single preference
+    # Single preference - ALL 4 go to that category
     if len(focus) == 1:
         if 'eat' in focus:
-            return {"food": 2, "movement": 1, "mindfulness": 1}
+            return {"food": 4, "movement": 0, "mindfulness": 0}
         elif 'move' in focus:
-            return {"food": 1, "movement": 2, "mindfulness": 1}
+            return {"food": 0, "movement": 4, "mindfulness": 0}
         elif 'pause' in focus:
-            return {"food": 1, "movement": 1, "mindfulness": 2}
+            return {"food": 0, "movement": 0, "mindfulness": 4}
     
-    # Two preferences - split evenly
+    # Two preferences - 2 each from selected categories
     if len(focus) == 2:
         dist = {"food": 0, "movement": 0, "mindfulness": 0}
         for f in focus:

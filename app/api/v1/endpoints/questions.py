@@ -981,6 +981,22 @@ async def get_hormone_analysis(
         # Use session-level caching - this is often the FIRST call in the flow
         root_cause_analysis = get_cached_hormone_analysis(session_id, temp_user_profile)
         
+        # Check if user is healthy (no significant symptoms detected)
+        if root_cause_analysis.get("is_healthy", False):
+            logger.info(f"🩺 Session {session_id}: Healthy user detected, returning special response")
+            return {
+                "session_id": session_id,
+                "is_healthy": True,
+                "message": "Based on your responses, your hormones appear to be balanced. This app is designed for users experiencing hormonal symptoms.",
+                "primary_hormone": None,
+                "primary_level": None,
+                "secondary_hormones": [],
+                "secondary_levels": [],
+                "hormone_cards": [],
+                "total_imbalances": 0,
+                "total_score": root_cause_analysis.get("total_score", 0)
+            }
+        
         # Build hormone cards array for frontend
         hormone_cards = []
         

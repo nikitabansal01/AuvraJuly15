@@ -812,7 +812,29 @@ Return ONLY valid JSON with these exact keys. No markdown, no explanation:
                 # Note: LLM scores were already added in section 10
 
         
-        # 12. IDENTIFY PRIMARY & SECONDARY
+        # 12. CHECK FOR HEALTHY USER (NO SIGNIFICANT SYMPTOMS)
+        # Calculate total score across all hormones
+        total_score = sum(scores.values())
+        
+        # Minimum threshold: at least 3 points needed to show hormone analysis
+        # This prevents users with only mild lifestyle factors from getting hormone results
+        # (e.g., moderate stress=1 + 6-7h sleep=1 = 2 points should NOT trigger analysis)
+        MINIMUM_SCORE_THRESHOLD = 3
+        if total_score < MINIMUM_SCORE_THRESHOLD:
+            logger.info("🩺 USER IS HEALTHY - No significant hormone indicators detected")
+            logger.info(f"   Total score: {total_score} (threshold: {MINIMUM_SCORE_THRESHOLD})")
+            logger.info(f"   All Scores: {scores}")
+            return {
+                "is_healthy": True,
+                "primary_imbalance": None,
+                "primary_level": None,
+                "secondary_imbalances": [],
+                "secondary_levels": [],
+                "all_scores": scores,
+                "total_score": total_score
+            }
+        
+        # 13. IDENTIFY PRIMARY & SECONDARY (only for users with symptoms)
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         
         primary = sorted_scores[0]

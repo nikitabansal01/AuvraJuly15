@@ -188,15 +188,20 @@ class ImageLibraryService:
             )
             
             if cached_image:
-                # Found a semantically similar image!
-                await self._update_image_usage(cached_image["id"], user_id, db)
-                elapsed = time.time() - start_time
-                logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
-                logger.info(f"[IMAGE]   Title: '{prompt[:40]}...'")
-                logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
-                logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
-                logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
-                return (cached_image["image_url"], True, 0.0)
+                cached_url = cached_image.get("image_url", "")
+                # Defensive: verify cached URL is not empty (shouldn't happen after _find_similar_image fix)
+                if cached_url and cached_url.strip():
+                    # Found a semantically similar image!
+                    await self._update_image_usage(cached_image["id"], user_id, db)
+                    elapsed = time.time() - start_time
+                    logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
+                    logger.info(f"[IMAGE]   Title: '{prompt[:40]}...'")
+                    logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
+                    logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
+                    logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
+                    return (cached_url, True, 0.0)
+                else:
+                    logger.warning(f"[IMAGE] ⚠️ Cache hit but empty URL for '{prompt[:30]}...', regenerating")
             
             # Step 3: No cache hit - generate new image
             elapsed_cache = time.time() - start_time
@@ -396,6 +401,20 @@ class ImageLibraryService:
                     skipped_by_user += 1
                     continue
                 
+                # Skip cached images with no actual URL (Fix: prevents returning empty image_url)
+                if not row.image_url or row.image_url.strip() == "":
+                    no_embedding += 1  # Reusing counter for "unusable" entries
+                    continue
+                
+                # Skip cached images with expired/non-permanent URLs
+                # Only accept Cloudinary (res.cloudinary.com) or Supabase URLs - RunPod URLs expire!
+                is_cloudinary = "res.cloudinary.com" in row.image_url
+                is_supabase = "supabase" in row.image_url and "/storage/" in row.image_url
+                if not (is_cloudinary or is_supabase):
+                    logger.debug(f"[IMAGE-CACHE] Skipping non-permanent URL: {row.image_url[:50]}...")
+                    no_embedding += 1
+                    continue
+                
                 # Calculate cosine similarity
                 stored_embedding = row.prompt_embedding
                 if not stored_embedding:
@@ -531,15 +550,14 @@ class ImageLibraryService:
                     url_from_dict = result.get("image_url") or result.get("result")
                     if url_from_dict and isinstance(url_from_dict, str) and url_from_dict.startswith("http"):
                         image_url = await self._upload_to_cloudinary_from_url(url_from_dict, category, variant_type)
-                        if not image_url:
-                            image_url = url_from_dict  # Use direct URL as fallback
+                        # DO NOT fall back to RunPod URL - it expires!
+                        # If Cloudinary upload failed, we'll use the fallback URL below
             
             elif isinstance(result, str) and result.startswith("http"):
                 # RunPod returned a URL directly - upload to Cloudinary for permanent storage
                 image_url = await self._upload_to_cloudinary_from_url(result, category, variant_type)
-                if not image_url:
-                    # Fallback: use RunPod URL directly (may expire)
-                    image_url = result
+                # DO NOT fall back to RunPod URL - it expires!
+                # If Cloudinary upload failed, image_url stays None and we'll use fallback below
 
             elif isinstance(result, bytes):
                 # We have image bytes - upload to Cloudinary or Supabase
@@ -550,22 +568,33 @@ class ImageLibraryService:
             if not image_url:
                 logger.error(f"Failed to process image result (type: {type(result)}), using fallback for {category}")
                 fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
+                # DO NOT cache fallback URLs - return directly
                 return (fallback_url, False, 0.0)
 
-            # Store in image library for future semantic matching
-            await self._store_in_library(
-                image_url=image_url,
-                prompt_text=prompt,
-                prompt_embedding=prompt_embedding,
-                category=category,
-                variant_type=variant_type,
-                user_id=user_id,
-                generation_time_ms=generation_time_ms,
-                db=db
-            )
+            # CRITICAL: Only store in cache if it's a permanent URL (Cloudinary or Supabase)
+            # This prevents caching of expiring RunPod URLs or fallback URLs
+            is_cloudinary = "res.cloudinary.com" in image_url
+            is_supabase = "supabase" in image_url and "/storage/" in image_url
             
-            elapsed = time.time() - start_time
-            logger.info(f"🎨 New image generated. Time: {elapsed:.2f}s, Cost: ${self.COST_PER_IMAGE}")
+            if is_cloudinary or is_supabase:
+                # Store in image library for future semantic matching
+                await self._store_in_library(
+                    image_url=image_url,
+                    prompt_text=prompt,
+                    prompt_embedding=prompt_embedding,
+                    category=category,
+                    variant_type=variant_type,
+                    user_id=user_id,
+                    generation_time_ms=generation_time_ms,
+                    db=db
+                )
+                
+                elapsed = time.time() - start_time
+                storage_type = "Cloudinary" if is_cloudinary else "Supabase"
+                logger.info(f"🎨 New image generated & cached ({storage_type}). Time: {elapsed:.2f}s, Cost: ${self.COST_PER_IMAGE}")
+            else:
+                # Non-permanent URL - return but DON'T cache
+                logger.warning(f"⚠️ Image URL is not permanent storage, returning without caching: {image_url[:50]}...")
             
             return (image_url, False, self.COST_PER_IMAGE)
             
