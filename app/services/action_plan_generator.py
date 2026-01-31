@@ -4470,37 +4470,68 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             if self.model_supports_temperature(self.GPT_MODEL):
                 openai_payload["temperature"] = self.GPT_TEMPERATURE
             
-            # Try OpenAI first
-            logger.info(f" Trying OpenAI with model: {self.GPT_MODEL}")
-            try:
-                response = await self.client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.openai_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json=openai_payload,
-                    timeout=60.0
-                )
-                
-                if response.status_code != 200:
-                    openai_error = f"OpenAI returned {response.status_code}"
-                    try:
-                        error_data = response.json()
-                        error_msg = error_data.get("error", {}).get("message", "")
-                        error_type = error_data.get("error", {}).get("type", "")
-                        openai_error = f"{error_type}: {error_msg[:200]}"
-                    except:
-                        pass
-                    logger.warning(f" OpenAI failed: {openai_error}")
+            # Try OpenAI first with retry mechanism for timeouts
+            logger.info(f"🤖 [OPENAI] Starting request with model: {self.GPT_MODEL}")
+            import time as time_module
+            openai_start = time_module.perf_counter()
+            
+            max_retries = 3
+            retry_timeouts = [120.0, 150.0, 180.0]  # Increasing timeouts per retry
+            
+            for attempt in range(max_retries):
+                try:
+                    current_timeout = retry_timeouts[attempt]
+                    logger.info(f"🤖 [OPENAI] Attempt {attempt + 1}/{max_retries} (timeout: {current_timeout}s)")
                     
-            except Exception as e:
-                # Capture full exception details for debugging
-                exception_type = type(e).__name__
-                exception_msg = str(e) if str(e) else repr(e)
-                openai_error = f"{exception_type}: {exception_msg}" if exception_msg else f"{exception_type} (no message)"
-                logger.warning(f" OpenAI exception: {openai_error[:200]}")
-                logger.warning(f" Full exception type: {exception_type}, args: {e.args}")
+                    response = await self.client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.openai_api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json=openai_payload,
+                        timeout=current_timeout
+                    )
+                    
+                    openai_elapsed = time_module.perf_counter() - openai_start
+                    
+                    if response.status_code == 200:
+                        logger.info(f"✅ [OPENAI] Success! Completed in {openai_elapsed:.2f}s")
+                        openai_error = None
+                        break  # Success, exit retry loop
+                    else:
+                        openai_error = f"OpenAI returned {response.status_code}"
+                        try:
+                            error_data = response.json()
+                            error_msg = error_data.get("error", {}).get("message", "")
+                            error_type = error_data.get("error", {}).get("type", "")
+                            openai_error = f"{error_type}: {error_msg[:200]}"
+                        except:
+                            pass
+                        logger.warning(f"⚠️ [OPENAI] Attempt {attempt + 1} failed: {openai_error}")
+                        
+                        # Don't retry on non-timeout errors (e.g., 400, 401, 429)
+                        if response.status_code in [400, 401, 403]:
+                            logger.error(f"❌ [OPENAI] Non-retryable error, stopping retries")
+                            break
+                        
+                except Exception as e:
+                    openai_elapsed = time_module.perf_counter() - openai_start
+                    exception_type = type(e).__name__
+                    exception_msg = str(e) if str(e) else repr(e)
+                    openai_error = f"{exception_type}: {exception_msg}" if exception_msg else f"{exception_type} (no message)"
+                    
+                    logger.warning(f"⚠️ [OPENAI] Attempt {attempt + 1} exception after {openai_elapsed:.2f}s: {openai_error[:200]}")
+                    
+                    # Check if it's a timeout - if so, retry with longer timeout
+                    is_timeout = "timeout" in exception_msg.lower() or "ReadTimeout" in exception_type
+                    if is_timeout and attempt < max_retries - 1:
+                        logger.info(f"🔄 [OPENAI] Timeout detected, retrying with longer timeout...")
+                        continue
+                    
+                    # Not a timeout or final attempt - stop retrying
+                    logger.error(f"❌ [OPENAI] Final attempt failed: {exception_type}")
+                    break
             
             # Fallback to Groq if OpenAI failed for ANY reason
             if openai_error is not None and GROQ_API_KEY:
