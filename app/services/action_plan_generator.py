@@ -4494,8 +4494,12 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     logger.warning(f" OpenAI failed: {openai_error}")
                     
             except Exception as e:
-                openai_error = str(e) or "Unknown OpenAI Error" # Ensure not empty string
+                # Capture full exception details for debugging
+                exception_type = type(e).__name__
+                exception_msg = str(e) if str(e) else repr(e)
+                openai_error = f"{exception_type}: {exception_msg}" if exception_msg else f"{exception_type} (no message)"
                 logger.warning(f" OpenAI exception: {openai_error[:200]}")
+                logger.warning(f" Full exception type: {exception_type}, args: {e.args}")
             
             # Fallback to Groq if OpenAI failed for ANY reason
             if openai_error is not None and GROQ_API_KEY:
