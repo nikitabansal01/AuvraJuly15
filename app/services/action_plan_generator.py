@@ -1490,7 +1490,8 @@ class ActionPlanGenerator:
         image_mode: Literal["full", "hero_only", "none"] = "full",
         skip_quality_check: bool = False,
         session_id: Optional[str] = None,  # For guest users
-        carryforward_items: Optional[List[Dict[str, Any]]] = None  # Items to carry forward from yesterday
+        carryforward_items: Optional[List[Dict[str, Any]]] = None,  # Items to carry forward from yesterday
+        is_background_task: bool = False  # Skip in_progress check for background tasks
     ) -> Dict[str, Any]:
         """
         Generate a completely new action plan.
