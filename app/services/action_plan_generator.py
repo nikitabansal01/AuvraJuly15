@@ -4454,7 +4454,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     {"role": "system", "content": enhanced_system_with_research},
                     {"role": "user", "content": prompt}
                 ],
-                "max_completion_tokens": 4000,
+                "max_completion_tokens": 8000,  # Increased for detailed action plans
                 "response_format": {
                     "type": "json_schema",
                     "json_schema": {
