@@ -6,6 +6,13 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import logging
 
+# Import data sanitization utilities (SINGLE SOURCE OF TRUTH for cleaning health data)
+from app.utils.data_sanitization import (
+    sanitize_list_field,
+    sanitize_string_field,
+    sanitize_user_response,
+)
+
 logger = logging.getLogger(__name__)
 
 class QuestionService:
@@ -107,7 +114,7 @@ class QuestionService:
                 session.mental_health_concerns = data.mental_health_concerns
             # If caller explicitly sends other_concerns, use them; else proactively clear to avoid stale carry-over
             if data.other_concerns is not None:
-                session.other_concerns = data.other_concerns
+                session.other_concerns = sanitize_list_field(data.other_concerns, "other_concerns")
                 logger.info(f"other_concerns updated: {session.other_concerns}")
             else:
                 # Production-safe: Clear previous free-text / selections if omitted (prevents unintended reuse)
@@ -115,11 +122,14 @@ class QuestionService:
                     logger.info("other_concerns omitted in request -> clearing previous stored value to prevent stale reuse")
                 session.other_concerns = []
             if data.top_concern is not None:
-                session.top_concern = data.top_concern
+                # Sanitize: "None of the above" should become None
+                session.top_concern = sanitize_string_field(data.top_concern, "top_concern")
             if data.diagnosed_conditions is not None:
-                session.diagnosed_conditions = data.diagnosed_conditions
+                # CRITICAL: Remove UI placeholders like "None of the above" before storage
+                session.diagnosed_conditions = sanitize_list_field(data.diagnosed_conditions, "diagnosed_conditions")
             if data.family_history is not None:
-                session.family_history = data.family_history
+                # CRITICAL: Remove UI placeholders like "None of the above" before storage
+                session.family_history = sanitize_list_field(data.family_history, "family_history")
             if data.workout_intensity is not None:
                 session.workout_intensity = data.workout_intensity
             if data.sleep_duration is not None:
@@ -158,10 +168,11 @@ class QuestionService:
                         if data.body_concerns is not None: user_response.body_concerns = data.body_concerns
                         if data.skin_hair_concerns is not None: user_response.skin_hair_concerns = data.skin_hair_concerns
                         if data.mental_health_concerns is not None: user_response.mental_health_concerns = data.mental_health_concerns
-                        if data.other_concerns is not None: user_response.other_concerns = data.other_concerns
-                        if data.top_concern is not None: user_response.top_concern = data.top_concern
-                        if data.diagnosed_conditions is not None: user_response.diagnosed_conditions = data.diagnosed_conditions
-                        if data.family_history is not None: user_response.family_history = data.family_history
+                        # Use sanitized values from session to avoid "None of the above" pollution
+                        if data.other_concerns is not None: user_response.other_concerns = session.other_concerns
+                        if data.top_concern is not None: user_response.top_concern = session.top_concern
+                        if data.diagnosed_conditions is not None: user_response.diagnosed_conditions = session.diagnosed_conditions
+                        if data.family_history is not None: user_response.family_history = session.family_history
                         if data.workout_intensity is not None: user_response.workout_intensity = data.workout_intensity
                         if data.sleep_duration is not None: user_response.sleep_duration = data.sleep_duration
                         if data.stress_level is not None: user_response.stress_level = data.stress_level

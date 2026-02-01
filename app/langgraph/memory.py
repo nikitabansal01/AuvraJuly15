@@ -47,6 +47,7 @@ from app.core.database import (
     ActionPlanDailyReview,
     CarePlanCheckInThread,
 )
+from app.utils.data_sanitization import sanitize_list_field, sanitize_string_field
 
 logger = logging.getLogger(__name__)
 
@@ -128,14 +129,18 @@ class AuvraUnifiedMemory:
                 "cycle_length": response.cycle_length,
                 "period_description": response.period_description,
                 
-                # Health conditions
-                "diagnosed_conditions": response.diagnosed_conditions or [],
-                "top_concern": response.top_concern,
+                # Health conditions - SANITIZED to remove UI placeholders like "None of the above"
+                "diagnosed_conditions": sanitize_list_field(
+                    response.diagnosed_conditions or [], "diagnosed_conditions"
+                ),
+                "top_concern": sanitize_string_field(response.top_concern, "top_concern"),
                 "period_concerns": response.period_concerns or {},
                 "body_concerns": response.body_concerns or {},
                 "skin_hair_concerns": response.skin_hair_concerns or {},
                 "mental_health_concerns": response.mental_health_concerns or {},
-                "family_history": response.family_history or [],
+                "family_history": sanitize_list_field(
+                    response.family_history or [], "family_history"
+                ),
                 
                 # Hormones
                 "primary_hormone": response.primary_hormone,
@@ -297,8 +302,16 @@ class AuvraUnifiedMemory:
                 "weekly_checkins": [
                     {
                         "date": wc.completed_at.date().isoformat() if wc.completed_at else None,
-                        "summary": wc.summary,
-                        "insights": wc.insights,
+                        "summary": wc.summary if hasattr(wc, 'summary') else wc.conversation_summary,
+                        "insights": wc.insights if hasattr(wc, 'insights') else None,
+                        # Include the rich actionable data
+                        "top_concern": wc.top_concern,
+                        "concern_severity": wc.concern_severity,
+                        "overall_wellbeing": wc.overall_wellbeing,
+                        "factors_positive": wc.factors_positive or [],  # What helped
+                        "factors_negative": wc.factors_negative or [],  # What made things worse
+                        "action_reflections": wc.action_reflections or {},  # What worked/didn't work
+                        "actionable_insights": wc.actionable_insights or {},  # AI-extracted insights
                     }
                     for wc in weekly_checkins
                 ],
@@ -306,11 +319,12 @@ class AuvraUnifiedMemory:
                 "daily_reviews": [
                     {
                         "date": dr.review_date.isoformat() if dr.review_date else None,
-                        # Note: overall_rating column doesn't exist in ActionPlanDailyReview
-                        # Using items_review_data for feedback summary instead
                         "items_marked_complete": dr.items_marked_complete,
+                        "items_replaced": dr.items_replaced,
                         "items_skipped": dr.items_skipped,
                         "streak_action": dr.streak_action,
+                        # Include actual review data for personalization
+                        "items_review_data": dr.items_review_data or [],
                     }
                     for dr in daily_reviews
                 ],
@@ -468,16 +482,70 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
         if weekly:
             lines.append("• Weekly Check-in Insights:")
             for w in weekly[:2]:
+                date_str = w.get('date', 'Unknown')
+                
+                # Show the summary if available
                 if w.get('summary'):
-                    lines.append(f"  [{w.get('date')}]: {w.get('summary')[:100]}...")
+                    lines.append(f"  [{date_str}]: {w.get('summary')[:100]}...")
+                
+                # Show concern severity
+                if w.get('top_concern') and w.get('concern_severity'):
+                    severity = w.get('concern_severity')
+                    level = "mild" if severity <= 3 else ("moderate" if severity <= 6 else "severe")
+                    lines.append(f"    {w.get('top_concern')}: {level} ({severity}/9)")
+                
+                # Show what helped/hurt
+                positive = w.get('factors_positive', [])
+                if positive:
+                    lines.append(f"    ✓ Helped: {', '.join(positive[:3])}")
+                negative = w.get('factors_negative', [])
+                if negative:
+                    lines.append(f"    ✗ Worsened: {', '.join(negative[:3])}")
+                
+                # Show action reflections
+                reflections = w.get('action_reflections', {})
+                if reflections.get('worked_well'):
+                    lines.append(f"    → Actions that worked: {', '.join(reflections['worked_well'][:3])}")
+                if reflections.get('didnt_work'):
+                    lines.append(f"    → Actions that didn't work: {', '.join(reflections['didnt_work'][:2])}")
+                
+                # Show actionable insights
+                insights = w.get('actionable_insights', {})
+                if insights.get('triggers_identified'):
+                    lines.append(f"    ⚡ Triggers: {', '.join(insights['triggers_identified'][:3])}")
+                if insights.get('relief_factors_identified'):
+                    lines.append(f"    💚 Relief: {', '.join(insights['relief_factors_identified'][:3])}")
         
         # Daily review feedback
         reviews = recent.get("daily_reviews", [])
         if reviews:
             lines.append("• Recent Plan Feedback:")
             for r in reviews[:3]:
-                if r.get('feedback_text'):
-                    lines.append(f"  [{r.get('date')}]: {r.get('feedback_text')[:80]}...")
+                date_str = r.get('date', 'Unknown date')
+                completed = r.get('items_marked_complete', 0)
+                skipped = r.get('items_skipped', 0)
+                replaced = r.get('items_replaced', 0)
+                streak = r.get('streak_action', '')
+                
+                # Summarize the review
+                summary_parts = []
+                if completed > 0:
+                    summary_parts.append(f"{completed} completed")
+                if skipped > 0:
+                    summary_parts.append(f"{skipped} skipped")
+                if replaced > 0:
+                    summary_parts.append(f"{replaced} replaced")
+                if streak:
+                    summary_parts.append(f"streak: {streak}")
+                
+                if summary_parts:
+                    lines.append(f"  [{date_str}]: {', '.join(summary_parts)}")
+                
+                # Include replacement details if any (what did user swap to?)
+                review_data = r.get('items_review_data', [])
+                for item in review_data[:2]:  # Show first 2 replacements
+                    if item.get('status') == 'replaced' and item.get('replacement_text'):
+                        lines.append(f"    → Replaced with: {item.get('replacement_text')}")
         
         lines.append("")
     
@@ -488,16 +556,43 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
         if has_prefs:
             lines.append("═══ LEARNED PREFERENCES ═══")
             
+            # Diet preferences
             if prefs.get('diet_preference'):
                 lines.append(f"• Diet: {prefs.get('diet_preference')}")
             if prefs.get('food_allergies'):
                 lines.append(f"• Allergies: {prefs.get('food_allergies')}")
+            if prefs.get('cuisine_preference'):
+                cuisine = prefs.get('cuisine_preference')
+                if isinstance(cuisine, list):
+                    lines.append(f"• Preferred Cuisines: {', '.join(cuisine)}")
+                else:
+                    lines.append(f"• Preferred Cuisine: {cuisine}")
+            
+            # Food likes/dislikes (from feedback history)
             if prefs.get('foods_liked'):
                 lines.append(f"• Foods Liked: {', '.join(prefs.get('foods_liked', []))}")
             if prefs.get('foods_disliked'):
                 lines.append(f"• Foods Disliked: {', '.join(prefs.get('foods_disliked', []))}")
+            
+            # Activity likes/dislikes (from feedback history)
+            if prefs.get('activities_liked'):
+                lines.append(f"• Activities Liked: {', '.join(prefs.get('activities_liked', []))}")
+            if prefs.get('activities_disliked'):
+                lines.append(f"• Activities Disliked: {', '.join(prefs.get('activities_disliked', []))}")
+            
+            # Barriers and challenges
             if prefs.get('common_barriers'):
                 lines.append(f"• Common Barriers: {', '.join(prefs.get('common_barriers', []))}")
+            
+            # Educational interests (from know_my_body chatbot)
+            if prefs.get('educational_interests'):
+                interests = prefs.get('educational_interests', [])
+                if interests:
+                    lines.append(f"• Educational Interests: {', '.join(interests)}")
+            
+            # Communication style preference
+            if prefs.get('preferred_communication_style'):
+                lines.append(f"• Preferred Communication Style: {prefs.get('preferred_communication_style')}")
             
             lines.append("")
     

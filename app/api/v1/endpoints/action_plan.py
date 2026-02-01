@@ -2084,24 +2084,18 @@ async def _carry_forward_items_to_today(
 # ============================================================================
 
 async def get_async_db_session() -> AsyncSession:
-    """Get an async database session."""
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-    from sqlalchemy.orm import sessionmaker
-    import os
+    """Get an async database session using the shared engine/session factory.
     
-    # Get database URL and convert to async
-    db_url = os.getenv("DATABASE_URL", "")
+    Uses the centralized AsyncSessionLocal from app.core.database instead of
+    creating a new engine each time, which:
+    - Reuses connection pool properly
+    - Avoids connection exhaustion
+    - Follows SQLAlchemy best practices
+    """
+    from app.core.database import get_async_session_maker
     
-    # Handle different URL formats
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif db_url.startswith("postgresql://"):
-        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    
-    engine = create_async_engine(db_url, echo=False)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
-    return async_session()
+    AsyncSessionLocal = get_async_session_maker()
+    return AsyncSessionLocal()
 
 
 def _build_plan_response(plan, db) -> dict:

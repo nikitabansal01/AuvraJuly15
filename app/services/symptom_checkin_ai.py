@@ -291,7 +291,25 @@ class SymptomCheckInAI:
         top_symptom = ctx["highest_severity_symptom"]
         top_concern = ctx["top_concern"]
         diagnosed_conditions = ctx.get("diagnosed_conditions", [])
-        conditions_str = ", ".join(diagnosed_conditions) if diagnosed_conditions else "None specified"
+        
+        # BUILD INTELLIGENT HEALTH CONTEXT - gather ALL user concerns
+        all_concerns = []
+        if diagnosed_conditions:
+            all_concerns.extend(diagnosed_conditions)
+        
+        if top_concern and top_concern.lower() not in [c.lower() for c in all_concerns]:
+            all_concerns.append(top_concern)
+        
+        # Build meaningful context - adapt based on what user actually has
+        if diagnosed_conditions:
+            conditions_str = ", ".join(diagnosed_conditions)
+            health_situation = f"diagnosed with {conditions_str}"
+        elif all_concerns:
+            conditions_str = ", ".join(all_concerns[:3])
+            health_situation = f"concerned about {conditions_str}"
+        else:
+            conditions_str = "hormone wellness"
+            health_situation = "focused on overall hormone balance"
         
         # Build rich context blocks
         cycle_block = ""
@@ -325,7 +343,7 @@ Main Concern: {top_concern}
 
 WHO IS {user_name.upper()}
 Name: {user_name}
-Health Conditions: {conditions_str}
+Health Situation: {health_situation}
 Top Concern: {top_concern or 'General wellness'}
 Cycle Phase: {cycle_phase or 'Unknown'}
 {cycle_block}
@@ -342,13 +360,17 @@ CONVERSATION SO FAR
 
 HOW TO BE A GREAT SYMPTOM COMPANION
 - Use {user_name}'s name naturally
-- Reference their conditions: "With your {conditions_str}..."
+- Reference their situation INTELLIGENTLY:
+  * If they have diagnosed conditions: "With your {conditions_str}..."
+  * If they have health concerns: "Given your {conditions_str}..."
+  * If general wellness: Focus on their symptoms and cycle phase
 - Connect symptoms to cycle: "In {cycle_phase or 'your'} phase..."
 - If they mention a symptom, ask about severity (mild/moderate/severe)
 - If they share severity, ask about triggers
 - If they share triggers, offer a helpful tip
 - Celebrate improvements, empathize with struggles
 - Keep messages SHORT (2 sentences max each)
+- NEVER mention conditions they don't have
 
 {"🌟 FIRST MESSAGE! Greet warmly: 'Hey " + user_name + "! 💜 How are your symptoms today?'" if is_first_message else "Continue the conversation naturally."}
 

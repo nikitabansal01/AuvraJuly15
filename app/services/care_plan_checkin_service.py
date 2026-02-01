@@ -26,6 +26,7 @@ from app.core.config import Settings
 from app.core.database import ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, SymptomLog, UserProfile, UserResponse, WeeklyCheckIn
 from app.services.care_plan_checkin_ai import CarePlanCheckInAI, CarePlanAIResponse
 from app.utils.timezone_utils import get_user_current_date
+from app.utils.data_sanitization import sanitize_list_field, sanitize_string_field
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,11 @@ class CarePlanCheckInService:
             conditions = []
             top_concern = None
             if user_response:
-                conditions = user_response.diagnosed_conditions or []
-                top_concern = user_response.top_concern
+                raw_conditions = user_response.diagnosed_conditions or []
+                if not isinstance(raw_conditions, list):
+                    raw_conditions = [raw_conditions]
+                conditions = sanitize_list_field(raw_conditions, "diagnosed_conditions")
+                top_concern = sanitize_string_field(user_response.top_concern, "top_concern")
             
             # Get cycle phase from recent weekly check-in
             cycle_phase = None
@@ -457,10 +461,19 @@ NEW MESSAGES (JSON list in order):
         
         if user_response:
             # Health conditions (CRITICAL for personalization)
+            # SANITIZE: Remove UI placeholders like "None of the above"
             if user_response.diagnosed_conditions:
-                lines.append(f"diagnosed_conditions={user_response.diagnosed_conditions}")
+                sanitized_conditions = sanitize_list_field(
+                    user_response.diagnosed_conditions if isinstance(user_response.diagnosed_conditions, list)
+                    else [user_response.diagnosed_conditions],
+                    "diagnosed_conditions"
+                )
+                if sanitized_conditions:
+                    lines.append(f"diagnosed_conditions={sanitized_conditions}")
             if user_response.top_concern:
-                lines.append(f"top_concern={user_response.top_concern}")
+                sanitized_concern = sanitize_string_field(user_response.top_concern, "top_concern")
+                if sanitized_concern:
+                    lines.append(f"top_concern={sanitized_concern}")
             if user_response.primary_hormone:
                 lines.append(f"primary_hormone={user_response.primary_hormone}")
             
@@ -900,20 +913,18 @@ NEW MESSAGES (JSON list in order):
 
     @staticmethod
     async def _get_async_db_session():
-        """Create an async DB session (mirrors action_plan endpoint helper)."""
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
-        import os
-
-        db_url = os.getenv("DATABASE_URL", "")
-        if db_url.startswith("postgres://"):
-            db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif db_url.startswith("postgresql://"):
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-        engine = create_async_engine(db_url, echo=False)
-        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        return async_session()
+        """Create an async DB session using the shared engine/session factory.
+        
+        Uses the centralized AsyncSessionLocal from app.core.database instead of
+        creating a new engine each time, which:
+        - Reuses connection pool properly
+        - Avoids connection exhaustion
+        - Follows SQLAlchemy best practices
+        """
+        from app.core.database import get_async_session_maker
+        
+        AsyncSessionLocal = get_async_session_maker()
+        return AsyncSessionLocal()
 
     @staticmethod
     def _new_message_id() -> str:

@@ -27,6 +27,7 @@ from app.core.database import ActionPlan, ActionPlanItem, CarePlanCheckInThread,
 from app.services.symptom_checkin_ai import SymptomCheckInAI, SymptomAIResponse
 from app.services.cycle_service import CycleService
 from app.utils.timezone_utils import get_user_current_date
+from app.utils.data_sanitization import sanitize_list_field, sanitize_string_field
 
 logger = logging.getLogger(__name__)
 
@@ -750,10 +751,19 @@ NEW MESSAGES (JSON list in order):
         
         if user_response:
             # Health conditions (CRITICAL for personalization)
+            # SANITIZE: Remove UI placeholders like "None of the above"
             if user_response.diagnosed_conditions:
-                lines.append(f"diagnosed_conditions={user_response.diagnosed_conditions}")
+                sanitized_conditions = sanitize_list_field(
+                    user_response.diagnosed_conditions if isinstance(user_response.diagnosed_conditions, list)
+                    else [user_response.diagnosed_conditions],
+                    "diagnosed_conditions"
+                )
+                if sanitized_conditions:
+                    lines.append(f"diagnosed_conditions={sanitized_conditions}")
             if user_response.top_concern:
-                lines.append(f"top_concern={user_response.top_concern}")
+                sanitized_concern = sanitize_string_field(user_response.top_concern, "top_concern")
+                if sanitized_concern:
+                    lines.append(f"top_concern={sanitized_concern}")
             if user_response.primary_hormone:
                 lines.append(f"primary_hormone={user_response.primary_hormone}")
             

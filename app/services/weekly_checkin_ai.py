@@ -44,6 +44,7 @@ from app.core.database import (
 )
 from app.core.config import Settings
 from app.utils.timezone_utils import get_user_current_date
+from app.utils.data_sanitization import sanitize_list_field, sanitize_string_field
 
 logger = logging.getLogger(__name__)
 
@@ -357,20 +358,27 @@ class WeeklyCheckInAI:
         user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
         if user_response:
             # Extract diagnosed conditions for personalization
+            # SANITIZE: Remove UI placeholders like "None of the above"
             if hasattr(user_response, 'diagnosed_conditions') and user_response.diagnosed_conditions:
                 if isinstance(user_response.diagnosed_conditions, list):
-                    context["diagnosed_conditions"] = user_response.diagnosed_conditions
+                    context["diagnosed_conditions"] = sanitize_list_field(
+                        user_response.diagnosed_conditions, "diagnosed_conditions"
+                    )
                 elif isinstance(user_response.diagnosed_conditions, str):
                     try:
-                        context["diagnosed_conditions"] = json.loads(user_response.diagnosed_conditions)
+                        raw_list = json.loads(user_response.diagnosed_conditions)
+                        context["diagnosed_conditions"] = sanitize_list_field(raw_list, "diagnosed_conditions")
                     except:
-                        context["diagnosed_conditions"] = [c.strip() for c in user_response.diagnosed_conditions.split(",") if c.strip()]
+                        raw_list = [c.strip() for c in user_response.diagnosed_conditions.split(",") if c.strip()]
+                        context["diagnosed_conditions"] = sanitize_list_field(raw_list, "diagnosed_conditions")
             
             # Extract top symptoms from their onboarding
-            # Check top_concern first
+            # SANITIZE: Check top_concern first
             if user_response.top_concern:
-                context["primary_concern"] = user_response.top_concern
-                context["top_symptoms"] = [user_response.top_concern]
+                sanitized_concern = sanitize_string_field(user_response.top_concern, "top_concern")
+                if sanitized_concern:
+                    context["primary_concern"] = sanitized_concern
+                    context["top_symptoms"] = [sanitized_concern]
             
             # Aggregate other concerns if needed
             all_concerns = []
@@ -631,7 +639,31 @@ class WeeklyCheckInAI:
         # Use first_name for more personal greeting
         user_name = context.get('first_name') or context.get('user_name', 'there')
         diagnosed_conditions = context.get('diagnosed_conditions', [])
-        conditions_str = ", ".join(diagnosed_conditions) if diagnosed_conditions else "None specified"
+        
+        # BUILD INTELLIGENT HEALTH CONTEXT - gather ALL user concerns
+        all_concerns = []
+        if diagnosed_conditions:
+            all_concerns.extend(diagnosed_conditions)
+        
+        top_concern = context.get('top_concern', '')
+        if top_concern and top_concern.lower() not in [c.lower() for c in all_concerns]:
+            all_concerns.append(top_concern)
+        
+        top_symptoms = context.get('top_symptoms', [])
+        for s in top_symptoms:
+            if s and s.lower() not in [c.lower() for c in all_concerns]:
+                all_concerns.append(s)
+        
+        # Build meaningful context - adapt based on what user actually has
+        if diagnosed_conditions:
+            conditions_str = ", ".join(diagnosed_conditions)
+            health_situation = f"diagnosed with {conditions_str}"
+        elif all_concerns:
+            conditions_str = ", ".join(all_concerns[:3])
+            health_situation = f"concerned about {conditions_str}"
+        else:
+            conditions_str = "hormone wellness"
+            health_situation = "focused on overall hormone balance"
         
         # Build rich context string for the prompt
         medical_context = context.get("medical_context", {})
@@ -664,7 +696,7 @@ class WeeklyCheckInAI:
 
 WHO IS {user_name.upper()}
 Name: {user_name}
-Health Conditions: {conditions_str}
+Health Situation: {health_situation}
 Top Concern: {symptom}
 Cycle Phase: {context.get('cycle_phase', 'Unknown')} (Day {context.get('cycle_day', '?')})
 
@@ -686,10 +718,14 @@ YOUR GOAL: Quick weekly check-in about {user_name}'s {symptom}
 
 HOW TO BE A GREAT COMPANION
 - Use {user_name}'s name naturally
-- Reference their conditions: "With your {conditions_str}..."
+- Reference their situation INTELLIGENTLY:
+  * If they have diagnosed conditions: "With your {conditions_str}..."
+  * If they have health concerns: "Given your {conditions_str}..."
+  * If general wellness: Focus on their cycle phase instead
 - Connect to cycle: "In {context.get('cycle_phase', 'your')} phase..."
 - Keep messages SHORT (2 sentences max each)
 - Generate 4-6 tap options that directly answer your question
+- NEVER mention conditions they don't have
 
 RESPONSE FORMAT (STRICT JSON)
 {{

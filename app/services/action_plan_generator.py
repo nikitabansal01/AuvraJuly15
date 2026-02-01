@@ -37,6 +37,9 @@ from app.core.config import settings
 # NEW: Import unified memory for cross-chatbot context
 from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
+# Import data sanitization utilities - SINGLE SOURCE OF TRUTH for cleaning health data
+from app.utils.data_sanitization import sanitize_list_field, sanitize_string_field
+
 # Get API keys from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
 
@@ -154,25 +157,18 @@ class ActionPlanResponseModel(BaseModel):
 
 
 async def _create_async_session(engine_maker=None) -> AsyncSession:
-    """Create an isolated async database session for concurrent operations."""
+    """Create an isolated async database session for concurrent operations.
+    
+    Uses the centralized AsyncSessionLocal from app.core.database for proper
+    connection pool management.
+    """
     if engine_maker:
         return engine_maker()
-        
-    from sqlalchemy.ext.asyncio import create_async_engine
-    from sqlalchemy.orm import sessionmaker
     
-    db_url = os.getenv("DATABASE_URL", "")
+    from app.core.database import get_async_session_maker
     
-    # Convert to async URL
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif db_url.startswith("postgresql://"):
-        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    
-    engine = create_async_engine(db_url, echo=False)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
-    return async_session()
+    AsyncSessionLocal = get_async_session_maker()
+    return AsyncSessionLocal()
 
 
 # ============================================================================
@@ -539,7 +535,7 @@ SYSTEM_PROMPT = """
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║                                                                               ║
 ║  👤 USER NAME: {user_name}                                                    ║
-║  🩺 DIAGNOSED CONDITIONS: {diagnosed_conditions_summary}                      ║
+║  🩺 HEALTH CONTEXT: {user_health_context}                                     ║
 ║  🎯 TOP CONCERN: {top_concern}                                                ║
 ║  📅 CYCLE: Day {cycle_day}, {cycle_phase} Phase                              ║
 ║  💊 TARGET HORMONES: {primary_hormone} (primary), {secondary_hormone} (secondary) ║
@@ -549,39 +545,45 @@ SYSTEM_PROMPT = """
 ║                                                                               ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-YOU ARE CREATING A PLAN FOR {user_name} WHO HAS {diagnosed_conditions_summary}.
+YOU ARE CREATING A PLAN FOR {user_name}.
+THEIR SITUATION: {user_health_context}
 
 Every single recommendation you make MUST:
-1. Be SPECIFIC to {diagnosed_conditions_summary} - not generic wellness
-2. Name their condition in the 'purpose' field
-3. Explain WHY this helps THEIR specific condition
+1. Be RELEVANT to their specific situation - not generic wellness
+2. Reference their health context appropriately in the 'purpose' field
+3. Explain WHY this helps THEIR specific situation
 
 ═══════════════════════════════════════════════════════════════════════════════
 YOUR ROLE
 ═══════════════════════════════════════════════════════════════════════════════
 You are AUVRA, creating personalized daily actions for {user_name}.
 
-This user has {diagnosed_conditions_summary}. 
-Your recommendations must TARGET this condition specifically.
+This user is {user_health_context}. 
+Your recommendations must be RELEVANT to their specific situation.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PERSONALIZATION ENFORCEMENT
 ═══════════════════════════════════════════════════════════════════════════════
 
-The 'hormone_persona_intro' field MUST be MAX 2 SENTENCES (25-30 words):
-"Hey {user_name}! I'm [Hormone] 💜 - I picked [this action] for your {diagnosed_conditions_summary} because it [one key mechanism]."
+The 'hormone_persona_intro' field MUST be MAX 2 SENTENCES (25-30 words).
+
+WRITE INTELLIGENTLY based on their situation:
+- If they have diagnosed conditions (like PCOS, endometriosis): "Hey {user_name}! I'm [Hormone] 💜 - I picked [action] for your [condition] because..."
+- If they have a health concern (like irregular periods): "Hey {user_name}! I'm [Hormone] 💜 - I chose [action] to help with your [concern] because..."
+- If they're focused on general wellness: "Hey {user_name}! I'm [Hormone] 💜 - In your [cycle phase], [action] helps because..."
 
 ⚠️ CRITICAL: hormone_persona_intro must be SHORT - it appears as first paragraph on "Why?" page.
 The 'purpose' field provides the detailed explanation separately.
 
-The 'purpose' field MUST follow this pattern:
-"For your {diagnosed_conditions_summary}: [food/action] contains [compound] which 
-[mechanism]. Studies show this specifically helps women with [their condition] by [benefit]."
+The 'purpose' field should explain the science behind the recommendation.
+ADAPT your explanation based on what's relevant to the user:
+- If diagnosed condition: explain how it helps that condition
+- If health concern: explain how it addresses that concern  
+- If general wellness: explain how it supports their cycle phase and hormone balance
 
 REJECTION CRITERIA - Your output will be REJECTED if:
-- Any 'purpose' field doesn't mention their diagnosed condition by name
-- Any 'hormone_persona_intro' doesn't address them by name or condition
 - Recommendations are generic wellness that could apply to anyone
+- You mention conditions the user DOESN'T have (don't invent conditions!)
 
 ═══════════════════════════════════════════════════════════════════════════════
 CONDITION-SPECIFIC RECOMMENDATIONS
@@ -708,14 +710,14 @@ HEALTH PROFILE
 - Primary Hormone to Support: {primary_hormone}
 - Secondary Hormone to Support: {secondary_hormone}
 
-HEALTH CONCERNS:
-- Top Concern: {top_concern}
-- Diagnosed Conditions: {diagnosed_conditions}
-- Period Concerns: {period_concerns}
-- Body Concerns: {body_concerns}
-- Skin/Hair Concerns: {skin_hair_concerns}
-- Mental Health Concerns: {mental_health_concerns}
-- Family History: {family_history}
+HEALTH SITUATION:
+{health_situation_summary}
+
+CRITICAL: The health situation above summarizes what we KNOW about this user.
+- If they have diagnosed conditions: Focus recommendations on evidence-based interventions for those conditions
+- If they have concerns but no diagnoses: Focus on addressing those symptoms
+- If neither: Focus on cycle-phase-appropriate general wellness
+DO NOT mention conditions/symptoms the user doesn't have. Be genuinely personalized.
 
 ======================================================================
 PERSONALIZATION FACTORS
@@ -769,6 +771,17 @@ RECENT FEEDBACK (last 20-50 actions):
 CHATBOT CONVERSATION CONTEXT
 ======================================================================
 {chatbot_context}
+
+======================================================================
+💬 FULL CHAT HISTORY (Everything the user has told us)
+======================================================================
+{chat_history}
+
+This is the user's ACTUAL WORDS from past conversations. Use this to:
+- Quote or reference specific things they said ("You mentioned you love yoga...")
+- Understand their personality and communication style
+- Know their expressed preferences, goals, and concerns
+- Make recommendations feel like they came from someone who truly knows them
 
 ======================================================================
 WEEKLY CHECK-IN INSIGHTS (Recent symptom reports from user)
@@ -947,16 +960,20 @@ OUTPUT FORMAT (for each action)
    DO NOT deviate from this. The mascot image shown depends on this field matching correctly.
 7. hormone_persona_intro: MAX 2 SENTENCES (25-30 words)! Keep it SHORT.
    
-   MANDATORY PATTERN (SHORT!):
-   "Hey [name]! I'm [Hormone] 💜 - I picked [action] for your [condition] because it [one key mechanism]."
+   ADAPT based on the user's situation:
+   - User with diagnosed condition: "Hey [name]! I'm [Hormone] 💜 - I picked [action] for your [condition] because..."
+   - User with health concern: "Hey [name]! I'm [Hormone] 💜 - I chose [action] to help with your [concern] because..."
+   - User focused on wellness: "Hey [name]! I'm [Hormone] 💜 - In your [cycle phase], [action] helps because..."
    
-   ✅ GOOD EXAMPLES (short!):
+   ✅ GOOD EXAMPLES (short and relevant!):
    "Hey Sarah! I'm Progesterone 💜 - I picked spearmint for your PCOS because it reduces androgens."
-   "Hey Maya! I'm Cortisol 💜 - I chose yoga for your high stress because it calms my activity."
+   "Hey Maya! I'm Cortisol 💜 - I chose yoga to help with your stress because it calms my activity."
+   "Hey Emma! I'm Estrogen 💜 - In your follicular phase, salmon supports my rise with omega-3s."
    
    ❌ BAD EXAMPLES:
    - TOO LONG: "I know your PCOS can make things challenging, especially during your luteal phase..." (3+ sentences)
-   - TOO GENERIC: "I am Progesterone - this food is healthy." (no condition mentioned)
+   - TOO GENERIC: "I am Progesterone - this food is healthy." (no personalization)
+   - WRONG CONTEXT: Mentioning conditions the user doesn't have
    
 8. image_prompt: FLUX.1 Schnell optimized prompt (see IMAGE PROMPT REQUIREMENTS below)
 9. research_studies: Array with 2-4 REAL research citations focused on WOMEN/FEMALES.
@@ -2528,47 +2545,162 @@ Total: {num_actions} actions
         # Build prompt for partial generation
         existing_summary = json.dumps(existing_actions, indent=2) if existing_actions else "None"
         user_conditions = user_context.get('diagnosed_conditions', [])
-        top_concern = user_context.get('top_concern', 'general wellness')
-        condition_str = user_conditions[0] if user_conditions else "womens health"
+        top_concern = user_context.get('top_concern', '')
+        
+        # ========================================================
+        # BUILD TRULY PERSONALIZED SEARCH CONTEXT
+        # Not random words - based on user's ACTUAL symptoms/concerns
+        # ========================================================
+        
+        # Gather ALL user's health concerns for personalized research
+        all_user_concerns = []
+        
+        # Add diagnosed conditions (highest priority)
+        if user_conditions:
+            all_user_concerns.extend(user_conditions)
+        
+        # Add top concern
+        if top_concern and top_concern.lower() not in [c.lower() for c in all_user_concerns]:
+            all_user_concerns.append(top_concern)
+        
+        # Add period concerns
+        period_concerns = user_context.get('period_concerns', '')
+        if period_concerns and period_concerns != 'none specified':
+            if isinstance(period_concerns, list):
+                all_user_concerns.extend(period_concerns)
+            elif period_concerns:
+                all_user_concerns.append(period_concerns)
+        
+        # Add body concerns
+        body_concerns = user_context.get('body_concerns', '')
+        if body_concerns and body_concerns != 'none specified':
+            if isinstance(body_concerns, list):
+                all_user_concerns.extend(body_concerns)
+            elif body_concerns:
+                all_user_concerns.append(body_concerns)
+        
+        # Add mental health concerns
+        mental_concerns = user_context.get('mental_health_concerns', '')
+        if mental_concerns and mental_concerns != 'none specified':
+            if isinstance(mental_concerns, list):
+                all_user_concerns.extend(mental_concerns)
+            elif mental_concerns:
+                all_user_concerns.append(mental_concerns)
+        
+        # Clean up and deduplicate
+        seen = set()
+        unique_concerns = []
+        for c in all_user_concerns:
+            if isinstance(c, str) and c.strip():
+                c_clean = c.strip().lower()
+                if c_clean not in seen and c_clean not in ['none', 'none of the above', 'n/a']:
+                    seen.add(c_clean)
+                    unique_concerns.append(c.strip())
+        
+        # Build condition string - use ALL relevant concerns, not just first one
+        if unique_concerns:
+            condition_str = unique_concerns[0]  # Primary for search
+            all_conditions_str = ", ".join(unique_concerns[:5])  # For context
+        else:
+            condition_str = "hormone balance"
+            all_conditions_str = "general hormone wellness"
+        
+        logger.info(f"[RESEARCH] User concerns for personalized search: {unique_concerns}")
         
         # ========================================================
         # RESEARCH-FIRST: Fetch PubMed research BEFORE generating actions
         # This ensures real citations, not hallucinated ones
+        # PERSONALIZED: Queries based on user's ACTUAL symptoms
         # ========================================================
         research_context = ""
         if db:
             try:
                 import asyncio
-                import random
                 
-                # Build research queries based on num_actions needed
-                food_varieties = ["omega-3", "antioxidant", "fiber", "protein", "vitamin", "mineral"]
-                movement_varieties = ["yoga", "walking", "stretching", "strength", "cardio"]
-                mindfulness_varieties = ["breathing", "meditation", "relaxation", "mindfulness"]
+                # Build PERSONALIZED research queries based on user's actual concerns
+                # Map symptoms to evidence-based interventions
+                symptom_to_interventions = {
+                    # Period/cycle concerns
+                    "irregular periods": ["vitex agnus-castus", "myo-inositol", "omega-3"],
+                    "heavy bleeding": ["iron rich foods", "vitamin K", "nettle leaf"],
+                    "painful periods": ["omega-3 anti-inflammatory", "magnesium", "ginger"],
+                    "cramps": ["magnesium", "heat therapy", "yoga stretching"],
+                    "pms": ["calcium vitamin D", "evening primrose oil", "aerobic exercise"],
+                    
+                    # Body concerns  
+                    "weight gain": ["protein metabolism", "strength training", "fiber satiety"],
+                    "bloating": ["probiotics gut health", "peppermint", "yoga digestion"],
+                    "fatigue": ["iron deficiency", "B vitamins energy", "adaptogenic herbs"],
+                    "low energy": ["CoQ10 mitochondria", "green tea L-theanine", "morning light exposure"],
+                    
+                    # Skin/hair concerns
+                    "acne": ["zinc skin health", "low glycemic diet", "spearmint anti-androgen"],
+                    "hair loss": ["biotin hair growth", "iron ferritin", "saw palmetto DHT"],
+                    "oily skin": ["niacinamide sebum", "zinc", "green tea polyphenols"],
+                    
+                    # Mental health concerns
+                    "mood swings": ["omega-3 mood", "magnesium calm", "regular exercise endorphins"],
+                    "anxiety": ["ashwagandha cortisol", "lavender anxiolytic", "deep breathing vagus"],
+                    "stress": ["adaptogenic herbs", "meditation HPA axis", "yoga cortisol reduction"],
+                    "depression": ["omega-3 depression", "vitamin D mood", "exercise serotonin"],
+                    "brain fog": ["omega-3 cognition", "lion's mane", "exercise BDNF"],
+                    
+                    # Diagnosed conditions
+                    "pcos": ["myo-inositol PCOS", "spearmint anti-androgen PCOS", "low glycemic PCOS"],
+                    "pcod": ["inositol PCOD", "cinnamon insulin sensitivity", "strength training PCOS"],
+                    "endometriosis": ["anti-inflammatory omega-3 endometriosis", "turmeric curcumin endo", "pelvic floor therapy"],
+                    "thyroid": ["selenium thyroid", "iodine thyroid", "ashwagandha thyroid"],
+                    "insulin resistance": ["cinnamon insulin", "berberine glucose", "resistance training insulin"],
+                }
                 
-                random.shuffle(food_varieties)
-                random.shuffle(movement_varieties)
-                random.shuffle(mindfulness_varieties)
-                
-                # Create queries for the number of actions needed
+                # Build queries based on user's actual concerns
                 research_queries = []
                 categories_needed = []
                 hormones_needed = []
                 
                 for i in range(num_actions):
                     hormone = primary_hormone if i < primary_count else secondary_hormone
-                    # Rotate through categories
-                    if i % 3 == 0:
-                        query = f"{food_varieties[i % len(food_varieties)]} {hormone} {condition_str} women"
-                        categories_needed.append("food")
-                    elif i % 3 == 1:
-                        query = f"{movement_varieties[i % len(movement_varieties)]} {hormone} {condition_str} women"
-                        categories_needed.append("movement")
+                    
+                    # Find relevant intervention based on user's concerns
+                    intervention_terms = []
+                    for concern in unique_concerns:
+                        concern_lower = concern.lower()
+                        for key, interventions in symptom_to_interventions.items():
+                            if key in concern_lower or concern_lower in key:
+                                intervention_terms.extend(interventions)
+                                break
+                    
+                    # If no specific matches, use hormone-based interventions
+                    if not intervention_terms:
+                        hormone_interventions = {
+                            "estrogen": ["phytoestrogen", "flaxseed lignans", "cruciferous vegetables"],
+                            "progesterone": ["vitamin B6 progesterone", "zinc fertility", "chasteberry"],
+                            "cortisol": ["ashwagandha adaptogen", "meditation cortisol", "magnesium stress"],
+                            "insulin": ["cinnamon glucose", "chromium insulin", "fiber blood sugar"],
+                            "androgens": ["spearmint anti-androgen", "saw palmetto DHT", "green tea EGCG"],
+                            "testosterone": ["zinc testosterone", "vitamin D hormone", "strength training"],
+                            "thyroid": ["selenium thyroid", "iodine", "ashwagandha thyroid"],
+                        }
+                        intervention_terms = hormone_interventions.get(hormone.lower(), ["hormone balance", "women health"])
+                    
+                    # Pick intervention for this action
+                    intervention = intervention_terms[i % len(intervention_terms)] if intervention_terms else "hormone health"
+                    
+                    # Determine category based on intervention
+                    if any(word in intervention.lower() for word in ["food", "vitamin", "omega", "protein", "fiber", "seed", "vegetable", "fruit", "herb", "tea"]):
+                        category = "food"
+                    elif any(word in intervention.lower() for word in ["exercise", "training", "yoga", "walking", "stretching", "therapy"]):
+                        category = "movement"
                     else:
-                        query = f"{mindfulness_varieties[i % len(mindfulness_varieties)]} stress {hormone} women"
-                        categories_needed.append("mindfulness")
+                        category = ["food", "movement", "mindfulness"][i % 3]
+                    
+                    # Build personalized query
+                    query = f"{intervention} {hormone} {condition_str} women"
                     research_queries.append(query)
+                    categories_needed.append(category)
                     hormones_needed.append(hormone)
+                    
+                logger.info(f"[RESEARCH] Personalized queries: {research_queries}")
                 
                 # Fetch research in parallel
                 async def fetch_paper(idx: int, query: str):
@@ -2973,9 +3105,11 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             cycle_phase = cycle_info.get("phase", "follicular") if cycle_info else "follicular"
             
             # Extract conditions (needed for context and fallback)
+            # Sanitize to remove UI placeholders like "None of the above"
             diagnosed_conditions = []
             if user_response and user_response.response_data:
-                diagnosed_conditions = user_response.response_data.get("diagnosed_conditions", [])
+                raw_conditions = user_response.response_data.get("diagnosed_conditions", [])
+                diagnosed_conditions = sanitize_list_field(raw_conditions, "diagnosed_conditions")
 
             # Determine primary/secondary hormones
             # CRITICAL: Always use stored hormones from signup (UserResponse) as Source of Truth
@@ -3000,9 +3134,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "secondary_hormone": secondary_hormone,
                 "cycle_day": cycle_day,
                 "cycle_phase": cycle_phase,
-                "diagnosed_conditions": diagnosed_conditions,
+                "diagnosed_conditions": diagnosed_conditions,  # Already sanitized above
                 "lifestyle_focus": profile.lifestyle_focus or ["eat", "move", "pause"],
-                "top_concern": user_response.response_data.get("top_concern", "General Wellness") if user_response and user_response.response_data else "General Wellness",
+                "top_concern": sanitize_string_field(
+                    user_response.response_data.get("top_concern", "General Wellness") if user_response and user_response.response_data else "General Wellness",
+                    "top_concern"
+                ),
             }
             
             logger.info(f"[MINIMAL_CONTEXT] Loaded for {user_id}: primary={primary_hormone}, phase={cycle_phase}")
@@ -3063,7 +3200,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
         sequential on this session. We still optimize the slowest piece
         (anti-repetition) by using a single JOIN query instead of an N+1 loop.
         """
-        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, QuestionSession
+        from app.core.database import UserProfile, UserResponse, ActionPlanFeedback, UserStreakData, WeeklyCheckIn, ActionPlanDailyReview, ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, QuestionSession, ChatSession, ChatMessage
         
         logger.info(f"[CONTEXT] ==========================================================================")
         logger.info(f"[CONTEXT] Starting _load_user_context for user: {user_id} (session: {session_id})")
@@ -3179,6 +3316,54 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             )
             recent_symptom_threads = symptom_checkin_result.scalars().all()
 
+            # ===================================================================
+            # GET FULL CHAT HISTORY - All conversations across all chatbots
+            # This gives the LLM complete knowledge of what user has said
+            # ===================================================================
+            seven_days_ago = date.today() - timedelta(days=7)
+            
+            # Get recent chat sessions with messages (know_my_body, personalise_profile, etc.)
+            chat_sessions_result = await db.execute(
+                select(ChatSession)
+                .where(
+                    and_(
+                        ChatSession.user_id == user_id,
+                        ChatSession.started_at >= datetime.combine(seven_days_ago, datetime.min.time()),
+                    )
+                )
+                .order_by(ChatSession.last_message_at.desc())
+                .limit(10)  # Last 10 sessions
+            )
+            recent_chat_sessions = chat_sessions_result.scalars().all()
+            
+            # For each session, get the actual messages
+            all_chat_history = []
+            for session in recent_chat_sessions:
+                messages_result = await db.execute(
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == session.id)
+                    .order_by(ChatMessage.created_at.asc())
+                    .limit(20)  # Last 20 messages per session
+                )
+                messages = messages_result.scalars().all()
+                
+                if messages:
+                    all_chat_history.append({
+                        "context": session.conversation_context,
+                        "date": session.started_at.date().isoformat() if session.started_at else None,
+                        "summary": session.summary,
+                        "messages": [
+                            {
+                                "role": msg.role,
+                                "content": msg.content[:500] if msg.content else "",  # Truncate long messages
+                                "input_mode": msg.input_mode
+                            }
+                            for msg in messages
+                        ]
+                    })
+            
+            logger.info(f"[CONTEXT] Found {len(all_chat_history)} chat sessions with history")
+
             # Anti-repetition (FIXED N+1): Fetch plan items with a single JOIN query
             recent_plan_items_result = await db.execute(
                 select(ActionPlanItem.title)
@@ -3226,6 +3411,9 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             care_plan_checkin_insights = self._format_care_plan_checkin_insights(recent_care_plan_threads)
             symptom_checkin_insights = self._format_symptom_checkin_insights(recent_symptom_threads)
             
+            # Format full chat history for complete context
+            chat_history_formatted = self._format_full_chat_history(all_chat_history)
+            
             # Format as string for prompt
             recently_recommended_str = ", ".join(recently_recommended[:30]) if recently_recommended else "None (this is the users first plan)"
             
@@ -3262,6 +3450,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "feedback_memory": "No previous feedback",
                 "chatbot_memory": {},
                 "chatbot_context": "No additional context",
+                "chat_history": chat_history_formatted,
                 "weekly_checkin_insights": weekly_checkin_insights,
                 "daily_review_insights": daily_review_insights,
                 "care_plan_checkin_insights": care_plan_checkin_insights,
@@ -3348,16 +3537,19 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 "cycle_day": cycle_day,
                 "cycle_phase": cycle_phase,
                 "age": user_response.age or "not specified",
-                "top_concern": user_response.top_concern or "general wellness",
-                "diagnosed_conditions": (
+                # SANITIZE: Remove UI placeholders like "None of the above" from health data
+                "top_concern": sanitize_string_field(user_response.top_concern, "top_concern") or "general wellness",
+                "diagnosed_conditions": sanitize_list_field(
                     [user_response.diagnosed_conditions] if isinstance(user_response.diagnosed_conditions, str)
-                    else (user_response.diagnosed_conditions or [])
+                    else (user_response.diagnosed_conditions or []),
+                    "diagnosed_conditions"
                 ),
                 "period_concerns": self._format_concerns(user_response.period_concerns),
                 "body_concerns": self._format_concerns(user_response.body_concerns),
                 "skin_hair_concerns": self._format_concerns(user_response.skin_hair_concerns),
                 "mental_health_concerns": self._format_concerns(user_response.mental_health_concerns),
-                "family_history": ", ".join(user_response.family_history) if user_response.family_history else "none specified",
+                # SANITIZE: Remove UI placeholders from family_history
+                "family_history": ", ".join(sanitize_list_field(user_response.family_history, "family_history")) if user_response.family_history else "none specified",
                 "birth_control": ", ".join(user_response.birth_control) if user_response.birth_control else "none",
                 "lifestyle_focus": lifestyle_focus,
                 # Core preferences
@@ -3589,6 +3781,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 
                 if checkin.conversation_summary:
                     parts.append(f"Summary: {checkin.conversation_summary}")
+                
+                # Include user's own words from raw_messages
+                raw = getattr(checkin, "raw_messages", None) or []
+                recent_user = [m.get("content") for m in raw[::-1] if m.get("role") == "user" and m.get("content")][:3]
+                if recent_user:
+                    parts.append("User said: " + " | ".join([msg[:100] for msg in recent_user[::-1]]))
             
             if parts:
                 insights.append(f"[{week_label}] " + " | ".join(parts))
@@ -3671,6 +3869,12 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 summary = (getattr(thread, "rolling_summary", None) or "").strip()
                 if summary:
                     parts.append(f"Summary: {summary}")
+                
+                # Include recent user messages (what they actually said)
+                raw = getattr(thread, "raw_messages", None) or []
+                recent_user = [m.get("content") for m in raw[::-1] if m.get("role") == "user" and m.get("content")][:3]
+                if recent_user:
+                    parts.append("User said: " + " | ".join([msg[:100] for msg in recent_user[::-1]]))
 
                 if parts:
                     lines.append(f"[{day}] " + " | ".join(parts))
@@ -3721,6 +3925,66 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 insights.append(f"[{date_str}] " + " | ".join(parts))
                 
         return "\n".join(insights) if insights else "No daily review data yet"
+    
+    def _format_full_chat_history(self, chat_sessions: List[Dict[str, Any]]) -> str:
+        """
+        Format full chat history from all chatbots for comprehensive personalization.
+        
+        This gives the LLM complete knowledge of:
+        - What the user has said in conversations (their exact words)
+        - What chatbots the user interacted with (know_my_body, personalise_profile, etc.)
+        - User preferences expressed in natural language
+        - Questions they asked about their health
+        - Any concerns, goals, or lifestyle details they mentioned
+        """
+        if not chat_sessions:
+            return "No conversation history yet - this is a new user."
+        
+        lines = []
+        lines.append("RECENT CONVERSATIONS (What the user has told us):")
+        lines.append("=" * 60)
+        
+        for session in chat_sessions:
+            context = session.get("context", "unknown")
+            date_str = session.get("date", "Unknown date")
+            messages = session.get("messages", [])
+            summary = session.get("summary", "")
+            
+            # Map context to friendly names
+            context_names = {
+                "know_my_body": "Learn About Body",
+                "personalise_profile": "Personalization",
+                "care_plan_modal": "Care Plan Chat",
+                "symptom_checkin": "Symptom Check-in",
+                "general": "General Chat"
+            }
+            friendly_name = context_names.get(context, context)
+            
+            lines.append(f"\n📱 {friendly_name} ({date_str}):")
+            
+            # If we have a summary, include it
+            if summary:
+                lines.append(f"  Summary: {summary[:200]}...")
+            
+            # Include user messages (what they actually said)
+            user_messages = [m for m in messages if m.get("role") == "user"]
+            if user_messages:
+                lines.append("  User said:")
+                for msg in user_messages[:5]:  # Show up to 5 user messages
+                    content = msg.get("content", "")
+                    if content:
+                        # Clean and truncate
+                        content = content.strip().replace("\n", " ")[:150]
+                        lines.append(f"    • \"{content}\"")
+        
+        lines.append("")
+        lines.append("USE THIS TO:")
+        lines.append("- Reference specific things the user said")
+        lines.append("- Understand their communication style and preferences")
+        lines.append("- Know what questions/concerns they have")
+        lines.append("- Personalize recommendations based on their expressed interests")
+        
+        return "\n".join(lines)
     
     def _calculate_cycle_info(
         self,
@@ -4125,6 +4389,89 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
 - Focus: {secondary_persona.get('focus', 'overall wellness')}
 """
         
+        # =================================================================
+        # INTELLIGENT HEALTH SITUATION BUILDING
+        # Build a meaningful summary of user's health BEFORE formatting prompt
+        # This ensures LLM gets context it can reason about, not raw data dumps
+        # =================================================================
+        
+        # Get diagnosed conditions
+        conditions_list = user_context.get("diagnosed_conditions", [])
+        
+        # Gather ALL concerns the user has
+        all_concerns = []
+        top_concern = user_context.get("top_concern", "")
+        if top_concern and top_concern.lower() not in ["none", "general wellness", ""]:
+            all_concerns.append(top_concern)
+        
+        # Period concerns
+        period_concerns_val = user_context.get("period_concerns", "")
+        if period_concerns_val and period_concerns_val.lower() not in ["none specified", "none", ""]:
+            if isinstance(period_concerns_val, list):
+                all_concerns.extend([c for c in period_concerns_val if c])
+            elif isinstance(period_concerns_val, str):
+                all_concerns.append(period_concerns_val.strip())
+        
+        # Body concerns
+        body_concerns_val = user_context.get("body_concerns", "")
+        if body_concerns_val and body_concerns_val.lower() not in ["none specified", "none", ""]:
+            if isinstance(body_concerns_val, list):
+                all_concerns.extend([c for c in body_concerns_val if c])
+            elif isinstance(body_concerns_val, str):
+                all_concerns.append(body_concerns_val.strip())
+        
+        # Skin/hair concerns
+        skin_hair_concerns_val = user_context.get("skin_hair_concerns", "")
+        if skin_hair_concerns_val and skin_hair_concerns_val.lower() not in ["none specified", "none", ""]:
+            if isinstance(skin_hair_concerns_val, list):
+                all_concerns.extend([c for c in skin_hair_concerns_val if c])
+            elif isinstance(skin_hair_concerns_val, str):
+                all_concerns.append(skin_hair_concerns_val.strip())
+        
+        # Mental health concerns
+        mental_health_concerns_val = user_context.get("mental_health_concerns", "")
+        if mental_health_concerns_val and mental_health_concerns_val.lower() not in ["none specified", "none", ""]:
+            if isinstance(mental_health_concerns_val, list):
+                all_concerns.extend([c for c in mental_health_concerns_val if c])
+            elif isinstance(mental_health_concerns_val, str):
+                all_concerns.append(mental_health_concerns_val.strip())
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_concerns = []
+        for c in all_concerns:
+            c_lower = c.lower().strip()
+            if c_lower and c_lower not in seen:
+                seen.add(c_lower)
+                unique_concerns.append(c.strip())
+        
+        # Family history (only if relevant)
+        family_history_val = user_context.get("family_history", "")
+        has_family_history = family_history_val and family_history_val.lower() not in ["none specified", "none", ""]
+        
+        # Build intelligent health situation summary
+        summary_parts = []
+        
+        if conditions_list:
+            summary_parts.append(f"DIAGNOSED CONDITIONS: {', '.join(conditions_list)}")
+            summary_parts.append("→ Focus recommendations on evidence-based interventions for these specific conditions")
+        
+        if unique_concerns:
+            summary_parts.append(f"ACTIVE CONCERNS: {', '.join(unique_concerns[:6])}")
+            summary_parts.append("→ Address these symptoms in your recommendations")
+        
+        if has_family_history:
+            summary_parts.append(f"FAMILY HISTORY: {family_history_val}")
+            summary_parts.append("→ Consider preventive measures where relevant")
+        
+        if not conditions_list and not unique_concerns:
+            summary_parts.append("NO SPECIFIC CONDITIONS OR CONCERNS")
+            summary_parts.append("→ Focus on cycle-phase optimization and general hormone wellness")
+        
+        health_situation_summary = "\n".join(summary_parts)
+        
+        logger.info(f"[INTELLIGENT CONTEXT] Built health situation summary: {health_situation_summary[:200]}...")
+        
         # Build the prompt with ALL user context
         logger.info(f"[GPT] Building prompt with user context...")
         prompt = ACTION_GENERATION_PROMPT.format(
@@ -4137,13 +4484,8 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             secondary_hormone=secondary_hormone,
             # Health profile
             age=user_context.get("age", "not specified"),
-            top_concern=user_context.get("top_concern", "general wellness"),
-            diagnosed_conditions=", ".join(user_context.get("diagnosed_conditions", [])) or "none",
-            period_concerns=user_context.get("period_concerns", "none specified"),
-            body_concerns=user_context.get("body_concerns", "none specified"),
-            skin_hair_concerns=user_context.get("skin_hair_concerns", "none specified"),
-            mental_health_concerns=user_context.get("mental_health_concerns", "none specified"),
-            family_history=user_context.get("family_history", "none specified"),
+            # INTELLIGENT: Single summary replaces 7 separate raw fields
+            health_situation_summary=health_situation_summary,
             birth_control=user_context.get("birth_control", "none"),
             # Personalization
             lifestyle_focus=", ".join(user_context.get("lifestyle_focus", ["eat", "move", "pause"])),
@@ -4162,6 +4504,7 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             # Feedback and context
             feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
             chatbot_context=user_context.get("chatbot_context", "No additional context"),
+            chat_history=user_context.get("chat_history", "No conversation history yet"),
             feedback_summary=user_context.get("feedback_summary", "No summary yet"),
             weekly_checkin_insights=user_context.get("weekly_checkin_insights", "No weekly check-in data yet"),
             daily_review_insights=user_context.get("daily_review_insights", "No daily review data yet"),
@@ -4198,13 +4541,30 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
         # Get user name from profile or fallback
         user_name = user_context.get("user_name", "there")  # "Hey there" if no name
         
-        # Get diagnosed conditions for the personalized system prompt
-        conditions_list_for_prompt = user_context.get("diagnosed_conditions", [])
-        diagnosed_conditions_summary = ", ".join(conditions_list_for_prompt) if conditions_list_for_prompt else user_context.get("top_concern", "hormone imbalance")
+        # Reuse the intelligent context built above for SYSTEM_PROMPT
+        # (conditions_list, unique_concerns already computed before ACTION_GENERATION_PROMPT.format())
+        
+        # Build intelligent summary for SYSTEM_PROMPT
+        if conditions_list:
+            # User has real diagnosed conditions
+            diagnosed_conditions_summary = ", ".join(conditions_list)
+            user_health_context = f"diagnosed with {diagnosed_conditions_summary}"
+            # Also add concerns if they have any
+            if unique_concerns:
+                user_health_context += f", also experiencing: {', '.join(unique_concerns[:5])}"
+        elif unique_concerns:
+            # No diagnosed conditions, but has concerns
+            diagnosed_conditions_summary = ", ".join(unique_concerns[:3])
+            user_health_context = f"experiencing: {', '.join(unique_concerns[:5])}"
+        else:
+            # User has no specific conditions or concerns - focus on cycle phase and general wellness
+            diagnosed_conditions_summary = "hormone balance"
+            user_health_context = "focused on overall hormone wellness"
         
         # Format SYSTEM_PROMPT with user's specific data AT THE TOP
         personalized_system = SYSTEM_PROMPT.format(
             user_name=user_name,
+            user_health_context=user_health_context,
             diagnosed_conditions_summary=diagnosed_conditions_summary,
             top_concern=user_context.get("top_concern", "general wellness"),
             cycle_day=user_context.get("cycle_day", "?"),
@@ -4222,12 +4582,18 @@ CURRENT USER'S HORMONE CONTEXT:
 - Cycle Phase: {cycle_phase}
 - Primary Hormone: {user_context["primary_hormone"]} - {primary_behavior}
 - Secondary Hormone: {user_context["secondary_hormone"]} - {secondary_behavior}
+- Health Situation: {user_health_context}
 
-Write the hormone_persona_intro to be PERSONAL:
+Write the hormone_persona_intro INTELLIGENTLY:
 1. Address user by name: "Hey {user_name}!"
-2. Acknowledge their condition: "I know your {diagnosed_conditions_summary} can be challenging..."
-3. Explain what's happening in this cycle phase
-4. Connect the action to how it helps THEIR specific situation
+2. Speak as the hormone persona (e.g., "I'm Progesterone 💜")
+3. Connect the action to THEIR specific situation:
+   - If they have conditions: reference how this helps their condition
+   - If they have concerns: reference how this addresses their concern
+   - If general wellness: reference their cycle phase and hormone needs
+4. Keep it SHORT (2 sentences max)
+
+DO NOT just copy-paste variables. UNDERSTAND the user's situation and write naturally.
 
 CRITICAL - RESEARCH CITATIONS:
 You MUST use the 'search_research_paper' tool for EACH action to get a REAL citation.

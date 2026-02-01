@@ -306,12 +306,39 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
     # ════════════════════════════════════════════════════════════════════════
     msg_lower = user_message.lower()
     
+    # Keywords that STRONGLY indicate change_action / request_alternates
+    # These are requests to replace/change items in the plan
+    change_action_keywords = [
+        "suggest something", "suggest easy", "suggest different", "give me something",
+        "instead of", "replace", "swap", "change to", "change my", "change it",
+        "change my plan", "want to change", "i want to change",
+        "different option",
+        "don't work out", "can't do", "too hard", "too difficult",
+        "something easier", "easy activities", "simpler", "alternative",
+        "i don't exercise", "not for me", "doesn't suit",
+        "other options", "other suggestions", "something else"
+    ]
+    
+    # Check for change_action FIRST (user wants to modify their plan)
+    if any(kw in msg_lower for kw in change_action_keywords):
+        logger.info(f"[INTENT] Pre-classified as change_action due to keywords")
+        return {
+            **state,
+            "current_intent": "change_action",
+            "targeted_action_id": None,
+            "targeted_action_index": None,
+            "change_reason": user_message,  # Store the full message as context
+            "feedback_topic": None,
+            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
+            "phase": "processing"
+        }
+    
     # Keywords that STRONGLY indicate plan_feedback (about overall plan quality)
     plan_feedback_keywords = [
         "generic", "not personalized", "not personalised", "generic to do", "random", 
         "same as yesterday", "doesn't match my", "doesn't fit my", "not specific",
         "looks like a template", "feels generic", "not tailored", "cookie cutter",
-        "one size fits all", "not for me", "doesn't address my", "my symptoms",
+        "one size fits all", "doesn't address my", "my symptoms",
         "my condition", "particularly for"
     ]
     
@@ -1163,7 +1190,6 @@ Respond naturally as Auvra. Be specific, reference their data, and end with a cl
 </output_format>"""
 
     try:
-        from app.services.llm_service import call_llm
         response = await call_llm(prompt, max_tokens=300)
         
         if not response or len(response.strip()) < 20:
@@ -1269,7 +1295,6 @@ Respond naturally as Auvra. Be specific with citations, connect to their profile
 </output_format>"""
 
     try:
-        from app.services.llm_service import call_llm
         response = await call_llm(prompt, max_tokens=400)
         
         if not response or len(response.strip()) < 20:
@@ -1386,7 +1411,6 @@ Respond as Auvra, walking through your personalization process with specific exa
 </output_format>"""
 
     try:
-        from app.services.llm_service import call_llm
         response = await call_llm(prompt, max_tokens=350)
         
         if not response or len(response.strip()) < 20:
@@ -1539,7 +1563,6 @@ Respond as Auvra with a helpful, personalized answer.
 </output>"""
 
     try:
-        from app.services.llm_service import call_llm
         response = await call_llm(prompt, max_tokens=300)
         
         if not response or len(response.strip()) < 20:
@@ -1663,7 +1686,6 @@ Respond directly as Auvra. Be warm, helpful, and specific to this user.
 </output>"""
 
     try:
-        from app.services.llm_service import call_llm
         response = await call_llm(prompt, max_tokens=250)
         
         if not response or len(response.strip()) < 10:
