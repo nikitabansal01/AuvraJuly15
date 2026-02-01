@@ -181,6 +181,33 @@ class AuvraUnifiedMemory:
                     ActionPlan.plan_date == today
                 )
             ).all()
+
+            # Optional: derive "skipped" from feedback (ActionPlanItem has no is_skipped column)
+            skipped_item_ids = set()
+            try:
+                if action_items:
+                    from app.core.database import ActionPlanFeedback
+
+                    item_ids = [a.id for a in action_items if getattr(a, "id", None) is not None]
+                    plan_ids = list({a.plan_id for a in action_items if getattr(a, "plan_id", None) is not None})
+
+                    if item_ids and plan_ids:
+                        skipped_feedback = (
+                            self.db.query(ActionPlanFeedback)
+                            .filter(
+                                and_(
+                                    ActionPlanFeedback.uid == user_id,
+                                    ActionPlanFeedback.plan_id.in_(plan_ids),
+                                    ActionPlanFeedback.item_id.in_(item_ids),
+                                    ActionPlanFeedback.feedback_type == "skipped",
+                                )
+                            )
+                            .all()
+                        )
+                        skipped_item_ids = {f.item_id for f in skipped_feedback if f.item_id is not None}
+            except Exception as e:
+                # Don't fail unified memory if feedback query fails
+                logger.warning(f"Today context: could not load skipped feedback: {e}")
             
             # Today's symptom logs
             symptoms = self.db.query(SymptomLog).filter(
@@ -204,16 +231,19 @@ class AuvraUnifiedMemory:
                 # Action plan status
                 "action_plan": {
                     "total_actions": len(action_items),
-                    "completed": len([a for a in action_items if a.is_completed]),
-                    "skipped": len([a for a in action_items if a.is_skipped]),
+                    "completed": len([a for a in action_items if bool(getattr(a, "is_completed", False))]),
+                    "skipped": len([a for a in action_items if getattr(a, "id", None) in skipped_item_ids]),
                     "actions": [
                         {
                             "title": a.title,
                             "category": a.category,
-                            "is_completed": a.is_completed,
-                            "is_skipped": a.is_skipped,
-                            "skip_reason": a.skip_reason,
-                            "was_replaced": a.was_replaced,
+                            "is_completed": bool(getattr(a, "is_completed", False)),
+                            # Backward-compatible key used by prompt formatter
+                            "is_skipped": getattr(a, "id", None) in skipped_item_ids,
+                            # ActionPlanItem uses replacement_reason/is_replaced (not skip_reason/was_replaced)
+                            "is_replaced": bool(getattr(a, "is_replaced", False)),
+                            "was_replaced": bool(getattr(a, "is_replaced", False)),
+                            "replacement_reason": getattr(a, "replacement_reason", None),
                         }
                         for a in action_items
                     ]

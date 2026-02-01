@@ -276,7 +276,9 @@ class PubMedService:
             "search": query,
             "per_page": max_results,
             "sort": "cited_by_count:desc",  # Sort by citations
-            "select": "id,title,authorships,publication_year,abstract_inverted_index,primary_journal,type_crossref"
+            # NOTE: OpenAlex 400s are commonly caused by invalid `select` fields.
+            # Keep this list minimal and aligned with what our parsers actually use.
+            "select": "id,title,ids,doi,publication_year,abstract_inverted_index,primary_location,type"
         }
     
     def build_semantic_scholar_params(
@@ -581,41 +583,56 @@ class PubMedService:
     async def _search_pubmed_multiple(self, query: str, max_results: int = 5) -> List[Dict]:
         """Search PubMed and return multiple papers."""
         async with self._pubmed_semaphore:
-            try:
-                # Population/topic exclusions
-                population_exclusions = "pregnant[ti] OR pregnancy[ti] OR prenatal[ti] OR children[ti] OR pediatric[ti] OR men[ti] OR male[ti] OR postmenopausal[ti]"
-                topic_exclusions = "guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti]"
-                enhanced_query = f"({query}) NOT ({population_exclusions}) NOT ({topic_exclusions})"
-                
-                # Use helper to build params
-                params = self.build_pubmed_search_params(
-                    query=enhanced_query,
-                    max_results=max_results
-                )
-                
-                await asyncio.sleep(self._rate_limit_delay)
-                response = await self.client.get(PUBMED_SEARCH_URL, params=params)
-                response.raise_for_status()
-                
-                data = response.json()
-                pmids = data.get("esearchresult", {}).get("idlist", [])
-                
-                if not pmids:
-                    return []
-                
-                # Fetch all papers
-                papers = []
-                for pmid in pmids:
+            # Population/topic exclusions
+            population_exclusions = "pregnant[ti] OR pregnancy[ti] OR prenatal[ti] OR children[ti] OR pediatric[ti] OR men[ti] OR male[ti] OR postmenopausal[ti]"
+            topic_exclusions = "guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti]"
+            enhanced_query = f"({query}) NOT ({population_exclusions}) NOT ({topic_exclusions})"
+
+            # Use helper to build params
+            params = self.build_pubmed_search_params(
+                query=enhanced_query,
+                max_results=max_results
+            )
+
+            for attempt in range(self._MAX_RETRIES):
+                try:
                     await asyncio.sleep(self._rate_limit_delay)
-                    paper = await self._fetch_pubmed_paper(pmid)
-                    if paper and self._is_relevant_paper(paper):
-                        papers.append(paper)
-                
-                return papers
-                
-            except Exception as e:
-                logger.error(f"PubMed multi-search error: {e}")
-                return []
+                    response = await self.client.get(PUBMED_SEARCH_URL, params=params)
+                    response.raise_for_status()
+
+                    data = response.json()
+                    pmids = data.get("esearchresult", {}).get("idlist", [])
+
+                    if not pmids:
+                        return []
+
+                    # Fetch all papers (sequentially to respect PubMed limits)
+                    papers = []
+                    for pmid in pmids:
+                        await asyncio.sleep(self._rate_limit_delay)
+                        paper = await self._fetch_pubmed_paper(pmid)
+                        if paper and self._is_relevant_paper(paper):
+                            papers.append(paper)
+
+                    return papers
+
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429:
+                        if attempt < self._MAX_RETRIES - 1:
+                            delay = self._RETRY_DELAYS[attempt]
+                            logger.warning(
+                                f"⏳ PubMed multi-search rate limited (429), retrying in {delay}s "
+                                f"(attempt {attempt + 1}/{self._MAX_RETRIES})"
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                        logger.error("❌ PubMed multi-search rate limit exceeded")
+                        return []
+                    logger.error(f"PubMed multi-search error: {e}")
+                    return []
+                except Exception as e:
+                    logger.error(f"PubMed multi-search error: {e}")
+                    return []
     
     async def _search_openalex_multiple(self, query: str, max_results: int = 3) -> List[Dict]:
         """Search OpenAlex and return multiple papers."""
@@ -647,6 +664,50 @@ class PubMedService:
             except Exception as e:
                 logger.error(f"OpenAlex multi-search error: {e}")
                 return []
+
+    def _parse_openalex_work(self, work: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Parse a single OpenAlex work record into our internal citation shape."""
+        try:
+            if not work:
+                return None
+
+            title = work.get("title") or "Unknown"
+
+            # Extract abstract (OpenAlex provides inverted index)
+            abstract = self._reconstruct_openalex_abstract(work.get("abstract_inverted_index", {}) or {})
+
+            # Get PMID if available
+            pmid = ""
+            ids = work.get("ids", {}) or {}
+            pmid_url = ids.get("pmid", "") or ""
+            if pmid_url:
+                pmid = pmid_url.replace("https://pubmed.ncbi.nlm.nih.gov/", "").rstrip("/")
+
+            doi = ""
+            doi_url = work.get("doi") or ""
+            if doi_url:
+                doi = doi_url.replace("https://doi.org/", "")
+
+            journal = (
+                (work.get("primary_location", {}) or {})
+                .get("source", {})
+                .get("display_name", "Unknown")
+            )
+
+            return {
+                "title": title,
+                "journal": journal or "Unknown",
+                "year": work.get("publication_year", 2020) or 2020,
+                "participants": self._extract_participant_count(abstract),
+                "finding": self._extract_finding(abstract, title),
+                "pmid": pmid,
+                "doi": doi,
+                "verification_link": doi_url or work.get("id", ""),
+                "source": "openalex",
+            }
+        except Exception as e:
+            logger.warning(f"OpenAlex parse error (non-critical): {e}")
+            return None
 
     def _normalize_query(self, query: str) -> str:
         """Normalize and enhance query for better results."""
@@ -851,24 +912,35 @@ class PubMedService:
     
     async def _fetch_pubmed_paper(self, pmid: str) -> Optional[Dict]:
         """Fetch full paper details from PubMed including abstract."""
-        try:
-            params = {
-                "db": "pubmed",
-                "id": pmid,
-                "retmode": "xml"
-            }
-            
-            if self.pubmed_api_key:
-                params["api_key"] = self.pubmed_api_key
-            
-            response = await self.client.get(PUBMED_FETCH_URL, params=params)
-            response.raise_for_status()
-            
-            return self._parse_pubmed_xml(response.content, pmid)
-            
-        except Exception as e:
-            logger.error(f"PubMed fetch error: {e}")
-            return None
+        params = {
+            "db": "pubmed",
+            "id": pmid,
+            "retmode": "xml"
+        }
+
+        if self.pubmed_api_key:
+            params["api_key"] = self.pubmed_api_key
+
+        for attempt in range(self._MAX_RETRIES):
+            try:
+                response = await self.client.get(PUBMED_FETCH_URL, params=params)
+                response.raise_for_status()
+                return self._parse_pubmed_xml(response.content, pmid)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    if attempt < self._MAX_RETRIES - 1:
+                        delay = self._RETRY_DELAYS[attempt]
+                        logger.warning(
+                            f"⏳ PubMed fetch rate limited (429), retrying in {delay}s "
+                            f"(attempt {attempt + 1}/{self._MAX_RETRIES})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                logger.error(f"PubMed fetch error: {e}")
+                return None
+            except Exception as e:
+                logger.error(f"PubMed fetch error: {e}")
+                return None
     
     def _parse_pubmed_xml(self, xml_content: bytes, pmid: str) -> Optional[Dict]:
         """Parse PubMed XML response."""
@@ -1386,12 +1458,17 @@ class PubMedService:
     async def _get_cached_citation(self, cache_key: str, db: AsyncSession) -> Optional[Dict]:
         """Get citation from cache."""
         from app.core.database import PubMedCache
+        from app.core.database import get_async_session_maker
         
         try:
-            result = await db.execute(
-                select(PubMedCache).where(PubMedCache.cache_key == cache_key)
-            )
-            cached = result.scalar_one_or_none()
+            # IMPORTANT: Use an isolated session for cache reads to avoid interfering with
+            # upstream transactions (and to avoid AsyncSession concurrency issues).
+            AsyncSessionLocal = get_async_session_maker()
+            async with AsyncSessionLocal() as cache_db:
+                result = await cache_db.execute(
+                    select(PubMedCache).where(PubMedCache.cache_key == cache_key)
+                )
+                cached = result.scalar_one_or_none()
             
             if cached:
                 # Parse participants
@@ -1420,6 +1497,7 @@ class PubMedService:
     async def _cache_citation(self, cache_key: str, paper: Dict, db: AsyncSession) -> None:
         """Store citation in cache using upsert pattern (Fix #3 - prevents duplicate key errors)."""
         from app.core.database import PubMedCache
+        from app.core.database import get_async_session_maker
         from sqlalchemy.dialects.postgresql import insert
         
         try:
@@ -1442,17 +1520,20 @@ class PubMedService:
                 created_at=datetime.utcnow(),
                 access_count=1
             ).on_conflict_do_nothing(index_elements=['cache_key'])
-            
-            await db.execute(stmt)
-            await db.commit()
+
+            # IMPORTANT: Use an isolated session for cache writes.
+            # This avoids:
+            # - "another operation is in progress" (concurrent usage of one AsyncSession)
+            # - "session is in prepared state" (when caller uses `async with session.begin()`)
+            AsyncSessionLocal = get_async_session_maker()
+            async with AsyncSessionLocal() as cache_db:
+                await cache_db.execute(stmt)
+                await cache_db.commit()
             logger.info(f"📚 Cached citation: {cache_key}")
             
         except Exception as e:
             logger.warning(f"Cache write error (non-critical): {e}")
-            try:
-                await db.rollback()
-            except Exception:
-                pass  # Session may already be invalid
+            # Best-effort only; cache failures should never impact main flows
     
     async def close(self):
         """Close HTTP client."""
