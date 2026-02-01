@@ -322,11 +322,19 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
     # Check for change_action FIRST (user wants to modify their plan)
     if any(kw in msg_lower for kw in change_action_keywords):
         logger.info(f"[INTENT] Pre-classified as change_action due to keywords")
+        # IMPORTANT: Do NOT wipe out a previously selected action.
+        # When the UI sends an action selection event, the API persists
+        # targeted_action_index/targeted_action_id and then calls
+        # process_care_plan_message with text like "I want to change X".
+        # If we reset those fields here, the graph loops back to asking
+        # the user to choose an action again.
+        preserved_targeted_action_id = state.get("targeted_action_id")
+        preserved_targeted_action_index = state.get("targeted_action_index")
         return {
             **state,
             "current_intent": "change_action",
-            "targeted_action_id": None,
-            "targeted_action_index": None,
+            "targeted_action_id": preserved_targeted_action_id,
+            "targeted_action_index": preserved_targeted_action_index,
             "change_reason": user_message,  # Store the full message as context
             "feedback_topic": None,
             "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
