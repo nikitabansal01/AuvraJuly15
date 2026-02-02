@@ -262,8 +262,10 @@ class AuvraUnifiedMemory:
                 # Care plan conversation
                 "care_plan_conversation": {
                     "has_thread": care_plan_thread is not None,
-                    "message_count": care_plan_thread.message_count if care_plan_thread else 0,
-                    "last_summary": care_plan_thread.summary if care_plan_thread else None,
+                    # raw_messages is a JSONB array; len() gives message count
+                    "message_count": len(care_plan_thread.raw_messages or []) if care_plan_thread else 0,
+                    # rolling_summary is the correct attribute (not 'summary')
+                    "last_summary": care_plan_thread.rolling_summary if care_plan_thread else None,
                 } if care_plan_thread else None,
             }
             
