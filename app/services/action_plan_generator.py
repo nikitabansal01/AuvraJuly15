@@ -1,7 +1,7 @@
 """
 AUVRA Action Plan Generator Service
 
-Generates 4 personalized daily actions using GPT-4o-mini:
+Generates 4 personalized daily actions using GPT-5-mini:
 - 2 actions targeting PRIMARY hormone
 - 2 actions targeting SECONDARY hormone  
 - Categories based on users lifestyle_focus (eat/move/pause)
@@ -39,6 +39,7 @@ from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
 # Import data sanitization utilities - SINGLE SOURCE OF TRUTH for cleaning health data
 from app.utils.data_sanitization import sanitize_list_field, sanitize_string_field
+from app.utils.advisory_lock import advisory_lock_key
 
 # Get API keys from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
@@ -1299,7 +1300,7 @@ class ActionPlanGenerator:
     Flow:
     1. Check if todays plan exists
     2. Get user context (hormones, cycle, preferences, feedback)
-    3. Generate 4 actions via GPT-4o-mini
+    3. Generate 4 actions via GPT-5-mini
     4. Generate images for each action (16 total)
     5. Store plan in database
     """
@@ -1308,8 +1309,8 @@ class ActionPlanGenerator:
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     
-    # Models that don't support temperature parameter (reasoning models only)
-    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini"]
+    # Models that don't support temperature parameter (reasoning models)
+    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini", "gpt-4o-mini"]
     
     @classmethod
     def model_supports_temperature(cls, model_name: str) -> bool:
@@ -1418,8 +1419,40 @@ class ActionPlanGenerator:
         # Check if plan exists for today - ONE plan per day
         existing_plan = await self._get_existing_plan(user_id, today, db)
         
-        # If plan already exists for today, return it (never replace)
+        # If plan already exists for today, return it (never replace).
+        # NOTE: We may temporarily create a placeholder plan row while generation is in progress.
+        # If the plan exists but has no items yet, treat it as "generating" rather than returning
+        # an empty plan to the client.
         if existing_plan:
+            try:
+                from sqlalchemy import func
+                from app.core.database import ActionPlanItem
+
+                item_count_result = await db.execute(
+                    select(func.count(ActionPlanItem.id)).where(ActionPlanItem.plan_id == existing_plan.id)
+                )
+                item_count = int(item_count_result.scalar() or 0)
+            except Exception as count_err:
+                logger.warning(f"Failed to count items for existing plan {getattr(existing_plan, 'id', None)}: {count_err}")
+                item_count = 0
+
+            if item_count == 0:
+                logger.info(
+                    f"Found placeholder plan for user {user_id} on {today} (plan_id={existing_plan.id}) - generation still in progress"
+                )
+                return {
+                    "success": True,
+                    "generating": True,
+                    "plan_exists": True,
+                    "plan_id": existing_plan.id,
+                    "plan_date": str(existing_plan.plan_date),
+                    "progress": 0,
+                    "phase": "Generating",
+                    "estimated_remaining_seconds": 180,
+                    "message": "Your personalized plan is being generated. Please wait...",
+                    "plan_source": "existing_placeholder_generating",
+                }
+
             logger.info(f"Found existing plan for user {user_id} on {today}")
             
             # Check if images are missing and generate them BEFORE returning response
@@ -1545,8 +1578,11 @@ class ActionPlanGenerator:
         
         # Lock key based on user_id or session_id
         identity_key = user_id if user_id else f"session:{session_id}"
-        lock_key = hash(f"{identity_key}:{plan_date}") % 2147483647  # int32 range for PostgreSQL
+        # CRITICAL: Never use Python's built-in hash() for advisory locks (randomized per process).
+        lock_key = advisory_lock_key("action_plan", identity_key, plan_date.isoformat())
         got_lock = False
+        placeholder_plan_id: Optional[int] = None
+        plan_stored: bool = False
         
         try:
             # Step 0: Acquire advisory lock to prevent race conditions
@@ -1556,50 +1592,53 @@ class ActionPlanGenerator:
                 text("SELECT pg_try_advisory_lock(:key)"),
                 {"key": lock_key}
             )
-            got_lock = lock_result.scalar()
+            got_lock = bool(lock_result.scalar())
             
             if not got_lock:
-                # Another request is already generating - wait and poll for result
-                # OPTIMIZED: Reduced wait times since we're faster now (~15s total instead of 45s)
-                logger.info(f"{log_prefix}  Another request is generating plan, polling for result...")
-                
-                # Poll for existing plan with shorter backoff (2s, 4s, 9s = ~15s total)
-                wait_times = [2, 4, 9]
-                for wait_time in wait_times:
-                    await asyncio.sleep(wait_time)
-                    
-                    # Check if plan was created by the other request
-                    from app.core.database import ActionPlan
-                    query = select(ActionPlan).where(ActionPlan.plan_date == plan_date)
-                    if user_id:
-                        query = query.where(ActionPlan.uid == user_id)
-                    elif session_id:
-                        query = query.where(ActionPlan.session_id == session_id)
-                    
-                    result = await db.execute(query)
-                    existing_plan = result.scalar_one_or_none()
-
-                    if existing_plan:
-                        logger.info(f"{log_prefix}  Found plan created by concurrent request after {wait_time}s wait")
-                        resp = await self._format_plan_response(existing_plan, db)
-                        if isinstance(resp, dict) and resp.get("success"):
-                            resp["plan_source"] = "concurrent_wait_existing"
-                        return resp
-                    
-                    logger.info(f"{log_prefix}  Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
-                
-                # After ~45s of waiting, try to acquire blocking lock
-                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, acquiring blocking lock...")
-                await db.execute(
-                    text("SELECT pg_advisory_lock(:key)"),
-                    {"key": lock_key}
-                )
-                got_lock = True
+                # Another request is already generating. Do NOT block on pg_advisory_lock here
+                # (it can be canceled by statement timeouts and causes 500s). Instead return a
+                # lightweight "generating" response so the client can poll /assignments/today/status.
+                logger.info(f"{log_prefix}  Another request is generating plan - returning 202-style response")
+                return {
+                    "success": True,
+                    "generating": True,
+                    "plan_exists": False,
+                    "progress": 0,
+                    "phase": "Generating",
+                    "estimated_remaining_seconds": 180,
+                    "message": "Your personalized plan is being generated. Please wait...",
+                    "plan_source": "concurrent_generation_in_progress",
+                }
             
             # Double-check for existing plan after acquiring lock
             existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
             if existing_plan:
                 logger.info(f"[GENERATE] Plan already exists for {user_id} on {plan_date}")
+                # If it's a placeholder row with no items yet, treat it as generating.
+                try:
+                    from sqlalchemy import func
+                    from app.core.database import ActionPlanItem
+                    item_count_result = await db.execute(
+                        select(func.count(ActionPlanItem.id)).where(ActionPlanItem.plan_id == existing_plan.id)
+                    )
+                    item_count = int(item_count_result.scalar() or 0)
+                except Exception:
+                    item_count = 0
+
+                if item_count == 0:
+                    return {
+                        "success": True,
+                        "generating": True,
+                        "plan_exists": True,
+                        "plan_id": existing_plan.id,
+                        "plan_date": str(existing_plan.plan_date),
+                        "progress": 0,
+                        "phase": "Generating",
+                        "estimated_remaining_seconds": 180,
+                        "message": "Your personalized plan is being generated. Please wait...",
+                        "plan_source": "existing_placeholder_after_lock",
+                    }
+
                 resp = await self._format_plan_response(existing_plan, db)
                 if isinstance(resp, dict) and resp.get("success"):
                     resp["plan_source"] = "existing_after_lock"
@@ -1697,6 +1736,46 @@ class ActionPlanGenerator:
                         num_to_generate = new_to_gen
                 else:
                     carryforward_actions = raw_carryforward
+
+            # Create a placeholder plan row BEFORE any long external work.
+            # This prevents duplicate generation without holding a DB connection + advisory lock for minutes.
+            try:
+                from app.core.database import ActionPlan
+                placeholder = ActionPlan(
+                    uid=user_id,
+                    session_id=session_id,
+                    plan_date=plan_date,
+                    primary_hormone=user_context.get("primary_hormone"),
+                    secondary_hormones=[user_context.get("secondary_hormone")] if user_context.get("secondary_hormone") else None,
+                    cycle_day=user_context.get("cycle_day"),
+                    cycle_phase=user_context.get("cycle_phase"),
+                    lifestyle_focus=user_context.get("lifestyle_focus"),
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(placeholder)
+                await db.flush()
+                placeholder_plan_id = placeholder.id
+                await db.commit()
+                logger.info(f"{log_prefix}  Placeholder plan created (plan_id={placeholder_plan_id})")
+            except Exception as placeholder_err:
+                await db.rollback()
+                logger.warning(f"{log_prefix}  Failed to create placeholder plan: {placeholder_err}")
+                existing_after_placeholder = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
+                if existing_after_placeholder:
+                    resp = await self._format_plan_response(existing_after_placeholder, db)
+                    if isinstance(resp, dict) and resp.get("success"):
+                        resp["plan_source"] = "existing_after_placeholder_race"
+                    return resp
+                return {"success": False, "error": "Failed to initialize plan generation. Please try again."}
+
+            # Release advisory lock early (placeholder now acts as the concurrency guard).
+            try:
+                await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+                got_lock = False
+                logger.info(f"{log_prefix}  Released advisory lock early (placeholder guard)")
+            except Exception as unlock_err:
+                logger.warning(f"{log_prefix} Failed to release advisory lock early: {unlock_err}")
             
             # CASE 1: All 4 items from carryforward - no GPT needed
             if num_to_generate == 0:
@@ -1786,7 +1865,7 @@ class ActionPlanGenerator:
             
             # CASE 3: No carryforward - generate all 4 actions
             else:
-                # Step 2: Generate actions via GPT-4o-mini with retry logic
+                # Step 2: Generate actions via GPT-5-mini with retry logic
                 # Pydantic validation ensures complete data - no fallbacks
                 logger.info(f"[GENERATE] Step 2: Generating all 4 actions via GPT...")
                 actions = None
@@ -1870,6 +1949,22 @@ class ActionPlanGenerator:
             
             if not actions:
                 logger.error("[GENERATE]  Failed to generate valid actions via GPT after all retries")
+                # Cleanup placeholder so the user isn't stuck in a forever-"generating" state.
+                if placeholder_plan_id and not plan_stored:
+                    cleanup_db = await _create_async_session(self.async_session_maker)
+                    try:
+                        from sqlalchemy import text as _sql_text
+                        await cleanup_db.execute(
+                            _sql_text("DELETE FROM action_plans WHERE id = :id"),
+                            {"id": placeholder_plan_id},
+                        )
+                        await cleanup_db.commit()
+                        logger.info(f"{log_prefix}  Cleaned up placeholder plan {placeholder_plan_id} after generation failure")
+                    except Exception as cleanup_err:
+                        await cleanup_db.rollback()
+                        logger.warning(f"{log_prefix} Failed to cleanup placeholder plan {placeholder_plan_id}: {cleanup_err}")
+                    finally:
+                        await cleanup_db.close()
                 return {"success": False, "error": "Failed to generate actions. Please try again."}
             
             # NOTE: Carryforward combining is now handled in CASE 2 (partial generation)
@@ -1908,41 +2003,33 @@ class ActionPlanGenerator:
                 logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
             
             # Step 4: Store plan in database
+            # Use a fresh, short-lived session to avoid "connection closed" errors after long external calls.
             logger.info(f"{log_prefix} Step 4: Storing plan in database...")
-            plan = await self._store_plan(
-                user_id=user_id,
-                plan_date=plan_date,
-                user_context=user_context,
-                actions=actions_with_images,
-                total_cost=total_cost,
-                generation_time_ms=int((time.time() - start_time) * 1000),
-                db=db,
-                session_id=session_id
-            )
+            write_db = await _create_async_session(self.async_session_maker)
+            try:
+                plan = await self._store_plan(
+                    user_id=user_id,
+                    plan_date=plan_date,
+                    user_context=user_context,
+                    actions=actions_with_images,
+                    total_cost=total_cost,
+                    generation_time_ms=int((time.time() - start_time) * 1000),
+                    db=write_db,
+                    session_id=session_id,
+                    plan_id=placeholder_plan_id,
+                    gpt_model_used=used_model,
+                    model_switch_reason=model_switch_reason,
+                )
+            finally:
+                try:
+                    await write_db.close()
+                except Exception:
+                    pass
             logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
+            plan_stored = True
             
             # Step 4.5: Log AI Model Usage (Admin Tracking)
-            try:
-                from app.core.database import AIModelUsageLog
-                
-                # Determine if a switch happened
-                fallback_model = None
-                if used_model != self.GPT_MODEL:
-                    fallback_model = used_model
-
-                usage_log = AIModelUsageLog(
-                    plan_id=plan.id,
-                    user_id=user_id or (f"guest_{session_id}" if session_id else "guest_unknown"),
-                    primary_model=self.GPT_MODEL,
-                    fallback_model=fallback_model,
-                    switch_reason=model_switch_reason,  # Now captures actual score
-                    final_model_used=used_model
-                )
-                db.add(usage_log)
-                await db.commit()
-                logger.info(f" AI model usage logged for plan {plan.id}")
-            except Exception as log_err:
-                logger.error(f"Failed to log AI model usage: {log_err}")
+            # NOTE: This is now logged inside _store_plan() using the same write session.
             
             # Step 5: Fire-and-forget quality evaluation (async, non-blocking)
             # This stores metrics for trend monitoring without impacting UX
@@ -1980,11 +2067,33 @@ class ActionPlanGenerator:
             logger.info(f"[GENERATE]   Model: {used_model}")
             logger.info(f"[GENERATE] ==========================================================================")
             
-            return await self._format_plan_response(plan, db)
+            # Format response using a fresh session (the request session may have been idle/closed).
+            format_db = await _create_async_session(self.async_session_maker)
+            try:
+                return await self._format_plan_response(plan, format_db)
+            finally:
+                await format_db.close()
             
         except Exception as e:
             logger.error(f"[GENERATE]  Error generating plan: {e}")
             logger.error(f"[GENERATE] Full traceback: {traceback.format_exc()}")
+
+            # Best-effort cleanup for placeholder if we error out mid-generation.
+            if placeholder_plan_id and not plan_stored:
+                cleanup_db = await _create_async_session(self.async_session_maker)
+                try:
+                    from sqlalchemy import text as _sql_text
+                    await cleanup_db.execute(
+                        _sql_text("DELETE FROM action_plans WHERE id = :id"),
+                        {"id": placeholder_plan_id},
+                    )
+                    await cleanup_db.commit()
+                    logger.info(f"{log_prefix}  Cleaned up placeholder plan {placeholder_plan_id} after exception")
+                except Exception as cleanup_err:
+                    await cleanup_db.rollback()
+                    logger.warning(f"{log_prefix} Failed to cleanup placeholder plan {placeholder_plan_id}: {cleanup_err}")
+                finally:
+                    await cleanup_db.close()
             return {"success": False, "error": "Failed to generate plan. Please try again."}
         finally:
             # Release advisory lock if we acquired it
@@ -2048,7 +2157,7 @@ class ActionPlanGenerator:
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, UserStreakData
         
         TARGET_ACTIONS = 4  # Standard action plan size
-        lock_key = hash(f"carryforward:{user_id}:{today}") % 2147483647  # int32 range
+        lock_key = advisory_lock_key("carryforward", user_id, today.isoformat())
         got_lock = False
         
         try:
@@ -2948,7 +3057,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
                         ],
-                        "max_completion_tokens": 16000,  # GPT-4o-mini has 128K context - allow proper output
+                        "max_completion_tokens": 16000,  # GPT-5-mini has 128K context - allow proper output
                         "response_format": {"type": "json_object"}
                     }
                     
@@ -4710,27 +4819,44 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
             # Priority: Meta-analysis > Systematic Review > RCT > Clinical Trial > Review
             # Returns 2-4 citations per action for the collapsible references section
             # =======================================================================
+            # Avoid hammering PubMed and avoid sharing the same AsyncSession across concurrent tasks.
+            pubmed_sem = asyncio.Semaphore(2)
+
             async def fetch_multiple_research_papers(index: int, query: str) -> Dict[str, Any]:
-                """Fetch 2-4 research papers for a query, prioritized by study type."""
+                """Fetch up to 2 research papers for a query, prioritized by study type."""
+                task_db = None
                 try:
-                    papers = await execute_pubmed_tool_multiple({
-                        "query": query,
-                        "action_title": f"Research {index + 1}",
-                        "category": categories[index],
-                        "target_hormone": hormones[index]
-                    }, db=db, max_citations=4)
-                    
+                    async with pubmed_sem:
+                        task_db = await _create_async_session(self.async_session_maker)
+
+                        papers = await execute_pubmed_tool_multiple(
+                            {
+                                "query": query,
+                                "action_title": f"Research {index + 1}",
+                                "category": categories[index],
+                                "target_hormone": hormones[index],
+                            },
+                            db=task_db,
+                            max_citations=2,
+                        )
+
                     if papers and len(papers) > 0:
                         return {
                             "query": query,
                             "category": categories[index],
                             "hormone": hormones[index],
-                            "papers": papers  # List of 2-4 papers
+                            "papers": papers,  # List of papers
                         }
                     return None
                 except Exception as e:
                     logger.warning(f"Research query failed: {query[:40]}... Error: {e}")
                     return None
+                finally:
+                    if task_db:
+                        try:
+                            await task_db.close()
+                        except Exception:
+                            pass
             
             # Execute all searches in parallel
             logger.info(f"   Searching {len(research_queries)} queries for multiple citations each...")
@@ -4754,7 +4880,7 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
             total_papers = sum(len(r.get("papers", [])) for r in research_findings)
             logger.info(f" Research complete: Found {total_papers} total papers across {len(research_findings)} actions")
             
-            # Build research summary for GPT - now with multiple papers per action
+            # Build a compact research summary for GPT (keep prompt size down to reduce timeouts)
             research_summary = "\\n\\n======================================================================\\n"
             research_summary += "RESEARCH FINDINGS - USE THESE TO INFORM YOUR RECOMMENDATIONS\\n"
             research_summary += "(Priority: Meta-analysis > Systematic Review > RCT > Clinical Trial > Review)\\n"
@@ -4762,10 +4888,11 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
             
             for finding in research_findings:
                 papers = finding.get("papers", [])
+                papers_to_show = papers[:2]
                 research_summary += f"""
-📚 Research for {finding['hormone'].upper()} ({finding['category']}) - {len(papers)} sources:
+📚 Research for {finding['hormone'].upper()} ({finding['category']}) - showing {len(papers_to_show)}/{len(papers)} sources:
 """
-                for idx, paper in enumerate(papers, 1):
+                for idx, paper in enumerate(papers_to_show, 1):
                     study_type_label = paper.get('study_type_label', 'Research Study')
                     research_summary += f"""
    [{idx}] {study_type_label}
@@ -4775,7 +4902,7 @@ Think deeply. Be precise. Prioritize clinical efficacy over generic wellness adv
        PMID: {paper.get('pmid', 'N/A')}
 """
                 research_summary += f"""
-   → Use these {len(papers)} sources in research_studies for your {finding['category']} recommendation for {finding['hormone']}
+   → Use these sources in research_studies for your {finding['category']} recommendation for {finding['hormone']}
 """
             
             research_summary += "\nIMPORTANT: Your recommendations MUST be based on the research findings above.\n"
@@ -4821,7 +4948,8 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                     {"role": "system", "content": enhanced_system_with_research},
                     {"role": "user", "content": prompt}
                 ],
-                "max_completion_tokens": 16000,  # Allow detailed action plans with variants
+                # Keep output budget reasonable to reduce latency/timeouts.
+                "max_completion_tokens": 8000,
                 "response_format": {
                     "type": "json_schema",
                     "json_schema": {
@@ -4933,7 +5061,7 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 16000  # gpt-oss-120b can handle more tokens
+                    "max_tokens": 8000
                 }
                 
                 # Only add response_format for non-reasoning models
@@ -5797,31 +5925,73 @@ JSON ONLY:
         total_cost: float,
         generation_time_ms: int,
         db: AsyncSession,
-        session_id: Optional[str] = None  # NEW: For guest users
+        session_id: Optional[str] = None,  # NEW: For guest users
+        plan_id: Optional[int] = None,
+        gpt_model_used: Optional[str] = None,
+        model_switch_reason: Optional[str] = None,
     ) -> Any:
         """Store the complete plan in the database."""
-        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant
+        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant, AIModelUsageLog
+        from sqlalchemy import delete
         
         try:
-            # Create plan record
-            plan = ActionPlan(
-                uid=user_id,
-                session_id=session_id,  # Store session ID
-                plan_date=plan_date,
-                primary_hormone=user_context["primary_hormone"],
-                secondary_hormones=[user_context["secondary_hormone"]],
-                cycle_day=user_context.get("cycle_day"),
-                cycle_phase=user_context.get("cycle_phase"),
-                lifestyle_focus=user_context.get("lifestyle_focus"),
-                generation_cost=str(total_cost),
-                generation_time_ms=generation_time_ms,
-                gpt_model_used=self.GPT_MODEL,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            
-            db.add(plan)
-            await db.flush()  # Get the plan ID
+            plan = None
+
+            # If a placeholder plan was created earlier, finalize it instead of inserting a new row.
+            if plan_id is not None:
+                try:
+                    result = await db.execute(select(ActionPlan).where(ActionPlan.id == plan_id))
+                    plan = result.scalar_one_or_none()
+                except Exception:
+                    plan = None
+
+                # Ensure the placeholder matches the request identity.
+                if plan and user_id and plan.uid and plan.uid != user_id:
+                    logger.warning(f"[STORE] Placeholder plan {plan_id} uid mismatch. Ignoring placeholder.")
+                    plan = None
+                if plan and session_id and plan.session_id and plan.session_id != session_id:
+                    logger.warning(f"[STORE] Placeholder plan {plan_id} session_id mismatch. Ignoring placeholder.")
+                    plan = None
+
+                # Defensive cleanup: if placeholder already has items (shouldn't), clear them.
+                if plan:
+                    try:
+                        # Delete variants first, then items.
+                        item_ids_result = await db.execute(
+                            select(ActionPlanItem.id).where(ActionPlanItem.plan_id == plan.id)
+                        )
+                        item_ids = [row[0] for row in item_ids_result.all()]
+                        if item_ids:
+                            await db.execute(
+                                delete(ActionPlanItemVariant).where(ActionPlanItemVariant.item_id.in_(item_ids))
+                            )
+                            await db.execute(delete(ActionPlanItem).where(ActionPlanItem.id.in_(item_ids)))
+                    except Exception as cleanup_err:
+                        logger.warning(f"[STORE] Failed placeholder cleanup for plan {plan_id}: {cleanup_err}")
+
+            if plan is None:
+                # Create plan record
+                plan = ActionPlan(
+                    uid=user_id,
+                    session_id=session_id,  # Store session ID
+                    plan_date=plan_date,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(plan)
+                await db.flush()  # Get the plan ID
+
+            # Update/finalize plan metadata
+            plan.primary_hormone = user_context.get("primary_hormone")
+            secondary = user_context.get("secondary_hormone")
+            plan.secondary_hormones = [secondary] if secondary else None
+            plan.cycle_day = user_context.get("cycle_day")
+            plan.cycle_phase = user_context.get("cycle_phase")
+            plan.lifestyle_focus = user_context.get("lifestyle_focus")
+            plan.generation_cost = str(total_cost)
+            plan.generation_time_ms = generation_time_ms
+            plan.gpt_model_used = gpt_model_used or self.GPT_MODEL
+            plan.updated_at = datetime.utcnow()
             
             # Create action items
             for slot, action in enumerate(actions, start=1):
@@ -5906,6 +6076,24 @@ JSON ONLY:
                         created_at=datetime.utcnow()
                     )
                     db.add(variant_record)
+
+            # Log model usage for admin tracking (best-effort, stored with the plan write)
+            try:
+                primary_model = self.GPT_MODEL
+                final_model = gpt_model_used or self.GPT_MODEL
+                fallback_model = final_model if final_model != primary_model else None
+
+                usage_log = AIModelUsageLog(
+                    plan_id=plan.id,
+                    user_id=user_id or (f"guest_{session_id}" if session_id else "guest_unknown"),
+                    primary_model=primary_model,
+                    fallback_model=fallback_model,
+                    switch_reason=model_switch_reason,
+                    final_model_used=final_model,
+                )
+                db.add(usage_log)
+            except Exception as log_err:
+                logger.warning(f"[STORE] Failed to attach AI model usage log: {log_err}")
             
             await db.commit()
             await db.refresh(plan)

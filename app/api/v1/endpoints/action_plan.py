@@ -456,21 +456,52 @@ async def get_today_plan_status(
         ).first()
         
         if plan:
-            # Plan exists! Return it
+            # Plan exists! It may be a placeholder row while generation is still in progress.
             item_count = db.query(ActionPlanItem).filter(
                 ActionPlanItem.plan_id == plan.id
             ).count()
-            
+
+            is_ready = item_count > 0
+
             return {
                 "plan_exists": True,
-                "generating": False,
+                "generating": not is_ready,
                 "plan_id": plan.id,
                 "plan_date": str(plan.plan_date),
-                "ready": item_count > 0,
+                "ready": is_ready,
                 "total_assignments": item_count,
                 "cycle_phase": plan.cycle_phase,
-                "primary_hormone": plan.primary_hormone
+                "primary_hormone": plan.primary_hormone,
+                "progress": 95 if not is_ready else 100,
+                "phase": "Finalizing" if not is_ready else "Ready",
             }
+
+        # If no plan exists yet, we may still be in the tiny window where generation
+        # acquired the advisory lock but hasn't inserted the placeholder row.
+        # Best-effort: detect that and return generating=True so clients keep polling.
+        try:
+            from sqlalchemy import text
+            from app.utils.advisory_lock import advisory_lock_key
+
+            lock_key = advisory_lock_key("action_plan", uid, today.isoformat())
+            lock_result = db.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": lock_key}
+            )
+            got_lock = bool(lock_result.scalar())
+            if got_lock:
+                # Not generating (lock is free) - immediately release.
+                db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+            else:
+                return {
+                    "plan_exists": False,
+                    "generating": True,
+                    "ready": False,
+                    "progress": 0,
+                    "phase": "Generating",
+                }
+        except Exception:
+            pass
         
         # ═══════════════════════════════════════════════════════════════════════════════════
         # OPTION 3+4 ENHANCEMENT: Check if a linked session is generating for this user
