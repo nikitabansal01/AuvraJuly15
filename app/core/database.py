@@ -659,7 +659,7 @@ class ActionPlan(Base):
     # Generation metadata
     generation_cost = Column(String(50), nullable=True)  # Cost tracking
     generation_time_ms = Column(Integer, nullable=True)
-    gpt_model_used = Column(String(50), default="gpt-5-nano")
+    gpt_model_used = Column(String(50), default="gpt-4o-mini")
     
     # Status
     is_regenerated = Column(Boolean, default=False)  # If user requested regeneration
@@ -993,7 +993,7 @@ class ActionPlanEvaluation(Base):
     # Metadata
     evaluation_cost = Column(String(50), nullable=True)  # $ spent on LLM evaluation
     evaluation_time_ms = Column(Integer, nullable=True)
-    evaluator_model = Column(String(50), default="gpt-5-mini")
+    evaluator_model = Column(String(50), default="gpt-4o-mini")
     
     # Raw LLM evaluation response (for debugging)
     llm_evaluation_response = Column(JSONB, nullable=True)

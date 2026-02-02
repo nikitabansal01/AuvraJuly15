@@ -439,7 +439,7 @@ MATCHING RULES:
                 client = _get_openai_client()
                 response = await asyncio.wait_for(
                     client.chat.completions.create(
-                        model="gpt-5-mini",
+                        model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": f"{context_msg}\n\nUser: \"{user_message}\""}
@@ -777,7 +777,7 @@ CRITICAL: Keep responses SHORT (1-2 sentences max). No long explanations."""
         
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt + context_msg}

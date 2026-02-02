@@ -1,7 +1,7 @@
 """
 AUVRA Action Plan Generator Service
 
-Generates 4 personalized daily actions using GPT-5-mini:
+Generates 4 personalized daily actions using GPT-4o-mini:
 - 2 actions targeting PRIMARY hormone
 - 2 actions targeting SECONDARY hormone  
 - Categories based on users lifestyle_focus (eat/move/pause)
@@ -1299,17 +1299,17 @@ class ActionPlanGenerator:
     Flow:
     1. Check if todays plan exists
     2. Get user context (hormones, cycle, preferences, feedback)
-    3. Generate 4 actions via GPT-5-mini
+    3. Generate 4 actions via GPT-4o-mini
     4. Generate images for each action (16 total)
     5. Store plan in database
     """
     
-    GPT_MODEL = "gpt-5-mini"
+    GPT_MODEL = "gpt-4o-mini"
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     
-    # Models that don't support temperature parameter (reasoning models)
-    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini", "gpt-5-mini"]
+    # Models that don't support temperature parameter (reasoning models only)
+    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini"]
     
     @classmethod
     def model_supports_temperature(cls, model_name: str) -> bool:
@@ -1367,7 +1367,7 @@ class ActionPlanGenerator:
     ) -> dict:
         """
         Build OpenAI API payload, conditionally including temperature.
-        Some models (o1, o3-mini, gpt-5-mini) don't support temperature.
+        Some models (o1, o3-mini, gpt-4o-mini) don't support temperature.
         """
         payload = {
             "model": model,
@@ -1588,20 +1588,13 @@ class ActionPlanGenerator:
                     
                     logger.info(f"{log_prefix}  Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
                 
-                # After ~15s of waiting, try ONE more time with try_lock, then give up
-                # DON'T use blocking lock - it can wait forever if the other request died
-                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, trying non-blocking lock...")
-                lock_result2 = await db.execute(
-                    text("SELECT pg_try_advisory_lock(:key)"),
+                # After ~45s of waiting, try to acquire blocking lock
+                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, acquiring blocking lock...")
+                await db.execute(
+                    text("SELECT pg_advisory_lock(:key)"),
                     {"key": lock_key}
                 )
-                got_lock = lock_result2.scalar()
-                
-                if not got_lock:
-                    # The other request is still running (or died with lock held)
-                    # Return error so client can retry
-                    logger.warning(f"{log_prefix}  Could not acquire lock after 15s wait - another request still running")
-                    return {"success": False, "error": "Server busy generating your plan. Please try again in a few seconds."}
+                got_lock = True
             
             # Double-check for existing plan after acquiring lock
             existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
@@ -1793,7 +1786,7 @@ class ActionPlanGenerator:
             
             # CASE 3: No carryforward - generate all 4 actions
             else:
-                # Step 2: Generate actions via GPT-5-mini with retry logic
+                # Step 2: Generate actions via GPT-4o-mini with retry logic
                 # Pydantic validation ensures complete data - no fallbacks
                 logger.info(f"[GENERATE] Step 2: Generating all 4 actions via GPT...")
                 actions = None
@@ -1915,59 +1908,20 @@ class ActionPlanGenerator:
                 logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
             
             # Step 4: Store plan in database
-            # CRITICAL: Get a FRESH DB session because the original session may have died
-            # during the long OpenAI/image generation (Supabase closes idle connections after ~5min)
-            logger.info(f"{log_prefix} Step 4: Storing plan in database (using fresh session)...")
+            logger.info(f"{log_prefix} Step 4: Storing plan in database...")
+            plan = await self._store_plan(
+                user_id=user_id,
+                plan_date=plan_date,
+                user_context=user_context,
+                actions=actions_with_images,
+                total_cost=total_cost,
+                generation_time_ms=int((time.time() - start_time) * 1000),
+                db=db,
+                session_id=session_id
+            )
+            logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
             
-            generation_time_ms = int((time.time() - start_time) * 1000)
-            
-            # Create fresh session for store to avoid stale connection
-            plan = None
-            store_session = None
-            try:
-                store_session = self.async_session_maker()
-                plan = await self._store_plan(
-                    user_id=user_id,
-                    plan_date=plan_date,
-                    user_context=user_context,
-                    actions=actions_with_images,
-                    total_cost=total_cost,
-                    generation_time_ms=generation_time_ms,
-                    db=store_session,  # Use fresh session, not the original db
-                    session_id=session_id
-                )
-                logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
-            except Exception as store_err:
-                logger.error(f"{log_prefix} Store failed with fresh session: {store_err}")
-                if store_session:
-                    await store_session.close()
-                # One more retry with another fresh session
-                retry_session = self.async_session_maker()
-                try:
-                    plan = await self._store_plan(
-                        user_id=user_id,
-                        plan_date=plan_date,
-                        user_context=user_context,
-                        actions=actions_with_images,
-                        total_cost=total_cost,
-                        generation_time_ms=generation_time_ms,
-                        db=retry_session,
-                        session_id=session_id
-                    )
-                    logger.info(f"{log_prefix}  Plan stored on retry with ID: {plan.id}")
-                except Exception as retry_err:
-                    logger.error(f"{log_prefix} Store retry also failed: {retry_err}")
-                    raise retry_err
-                finally:
-                    await retry_session.close()
-            finally:
-                if store_session:
-                    try:
-                        await store_session.close()
-                    except:
-                        pass
-            
-            # Step 4.5: Log AI Model Usage (Admin Tracking) - use fresh session
+            # Step 4.5: Log AI Model Usage (Admin Tracking)
             try:
                 from app.core.database import AIModelUsageLog
                 
@@ -1976,18 +1930,17 @@ class ActionPlanGenerator:
                 if used_model != self.GPT_MODEL:
                     fallback_model = used_model
 
-                async with self.async_session_maker() as log_session:
-                    usage_log = AIModelUsageLog(
-                        plan_id=plan.id,
-                        user_id=user_id or (f"guest_{session_id}" if session_id else "guest_unknown"),
-                        primary_model=self.GPT_MODEL,
-                        fallback_model=fallback_model,
-                        switch_reason=model_switch_reason,  # Now captures actual score
-                        final_model_used=used_model
-                    )
-                    log_session.add(usage_log)
-                    await log_session.commit()
-                    logger.info(f" AI model usage logged for plan {plan.id}")
+                usage_log = AIModelUsageLog(
+                    plan_id=plan.id,
+                    user_id=user_id or (f"guest_{session_id}" if session_id else "guest_unknown"),
+                    primary_model=self.GPT_MODEL,
+                    fallback_model=fallback_model,
+                    switch_reason=model_switch_reason,  # Now captures actual score
+                    final_model_used=used_model
+                )
+                db.add(usage_log)
+                await db.commit()
+                logger.info(f" AI model usage logged for plan {plan.id}")
             except Exception as log_err:
                 logger.error(f"Failed to log AI model usage: {log_err}")
             
@@ -2027,24 +1980,20 @@ class ActionPlanGenerator:
             logger.info(f"[GENERATE]   Model: {used_model}")
             logger.info(f"[GENERATE] ==========================================================================")
             
-            # Use fresh session for formatting response too
-            async with self.async_session_maker() as format_session:
-                return await self._format_plan_response(plan, format_session)
+            return await self._format_plan_response(plan, db)
             
         except Exception as e:
             logger.error(f"[GENERATE]  Error generating plan: {e}")
             logger.error(f"[GENERATE] Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": "Failed to generate plan. Please try again."}
         finally:
-            # Release advisory lock if we acquired it - use FRESH session because original may be dead
+            # Release advisory lock if we acquired it
             if got_lock:
                 try:
-                    async with self.async_session_maker() as unlock_session:
-                        await unlock_session.execute(
-                            text("SELECT pg_advisory_unlock(:key)"),
-                            {"key": lock_key}
-                        )
-                        await unlock_session.commit()
+                    await db.execute(
+                        text("SELECT pg_advisory_unlock(:key)"),
+                        {"key": lock_key}
+                    )
                     logger.info(f"[GENERATE]  Released advisory lock for {user_id}")
                 except Exception as unlock_err:
                     logger.warning(f"[GENERATE] Failed to release advisory lock: {unlock_err}")
@@ -2994,17 +2943,17 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     
                     # Build payload with conditional temperature
                     create_kwargs = {
-                        "model": "gpt-5-mini",
+                        "model": "gpt-4o-mini",
                         "messages": [
                             {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
                         ],
-                        "max_completion_tokens": 16000,  # GPT-5-mini has 128K context - allow proper output
+                        "max_completion_tokens": 16000,  # GPT-4o-mini has 128K context - allow proper output
                         "response_format": {"type": "json_object"}
                     }
                     
                     # Only add temperature if model supports it
-                    if self.model_supports_temperature("gpt-5-mini"):
+                    if self.model_supports_temperature("gpt-4o-mini"):
                         create_kwargs["temperature"] = 0.7
                     
                     response = await client.chat.completions.create(**create_kwargs)
@@ -4243,7 +4192,7 @@ Format as bullet points."""
                 if self.openai_api_key:
                     try:
                         payload = self.build_openai_payload(
-                            model="gpt-5-mini",
+                            model="gpt-4o-mini",
                             messages=[
                                 {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
                                 {"role": "user", "content": summary_prompt}
@@ -4865,7 +4814,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
-            # NOTE: Some models (o1, o3-mini, gpt-5-mini) don't support temperature
+            # NOTE: Some models (o1, o3-mini, gpt-4o-mini) don't support temperature
             openai_payload = {
                 "model": self.GPT_MODEL,
                 "messages": [
@@ -4892,11 +4841,8 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             import time as time_module
             openai_start = time_module.perf_counter()
             
-            # OPTIMIZED: Faster fallback to Groq - don't wait 7.5 minutes for OpenAI
-            # Old: [120, 150, 180] = 450s total wait = DB connection death
-            # New: [45, 60] = 105s max = DB stays alive, faster UX
-            max_retries = 2
-            retry_timeouts = [45.0, 60.0]  # Quick timeout, fast fallback to Groq
+            max_retries = 3
+            retry_timeouts = [120.0, 150.0, 180.0]  # Increasing timeouts per retry
             
             for attempt in range(max_retries):
                 try:
@@ -5487,7 +5433,7 @@ JSON ONLY:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "gpt-5-mini",
+                    "model": "gpt-4o-mini",
                     "messages": [
                         {"role": "system", "content": "You are a health plan quality evaluator. Output ONLY JSON, no explanation."},
                         {"role": "user", "content": prompt}

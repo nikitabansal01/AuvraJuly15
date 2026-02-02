@@ -904,7 +904,7 @@ CONFIDENCE ASSESSMENT:
         ARCHITECTURE CHANGE (Based on Research):
         ═══════════════════════════════════════════════════════════════════════════
         REMOVED: V3 RAG Engine, Pinecone, Expert Orchestrator, Evidence Grader
-        USING: Pure prompt engineering with GPT-5-mini
+        USING: Pure prompt engineering with GPT-4o-mini
         
         WHY:
         - Research shows RAG is fundamentally mismatched for food recommendations

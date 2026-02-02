@@ -266,7 +266,7 @@ Example:
 Keep it 2-3 sentences, warm. If you have context from other conversations, reference it naturally.
 """
         
-        greeting = await call_llm(prompt, model="gpt-5-mini")
+        greeting = await call_llm(prompt, model="gpt-4o-mini")
         
         return {
             **state,
@@ -653,7 +653,7 @@ Example:
 """
     
     try:
-        summary = await call_llm(summary_prompt, model="gpt-5-mini")
+        summary = await call_llm(summary_prompt, model="gpt-4o-mini")
     except Exception as e:
         logger.error(f"Error generating summary: {e}")
         symptom_list = ", ".join([f"{s['type']} ({s.get('severity', '?')}/9)" for s in symptoms])

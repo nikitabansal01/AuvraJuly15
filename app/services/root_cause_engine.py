@@ -52,7 +52,7 @@ else:
     ENABLE_LLM_OTHERS = bool(OPENAI_API_KEY) or bool(GROQ_API_KEY) or bool(GEMINI_API_KEY) or _enable_llm_env in ("1", "true", "yes", "on")
     
 LLM_OTHERS_TIMEOUT = int(os.getenv("LLM_OTHERS_TIMEOUT", "30"))  # seconds
-LLM_OTHERS_MODEL = os.getenv("LLM_OTHERS_MODEL", "gpt-5-mini")  # Fast, good for JSON
+LLM_OTHERS_MODEL = os.getenv("LLM_OTHERS_MODEL", "gpt-4o-mini")  # Fast, good for JSON
 
 # ============================================
 # PRODUCTION-READY CACHE (Thread-safe, TTL, Size-limited)

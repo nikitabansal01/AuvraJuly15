@@ -275,7 +275,7 @@ Generate a warm, personalized response that:
 3. Keep it 2 sentences, friendly
 """
             try:
-                response = await call_llm(oos_prompt, model="gpt-5-mini")
+                response = await call_llm(oos_prompt, model="gpt-4o-mini")
             except:
                 response = "That's a great question, but it's outside my expertise. I focus on hormonal health and menstrual cycles. Is there anything about your cycle or hormones I can help explain?"
             
@@ -560,7 +560,7 @@ Guidelines:
 """
     
     try:
-        explanation = await call_llm(prompt, model="gpt-5-mini")
+        explanation = await call_llm(prompt, model="gpt-4o-mini")
     except:
         explanation = "That's a great question! It relates to overall wellness. For specific medical concerns, please consult your healthcare provider. Is there anything about your cycle I can help with?"
     

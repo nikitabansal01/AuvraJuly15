@@ -387,7 +387,7 @@ Keep it 2-3 sentences, warm and personal. DO NOT be generic!
 """
     
     try:
-        question = await call_llm(elicitation_prompt, model="gpt-5-mini")
+        question = await call_llm(elicitation_prompt, model="gpt-4o-mini")
     except:
         question = f"Could you tell me about your {gap_field.replace('_', ' ')}?"
     
@@ -457,7 +457,7 @@ Generate a warm, understanding response that:
 """
         
         try:
-            response = await call_llm(skip_response_prompt, model="gpt-5-mini")
+            response = await call_llm(skip_response_prompt, model="gpt-4o-mini")
             if not response or len(response.strip()) < 10:
                 response = "No worries at all! We can circle back to that whenever you're ready."
         except:

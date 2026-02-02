@@ -271,7 +271,7 @@ Create a personalized greeting that:
 Do NOT give a generic greeting - make it feel like you KNOW this user!
 """
     
-    greeting = await call_llm(prompt, model="gpt-5-mini")
+    greeting = await call_llm(prompt, model="gpt-4o-mini")
     
     return {
         **state,

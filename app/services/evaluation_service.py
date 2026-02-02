@@ -156,12 +156,12 @@ class ActionPlanEvaluator:
     Called asynchronously after action plan delivery to avoid blocking UX.
     """
     
-    GPT_MODEL = "gpt-5-nano"
+    GPT_MODEL = "gpt-4o-mini"
     GPT_TEMPERATURE = 0.1  # Low temp for consistent evaluation
     
-    # GPT-5-nano pricing (per 1M tokens) - 10x cheaper than GPT-4o-mini!
-    INPUT_COST_PER_1M = 0.05
-    OUTPUT_COST_PER_1M = 0.40
+    # GPT-4o-mini pricing (per 1M tokens)
+    INPUT_COST_PER_1M = 0.15
+    OUTPUT_COST_PER_1M = 0.60
     
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -369,7 +369,7 @@ class ActionPlanEvaluator:
         feedback_history: str
     ) -> tuple[Optional[Dict], float]:
         """
-        Run GPT-5-mini to evaluate relevance metrics.
+        Run GPT-4o-mini to evaluate relevance metrics.
         Returns (scores_dict, cost) or (None, cost) on failure.
         """
         if not self.openai_api_key and not GROQ_API_KEY:
@@ -440,8 +440,7 @@ class ActionPlanEvaluator:
                     },
                     json={
                         "model": self.GPT_MODEL,
-                        # NOTE: GPT-5-nano only supports temperature=1 (default), so we omit it
-                        # For other models, uncomment: "temperature": self.GPT_TEMPERATURE,
+                        "temperature": self.GPT_TEMPERATURE,
                         "messages": [
                             {"role": "system", "content": "You are a health recommendation quality evaluator. Respond only with valid JSON."},
                             {"role": "user", "content": prompt}

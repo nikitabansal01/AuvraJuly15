@@ -889,7 +889,7 @@ async def submit_plan_satisfaction(
     - Frontend shows checkboxes for each action (only items NOT marked complete)
     - User selects items to replace
     - Backend stores selected items as DISLIKED
-    - Calls GPT-5-mini for replacements targeting SAME hormones
+    - Calls GPT-4o-mini for replacements targeting SAME hormones
     - Generates images for new items
     - Updates action plan in database
     - Returns new actions for frontend refresh

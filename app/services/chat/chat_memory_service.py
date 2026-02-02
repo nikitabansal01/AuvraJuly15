@@ -313,7 +313,7 @@ class ChatMemoryService:
             if self.openai_client:
                 try:
                     response = await self.openai_client.chat.completions.create(
-                        model="gpt-5-mini",
+                        model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": "You are a healthcare AI summarizing patient conversations."},
                             {"role": "user", "content": summary_prompt}
@@ -454,7 +454,7 @@ class ChatMemoryService:
             if self.openai_client:
                 try:
                     response = await self.openai_client.chat.completions.create(
-                        model="gpt-5-mini",
+                        model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": "You are a healthcare AI. Summarize conversations concisely."},
                             {"role": "user", "content": f"Summarize this health conversation in 2-3 sentences:\n{conversation}"}
