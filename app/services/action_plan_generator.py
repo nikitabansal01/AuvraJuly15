@@ -1588,13 +1588,20 @@ class ActionPlanGenerator:
                     
                     logger.info(f"{log_prefix}  Still waiting for plan... (total wait: {sum(wait_times[:wait_times.index(wait_time)+1])}s)")
                 
-                # After ~45s of waiting, try to acquire blocking lock
-                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, acquiring blocking lock...")
-                await db.execute(
-                    text("SELECT pg_advisory_lock(:key)"),
+                # After ~15s of waiting, try ONE more time with try_lock, then give up
+                # DON'T use blocking lock - it can wait forever if the other request died
+                logger.info(f"{log_prefix}  Timed out waiting for concurrent request, trying non-blocking lock...")
+                lock_result2 = await db.execute(
+                    text("SELECT pg_try_advisory_lock(:key)"),
                     {"key": lock_key}
                 )
-                got_lock = True
+                got_lock = lock_result2.scalar()
+                
+                if not got_lock:
+                    # The other request is still running (or died with lock held)
+                    # Return error so client can retry
+                    logger.warning(f"{log_prefix}  Could not acquire lock after 15s wait - another request still running")
+                    return {"success": False, "error": "Server busy generating your plan. Please try again in a few seconds."}
             
             # Double-check for existing plan after acquiring lock
             existing_plan = await self._get_existing_plan(user_id, plan_date, db, session_id=session_id)
@@ -1908,20 +1915,59 @@ class ActionPlanGenerator:
                 logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
             
             # Step 4: Store plan in database
-            logger.info(f"{log_prefix} Step 4: Storing plan in database...")
-            plan = await self._store_plan(
-                user_id=user_id,
-                plan_date=plan_date,
-                user_context=user_context,
-                actions=actions_with_images,
-                total_cost=total_cost,
-                generation_time_ms=int((time.time() - start_time) * 1000),
-                db=db,
-                session_id=session_id
-            )
-            logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
+            # CRITICAL: Get a FRESH DB session because the original session may have died
+            # during the long OpenAI/image generation (Supabase closes idle connections after ~5min)
+            logger.info(f"{log_prefix} Step 4: Storing plan in database (using fresh session)...")
             
-            # Step 4.5: Log AI Model Usage (Admin Tracking)
+            generation_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Create fresh session for store to avoid stale connection
+            plan = None
+            store_session = None
+            try:
+                store_session = self.async_session_maker()
+                plan = await self._store_plan(
+                    user_id=user_id,
+                    plan_date=plan_date,
+                    user_context=user_context,
+                    actions=actions_with_images,
+                    total_cost=total_cost,
+                    generation_time_ms=generation_time_ms,
+                    db=store_session,  # Use fresh session, not the original db
+                    session_id=session_id
+                )
+                logger.info(f"{log_prefix}  Plan stored with ID: {plan.id}")
+            except Exception as store_err:
+                logger.error(f"{log_prefix} Store failed with fresh session: {store_err}")
+                if store_session:
+                    await store_session.close()
+                # One more retry with another fresh session
+                retry_session = self.async_session_maker()
+                try:
+                    plan = await self._store_plan(
+                        user_id=user_id,
+                        plan_date=plan_date,
+                        user_context=user_context,
+                        actions=actions_with_images,
+                        total_cost=total_cost,
+                        generation_time_ms=generation_time_ms,
+                        db=retry_session,
+                        session_id=session_id
+                    )
+                    logger.info(f"{log_prefix}  Plan stored on retry with ID: {plan.id}")
+                except Exception as retry_err:
+                    logger.error(f"{log_prefix} Store retry also failed: {retry_err}")
+                    raise retry_err
+                finally:
+                    await retry_session.close()
+            finally:
+                if store_session:
+                    try:
+                        await store_session.close()
+                    except:
+                        pass
+            
+            # Step 4.5: Log AI Model Usage (Admin Tracking) - use fresh session
             try:
                 from app.core.database import AIModelUsageLog
                 
@@ -1930,17 +1976,18 @@ class ActionPlanGenerator:
                 if used_model != self.GPT_MODEL:
                     fallback_model = used_model
 
-                usage_log = AIModelUsageLog(
-                    plan_id=plan.id,
-                    user_id=user_id or (f"guest_{session_id}" if session_id else "guest_unknown"),
-                    primary_model=self.GPT_MODEL,
-                    fallback_model=fallback_model,
-                    switch_reason=model_switch_reason,  # Now captures actual score
-                    final_model_used=used_model
-                )
-                db.add(usage_log)
-                await db.commit()
-                logger.info(f" AI model usage logged for plan {plan.id}")
+                async with self.async_session_maker() as log_session:
+                    usage_log = AIModelUsageLog(
+                        plan_id=plan.id,
+                        user_id=user_id or (f"guest_{session_id}" if session_id else "guest_unknown"),
+                        primary_model=self.GPT_MODEL,
+                        fallback_model=fallback_model,
+                        switch_reason=model_switch_reason,  # Now captures actual score
+                        final_model_used=used_model
+                    )
+                    log_session.add(usage_log)
+                    await log_session.commit()
+                    logger.info(f" AI model usage logged for plan {plan.id}")
             except Exception as log_err:
                 logger.error(f"Failed to log AI model usage: {log_err}")
             
@@ -1980,20 +2027,24 @@ class ActionPlanGenerator:
             logger.info(f"[GENERATE]   Model: {used_model}")
             logger.info(f"[GENERATE] ==========================================================================")
             
-            return await self._format_plan_response(plan, db)
+            # Use fresh session for formatting response too
+            async with self.async_session_maker() as format_session:
+                return await self._format_plan_response(plan, format_session)
             
         except Exception as e:
             logger.error(f"[GENERATE]  Error generating plan: {e}")
             logger.error(f"[GENERATE] Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": "Failed to generate plan. Please try again."}
         finally:
-            # Release advisory lock if we acquired it
+            # Release advisory lock if we acquired it - use FRESH session because original may be dead
             if got_lock:
                 try:
-                    await db.execute(
-                        text("SELECT pg_advisory_unlock(:key)"),
-                        {"key": lock_key}
-                    )
+                    async with self.async_session_maker() as unlock_session:
+                        await unlock_session.execute(
+                            text("SELECT pg_advisory_unlock(:key)"),
+                            {"key": lock_key}
+                        )
+                        await unlock_session.commit()
                     logger.info(f"[GENERATE]  Released advisory lock for {user_id}")
                 except Exception as unlock_err:
                     logger.warning(f"[GENERATE] Failed to release advisory lock: {unlock_err}")
@@ -4841,8 +4892,11 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             import time as time_module
             openai_start = time_module.perf_counter()
             
-            max_retries = 3
-            retry_timeouts = [120.0, 150.0, 180.0]  # Increasing timeouts per retry
+            # OPTIMIZED: Faster fallback to Groq - don't wait 7.5 minutes for OpenAI
+            # Old: [120, 150, 180] = 450s total wait = DB connection death
+            # New: [45, 60] = 105s max = DB stays alive, faster UX
+            max_retries = 2
+            retry_timeouts = [45.0, 60.0]  # Quick timeout, fast fallback to Groq
             
             for attempt in range(max_retries):
                 try:
