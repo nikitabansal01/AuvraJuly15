@@ -906,54 +906,53 @@ class ImageLibraryService:
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
         
         if category == "food":
-            # FOOD: Show FINISHED, READY-TO-EAT dishes - NOT raw ingredients!
-            # Think: Instagram food photography, cozy wellness aesthetic
-            # Users want to see appetizing meals that inspire them to eat healthy
+            # FOOD: Hero the main ingredient/dish name!
+            # If action is "Turmeric Golden Milk" → feature TURMERIC beautifully
+            # If action is "Salmon Bowl" → feature SALMON as the star
+            # Think: Pinterest food aesthetic, close-up beauty shots
             enhanced = (
-                f"Professional Instagram-style food photography of {prompt}, "
-                f"beautifully plated finished dish ready to eat, "
-                f"warm cozy aesthetic, appetizing and delicious looking, "
-                f"soft natural morning light from window, "
-                f"styled like a wellness food blog, minimalist background, "
-                f"the food looks fresh, nourishing, and inviting, "
-                f"NOT raw ingredients - show the prepared meal, "
-                f"healthy comfort food aesthetic, women's wellness lifestyle"
+                f"Stunning food photography hero shot of {prompt}, "
+                f"the main ingredient is the star of the image, "
+                f"beautiful close-up detail showing the texture and color, "
+                f"Pinterest-worthy aesthetic, warm golden hour lighting, "
+                f"clean minimalist white marble or wood background, "
+                f"fresh herbs and complementary ingredients artfully arranged, "
+                f"appetizing and vibrant colors, professional food styling, "
+                f"the dish name '{prompt}' should be immediately recognizable"
             )
             
         elif category == "movement":
-            # MOVEMENT: Show the ACTUAL exercise position and form
-            # User should be able to understand how to do the exercise from the image
+            # MOVEMENT: Aesthetic fitness photography
+            # Hero the specific exercise - make it aspirational
             enhanced = (
-                f"A woman demonstrating {prompt} exercise, "
-                f"clear view of the body position and correct form, "
-                f"showing exactly how to perform {prompt}, "
-                f"wearing comfortable athletic clothes, "
-                f"focused calm expression, bright clean background, "
-                f"the exercise pose should be clearly recognizable as {prompt}, "
-                f"fitness photography style, full body visible, "
-                f"instructional and easy to follow, women's wellness exercise"
+                f"Editorial fitness photography of a woman doing {prompt}, "
+                f"elegant athletic pose showing the movement beautifully, "
+                f"the exercise {prompt} is the clear focus of the image, "
+                f"soft natural lighting, clean minimal studio background, "
+                f"wearing neutral toned athletic wear, "
+                f"graceful and aspirational, wellness lifestyle aesthetic, "
+                f"professional fitness campaign quality"
             )
             
         elif category == "mindfulness":
-            # MINDFULNESS: Show the ACTUAL meditation or breathing practice
-            # User should understand what the practice looks like
+            # MINDFULNESS: Serene, calming, premium wellness aesthetic
+            # Hero the specific practice - create peaceful mood
             enhanced = (
-                f"A peaceful woman practicing {prompt}, "
-                f"showing the meditation or breathing position clearly, "
-                f"eyes closed, serene relaxed expression, "
-                f"comfortable seated or resting position for {prompt}, "
-                f"wearing soft comfortable clothes, "
-                f"calm cozy setting with soft natural light, "
-                f"the practice should be recognizable as {prompt}, "
-                f"peaceful wellness moment, self-care atmosphere"
+                f"Serene wellness photography of {prompt} practice, "
+                f"peaceful woman in meditation or breathwork pose, "
+                f"soft diffused morning light, dreamy calm atmosphere, "
+                f"cozy neutral setting with plants or natural elements, "
+                f"wearing soft comfortable loungewear, "
+                f"the {prompt} practice feels inviting and calming, "
+                f"premium spa wellness aesthetic, self-care moment"
             )
             
         else:
-            # Fallback: simple clear wellness image
+            # Fallback: clean wellness aesthetic
             enhanced = (
-                f"A beautiful wellness image of {prompt}, "
-                f"clean minimalist style, bright natural lighting, "
-                f"clearly showing what {prompt} looks like"
+                f"Beautiful minimalist wellness photography of {prompt}, "
+                f"clean aesthetic, soft natural lighting, "
+                f"premium lifestyle brand quality"
             )
         
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")
