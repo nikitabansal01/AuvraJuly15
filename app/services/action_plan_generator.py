@@ -1309,9 +1309,9 @@ class ActionPlanGenerator:
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     
-    # Models that don't support temperature parameter (reasoning models like o1/o3)
-    # Note: gpt-5-mini DOES support temperature (0-2)
-    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini", "o3", "o4-mini"]
+    # Models that don't support custom temperature parameter (use default=1 only)
+    # gpt-5-mini only supports temperature=1 (default), not custom values
+    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini", "o3", "o4-mini", "gpt-5-mini"]
     
     @classmethod
     def model_supports_temperature(cls, model_name: str) -> bool:
