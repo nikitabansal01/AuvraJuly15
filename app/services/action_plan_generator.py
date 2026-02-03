@@ -6816,7 +6816,31 @@ REQUIRED OUTPUT FIELDS (ALL actions):
 7. hormone_persona_intro: First-person intro from hormone perspective
 8. image_prompt: FLUX.1 Schnell optimized prompt
 9. research_studies: Use the research provided above - format as single-item array with the paper details
-10. variants: Array of 3 variant objects - each showing DIFFERENT WAYS to consume/do the action
+10. variants: Array of EXACTLY 3 variant objects with PROPER TITLES (not just "healthy version"!):
+
+    FOR FOOD ACTIONS ({original.category == "food"}):
+    [
+      {{"variant_type": "tasty", "title": "[Actual dish name e.g. 'Blueberry Parfait with Greek Yogurt']", "description": "[How to make it tasty - 2 sentences]", "image_prompt": "[FLUX prompt for this variant]"}},
+      {{"variant_type": "easy", "title": "[Actual dish name e.g. 'Frozen Blueberry Smoothie']", "description": "[Easy preparation - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "healthy", "title": "[Actual dish name e.g. 'Fresh Blueberries with Nuts']", "description": "[Maximum nutrition - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+    
+    FOR MOVEMENT ACTIONS ({original.category == "movement"}):
+    [
+      {{"variant_type": "gentle", "title": "[Actual name e.g. 'Slow Flow Morning Yoga']", "description": "[Low intensity option - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "energizing", "title": "[Actual name e.g. 'Power Yoga Flow']", "description": "[Higher energy option - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "quick", "title": "[Actual name e.g. '10-Minute Sun Salutations']", "description": "[5-10 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+    
+    FOR MINDFULNESS ACTIONS ({original.category == "mindfulness"}):
+    [
+      {{"variant_type": "guided", "title": "[Actual name e.g. 'Calm App 5-Min Breathing']", "description": "[With audio/app guidance - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "solo", "title": "[Actual name e.g. 'Silent Box Breathing']", "description": "[Independent practice - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "brief", "title": "[Actual name e.g. '3-Minute Mindful Pause']", "description": "[3-5 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+    
+    ⚠️ VARIANT TITLE MUST BE A REAL DISH/ACTIVITY NAME, NOT "tasty version" or "easy version"!
+
 11. symptoms: Pick 1-3 from users health concerns
 12. conditions: Array of conditions this helps
 
@@ -7133,10 +7157,30 @@ Respond with valid JSON object only."""
                 variant_dict = vd.get("variant") or {}
                 v_type_str = vd.get("v_type") or "alternative"
                 
-                # Use variant TITLE for cache matching
+                # Use variant TITLE for cache matching - with PROPER fallback using main action title
                 variant_title = variant_dict.get("title") if variant_dict else None
-                if not variant_title:
-                    variant_title = f"{v_type_str} version"
+                replacement_title = replacement_action.get("title", "Wellness Action")
+                
+                # CRITICAL: Generate proper variant title if GPT didn't provide one
+                if not variant_title or variant_title.lower() in ["", "none", "null", f"{v_type_str} version".lower()]:
+                    # Build descriptive variant title using the main action title
+                    variant_adjectives = {
+                        "healthy": "Nutritious",
+                        "easy": "Quick",
+                        "tasty": "Delicious",
+                        "gentle": "Gentle",
+                        "energizing": "Energizing", 
+                        "quick": "Quick",
+                        "guided": "Guided",
+                        "solo": "Solo",
+                        "brief": "Brief"
+                    }
+                    adj = variant_adjectives.get(v_type_str, v_type_str.title())
+                    variant_title = f"{adj} {replacement_title}"
+                    # Also update the variant dict so it's saved to DB
+                    variant_dict["title"] = variant_title
+                    logger.info(f"[REPLACE] Generated fallback variant title: '{variant_title}'")
+                    
                 logger.info(f"[REPLACE] Generating variant: '{variant_title[:40]}' ({category})")
                 
                 for retry_attempt in range(MAX_VARIANT_RETRIES):
@@ -7174,11 +7218,36 @@ Respond with valid JSON object only."""
                 variant_dict = vd.get("variant") or {}
                 v_type_str = vd.get("v_type") or "alternative"
                 
+                # Get title and description, with proper fallbacks
+                v_title = variant_dict.get("title", "")
+                v_description = variant_dict.get("description", "")
+                replacement_title = replacement_action.get("title", "Wellness Action")
+                
+                # CRITICAL: Ensure variant has a proper title, not empty string
+                if not v_title or v_title.lower() in ["none", "null", f"{v_type_str} version".lower()]:
+                    variant_adjectives = {
+                        "healthy": "Nutritious",
+                        "easy": "Quick",
+                        "tasty": "Delicious", 
+                        "gentle": "Gentle",
+                        "energizing": "Energizing",
+                        "quick": "Quick",
+                        "guided": "Guided",
+                        "solo": "Solo",
+                        "brief": "Brief"
+                    }
+                    adj = variant_adjectives.get(v_type_str, v_type_str.title())
+                    v_title = f"{adj} {replacement_title}"
+                
+                # Also ensure description is not empty
+                if not v_description:
+                    v_description = f"A {v_type_str} way to enjoy {replacement_title}."
+                
                 variant_record = ActionPlanItemVariant(
                     item_id=new_item.id,
                     variant_type=v_type_str,
-                    title=variant_dict.get("title", "") if variant_dict else "",
-                    description=variant_dict.get("description", "") if variant_dict else "",
+                    title=v_title,
+                    description=v_description,
                     image_url=variant_url,
                     image_prompt=variant_dict.get("image_prompt") if variant_dict else None,
                     created_at=datetime.utcnow()
