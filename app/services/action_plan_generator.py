@@ -1366,14 +1366,15 @@ class ActionPlanGenerator:
         response_format: dict = None,
         temperature: float = None,
         tools: list = None,
-        reasoning_effort": "minimal" for speed with GPT-5-mini
+        reasoning_effort: str = "minimal"
     ) -> dict:
         """
         Build OpenAI API payload, conditionally including temperature.
         Some models (o1, o3, o4-mini) don't support temperature. GPT-5-mini does support it.
         
-        IMPORTANT: GPT-5-mini is a reasoning model. By default reasoning_effort": "minimal"
-        to disable slow chain-of-thought reasoning and reduce latency from ~112s to ~10-15s.
+        IMPORTANT: GPT-5-mini is a reasoning model. Uses reasoning_effort="minimal" by default
+        to minimize chain-of-thought reasoning and reduce latency from ~112s to ~10-15s.
+        Supported values: "minimal", "low", "medium", "high" (NOT "none"!)
         """
         payload = {
             "model": model,
