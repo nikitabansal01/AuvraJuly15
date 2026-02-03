@@ -6736,12 +6736,10 @@ Previous failures happened because you forgot exercise_types, exercise_durations
 
 REQUIREMENTS:
 - Must target hormone: {original.target_hormone}
-- Should be DIFFERENT from: {original.title} (user disliked this)
+- MUST keep same category: {original.category} (user wants a DIFFERENT {original.category} action, not a different category!)
+- Should be DIFFERENT action from: {original.title} (user disliked this specific action)
 - Dislike reason: {reason or 'not specified'}
 - If the reason includes a specific requested item (e.g., "replace with cashews"), you MUST use that exact item as the core of the new action.
-- AVOID generating same category as disliked ({original.category}) unless users lifestyle_focus only includes that category
-- Prefer different category from: {original.category}
-- Users lifestyle focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
 - 🔴 MUST NOT DUPLICATE any of the other active actions listed above
 
 ======================================================================
@@ -6951,10 +6949,17 @@ Respond with valid JSON object only."""
                     
                     # Validate the action
                     category = parsed_action.get("category", "food")
+                    
+                    # CRITICAL: Ensure replacement keeps SAME category as original
+                    if category != original.category:
+                        logger.warning(f"⚠️ GPT returned wrong category '{category}' for original '{original.category}' - forcing correction")
+                        parsed_action["category"] = original.category
+                        category = original.category
+                    
                     valid, missing = self._validate_action_fields(parsed_action, category)
                     
                     if valid:
-                        logger.info(f" Replacement action valid")
+                        logger.info(f"✅ Replacement action valid (category: {category})")
                         replacement_action = parsed_action
                         break
                     else:

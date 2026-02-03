@@ -309,9 +309,10 @@ async def respond_care_plan_checkin(
 
         # 5. Build Response
         history = service.format_history_for_mobile(thread)
-        # If UI blocks are present, suppress tap options to reduce conflicting CTAs
+        # If UI blocks are present, suppress most tap options to reduce conflicting CTAs
+        # BUT always include "manage_plan" so users can access PlanManagerModal at any time
         if final_state.get("ui_blocks"):
-            tap_options = []
+            tap_options = [{"id": "manage_plan", "text": "🧩 Manage plan"}]
         else:
             tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
         
@@ -933,14 +934,16 @@ async def care_plan_ui_event(
                     analytics={"surface": "care_plan_checkin", "source": "tap_option"}
                 ))
             
-            # Rebuild tap options if no UI blocks
-            tap_options = []
+            # Rebuild tap options - always include manage_plan for access to PlanManagerModal
             if not resp_ui_blocks:
                 tap_options = [
                     {"id": "want-to-change", "text": "👎 I want to change it"},
                     {"id": "alternate-suggestions", "text": "🔁 I want alternate suggestions"},
                     {"id": "manage_plan", "text": "🧩 Manage plan"},
                 ]
+            else:
+                # When UI blocks are present, still show manage_plan so user can access modal
+                tap_options = [{"id": "manage_plan", "text": "🧩 Manage plan"}]
             
             return {
                 "thread_id": thread.id,
@@ -951,14 +954,14 @@ async def care_plan_ui_event(
                 "ui_blocks": resp_ui_blocks,
             }
         
-        # Unknown action - return empty
+        # Unknown action - return with manage_plan option
         logger.warning(f"Unknown UI event action: {action_id}")
         history = service.format_history_for_mobile(thread)
         return {
             "thread_id": thread.id,
             "local_date": thread.local_date.isoformat(),
             "history": history,
-            "tap_options": [],
+            "tap_options": [{"id": "manage_plan", "text": "🧩 Manage plan"}],
             "actionable_insights": thread.actionable_insights or {},
             "ui_blocks": [],
         }
