@@ -744,15 +744,95 @@ HORMONE CONTEXT FOR {cycle_phase} PHASE
 {hormone_phase_context}
 
 ======================================================================
-⭐ USER HISTORY & PERSONALIZATION DATA (If available)
+⭐ UNIFIED CROSS-CHATBOT MEMORY (MOST IMPORTANT PERSONALIZATION DATA) ⭐
 ======================================================================
-{condensed_personalization_context}
+This is EVERYTHING we know about this user from ALL their interactions across
+ALL chatbots. Use this to create truly personalized recommendations:
+
+{unified_memory_context}
+
+USE THIS DATA TO:
+- Reference specific things the user said in past conversations
+- Avoid items they've complained about or disliked
+- Build on foods/exercises they've explicitly enjoyed
+- Address symptoms they've recently reported
+- Consider their learned preferences and past feedback
+- Make each recommendation feel like it was made FOR THIS SPECIFIC USER
+
+======================================================================
+FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
+======================================================================
+HISTORICAL SUMMARY (learned patterns over time):
+{feedback_summary}
+
+RECENT FEEDBACK (last 20-50 actions):
+{feedback_memory}
+
+======================================================================
+CHATBOT CONVERSATION CONTEXT
+======================================================================
+{chatbot_context}
+
+======================================================================
+💬 FULL CHAT HISTORY (Everything the user has told us)
+======================================================================
+{chat_history}
+
+This is the user's ACTUAL WORDS from past conversations. Use this to:
+- Quote or reference specific things they said ("You mentioned you love yoga...")
+- Understand their personality and communication style
+- Know their expressed preferences, goals, and concerns
+- Make recommendations feel like they came from someone who truly knows them
+
+======================================================================
+WEEKLY CHECK-IN INSIGHTS (Recent symptom reports from user)
+======================================================================
+{weekly_checkin_insights}
+Use these insights to:
+- Target actions that address the users recent symptom triggers
+- Avoid recommending things that made symptoms worse
+- Build on what helped the user feel better
+
+======================================================================
+DAILY REVIEW INSIGHTS (Feedback from yesterdays plan)
+======================================================================
+{daily_review_insights}
+Use these insights to:
+- If user skipped items, understand why and suggest easier alternatives
+- If user replaced items, learn from their substitutions
+- If user completed items, reinforce those habits
+
+======================================================================
+CARE PLAN CHECK-IN INSIGHTS (Daily chat about todays plan)
+======================================================================
+{care_plan_checkin_insights}
+Use these insights to:
+- Respect explicit requests to change/skip/replace actions
+- Make alternatives easier if user reports barriers (time, cravings, fatigue)
+- Reinforce what the user said is working well
+
+======================================================================
+SYMPTOM CHECK-IN INSIGHTS (Daily symptom progress)
+======================================================================
+{symptom_checkin_insights}
+Use these insights to:
+- Reduce triggers and double-down on what helped today
+- Keep actions realistic if user reports low energy / high symptoms
+- Reinforce wins and remove friction from difficult items
 
 ======================================================================
 🚨 CRITICAL: EVERY ACTION MUST BE COMPLETELY UNIQUE 🚨
 ======================================================================
+Even if "Strength Training" is great for BOTH cortisol AND testosterone,
+you can ONLY use it for ONE hormone. Pick something DIFFERENT for the other.
+
 Duplicate detection runs AFTER you respond - if you generate duplicates,
 the entire response will be REJECTED and you'll have to regenerate.
+
+EXAMPLES OF WHAT WILL BE REJECTED:
+❌ "Salmon" for cortisol + "Salmon" for progesterone (same food)
+❌ "Yoga" for estrogen + "Morning Yoga" for testosterone (same activity)
+❌ "Meditation" for cortisol + "Mindful Meditation" for progesterone (same practice)
 
 ======================================================================
 REQUIREMENTS (READ CAREFULLY)
@@ -1225,12 +1305,13 @@ class ActionPlanGenerator:
     5. Store plan in database
     """
     
-    GPT_MODEL = "gpt-4o-mini"
+    GPT_MODEL = "gpt-5-mini"  # Faster reasoning model for well-defined tasks
     GPT_TEMPERATURE = 0.7
     MAX_RETRIES = 3
     
-    # Models that don't support temperature parameter (reasoning models)
-    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini", "gpt-4o-mini"]
+    # Models that don't support temperature parameter (reasoning models like o1/o3)
+    # Note: gpt-5-mini DOES support temperature (0-2)
+    NO_TEMPERATURE_MODELS = ["o1", "o1-mini", "o1-preview", "o3-mini", "o3", "o4-mini"]
     
     @classmethod
     def model_supports_temperature(cls, model_name: str) -> bool:
@@ -1288,7 +1369,7 @@ class ActionPlanGenerator:
     ) -> dict:
         """
         Build OpenAI API payload, conditionally including temperature.
-        Some models (o1, o3-mini, gpt-4o-mini) don't support temperature.
+        Some models (o1, o3, o4-mini) don't support temperature. GPT-5-mini does support it.
         """
         payload = {
             "model": model,
@@ -2972,7 +3053,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     
                     # Build payload with conditional temperature
                     create_kwargs = {
-                        "model": "gpt-4o-mini",
+                        "model": self.GPT_MODEL,  # Use same model as main generation
                         "messages": [
                             {"role": "system", "content": "You are a womens wellness expert. Generate personalized health actions. Follow hormone balance requirements EXACTLY."},
                             {"role": "user", "content": prompt}
@@ -2982,13 +3063,14 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     }
                     
                     # Only add temperature if model supports it
-                    if self.model_supports_temperature("gpt-4o-mini"):
+                    if self.model_supports_temperature(self.GPT_MODEL):
                         create_kwargs["temperature"] = 0.7
                     
                     response = await client.chat.completions.create(**create_kwargs)
                     
                     content = response.choices[0].message.content
-                    cost = (response.usage.prompt_tokens * 0.00015 + response.usage.completion_tokens * 0.0006) / 1000
+                    # GPT-5-mini pricing: $0.25/1M input, $2.00/1M output
+                    cost = (response.usage.prompt_tokens * 0.00025 + response.usage.completion_tokens * 0.002) / 1000
                     logger.info(f" Partial actions generated via OpenAI (tokens: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens})")
                     logger.info(f" DEBUG: Raw OpenAI response content length: {len(content) if content else 0}")
                     if content:
@@ -4221,7 +4303,7 @@ Format as bullet points."""
                 if self.openai_api_key:
                     try:
                         payload = self.build_openai_payload(
-                            model="gpt-4o-mini",
+                            model=self.GPT_MODEL,  # Use same model as main generation
                             messages=[
                                 {"role": "system", "content": "You are a wellness AI analyzing user feedback patterns."},
                                 {"role": "user", "content": summary_prompt}
@@ -4501,71 +4583,6 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
         
         logger.info(f"[INTELLIGENT CONTEXT] Built health situation summary: {health_situation_summary[:200]}...")
         
-        # ═══════════════════════════════════════════════════════════════════════
-        # PROMPT OPTIMIZATION: Filter out empty context sections to reduce tokens
-        # For new users, most context sections are empty placeholders - skip them!
-        # ═══════════════════════════════════════════════════════════════════════
-        def _is_placeholder(value: str) -> bool:
-            """Check if a context value is just a placeholder (no real data)."""
-            if not value or not isinstance(value, str):
-                return True
-            placeholders = [
-                "no previous feedback", "no additional context", "no conversation history",
-                "no summary yet", "no weekly check-in", "no daily review", "no care plan",
-                "no symptom check-in", "no unified memory", "none (this is the user",
-                "none specified", "not specified", "not provided"
-            ]
-            value_lower = value.lower().strip()
-            return any(p in value_lower for p in placeholders) or len(value_lower) < 30
-        
-        # Build condensed context only for sections with real data
-        def _build_condensed_context(user_context: Dict) -> str:
-            """Build a condensed context string with only non-empty sections."""
-            sections = []
-            
-            # Unified memory (most important)
-            unified = user_context.get("unified_memory_formatted", "")
-            if not _is_placeholder(unified):
-                sections.append(f"[MEMORY] {unified[:1500]}")  # Limit to 1500 chars
-            
-            # Feedback memory
-            feedback = user_context.get("feedback_memory", "")
-            if not _is_placeholder(feedback):
-                sections.append(f"[FEEDBACK] {feedback[:1000]}")
-            
-            # Chat history
-            chat = user_context.get("chat_history", "")
-            if not _is_placeholder(chat):
-                sections.append(f"[CHAT] {chat[:1000]}")
-            
-            # Weekly check-in
-            weekly = user_context.get("weekly_checkin_insights", "")
-            if not _is_placeholder(weekly):
-                sections.append(f"[WEEKLY] {weekly[:500]}")
-            
-            # Daily review
-            daily = user_context.get("daily_review_insights", "")
-            if not _is_placeholder(daily):
-                sections.append(f"[DAILY] {daily[:500]}")
-            
-            # Care plan check-in
-            care = user_context.get("care_plan_checkin_insights", "")
-            if not _is_placeholder(care):
-                sections.append(f"[CARE] {care[:500]}")
-            
-            # Symptom check-in
-            symptom = user_context.get("symptom_checkin_insights", "")
-            if not _is_placeholder(symptom):
-                sections.append(f"[SYMPTOM] {symptom[:500]}")
-            
-            if sections:
-                return "\n\n".join(sections)
-            return "(New user - no previous interaction history)"
-        
-        condensed_context = _build_condensed_context(user_context)
-        context_sections_count = condensed_context.count("[") if "[" in condensed_context else 0
-        logger.info(f"[PROMPT OPTIMIZATION] Condensed context: {len(condensed_context)} chars, {context_sections_count} sections with real data")
-        
         # Build the prompt with ALL user context
         logger.info(f"[GPT] Building prompt with user context...")
         prompt = ACTION_GENERATION_PROMPT.format(
@@ -4595,8 +4612,17 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
             workout_intensity=user_context.get("workout_intensity", "moderate"),
             current_streak=user_context.get("current_streak", 0),
             longest_streak=user_context.get("longest_streak", 0),
-            # OPTIMIZED: Single condensed context instead of 8 separate sections
-            condensed_personalization_context=condensed_context,
+            # Feedback and context
+            feedback_memory=user_context.get("feedback_memory", "No previous feedback"),
+            chatbot_context=user_context.get("chatbot_context", "No additional context"),
+            chat_history=user_context.get("chat_history", "No conversation history yet"),
+            feedback_summary=user_context.get("feedback_summary", "No summary yet"),
+            weekly_checkin_insights=user_context.get("weekly_checkin_insights", "No weekly check-in data yet"),
+            daily_review_insights=user_context.get("daily_review_insights", "No daily review data yet"),
+            care_plan_checkin_insights=user_context.get("care_plan_checkin_insights", "No care plan check-in data yet"),
+            symptom_checkin_insights=user_context.get("symptom_checkin_insights", "No symptom check-in data yet"),
+            # NEW: Unified cross-chatbot memory
+            unified_memory_context=user_context.get("unified_memory_formatted", "No unified memory available yet"),
             # Anti-repetition and hallucination prevention
             recently_recommended=user_context.get("recently_recommended", "None (this is the users first plan)"),
             allowed_symptoms=user_context.get("allowed_symptoms", "general wellness support"),
@@ -4917,7 +4943,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
-            # NOTE: Some models (o1, o3-mini, gpt-4o-mini) don't support temperature
+            # NOTE: Some models (o1, o3, o4-mini) don't support temperature. GPT-5-mini does.
             openai_payload = {
                 "model": self.GPT_MODEL,
                 "messages": [
@@ -4939,21 +4965,6 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             # Only add temperature if model supports it
             if self.model_supports_temperature(self.GPT_MODEL):
                 openai_payload["temperature"] = self.GPT_TEMPERATURE
-            
-            # ═══════════════════════════════════════════════════════════════════════
-            # PROMPT SIZE LOGGING - Track token counts for latency debugging
-            # ═══════════════════════════════════════════════════════════════════════
-            system_msg_len = len(enhanced_system_with_research)
-            user_msg_len = len(prompt)
-            total_chars = system_msg_len + user_msg_len
-            # Rough token estimate: ~4 chars per token for English
-            estimated_tokens = total_chars // 4
-            logger.info(f"📊 [PROMPT SIZE] system_msg={system_msg_len:,} chars, user_msg={user_msg_len:,} chars")
-            logger.info(f"📊 [PROMPT SIZE] total={total_chars:,} chars (~{estimated_tokens:,} tokens estimated)")
-            
-            # Warn if prompt is very large (likely causing slow response)
-            if estimated_tokens > 15000:
-                logger.warning(f"⚠️ [PROMPT SIZE] Very large prompt! May cause slow response times.")
             
             # Try OpenAI first with retry mechanism for timeouts
             logger.info(f"🤖 [OPENAI] Starting request with model: {self.GPT_MODEL}")
@@ -5096,10 +5107,10 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
             
             data = response.json()
             
-            # Calculate cost
+            # Calculate cost - GPT-5-mini pricing: $0.25/1M input, $2.00/1M output
             input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
             output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-            total_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+            total_cost += (input_tokens * 0.00025 / 1000) + (output_tokens * 0.002 / 1000)
             
             content = data["choices"][0]["message"]["content"]
             logger.info(f" GPT generated recommendations based on {len(research_findings)} research papers")
@@ -5552,7 +5563,7 @@ JSON ONLY:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "gpt-4o-mini",
+                    "model": self.GPT_MODEL,  # Use same model for consistency
                     "messages": [
                         {"role": "system", "content": "You are a health plan quality evaluator. Output ONLY JSON, no explanation."},
                         {"role": "user", "content": prompt}
@@ -8058,10 +8069,10 @@ OUTPUT FORMAT (JSON Array):
                         else:
                             data = response.json()
                             
-                            # Calculate GPT cost
+                            # Calculate GPT cost - GPT-5-mini pricing: $0.25/1M input, $2.00/1M output
                             input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
                             output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                            attempt_cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                            attempt_cost = (input_tokens * 0.00025 / 1000) + (output_tokens * 0.002 / 1000)
                             gpt_cost += attempt_cost
                             
                             message = data["choices"][0]["message"]
@@ -8145,10 +8156,10 @@ OUTPUT FORMAT (JSON Array):
                                 else:
                                     data = response2.json()
                                     
-                                    # Add second call cost
+                                    # Add second call cost - GPT-5-mini pricing
                                     input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
                                     output_tokens = data.get("usage", {}).get("completion_tokens", 0)
-                                    gpt_cost += (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)
+                                    gpt_cost += (input_tokens * 0.00025 / 1000) + (output_tokens * 0.002 / 1000)
                                     
                                     content = data["choices"][0]["message"]["content"]
                                     logger.info(" Batch replacements generated via OpenAI")
