@@ -3338,27 +3338,80 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                 if not session:
                     logger.warning(f"[CONTEXT] Session {session_id} not found")
                     return None
+                
+                # Extract concerns from session (they are stored as JSONB arrays)
+                period_concerns = session.period_concerns if session.period_concerns else []
+                body_concerns = session.body_concerns if session.body_concerns else []
+                skin_hair_concerns = session.skin_hair_concerns if session.skin_hair_concerns else []
+                mental_health_concerns = session.mental_health_concerns if session.mental_health_concerns else []
+                other_concerns = session.other_concerns if session.other_concerns else []
+                
+                # Build allowed_symptoms whitelist for GUEST (same logic as registered users)
+                allowed_symptoms_set = set()
+                
+                # Add top concern
+                if session.top_concern and session.top_concern != "general wellness":
+                    allowed_symptoms_set.add(session.top_concern)
+                
+                # Add period concerns
+                if isinstance(period_concerns, list):
+                    allowed_symptoms_set.update(period_concerns)
+                elif isinstance(period_concerns, dict):
+                    allowed_symptoms_set.update([k for k, v in period_concerns.items() if v])
+                
+                # Add body concerns
+                if isinstance(body_concerns, list):
+                    allowed_symptoms_set.update(body_concerns)
+                elif isinstance(body_concerns, dict):
+                    allowed_symptoms_set.update([k for k, v in body_concerns.items() if v])
+                
+                # Add skin/hair concerns
+                if isinstance(skin_hair_concerns, list):
+                    allowed_symptoms_set.update(skin_hair_concerns)
+                elif isinstance(skin_hair_concerns, dict):
+                    allowed_symptoms_set.update([k for k, v in skin_hair_concerns.items() if v])
+                
+                # Add mental health concerns
+                if isinstance(mental_health_concerns, list):
+                    allowed_symptoms_set.update(mental_health_concerns)
+                elif isinstance(mental_health_concerns, dict):
+                    allowed_symptoms_set.update([k for k, v in mental_health_concerns.items() if v])
+                
+                # Add other concerns
+                if isinstance(other_concerns, list):
+                    allowed_symptoms_set.update(other_concerns)
+                
+                # Build allowed conditions
+                allowed_conditions = session.diagnosed_conditions or []
+                
+                # Format for prompt
+                allowed_symptoms_str = ", ".join(sorted(allowed_symptoms_set)) if allowed_symptoms_set else "general wellness support"
+                allowed_conditions_str = ", ".join(allowed_conditions) if allowed_conditions else "None diagnosed"
+                
+                logger.info(f"[CONTEXT] GUEST allowed_symptoms ({len(allowed_symptoms_set)}): {allowed_symptoms_str}")
+                logger.info(f"[CONTEXT] GUEST allowed_conditions ({len(allowed_conditions)}): {allowed_conditions_str}")
                     
                 # Construct context from session data
                 return {
                     "age": session.age,
                     "cycle_day": 1, 
-                    "cycle_phase": "follicular", # Default or infer from period_description?
-                    "primary_hormone": "cortisol", 
-                    "secondary_hormone": "progesterone",
+                    "cycle_phase": "follicular",
+                    "primary_hormone": session.primary_hormone or "cortisol", 
+                    "secondary_hormone": session.secondary_hormones[0] if session.secondary_hormones else "progesterone",
                     "top_concern": session.top_concern,
                     "diagnosed_conditions": session.diagnosed_conditions or [],
-                    "period_concerns": [], # Map from session?
-                    "body_concerns": [],
-                    "skin_hair_concerns": [],
-                    "mental_health_concerns": [],
-                    "family_history": [],
+                    "period_concerns": period_concerns,
+                    "body_concerns": body_concerns,
+                    "skin_hair_concerns": skin_hair_concerns,
+                    "mental_health_concerns": mental_health_concerns,
+                    "other_concerns": other_concerns,
+                    "family_history": session.family_history or [],
                     "lifestyle_focus": session.lifestyle_focus or ["eat", "move", "pause"],
                     "diet_preference": "none",
                     "food_allergies": [],
-                    "stress_level": "moderate",
-                    "sleep_duration": "7-8 hours",
-                    "workout_intensity": "moderate",
+                    "stress_level": session.stress_level or "moderate",
+                    "sleep_duration": session.sleep_duration or "7-8 hours",
+                    "workout_intensity": session.workout_intensity or "moderate",
                     "birth_control": session.birth_control,
                     "current_streak": 0,
                     "longest_streak": 0,
@@ -3366,7 +3419,10 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     "feedback_memory": "",
                     "chatbot_context": "",
                     "weekly_checkin_insights": "",
-                    "timezone": "UTC"
+                    "timezone": session.survey_timezone or "UTC",
+                    # CRITICAL: Include allowed symptoms/conditions for guest
+                    "allowed_symptoms": allowed_symptoms_str,
+                    "allowed_conditions": allowed_conditions_str
                 }
 
             # STEP 1: Get user profile FIRST (required to continue)
