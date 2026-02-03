@@ -906,17 +906,18 @@ class ImageLibraryService:
         logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
         
         if category == "food":
-            # FOOD: Show the ACTUAL dish with visible ingredients
-            # User should be able to understand what to prepare from the image
+            # FOOD: Show FINISHED, READY-TO-EAT dishes - NOT raw ingredients!
+            # Think: Instagram food photography, cozy wellness aesthetic
+            # Users want to see appetizing meals that inspire them to eat healthy
             enhanced = (
-                f"A delicious plate of {prompt}, "
-                f"showing the actual ingredients clearly visible, "
-                f"freshly prepared and appetizing, natural vibrant colors, "
-                f"beautifully arranged on a clean white plate, "
-                f"top-down or slight angle view so all ingredients are visible, "
-                f"professional food photography, bright natural lighting, "
-                f"the dish should look exactly like {prompt} with recognizable ingredients, "
-                f"healthy nutritious meal for women's wellness"
+                f"Professional Instagram-style food photography of {prompt}, "
+                f"beautifully plated finished dish ready to eat, "
+                f"warm cozy aesthetic, appetizing and delicious looking, "
+                f"soft natural morning light from window, "
+                f"styled like a wellness food blog, minimalist background, "
+                f"the food looks fresh, nourishing, and inviting, "
+                f"NOT raw ingredients - show the prepared meal, "
+                f"healthy comfort food aesthetic, women's wellness lifestyle"
             )
             
         elif category == "movement":
