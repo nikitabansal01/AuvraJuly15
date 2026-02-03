@@ -1365,16 +1365,22 @@ class ActionPlanGenerator:
         max_tokens: int = 4000,
         response_format: dict = None,
         temperature: float = None,
-        tools: list = None
+        tools: list = None,
+        reasoning_effort: str = "none"  # Default to "none" for speed with GPT-5-mini
     ) -> dict:
         """
         Build OpenAI API payload, conditionally including temperature.
         Some models (o1, o3, o4-mini) don't support temperature. GPT-5-mini does support it.
+        
+        IMPORTANT: GPT-5-mini is a reasoning model. By default reasoning_effort="none"
+        to disable slow chain-of-thought reasoning and reduce latency from ~112s to ~10-15s.
         """
         payload = {
             "model": model,
             "messages": messages,
             "max_completion_tokens": max_tokens,
+            # CRITICAL: Disable reasoning for speed with GPT-5-mini
+            "reasoning_effort": reasoning_effort,
         }
         
         # Only add temperature if model supports it
@@ -3052,6 +3058,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     client = openai.AsyncOpenAI(api_key=self.openai_api_key)
                     
                     # Build payload with conditional temperature
+                    # CRITICAL: Set reasoning_effort to "none" for speed
                     create_kwargs = {
                         "model": self.GPT_MODEL,  # Use same model as main generation
                         "messages": [
@@ -3059,7 +3066,8 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                             {"role": "user", "content": prompt}
                         ],
                         "max_completion_tokens": 16000,  # GPT-5-mini has 128K context - allow proper output
-                        "response_format": {"type": "json_object"}
+                        "response_format": {"type": "json_object"},
+                        "reasoning_effort": "none"  # Disable reasoning for speed (112s -> ~10s)
                     }
                     
                     # Only add temperature if model supports it
@@ -4943,7 +4951,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
-            # NOTE: Some models (o1, o3, o4-mini) don't support temperature. GPT-5-mini does.
+            # NOTE: GPT-5-mini is a reasoning model - set reasoning_effort to "none" for speed
             openai_payload = {
                 "model": self.GPT_MODEL,
                 "messages": [
@@ -4959,7 +4967,10 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
                         "strict": True,
                         "schema": ACTION_PLAN_SCHEMA
                     }
-                }
+                },
+                # CRITICAL: Disable reasoning for speed - GPT-5-mini defaults to reasoning ON
+                # This reduces latency from ~112s to ~10-15s
+                "reasoning_effort": "none"
             }
             
             # Only add temperature if model supports it
@@ -5570,6 +5581,7 @@ JSON ONLY:
                     ],
                     "temperature": 0.1,
                     "max_completion_tokens": 150,  # Enough for 5 scores
+                    "reasoning_effort": "none",  # Disable reasoning for speed
                 },
                 timeout=15.0  # Slightly longer for 5 factors
             )
@@ -8059,7 +8071,8 @@ OUTPUT FORMAT (JSON Array):
                                 "tools": [PUBMED_SEARCH_TOOL],
                                 "tool_choice": "auto",
                                 "temperature": 0.3,
-                                "max_completion_tokens": 16000
+                                "max_completion_tokens": 16000,
+                                "reasoning_effort": "none"  # Disable reasoning for speed
                             }
                         )
                         
@@ -8146,7 +8159,8 @@ OUTPUT FORMAT (JSON Array):
                                         ],
                                         "temperature": 0.3,
                                         "max_completion_tokens": 16000,
-                                        "response_format": {"type": "json_object"}
+                                        "response_format": {"type": "json_object"},
+                                        "reasoning_effort": "none"  # Disable reasoning for speed
                                     }
                                 )
                                 
