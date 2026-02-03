@@ -522,7 +522,7 @@ class ImageLibraryService:
         
         try:
             # Generate image via RunPod with retry logic (Fix #14)
-            result, generation_time_ms = await self._call_runpod_flux_with_retry(prompt, category)
+            result, generation_time_ms = await self._call_runpod_flux_with_retry(prompt, category, variant_type)
             
             if not result:
                 logger.error(f"Failed to generate image via RunPod, using fallback for {category}")
@@ -603,7 +603,7 @@ class ImageLibraryService:
             fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
             return (fallback_url, False, 0.0)
     
-    async def _call_runpod_flux(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
+    async def _call_runpod_flux(self, prompt: str, category: str = "food", variant_type: Optional[str] = None) -> Tuple[Optional[Any], int]:
         """
         Call RunPod FLUX.1 Schnell serverless endpoint using /runsync (synchronous).
         
@@ -621,8 +621,8 @@ class ImageLibraryService:
         start_time = time.time()
         
         try:
-            # Enhanced prompt with category-specific styling
-            enhanced_prompt = self._enhance_prompt(prompt, category)
+            # Enhanced prompt with category-specific styling (hero vs variant)
+            enhanced_prompt = self._enhance_prompt(prompt, category, variant_type)
             
             # FLUX.1 Schnell payload - OPTIMIZED for speed
             payload = {
@@ -771,14 +771,14 @@ class ImageLibraryService:
         
         return (None, 0)
 
-    async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
+    async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food", variant_type: Optional[str] = None) -> Tuple[Optional[Any], int]:
         """
         Legacy polling logic for RunPod (used as fallback).
         """
         start_time = time.time()
         try:
             endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
-            enhanced_prompt = self._enhance_prompt(prompt, category)
+            enhanced_prompt = self._enhance_prompt(prompt, category, variant_type)
             
             payload = {
                 "input": {
@@ -848,7 +848,7 @@ class ImageLibraryService:
             logger.error(f"Error in legacy polling: {e}")
             return await self._generate_placeholder_image(prompt)
     
-    async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food") -> Tuple[Optional[Any], int]:
+    async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food", variant_type: Optional[str] = None) -> Tuple[Optional[Any], int]:
         """
         Call RunPod FLUX.1 Schnell with retry logic.
         
@@ -860,7 +860,7 @@ class ImageLibraryService:
         for attempt in range(self.MAX_IMAGE_RETRIES):
             try:
                 logger.info(f"🎨 FLUX attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES} for: {prompt[:50]}...")
-                result, gen_time = await self._call_runpod_flux(prompt, category)
+                result, gen_time = await self._call_runpod_flux(prompt, category, variant_type)
                 
                 if result:
                     total_time = time.time() - total_start
@@ -886,7 +886,7 @@ class ImageLibraryService:
         logger.error(f"❌ All {self.MAX_IMAGE_RETRIES} retry attempts exhausted, using placeholder")
         return await self._generate_placeholder_image(prompt)
     
-    def _enhance_prompt(self, prompt: str, category: str) -> str:
+    def _enhance_prompt(self, prompt: str, category: str, variant_type: Optional[str] = None) -> str:
         """
         Create prompts that show users EXACTLY what to eat or do.
         
@@ -896,63 +896,86 @@ class ImageLibraryService:
         3. Keep it simple - AI image models don't need camera specs
         4. Be specific about the subject, not the photography
         
+        HERO vs VARIANT distinction (for food category):
+        - HERO images: Show the ingredient/supplement beautifully and aesthetically
+          (e.g., "Turmeric" shows golden turmeric root, "Ashwagandha" shows the herb)
+        - VARIANT images (tasty/easy/healthy): Show the prepared dish/recipe
+          (e.g., "Turmeric Latte", "Ashwagandha Tea" shows the finished drink)
+        
         Args:
             prompt: Action title (e.g., "Chickpea Salad", "Swimming", "Deep Breathing")
             category: "food", "movement", or "mindfulness"
+            variant_type: "hero", "tasty", "easy", or "healthy" (optional)
             
         Returns:
             Enhanced prompt that accurately represents the action
         """
-        logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category})")
+        logger.info(f"[PROMPT] Enhancing: '{prompt}' (category: {category}, variant: {variant_type})")
         
         if category == "food":
-            # FOOD: Hero the main ingredient/dish name!
-            # If action is "Turmeric Golden Milk" → feature TURMERIC beautifully
-            # If action is "Salmon Bowl" → feature SALMON as the star
-            # Think: Pinterest food aesthetic, close-up beauty shots
-            enhanced = (
-                f"Stunning food photography hero shot of {prompt}, "
-                f"the main ingredient is the star of the image, "
-                f"beautiful close-up detail showing the texture and color, "
-                f"Pinterest-worthy aesthetic, warm golden hour lighting, "
-                f"clean minimalist white marble or wood background, "
-                f"fresh herbs and complementary ingredients artfully arranged, "
-                f"appetizing and vibrant colors, professional food styling, "
-                f"the dish name '{prompt}' should be immediately recognizable"
-            )
+            # HERO images: Show the ingredient/supplement beautifully
+            # Action titles are nouns (Turmeric, Ashwagandha, Vitamin B6, Chasteberry)
+            # These should show the actual ingredient in an aesthetic, wellness style
+            if variant_type == "hero":
+                enhanced = (
+                    f"Beautiful aesthetic product photography of {prompt}, "
+                    f"natural wellness ingredient styled like a premium supplement brand, "
+                    f"artistic composition with soft natural lighting, "
+                    f"clean minimalist background, golden warm tones, "
+                    f"the {prompt} looks premium and luxurious, "
+                    f"wellness lifestyle aesthetic, Instagram-worthy, "
+                    f"show the raw natural form of {prompt}, "
+                    f"apothecary wellness vibes, holistic health aesthetic"
+                )
+            else:
+                # VARIANT images (tasty/easy/healthy): Show FINISHED, READY-TO-EAT dishes
+                # Think: Instagram food photography, cozy wellness aesthetic
+                # Users want to see appetizing meals that inspire them to eat healthy
+                enhanced = (
+                    f"Professional Instagram-style food photography of {prompt}, "
+                    f"beautifully plated finished dish ready to eat, "
+                    f"warm cozy aesthetic, appetizing and delicious looking, "
+                    f"soft natural morning light from window, "
+                    f"styled like a wellness food blog, minimalist background, "
+                    f"the food looks fresh, nourishing, and inviting, "
+                    f"NOT raw ingredients - show the prepared meal, "
+                    f"healthy comfort food aesthetic, women's wellness lifestyle"
+                )
             
         elif category == "movement":
-            # MOVEMENT: Aesthetic fitness photography
-            # Hero the specific exercise - make it aspirational
+            # MOVEMENT: Show the ACTUAL exercise position and form
+            # User should be able to understand how to do the exercise from the image
             enhanced = (
-                f"Editorial fitness photography of a woman doing {prompt}, "
-                f"elegant athletic pose showing the movement beautifully, "
-                f"the exercise {prompt} is the clear focus of the image, "
-                f"soft natural lighting, clean minimal studio background, "
-                f"wearing neutral toned athletic wear, "
-                f"graceful and aspirational, wellness lifestyle aesthetic, "
-                f"professional fitness campaign quality"
+                f"A woman demonstrating {prompt} exercise, "
+                f"clear view of the body position and correct form, "
+                f"showing exactly how to perform {prompt}, "
+                f"wearing comfortable athletic clothes, "
+                f"focused calm expression, bright clean background, "
+                f"the exercise pose should be clearly recognizable as {prompt}, "
+                f"fitness photography style, full body visible, "
+                f"instructional and easy to follow, women's wellness exercise"
             )
             
         elif category == "mindfulness":
-            # MINDFULNESS: Serene, calming, premium wellness aesthetic
-            # Hero the specific practice - create peaceful mood
+            # MINDFULNESS: Show the ACTUAL meditation or breathing practice
+            # User should understand what the practice looks like
             enhanced = (
-                f"Serene wellness photography of {prompt} practice, "
-                f"peaceful woman in meditation or breathwork pose, "
-                f"soft diffused morning light, dreamy calm atmosphere, "
-                f"cozy neutral setting with plants or natural elements, "
-                f"wearing soft comfortable loungewear, "
-                f"the {prompt} practice feels inviting and calming, "
-                f"premium spa wellness aesthetic, self-care moment"
+                f"A peaceful woman practicing {prompt}, "
+                f"showing the meditation or breathing position clearly, "
+                f"eyes closed, serene relaxed expression, "
+                f"comfortable seated or resting position for {prompt}, "
+                f"wearing soft comfortable clothes, "
+                f"calm cozy setting with soft natural light, "
+                f"the practice should be recognizable as {prompt}, "
+                f"peaceful wellness moment, self-care atmosphere"
             )
             
         else:
-            # Fallback: clean wellness aesthetic
+            # Fallback: simple clear wellness image
             enhanced = (
-                f"Beautiful minimalist wellness photography of {prompt}, "
-                f"clean aesthetic, soft natural lighting, "
-                f"premium lifestyle brand quality"
+                f"A beautiful wellness image of {prompt}, "
+                f"clean minimalist style, bright natural lighting, "
+                f"clearly showing what {prompt} looks like"
             )
         
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")

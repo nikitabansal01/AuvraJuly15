@@ -1366,15 +1366,14 @@ class ActionPlanGenerator:
         response_format: dict = None,
         temperature: float = None,
         tools: list = None,
-        reasoning_effort: str = "minimal"
+        reasoning_effort": "minimal" for speed with GPT-5-mini
     ) -> dict:
         """
         Build OpenAI API payload, conditionally including temperature.
         Some models (o1, o3, o4-mini) don't support temperature. GPT-5-mini does support it.
         
-        IMPORTANT: GPT-5-mini is a reasoning model. By default reasoning_effort="minimal"
-        to keep chain-of-thought fast while still enabling reasoning capabilities.
-        GPT-5-mini supports: 'minimal', 'low', 'medium', 'high' (NOT 'none').
+        IMPORTANT: GPT-5-mini is a reasoning model. By default reasoning_effort": "minimal"
+        to disable slow chain-of-thought reasoning and reduce latency from ~112s to ~10-15s.
         """
         payload = {
             "model": model,
@@ -3059,7 +3058,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
                     client = openai.AsyncOpenAI(api_key=self.openai_api_key)
                     
                     # Build payload with conditional temperature
-                    # CRITICAL: Set reasoning_effort="minimal" for speed
+                    # CRITICAL: Set reasoning_effort": "minimal" for speed
                     create_kwargs = {
                         "model": self.GPT_MODEL,  # Use same model as main generation
                         "messages": [
@@ -4952,7 +4951,7 @@ Include the paper details (title, journal, year, pmid, finding) in research_stud
             response = None  # Fix #19: Prevent UnboundLocalError
             
             # Build OpenAI payload with Structured Outputs
-            # NOTE: GPT-5-mini is a reasoning model - set reasoning_effort="minimal" for speed
+            # NOTE: GPT-5-mini is a reasoning model - set reasoning_effort": "minimal" for speed
             openai_payload = {
                 "model": self.GPT_MODEL,
                 "messages": [
