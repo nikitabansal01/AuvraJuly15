@@ -93,9 +93,9 @@ while True:
         print(f"  Total items: {total_items}")
         print(f"  Completed: {completed_count}")
         
-        # Fully completed = stop, not missed (streak is intact from here back)
-        if total_items > 0 and completed_count == total_items:
-            print(f"  -> FULLY COMPLETED - STOP")
+        # At least 1 completed = stop, not missed (streak is intact from here back)
+        if completed_count > 0:
+            print(f"  -> AT LEAST ONE COMPLETED - STOP")
             break
         
         # Frozen day = not missed, but continue checking for older missed days

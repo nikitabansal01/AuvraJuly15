@@ -174,10 +174,10 @@ print("-" * 60)
 print("  Dec 28: Plan exists, total_items=0, NOT frozen")
 print("")
 print("  ⚠️ POTENTIAL ISSUE: What happens?")
-print("  Code: if total_items > 0 and completed == total → break")
-print("  With total_items=0: condition is FALSE, falls through to 'else'")
+print("  Code: if completed_count > 0 → break (at least 1 action)")
+print("  With total_items=0: completed_count=0, falls through")
 print("  Result: treated as MISSED")
-print("  🔧 May want to treat 0-item plans as NOT missed (nothing to do)")
+print("  🔧 Empty plan (0 items) is handled separately in streak_service (counts as streak day)")
 
 # ============================================================================
 # SCENARIO 12: Proactive freeze used for today

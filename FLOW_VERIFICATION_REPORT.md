@@ -198,9 +198,9 @@ DailyReviewResponse {
 - `freeze_used_dates` - Array of dates when freeze was used
 
 **Streak Logic:**
-1. If all actions completed → Streak maintained ✅
-2. If incomplete + freeze available → Offer freeze option 🧊
-3. If incomplete + no freeze → Streak breaks 😔
+1. If at least 1 action completed → Streak maintained ✅
+2. If 0 completed + freeze available → Offer freeze option 🧊
+3. If 0 completed + no freeze → Streak breaks 😔
 
 ---
 
