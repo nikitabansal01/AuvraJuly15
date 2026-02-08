@@ -429,14 +429,24 @@ class ContextEngine:
     
     async def _build_streak_context(self, user_id: str) -> StreakContext:
         """Build habit momentum context."""
-        from app.core.database import DailyAssignment, UserProfile
+        from app.core.database import DailyAssignment
+        from app.services.streak_service import StreakService
         
         # Get recent assignment history
         from app.utils.timezone_utils import get_user_current_date
         from datetime import timedelta
+        import datetime as dt
         
         user_today = get_user_current_date(user_id, self.db)
         fourteen_days_ago = user_today - timedelta(days=14)
+        
+        # Source-of-truth streak status (uses 1+ completion/day rule)
+        streak_service = StreakService(self.db)
+        streak_status = streak_service.get_full_streak_status(user_id)
+        current_streak = streak_status.get("current_streak", 0)
+        longest_streak = streak_status.get("longest_streak", 0)
+        today_completed = streak_status.get("today_completed", False)
+        today_frozen = streak_status.get("today_frozen", False)
         
         assignments = self.db.query(DailyAssignment).filter(
             and_(
@@ -455,27 +465,8 @@ class ContextEngine:
             if assignment.is_completed:
                 daily_completion[d]["completed"] += 1
         
-        # Calculate streak (days with >50% completion)
-        current_streak = 0
-        longest_streak = 0
-        temp_streak = 0
-        
+        # Keep history-derived completion trend signals for conversational nuance
         sorted_dates = sorted(daily_completion.keys(), reverse=True)
-        for i, d in enumerate(sorted_dates):
-            stats = daily_completion[d]
-            rate = stats["completed"] / stats["total"] if stats["total"] > 0 else 0
-            
-            if rate >= 0.5:
-                temp_streak += 1
-                if i == 0 or (i > 0 and sorted_dates[i-1] - d == timedelta(days=1)):
-                    current_streak = temp_streak
-            else:
-                longest_streak = max(longest_streak, temp_streak)
-                temp_streak = 0
-                if i == 0:
-                    current_streak = 0
-        
-        longest_streak = max(longest_streak, temp_streak)
         
         # Calculate 7-day consistency
         from app.utils.timezone_utils import get_user_current_date
@@ -491,16 +482,25 @@ class ContextEngine:
         consistency_rate = sum(recent_completions) / len(recent_completions) if recent_completions else 0
         
         # Days since last activity
-        days_since = 0
-        if sorted_dates:
-            from app.utils.timezone_utils import get_user_current_date
-            user_today = get_user_current_date(user_id, self.db)
-            days_since = (user_today - sorted_dates[0]).days
+        days_since = 999
+        last_activity_raw = streak_status.get("last_activity_date")
+        if last_activity_raw:
+            try:
+                last_activity_date = dt.date.fromisoformat(last_activity_raw)
+                days_since = max(0, (user_today - last_activity_date).days)
+            except Exception:
+                days_since = 999
+        elif sorted_dates:
+            days_since = max(0, (user_today - sorted_dates[0]).days)
         
         # Determine streak health
-        if current_streak >= 7:
+        if streak_status.get("is_broken"):
+            streak_health = "broken"
+        elif streak_status.get("at_risk") or streak_status.get("streak_at_risk"):
+            streak_health = "at_risk"
+        elif current_streak >= 7:
             streak_health = "strong"
-        elif current_streak >= 3:
+        elif current_streak >= 1:
             streak_health = "building"
         elif days_since <= 1:
             streak_health = "at_risk"
@@ -533,7 +533,12 @@ class ContextEngine:
         celebration_opportunity = current_streak in milestone_days
         
         # Risk alert if streak might break
-        risk_alert = streak_health == "at_risk" and current_streak >= 3
+        risk_alert = (
+            current_streak >= 3
+            and not today_completed
+            and not today_frozen
+            and (streak_health in {"at_risk", "broken"} or days_since <= 1)
+        )
         
         return StreakContext(
             current_streak=current_streak,
@@ -844,4 +849,3 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
             lines.append(f"      Hint: \"{goal.get('question_hint', '')}\"")
     
     return "\n".join(lines) if lines else ""
-

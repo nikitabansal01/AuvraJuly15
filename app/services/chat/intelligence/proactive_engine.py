@@ -233,43 +233,16 @@ class ProactiveEngine:
     
     async def _check_streak_status(self, user_id: str) -> List[ProactiveTrigger]:
         """Check streak-related triggers."""
-        from app.core.database import DailyAssignment
-        from app.utils.timezone_utils import get_user_current_date
+        from app.services.streak_service import StreakService
         
         triggers = []
         
-        # Calculate current streak
-        today = get_user_current_date(user_id, self.db)
-        fourteen_days_ago = today - timedelta(days=14)
-        
-        assignments = self.db.query(DailyAssignment).filter(
-            and_(
-                DailyAssignment.uid == user_id,
-                DailyAssignment.assignment_date >= fourteen_days_ago
-            )
-        ).all()
-        
-        # Calculate daily completion rates
-        daily_rates = {}
-        for assignment in assignments:
-            d = assignment.assignment_date
-            if d not in daily_rates:
-                daily_rates[d] = {"completed": 0, "total": 0}
-            daily_rates[d]["total"] += 1
-            if assignment.is_completed:
-                daily_rates[d]["completed"] += 1
-        
-        # Calculate streak (days with >50% completion)
-        streak = 0
-        current_date = today
-        while current_date in daily_rates:
-            stats = daily_rates[current_date]
-            rate = stats["completed"] / stats["total"] if stats["total"] > 0 else 0
-            if rate >= 0.5:
-                streak += 1
-                current_date -= timedelta(days=1)
-            else:
-                break
+        # Use unified streak source of truth (1+ completion/day rule)
+        streak_service = StreakService(self.db)
+        streak_status = streak_service.get_full_streak_status(user_id)
+        streak = streak_status.get("current_streak", 0)
+        today_completed = streak_status.get("today_completed", False)
+        today_frozen = streak_status.get("today_frozen", False)
         
         # Streak celebrations
         streak_messages = {
@@ -291,8 +264,8 @@ class ProactiveEngine:
             ))
         
         # Streak at risk warning
-        if streak >= 3 and today not in daily_rates:
-            # They have a streak but haven't completed anything today
+        if streak >= 3 and not today_completed and not today_frozen:
+            # They have an active streak but haven't protected today yet
             triggers.append(ProactiveTrigger(
                 trigger_type=TriggerType.STREAK_AT_RISK,
                 priority=TriggerPriority.MEDIUM,
