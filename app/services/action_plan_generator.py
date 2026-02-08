@@ -5567,7 +5567,393 @@ IMPORTANT: Output ONLY valid JSON. No markdown, no thinking output, no preamble.
                 action["time_slot"] = "morning"
         
         return actions
+
+    # ========================================================================
+    # REPLACEMENT PROMPT BUILDER - EXACT REPLICA of action plan generation
+    # ========================================================================
+    def _build_personalized_system_prompt(
+        self,
+        user_context: Dict[str, Any],
+        target_hormone: str,
+        cycle_phase: str,
+    ) -> str:
+        """Build the SAME personalized system prompt used in action plan generation.
+        
+        This ensures replacements get identical quality to original generation.
+        """
+        user_name = user_context.get("user_name", "there")
+        conditions_list = user_context.get("diagnosed_conditions", [])
+        
+        # Build intelligent health context summary (same logic as _generate_actions_via_gpt)
+        all_concerns = []
+        top_concern = user_context.get("top_concern", "")
+        if top_concern and top_concern.lower() not in ["none", "general wellness", ""]:
+            all_concerns.append(top_concern)
+        for key in ("period_concerns", "body_concerns", "skin_hair_concerns", "mental_health_concerns"):
+            val = user_context.get(key, "")
+            if val and str(val).lower() not in ["none specified", "none", ""]:
+                if isinstance(val, list):
+                    all_concerns.extend([c for c in val if c])
+                elif isinstance(val, str):
+                    all_concerns.append(val.strip())
+        seen = set()
+        unique_concerns = []
+        for c in all_concerns:
+            c_lower = c.lower().strip()
+            if c_lower and c_lower not in seen:
+                seen.add(c_lower)
+                unique_concerns.append(c.strip())
+        
+        if conditions_list:
+            diagnosed_conditions_summary = ", ".join(conditions_list)
+            user_health_context = f"diagnosed with {diagnosed_conditions_summary}"
+            if unique_concerns:
+                user_health_context += f", also experiencing: {', '.join(unique_concerns[:5])}"
+        elif unique_concerns:
+            diagnosed_conditions_summary = ", ".join(unique_concerns[:3])
+            user_health_context = f"experiencing: {', '.join(unique_concerns[:5])}"
+        else:
+            diagnosed_conditions_summary = "hormone balance"
+            user_health_context = "focused on overall hormone wellness"
+        
+        # Get hormone persona and phase behavior
+        hormone_persona = HORMONE_PERSONAS.get(target_hormone.lower(), DEFAULT_PERSONA)
+        phase_behavior = hormone_persona.get("phase_behavior", {}).get(
+            cycle_phase.lower(), "I fluctuate during this phase"
+        )
+        
+        personalized_system = SYSTEM_PROMPT.format(
+            user_name=user_name,
+            user_health_context=user_health_context,
+            diagnosed_conditions_summary=diagnosed_conditions_summary,
+            top_concern=user_context.get("top_concern", "general wellness"),
+            cycle_day=user_context.get("cycle_day", "?"),
+            cycle_phase=cycle_phase,
+            primary_hormone=target_hormone,
+            secondary_hormone=target_hormone,  # For replacement, both target same hormone
+            food_allergies=user_context.get("food_allergies", "none"),
+            diet_preference=user_context.get("diet_preference", "no preference"),
+        )
+        
+        personalized_system += f"""
+
+CURRENT USER'S HORMONE CONTEXT:
+- Cycle Phase: {cycle_phase}
+- Target Hormone: {hormone_persona.get('name', 'Hormone')} ({target_hormone})
+- Phase behavior: "{phase_behavior}"
+- User benefit: "{hormone_persona.get('benefit', 'balanced')}"
+- Focus: {hormone_persona.get('focus', 'overall wellness')}
+- Health Situation: {user_health_context}
+
+Write the hormone_persona_intro naturally:
+1. Address user by name: "Hey {user_name}!"
+2. Speak as the hormone persona (e.g., "I'm {hormone_persona.get('name', 'Hormone')} 💜")
+3. Connect the action to THEIR specific situation
+4. Keep it SHORT (2 sentences max)
+"""
+        return personalized_system
+
+    def _build_replacement_prompt(
+        self,
+        user_context: Dict[str, Any],
+        original_title: str,
+        original_category: str,
+        target_hormone: str,
+        reason: Optional[str],
+        other_action_titles: List[str],
+        other_active_actions: List[Dict],
+        research_context: str,
+        num_actions: int = 1,
+    ) -> str:
+        """Build a PRODUCTION-GRADE replacement prompt that matches the quality
+        of ACTION_GENERATION_PROMPT exactly.
+        
+        This is the ROOT FIX: replacement prompts were stripped-down and generated
+        low-quality outputs (wrong title format, missing fields, placeholder content).
+        Now they use the EXACT SAME structure, rules, and context as generation.
+        """
+        conditions_list = user_context.get("diagnosed_conditions", [])
+        user_conditions = ", ".join(conditions_list) if conditions_list else "none specified"
+        
+        # Build health situation summary (same logic as _generate_actions_via_gpt)
+        all_concerns = []
+        top_concern = user_context.get("top_concern", "")
+        if top_concern and top_concern.lower() not in ["none", "general wellness", ""]:
+            all_concerns.append(top_concern)
+        for key in ("period_concerns", "body_concerns", "skin_hair_concerns", "mental_health_concerns"):
+            val = user_context.get(key, "")
+            if val and str(val).lower() not in ["none specified", "none", ""]:
+                if isinstance(val, list):
+                    all_concerns.extend([c for c in val if c])
+                elif isinstance(val, str):
+                    all_concerns.append(val.strip())
+        seen = set()
+        unique_concerns = []
+        for c in all_concerns:
+            cl = c.lower().strip()
+            if cl and cl not in seen:
+                seen.add(cl)
+                unique_concerns.append(c.strip())
+
+        summary_parts = []
+        if conditions_list:
+            summary_parts.append(f"DIAGNOSED CONDITIONS: {', '.join(conditions_list)}")
+            summary_parts.append("→ Focus recommendations on evidence-based interventions for these specific conditions")
+        if unique_concerns:
+            summary_parts.append(f"ACTIVE CONCERNS: {', '.join(unique_concerns[:6])}")
+            summary_parts.append("→ Address these symptoms in your recommendations")
+        if not conditions_list and not unique_concerns:
+            summary_parts.append("NO SPECIFIC CONDITIONS OR CONCERNS")
+            summary_parts.append("→ Focus on cycle-phase-appropriate general hormone wellness")
+        health_situation_summary = "\\n".join(summary_parts)
+
+        # Build OTHER ACTIVE ACTIONS context
+        other_actions_context = ""
+        if other_active_actions:
+            other_actions_json = json.dumps(other_active_actions, indent=2)
+            other_actions_context = f"""
+======================================================================
+🚨 OTHER ACTIVE ACTIONS TODAY - DO NOT DUPLICATE ANY OF THESE 🚨
+======================================================================
+The user already has these actions in their plan. Your replacement MUST be
+COMPLETELY DIFFERENT from all of these. If you suggest anything similar,
+the response will be REJECTED.
+
+BANNED TITLES: {other_action_titles}
+
+FULL DETAILS:
+{other_actions_json}
+
+❌ Do NOT suggest similar foods (e.g., if they have "Salmon", don't suggest "Mackerel" or "Fish")
+❌ Do NOT suggest similar exercises (e.g., if they have "Yoga", don't suggest "Stretching")
+❌ Do NOT suggest the same type of thing in a different form
+"""
+
+        # Determine action word based on count
+        action_word = "action" if num_actions == 1 else f"{num_actions} DIFFERENT actions"
+
+        prompt = f"""Generate {action_word} as a REPLACEMENT for: "{original_title}" (user disliked it).
+
+{other_actions_context}
+
+{research_context}
+
+======================================================================
+REPLACEMENT CONTEXT
+======================================================================
+- Replacing: "{original_title}" (user disliked this specific action)
+- MUST keep same category: {original_category} (user wants a DIFFERENT {original_category} action, NOT a different category!)
+- MUST target hormone: {target_hormone}
+- Dislike reason: {reason or 'not specified'}
+- If the reason includes a specific requested item (e.g., "replace with cashews", "I want dance"), 
+  you MUST use that exact item as the core of the new action.
+
+======================================================================
+HEALTH PROFILE
+======================================================================
+- Age: {user_context.get('age', 'unknown')}
+- Cycle Day: {user_context.get('cycle_day', 'unknown')}
+- Cycle Phase: {user_context.get('cycle_phase', 'unknown')}
+- Target Hormone: {target_hormone}
+
+HEALTH SITUATION:
+{health_situation_summary}
+
+CRITICAL: The health situation above summarizes what we KNOW about this user.
+- If they have diagnosed conditions: Focus recommendations on evidence-based interventions for those conditions
+- If they have concerns but no diagnoses: Focus on addressing those symptoms
+- If neither: Focus on cycle-phase-appropriate general wellness
+DO NOT mention conditions/symptoms the user doesn't have. Be genuinely personalized.
+
+======================================================================
+PERSONALIZATION FACTORS
+======================================================================
+- Lifestyle Focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
+- Diet Preference: {user_context.get('diet_preference', 'none')}
+- Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
+- Cuisine Preference: {user_context.get('cuisine_preference', 'no preference specified')}
+- Cultural Background: {user_context.get('cultural_background', 'not specified')}
+- Dine Out Frequency: {user_context.get('dine_out_frequency', 'occasionally')}
+- Body Metrics: {user_context.get('body_metrics', 'not provided')}
+- Common Cravings: {user_context.get('cravings', 'none specified')}
+- Stress Level: {user_context.get('stress_level', 'moderate')}
+- Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
+- Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
+- Birth Control: {user_context.get('birth_control', 'none')}
+- Current Streak: {user_context.get('current_streak', 0)} days
+- Longest Streak: {user_context.get('longest_streak', 0)} days
+
+======================================================================
+⭐ UNIFIED CROSS-CHATBOT MEMORY (MOST IMPORTANT PERSONALIZATION DATA) ⭐
+======================================================================
+{user_context.get('unified_memory_formatted', 'No unified memory available yet')}
+
+======================================================================
+FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
+======================================================================
+HISTORICAL SUMMARY (learned patterns over time):
+{user_context.get('feedback_summary', 'No summary yet')}
+
+RECENT FEEDBACK (last 20-50 actions):
+{user_context.get('feedback_memory', 'No previous feedback')}
+
+======================================================================
+CHATBOT CONVERSATION CONTEXT
+======================================================================
+{user_context.get('chatbot_context', 'No additional context')}
+
+======================================================================
+💬 FULL CHAT HISTORY (Everything the user has told us)
+======================================================================
+{user_context.get('chat_history', 'No conversation history yet')}
+
+======================================================================
+WEEKLY CHECK-IN INSIGHTS (Recent symptom reports from user)
+======================================================================
+{user_context.get('weekly_checkin_insights', 'No weekly check-in data yet')}
+
+======================================================================
+DAILY REVIEW INSIGHTS (Feedback from yesterday's plan)
+======================================================================
+{user_context.get('daily_review_insights', 'No daily review data yet')}
+
+======================================================================
+CARE PLAN CHECK-IN INSIGHTS (Daily chat about today's plan)
+======================================================================
+{user_context.get('care_plan_checkin_insights', 'No care plan check-in data yet')}
+
+======================================================================
+SYMPTOM CHECK-IN INSIGHTS (Daily symptom progress)
+======================================================================
+{user_context.get('symptom_checkin_insights', 'No symptom check-in data yet')}
+
+======================================================================
+⭐ CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION (CRITICAL FOR UI!)
+======================================================================
++---------------------------------------------------------------------+
+|  TITLE = WHAT it is (the thing itself - short noun for HOME SCREEN) |
+|  SPECIFIC_ACTION = HOW to use it (3 methods - for detail screens)   |
++---------------------------------------------------------------------+
+
+The HOME SCREEN shows the TITLE in a small card. It must be SHORT and CLEAN.
+The DETAIL SCREEN shows specific_action with full instructions.
+
+⚠️ TITLE RULES (RAW INGREDIENT/ACTIVITY NAME ONLY!):
+=====================================================
+FOOD TITLES:
+   ✅ GOOD: "Chickpeas", "Salmon", "Cinnamon", "Flaxseed", "Turmeric", "Walnuts"
+   ✅ GOOD (combinations): "Chickpea & Crucifer Salad", "Berry Smoothie Bowl"
+   ❌ BAD: "Have 1 cup cooked chickpeas" (that's a specific_action, NOT a title!)
+   ❌ BAD: "Eat at least 1 serving of chickpea" (instructions go in specific_action!)
+   ❌ BAD: "Chickpea and Cruciferous Vegetable Bowl with Lemon Tahini" (too long!)
+
+MOVEMENT TITLES:
+   ✅ GOOD: "Morning Yoga", "Walking", "Hip Stretches", "Swimming"
+   ❌ BAD: "Do 20 minutes of gentle yoga" (that's specific_action!)
+
+MINDFULNESS TITLES:
+   ✅ GOOD: "Deep Breathing", "Body Scan", "Meditation", "Journaling"
+   ❌ BAD: "Practice 5 minutes of deep breathing" (that's specific_action!)
+
+RULE: If it contains a VERB (eat, have, do, practice, try) or an AMOUNT (1 cup, 20 min),
+      it does NOT belong in the title! Those go in specific_action and food_amounts.
+
+======================================================================
+SPECIFIC_ACTION FORMAT (80-120 words)
+======================================================================
+FORMAT: Start with scientific benefit for THIS user's condition, then list 3 methods:
+"[Food/Exercise] provides [specific benefit for user's hormone/condition]. Try it today as:
+(1) [method 1 with details], (2) [method 2 with details], or (3) [method 3 with details]."
+
+======================================================================
+PURPOSE FIELD (WHERE YOU PROVE PERSONALIZATION)
+======================================================================
+MANDATORY STRUCTURE (follow exactly):
+a) START by naming their EXACT condition: "With your [diagnosed_condition]..."
+b) EXPLAIN the mechanism: "...this helps because [biochemical reason]"
+c) CONNECT to their symptoms: "...which addresses your [symptom from profile]"
+d) CITE the evidence briefly: "Research shows [finding] for women with [their condition]"
+
+======================================================================
+OUTPUT FORMAT (for EACH action)
+======================================================================
+1. title: SIMPLE, CLEAN NAME ONLY (see TITLE RULES above - NO verbs, NO amounts!)
+2. category: "{original_category}" (MUST be exactly this!)
+3. time_slot: "morning", "afternoon", or "evening"
+4. specific_action: MUST include 3 DIFFERENT WAYS to consume/do this action! (80-120 words)
+5. purpose: Scientific mechanism personalized to THIS user's condition (see PURPOSE FIELD above)
+6. target_hormone: "{target_hormone}" (MUST be exactly this!)
+7. hormone_persona_intro: MAX 2 SENTENCES (25-30 words). The hormone speaks in first person.
+8. image_prompt: FLUX.1 Schnell optimized prompt. Subject fills 60-70% of frame, centered, natural lighting, no text/watermark.
+9. research_studies: Array with research citations from the RESEARCH EVIDENCE section above.
+   Each: {{"title": "...", "journal": "...", "year": 2023, "participants": 150, "finding": "...", "pmid": "12345678"}}
+10. variants: Array of EXACTLY 3 variant objects with PROPER TITLES (not "healthy version"!):
+
+    FOR FOOD ACTIONS:
+    [
+      {{"variant_type": "tasty", "title": "[Actual dish name e.g. 'Chickpea Curry Bowl']", "description": "[How to make it tasty - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "easy", "title": "[Actual dish name e.g. 'Quick Chickpea Salad']", "description": "[Easy preparation - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "healthy", "title": "[Actual dish name e.g. 'Roasted Chickpea Bowl']", "description": "[Maximum nutrition - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
     
+    FOR MOVEMENT ACTIONS:
+    [
+      {{"variant_type": "gentle", "title": "[Actual name e.g. 'Slow Flow Morning Yoga']", "description": "[Low intensity - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "energizing", "title": "[Actual name e.g. 'Power Yoga Flow']", "description": "[Higher energy - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "quick", "title": "[Actual name e.g. '10-Minute Sun Salutations']", "description": "[5-10 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+    
+    FOR MINDFULNESS ACTIONS:
+    [
+      {{"variant_type": "guided", "title": "[Actual name e.g. 'Calm App 5-Min Breathing']", "description": "[With guidance - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "solo", "title": "[Actual name e.g. 'Silent Box Breathing']", "description": "[Independent practice - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
+      {{"variant_type": "brief", "title": "[Actual name e.g. '3-Minute Mindful Pause']", "description": "[3-5 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
+    ]
+
+11. symptoms: Array of 1-3 symptom keywords from user's health concerns
+12. conditions: Array of conditions this helps
+
+CATEGORY-SPECIFIC REQUIRED FIELDS (MANDATORY - DO NOT SKIP):
+
+IF category="food":
+   MUST have: "food_items": ["chickpeas", "cruciferous vegetables"] (ingredient names)
+   MUST have: "food_amounts": ["1 cup cooked", "1 cup"] (daily portions, TODAY language)
+
+IF category="movement":
+   MUST have: "exercise_types": ["yoga", "walking"] 
+   MUST have: "exercise_durations": ["15 min", "20 minutes"]
+   MUST have: "exercise_intensities": ["low", "moderate"]
+
+IF category="mindfulness":
+   MUST have: "mindfulness_techniques": ["deep breathing", "meditation"]
+   MUST have: "mindfulness_durations": ["5 min", "10 minutes"]
+
+ BEFORE RESPONDING: Double-check:
+1. Title is a SHORT NOUN (no verbs, no amounts, no instructions)
+2. ALL category-specific arrays are included and non-empty
+3. specific_action has 3 different methods
+4. purpose mentions user's specific condition/concern
+5. Variants have REAL dish/activity names (not "tasty version")
+"""
+
+        # Wrap in actions array if multiple
+        if num_actions > 1:
+            prompt += f"""
+
+OUTPUT FORMAT:
+Return a JSON OBJECT with exactly this shape:
+{{
+  "actions": [ ...{num_actions} action objects... ]
+}}
+
+Each action object must follow the format above. Respond with valid JSON only."""
+        else:
+            prompt += """
+
+Respond with a single valid JSON object (the action). No markdown."""
+
+        return prompt
+
     async def _fast_condition_check(
         self,
         actions: List[Dict],
@@ -6662,39 +7048,76 @@ JSON ONLY:
             
             # ========================================================
             # RESEARCH-FIRST APPROACH: Get research BEFORE generating action
+            # Same quality as action plan generation - use multi-citation search
             # ========================================================
             
-            # Step 1: Search for relevant research based on users condition + target hormone
-            from app.services.pubmed_service import execute_pubmed_tool
+            from app.services.pubmed_service import execute_pubmed_tool, execute_pubmed_tool_multiple
             
             user_conditions = user_context.get('diagnosed_conditions', [])
             condition_str = user_conditions[0] if user_conditions else "womens health"
             
-            # Build search query for the target hormone and users condition
-            search_query = f"{original.target_hormone} {condition_str} intervention"
+            # Build category-specific search query (same as generation)
+            category_terms = {
+                "food": "diet nutrition food",
+                "movement": "exercise physical activity",
+                "mindfulness": "meditation mindfulness relaxation"
+            }
+            cat_term = category_terms.get(original.category, "wellness")
+            search_query = f"{original.target_hormone} {condition_str} {cat_term}"
             logger.info(f" RESEARCH-FIRST: Searching for '{search_query}'")
             
-            research_paper = await execute_pubmed_tool({
-                "action_title": f"Wellness action for {original.target_hormone}",
-                "search_query": search_query
-            }, db=db)
+            # Try multi-citation search first (same as generation)
+            research_papers = []
+            try:
+                research_papers = await execute_pubmed_tool_multiple(
+                    {
+                        "query": search_query,
+                        "action_title": f"Replacement {original.category} action for {original.target_hormone}",
+                        "category": original.category,
+                        "target_hormone": original.target_hormone,
+                    },
+                    db=db,
+                    max_citations=2,
+                )
+            except Exception as e:
+                logger.warning(f"Multi-citation search failed, trying single: {e}")
             
-            if research_paper and research_paper.get("title"):
-                logger.info(f" Found research: {research_paper.get('title', '')[:60]}...")
-                research_context = f"""
+            # Fallback to single paper search
+            if not research_papers:
+                try:
+                    single_paper = await execute_pubmed_tool({
+                        "action_title": f"Wellness action for {original.target_hormone}",
+                        "search_query": search_query
+                    }, db=db)
+                    if single_paper and single_paper.get("title"):
+                        research_papers = [single_paper]
+                except Exception as e:
+                    logger.warning(f"Single paper search also failed: {e}")
+            
+            research_context = ""
+            research_paper = research_papers[0] if research_papers else {}
+            
+            if research_papers:
+                logger.info(f" Found {len(research_papers)} research papers")
+                research_context = """
 RESEARCH EVIDENCE (USE THIS AS BASIS FOR YOUR RECOMMENDATION):
-
-Title: {research_paper.get('title')}
-Journal: {research_paper.get('journal', 'Unknown')}
-Year: {research_paper.get('year', 'Unknown')}
-Participants: {research_paper.get('participants', 'Unknown')} women
-Key Finding: {research_paper.get('finding', 'Evidence-based intervention')}
-PMID: {research_paper.get('pmid', '')}
-
-
+"""
+                for idx, paper in enumerate(research_papers, 1):
+                    study_type_label = paper.get('study_type_label', 'Research Study')
+                    research_context += f"""
+[{idx}] {study_type_label}
+Title: {paper.get('title')}
+Journal: {paper.get('journal', 'Unknown')}
+Year: {paper.get('year', 'Unknown')}
+Participants: {paper.get('participants', 'Unknown')} women
+Key Finding: {paper.get('finding', 'Evidence-based intervention')}
+PMID: {paper.get('pmid', '')}
+"""
+                research_context += """
  IMPORTANT: Your recommendation MUST be grounded in this research. 
-Extract a specific intervention (food, exercise, or mindfulness practice) 
-that this study shows is effective, and create your action based on that.
+Extract a specific intervention that this study shows is effective,
+and create your action based on that.
+Include these papers in the research_studies field of your response.
 """
             else:
                 logger.warning(" No research found, using general recommendation")
@@ -6702,157 +7125,25 @@ that this study shows is effective, and create your action based on that.
                 research_paper = {}
             
             # Step 2: Generate replacement action based on research findings
-            # Build OTHER ACTIVE ACTIONS context for GPT
-            other_actions_context = ""
-            if other_active_actions:
-                other_actions_json = json.dumps(other_active_actions, indent=2)
-                other_actions_context = f"""
-======================================================================
-🚨 OTHER ACTIVE ACTIONS TODAY - DO NOT DUPLICATE ANY OF THESE 🚨
-======================================================================
-The user already has these actions in their plan. Your replacement MUST be
-COMPLETELY DIFFERENT from all of these. If you suggest anything similar,
-the response will be REJECTED.
-
-BANNED TITLES: {other_action_titles}
-
-FULL DETAILS:
-{other_actions_json}
-
-❌ Do NOT suggest similar foods (e.g., if they have "Salmon", don't suggest "Mackerel")
-❌ Do NOT suggest similar exercises (e.g., if they have "Yoga", don't suggest "Stretching")
-❌ Do NOT suggest the same type of thing in a different form
-"""
+            # Use the PRODUCTION-GRADE replacement prompt (exact replica of action plan generation)
+            replacement_prompt = self._build_replacement_prompt(
+                user_context=user_context,
+                original_title=original.title,
+                original_category=original.category,
+                target_hormone=original.target_hormone,
+                reason=reason,
+                other_action_titles=other_action_titles,
+                other_active_actions=other_active_actions,
+                research_context=research_context,
+                num_actions=1,
+            )
             
-            replacement_prompt = f"""Generate 1 replacement wellness action BASED ON THE RESEARCH BELOW.
-
-🛑 CRITICAL WARNING 🛑
-You MUST include ALL category-specific fields or your response will be REJECTED and regenerated.
-Previous failures happened because you forgot exercise_types, exercise_durations, exercise_intensities for movement.
-
-{other_actions_context}
-
-{research_context}
-
-REQUIREMENTS:
-- Must target hormone: {original.target_hormone}
-- MUST keep same category: {original.category} (user wants a DIFFERENT {original.category} action, not a different category!)
-- Should be DIFFERENT action from: {original.title} (user disliked this specific action)
-- Dislike reason: {reason or 'not specified'}
-- If the reason includes a specific requested item (e.g., "replace with cashews"), you MUST use that exact item as the core of the new action.
-- 🔴 MUST NOT DUPLICATE any of the other active actions listed above
-
-======================================================================
-HEALTH PROFILE
-======================================================================
-- Age: {user_context.get('age', 'unknown')}
-- Cycle Day: {user_context.get('cycle_day', 'unknown')}
-- Cycle Phase: {user_context.get('cycle_phase', 'unknown')}
-- Target Hormone: {original.target_hormone}
-
-HEALTH CONCERNS:
-- Top Concern: {user_context.get('top_concern', 'general wellness')}
-- Diagnosed Conditions: {', '.join(user_conditions) if user_conditions else 'none specified'}
-- Period Concerns: {user_context.get('period_concerns', 'none specified')}
-- Body Concerns: {user_context.get('body_concerns', 'none specified')}
-- Skin/Hair Concerns: {user_context.get('skin_hair_concerns', 'none specified')}
-- Mental Health Concerns: {user_context.get('mental_health_concerns', 'none specified')}
-- Family History: {user_context.get('family_history', 'none specified')}
-
-======================================================================
-PERSONALIZATION FACTORS
-======================================================================
-- Lifestyle Focus: {user_context.get('lifestyle_focus', ['eat', 'move', 'pause'])}
-- Diet Preference: {user_context.get('diet_preference', 'none')}
-- Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
-- Stress Level: {user_context.get('stress_level', 'moderate')}
-- Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
-- Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
-- Birth Control: {user_context.get('birth_control', 'none')}
-- Current Streak: {user_context.get('current_streak', 0)} days
-- Longest Streak: {user_context.get('longest_streak', 0)} days
-
-======================================================================
-FEEDBACK MEMORY (Critical - avoid disliked patterns, repeat liked patterns)
-======================================================================
-HISTORICAL SUMMARY (learned patterns over time):
-{user_context.get('feedback_summary', 'No summary yet')}
-
-RECENT FEEDBACK (last 20-50 actions):
-{user_context.get('feedback_memory', 'No previous feedback')}
-
-======================================================================
-CHATBOT CONVERSATION CONTEXT
-======================================================================
-{user_context.get('chatbot_context', 'No recent chatbot conversations')}
-
-======================================================================
-WEEKLY CHECK-IN INSIGHTS (Recent symptom reports)
-======================================================================
-{user_context.get('weekly_checkin_insights', 'No weekly check-in data yet')}
-
- MANDATORY CATEGORY-SPECIFIC FIELDS - DO NOT SKIP:
-
-IF category="food":
-   MUST have: "food_items": ["salmon", "avocado", "blueberries"]
-   MUST have: "food_amounts": ["4 oz", "half avocado", "1 cup"]
-
-IF category="movement":
-   MUST have: "exercise_types": ["yoga", "walking", "stretching"]  
-   MUST have: "exercise_durations": ["15 min", "20 minutes", "30 min"]
-   MUST have: "exercise_intensities": ["low", "moderate", "gentle"]
-
-IF category="mindfulness":
-   MUST have: "mindfulness_techniques": ["deep breathing", "meditation", "body scan"]
-   MUST have: "mindfulness_durations": ["5 min", "10 minutes", "15 min"]
-
-REQUIRED OUTPUT FIELDS (ALL actions):
-1. category: "food", "movement", or "mindfulness"
-2. title: Simple, clean name (just the food item, activity, or technique - see TITLE RULES section)
-3. time_slot: "morning", "afternoon", or "evening"
-4. specific_action: Detailed description GROUNDED IN THE RESEARCH above
-5. purpose: Explain WHY this works, citing the research mechanism
-6. target_hormone: MUST be "{original.target_hormone}"
-7. hormone_persona_intro: First-person intro from hormone perspective
-8. image_prompt: FLUX.1 Schnell optimized prompt
-9. research_studies: Use the research provided above - format as single-item array with the paper details
-10. variants: Array of EXACTLY 3 variant objects with PROPER TITLES (not just "healthy version"!):
-
-    FOR FOOD ACTIONS ({original.category == "food"}):
-    [
-      {{"variant_type": "tasty", "title": "[Actual dish name e.g. 'Blueberry Parfait with Greek Yogurt']", "description": "[How to make it tasty - 2 sentences]", "image_prompt": "[FLUX prompt for this variant]"}},
-      {{"variant_type": "easy", "title": "[Actual dish name e.g. 'Frozen Blueberry Smoothie']", "description": "[Easy preparation - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
-      {{"variant_type": "healthy", "title": "[Actual dish name e.g. 'Fresh Blueberries with Nuts']", "description": "[Maximum nutrition - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
-    ]
-    
-    FOR MOVEMENT ACTIONS ({original.category == "movement"}):
-    [
-      {{"variant_type": "gentle", "title": "[Actual name e.g. 'Slow Flow Morning Yoga']", "description": "[Low intensity option - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
-      {{"variant_type": "energizing", "title": "[Actual name e.g. 'Power Yoga Flow']", "description": "[Higher energy option - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
-      {{"variant_type": "quick", "title": "[Actual name e.g. '10-Minute Sun Salutations']", "description": "[5-10 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
-    ]
-    
-    FOR MINDFULNESS ACTIONS ({original.category == "mindfulness"}):
-    [
-      {{"variant_type": "guided", "title": "[Actual name e.g. 'Calm App 5-Min Breathing']", "description": "[With audio/app guidance - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
-      {{"variant_type": "solo", "title": "[Actual name e.g. 'Silent Box Breathing']", "description": "[Independent practice - 2 sentences]", "image_prompt": "[FLUX prompt]"}},
-      {{"variant_type": "brief", "title": "[Actual name e.g. '3-Minute Mindful Pause']", "description": "[3-5 min version - 2 sentences]", "image_prompt": "[FLUX prompt]"}}
-    ]
-    
-    ⚠️ VARIANT TITLE MUST BE A REAL DISH/ACTIVITY NAME, NOT "tasty version" or "easy version"!
-
-11. symptoms: Pick 1-3 from users health concerns
-12. conditions: Array of conditions this helps
-
- TITLE RULES (RAW INGREDIENT/ACTIVITY NAME ONLY!):
-- FOOD: Just the ingredient ("Salmon" NOT "Grilled Salmon", "Quinoa" NOT "Quinoa Bowl")
-- MOVEMENT: Just the activity (e.g., "Morning Yoga", "Post-Meal Walk", "Hip Stretches")
-- MINDFULNESS: Just the technique (e.g., "Deep Breathing", "Body Scan", "Meditation")
-- NO preparation methods (latte, tea, smoothie) - those go in specific_action!
-
- BEFORE RESPONDING: Double-check that you included ALL category-specific arrays.
-
-Respond with valid JSON object only."""
+            # Build PERSONALIZED system prompt (same as action plan generation)
+            personalized_system = self._build_personalized_system_prompt(
+                user_context=user_context,
+                target_hormone=original.target_hormone,
+                cycle_phase=user_context.get("cycle_phase", "follicular"),
+            )
 
 
             # Generate replacement via GPT (no tool calling - research already fetched)
@@ -6871,11 +7162,10 @@ Respond with valid JSON object only."""
                         payload = self.build_openai_payload(
                             model=self.GPT_MODEL,
                             messages=[
-                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "system", "content": personalized_system},
                                 {"role": "user", "content": replacement_prompt}
                             ],
-                            max_tokens=2500,
-                            temperature=0.7,
+                            max_tokens=4000,
                             response_format={"type": "json_object"}
                         )
                         response = await self.client.post(
@@ -6918,11 +7208,11 @@ Respond with valid JSON object only."""
                             json={
                                 "model": GROQ_FALLBACK_MODEL,
                                 "messages": [
-                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "system", "content": personalized_system},
                                     {"role": "user", "content": enhanced_prompt}
                                 ],
                                 "temperature": 0.7,
-                                "max_tokens": 2500
+                                "max_tokens": 4000
                             },
                             timeout=90.0
                         )
@@ -7398,8 +7688,9 @@ Respond with valid JSON object only."""
             except Exception as e:
                 logger.warning(f"Could not load other plan items: {e}")
 
-            # Fetch research paper for same category + hormone + user condition
-            from app.services.pubmed_service import execute_pubmed_tool
+            # Fetch research papers for same category + hormone + user condition
+            # Same quality as action plan generation - use multi-citation search
+            from app.services.pubmed_service import execute_pubmed_tool, execute_pubmed_tool_multiple
 
             user_conditions = user_context.get("diagnosed_conditions", [])
             condition_str = user_conditions[0] if user_conditions else "womens health"
@@ -7414,103 +7705,74 @@ Respond with valid JSON object only."""
             search_query = f"{original_hormone} {condition_str} {cat_term}"
             logger.info(f" CANDIDATES: Searching for '{search_query}' (category={original_category})")
 
-            research_paper = await execute_pubmed_tool(
-                {"action_title": f"{original_category} action for {original_hormone}", "search_query": search_query},
-                db=db,
-            )
+            # Try multi-citation search first (same as generation)
+            research_papers = []
+            try:
+                research_papers = await execute_pubmed_tool_multiple(
+                    {
+                        "query": search_query,
+                        "action_title": f"Replacement {original_category} action for {original_hormone}",
+                        "category": original_category,
+                        "target_hormone": original_hormone,
+                    },
+                    db=db,
+                    max_citations=2,
+                )
+            except Exception as e:
+                logger.warning(f"Multi-citation search failed, trying single: {e}")
+            
+            # Fallback to single paper search
+            if not research_papers:
+                try:
+                    single_paper = await execute_pubmed_tool(
+                        {"action_title": f"{original_category} action for {original_hormone}", "search_query": search_query},
+                        db=db,
+                    )
+                    if single_paper and single_paper.get("title"):
+                        research_papers = [single_paper]
+                except Exception as e:
+                    logger.warning(f"Single paper search also failed: {e}")
 
             research_context = ""
-            if research_paper and research_paper.get("title"):
-                research_context = f"""
-RESEARCH EVIDENCE (use as grounding for your recommendations):
-Title: {research_paper.get('title')}
-Journal: {research_paper.get('journal', 'Unknown')}
-Year: {research_paper.get('year', 'Unknown')}
-Participants: {research_paper.get('participants', 'Unknown')} women
-Key Finding: {research_paper.get('finding', 'Evidence-based intervention')}
-PMID: {research_paper.get('pmid', '')}
-""".strip()
+            research_paper = research_papers[0] if research_papers else {}
 
-            # Category-specific field requirements
-            category_fields = {
-                "food": "food_items (array), food_amounts (array)",
-                "movement": "exercise_types (array), exercise_durations (array), exercise_intensities (array)",
-                "mindfulness": "mindfulness_techniques (array), mindfulness_durations (array)"
-            }
-            required_fields = category_fields.get(original_category, "")
-
-            # Build OTHER ACTIVE ACTIONS context for GPT
-            other_actions_context = ""
-            if other_active_actions:
-                other_actions_context = f"""
-======================================================================
-🚨 OTHER ACTIVE ACTIONS TODAY - NONE OF YOUR CANDIDATES CAN BE SIMILAR 🚨
-======================================================================
-The user already has these in their plan. ALL your candidate replacements
-MUST be COMPLETELY DIFFERENT from all of these.
-
-BANNED TITLES: {other_action_titles}
-❌ Do NOT suggest similar foods/exercises/mindfulness to any of these
+            if research_papers:
+                logger.info(f" Found {len(research_papers)} research papers for candidates")
+                research_context = "RESEARCH EVIDENCE (USE THIS AS BASIS FOR YOUR RECOMMENDATIONS):\n"
+                for idx, paper in enumerate(research_papers, 1):
+                    study_type_label = paper.get('study_type_label', 'Research Study')
+                    research_context += f"""
+[{idx}] {study_type_label}
+Title: {paper.get('title')}
+Journal: {paper.get('journal', 'Unknown')}
+Year: {paper.get('year', 'Unknown')}
+Participants: {paper.get('participants', 'Unknown')} women
+Key Finding: {paper.get('finding', 'Evidence-based intervention')}
+PMID: {paper.get('pmid', '')}
 """
+                research_context += "\nIMPORTANT: Your recommendations MUST be grounded in this research.\nInclude these papers in the research_studies field of your response."
+            else:
+                logger.warning(" No research found for candidates, using general recommendation")
 
-            prompt = f"""Generate {n} DIFFERENT replacement wellness actions.
-
-{other_actions_context}
-
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  CRITICAL: ALL alternatives MUST be {original_category.upper()} category!              ║
-║  User is replacing a {original_category} item → suggest ONLY other {original_category} options!          ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-{research_context}
-
-USER SPECIFIC REQUEST OVERRIDE:
-If the user's request mentions a SPECIFIC activity type (e.g., "I want dance", "change to swimming", "try yoga"), 
-then ALL {n} alternatives MUST be different variations of ONLY that specific activity.
-Examples:
-- Request: "change to dance" → ALL {n} must be dance types (Zumba, Hip Hop, Salsa, etc.)
-- Request: "I want swimming" → ALL {n} must be swimming types (Laps, Water Aerobics, etc.)
-- Request: "try yoga" → ALL {n} must be yoga styles (Vinyasa, Hatha, Power Yoga, etc.)
-
-STRICT REQUIREMENTS:
-1. Category MUST be: {original_category} (DO NOT suggest other categories!)
-2. Target hormone MUST be: {original_hormone}
-3. Must be DIFFERENT from: {original.title}
-4. User Request / Context: {reason or 'user wants alternatives'}
-    ⚠️ CRITICAL: If the request clearly specifies a replacement item or activity (e.g., "replace with cashews", "swap to yoga", "dance"),
-    then ALL {n} alternatives MUST be variations of that specific item/activity. Do NOT mix unrelated options.
-5. MUST include category-specific fields: {required_fields}
-
-USER HEALTH PROFILE (tailor recommendations to this):
-- Age: {user_context.get('age', 'unknown')}
-- Cycle Phase: {user_context.get('cycle_phase', 'unknown')}
-- Top Health Concern: {user_context.get('top_concern', 'general wellness')}
-- Diagnosed Conditions: {', '.join(user_conditions) if user_conditions else 'none'}
-- Diet Preference: {user_context.get('diet_preference', 'none')}
-- Food Allergies/Restrictions: {user_context.get('food_allergies', 'none')}
-
-OUTPUT FORMAT:
-Return a JSON OBJECT with exactly this shape:
-{{
-  "actions": [ ...{n} action objects... ]
-}}
-
-Each action object MUST include:
-- category: "{original_category}" (MUST be this exact value!)
-- title, time_slot, specific_action, purpose
-- target_hormone: "{original_hormone}" (MUST be this exact value!)
-- hormone_persona_intro, image_prompt
-- research_studies: array (include the research above if relevant)
-- variants: array of 3 variant objects
-- symptoms: array of 1-3 symptom keywords
-- conditions: array
-
-CATEGORY-SPECIFIC REQUIRED FIELDS:
-IF category="food": food_items[], food_amounts[]
-IF category="movement": exercise_types[], exercise_durations[], exercise_intensities[]
-IF category="mindfulness": mindfulness_techniques[], mindfulness_durations[]
-
-Respond with valid JSON only."""
+            # Use the PRODUCTION-GRADE replacement prompt (exact replica of action plan generation)
+            prompt = self._build_replacement_prompt(
+                user_context=user_context,
+                original_title=original.title,
+                original_category=original_category,
+                target_hormone=original_hormone,
+                reason=reason,
+                other_action_titles=other_action_titles,
+                other_active_actions=other_active_actions,
+                research_context=research_context,
+                num_actions=n,
+            )
+            
+            # Build PERSONALIZED system prompt (same as action plan generation)
+            personalized_system = self._build_personalized_system_prompt(
+                user_context=user_context,
+                target_hormone=original_hormone,
+                cycle_phase=user_context.get("cycle_phase", "follicular"),
+            )
 
             # Generate via OpenAI or Groq
             content = None
@@ -7521,11 +7783,10 @@ Respond with valid JSON only."""
                     payload = self.build_openai_payload(
                         model=self.GPT_MODEL,
                         messages=[
-                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "system", "content": personalized_system},
                             {"role": "user", "content": prompt},
                         ],
-                        max_tokens=4500,
-                        temperature=0.5,
+                        max_tokens=6000,
                         response_format={"type": "json_object"}
                     )
                     response = await self.client.post(
@@ -7563,11 +7824,11 @@ Respond with valid JSON only."""
                         json={
                             "model": GROQ_FALLBACK_MODEL,
                             "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "system", "content": personalized_system},
                                 {"role": "user", "content": enhanced},
                             ],
                             "temperature": 0.5,
-                            "max_tokens": 4500,
+                            "max_tokens": 6000,
                         },
                         timeout=120.0,
                     )
@@ -8128,50 +8389,98 @@ Respond with valid JSON only."""
                     "reason": reasons.get(item.id, "user disliked")
                 })
             
-            # Build batch replacement prompt with full context and schema
-            batch_prompt = f"""
-USER PROFILE:
-- Age: {user_context.get('age', 'Unknown')}
-- Cycle Day: {user_context.get('cycle_day', 'Unknown')}
-- Cycle Phase: {user_context.get('cycle_phase', 'Unknown')}
-- Primary Hormone: {user_context.get('primary_hormone', 'Unknown')}
-- Conditions: {user_context.get('diagnosed_conditions', [])}
-- Food Allergies: {user_context.get('food_allergies', [])}
-- Diet: {user_context.get('diet_preference', 'None')}
+            # Build PRODUCTION-GRADE batch replacement prompt
+            # Use the first item's hormone for system prompt personalization
+            first_item = original_items[0]
+            personalized_system = self._build_personalized_system_prompt(
+                user_context=user_context,
+                target_hormone=first_item.target_hormone,
+                cycle_phase=user_context.get("cycle_phase", "follicular"),
+            )
+            
+            # Build individual replacement prompts for each item, then combine
+            other_action_titles = [a["title"] for a in other_current_actions]
+            
+            items_description = json.dumps(items_to_replace, indent=2)
+            
+            batch_prompt = f"""Generate {len(items_to_replace)} REPLACEMENT wellness actions.
+
+For EACH item below, generate a BRAND NEW replacement following ALL the rules.
 
 ITEMS TO REPLACE:
-{json.dumps(items_to_replace, indent=2)}
+{items_description}
 
-TASK:
-For each item in the list above, generate a BRAND NEW replacement action.
-1. Must target the SAME hormone (`target_hormone`) as the original.
-2. Must be suitable for the user's conditions (SAFE).
-3. Must address the specific `reason` for dislike/replacement.
-4. DO NOT repeat the original action.
-5. Use the `search_research_paper` tool to find REAL scientific backing.
+======================================================================
+🚨 OTHER ACTIVE ACTIONS TODAY - DO NOT DUPLICATE ANY OF THESE 🚨
+======================================================================
+BANNED TITLES: {other_action_titles}
+{json.dumps(other_current_actions, indent=2)}
+❌ Do NOT suggest similar foods/exercises/mindfulness to any of these
 
-OUTPUT FORMAT (JSON Array):
-[
-  {{
-    "title": "Action Title",
-    "category": "food" | "movement" | "mindfulness",
-    "time_slot": "morning" | "afternoon" | "evening",
-    "specific_action": "Detailed description of what to do",
-    "purpose": "Scientific explanation of WHY this helps the target hormone",
-    "target_hormone": "Name of hormone",
-    "hormone_persona": "First-person intro from the hormone (e.g., 'I am Cortisol...')",
-    "benefits": ["benefit 1", "benefit 2"],
-    "research_studies": [], 
-    "image_prompt": "Detailed prompt for generating an image of this action",
-    "food_items": ["item1"], 
-    "food_amounts": ["amount1"],
-    "exercise_types": [],
-    "exercise_durations": [],
-    "mindfulness_techniques": [],
-    "mindfulness_durations": []
-  }}
-]
-"""
+======================================================================
+HEALTH PROFILE
+======================================================================
+- Age: {user_context.get('age', 'unknown')}
+- Cycle Day: {user_context.get('cycle_day', 'unknown')}
+- Cycle Phase: {user_context.get('cycle_phase', 'unknown')}
+- Diagnosed Conditions: {', '.join(user_context.get('diagnosed_conditions', []))}
+- Diet Preference: {user_context.get('diet_preference', 'none')}
+- Food Allergies: {user_context.get('food_allergies', 'none')}
+- Cuisine Preference: {user_context.get('cuisine_preference', 'no preference')}
+- Stress Level: {user_context.get('stress_level', 'moderate')}
+- Sleep Duration: {user_context.get('sleep_duration', '7-8 hours')}
+- Workout Intensity: {user_context.get('workout_intensity', 'moderate')}
+
+======================================================================
+⭐ UNIFIED CROSS-CHATBOT MEMORY ⭐
+======================================================================
+{user_context.get('unified_memory_formatted', 'No unified memory available yet')}
+
+======================================================================
+FEEDBACK MEMORY
+======================================================================
+{user_context.get('feedback_summary', 'No summary yet')}
+{user_context.get('feedback_memory', 'No previous feedback')}
+
+======================================================================
+WEEKLY CHECK-IN INSIGHTS
+======================================================================
+{user_context.get('weekly_checkin_insights', 'No weekly check-in data yet')}
+
+======================================================================
+⭐ CORE PRINCIPLE: TITLE vs SPECIFIC_ACTION (CRITICAL FOR UI!)
+======================================================================
++---------------------------------------------------------------------+
+|  TITLE = WHAT it is (the thing itself - short noun for HOME SCREEN) |
+|  SPECIFIC_ACTION = HOW to use it (3 methods - for detail screens)   |
++---------------------------------------------------------------------+
+
+⚠️ TITLE RULES (RAW INGREDIENT/ACTIVITY NAME ONLY!):
+   ✅ GOOD: "Chickpeas", "Salmon", "Morning Yoga", "Deep Breathing"
+   ❌ BAD: "Have 1 cup cooked chickpeas" (that's specific_action!)
+   ❌ BAD: "Do 20 minutes of gentle yoga" (that's specific_action!)
+   RULE: If it contains a VERB or AMOUNT, it does NOT belong in the title!
+
+REQUIREMENTS FOR EACH REPLACEMENT:
+1. MUST keep same category as original (food→food, movement→movement, mindfulness→mindfulness)
+2. MUST keep same target_hormone as original
+3. Must be COMPLETELY DIFFERENT from original
+4. Title must be SHORT NOUN only (see rules above)
+5. specific_action must include 3 different methods (80-120 words)
+6. purpose must mention user's specific condition and mechanism
+7. Include ALL category-specific fields (food_items/food_amounts OR exercise_types/durations/intensities OR mindfulness_techniques/durations)
+8. Include 3 variants with REAL dish/activity names
+9. Include hormone_persona_intro (2 sentences max, first person)
+10. Include image_prompt, research_studies, symptoms, conditions
+
+Use the 'search_research_paper' tool to find REAL scientific backing for EACH replacement.
+
+OUTPUT FORMAT: Return a JSON OBJECT:
+{{
+  "actions": [ ...array of {len(items_to_replace)} replacement action objects... ]
+}}
+
+Respond with valid JSON only."""
 
             # Generate replacements via GPT with retry logic
             replacement_actions = None
@@ -8196,7 +8505,7 @@ OUTPUT FORMAT (JSON Array):
                             json={
                                 "model": self.GPT_MODEL,
                                 "messages": [
-                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "system", "content": personalized_system},
                                     {"role": "user", "content": batch_prompt}
                                 ],
                                 "tools": [PUBMED_SEARCH_TOOL],
@@ -8283,7 +8592,7 @@ OUTPUT FORMAT (JSON Array):
                                     json={
                                         "model": self.GPT_MODEL,
                                         "messages": [
-                                            {"role": "system", "content": SYSTEM_PROMPT},
+                                            {"role": "system", "content": personalized_system},
                                             {"role": "user", "content": batch_prompt},
                                             assistant_message,
                                             *tool_results
@@ -8335,7 +8644,7 @@ OUTPUT FORMAT (JSON Array):
                             json={
                                 "model": GROQ_FALLBACK_MODEL,
                                 "messages": [
-                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "system", "content": personalized_system},
                                     {"role": "user", "content": enhanced_prompt}
                                 ],
                                 "temperature": 0.3,
