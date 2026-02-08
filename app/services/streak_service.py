@@ -127,10 +127,10 @@ class StreakService:
         Calculate streak based on ActionPlanItem completions.
         
         STREAK RULES:
-        1. Fully completed day (4/4 items) = counts towards streak (+1)
+        1. Day with at least 1 completed action = counts towards streak (+1)
         2. Frozen day = counts towards streak (+1) - freeze protects the day
         3. Empty plan (0 items) = counts towards streak (+1) - nothing to complete
-        4. Incomplete day (not frozen) = breaks streak
+        4. Day with 0 completed actions (not frozen) = breaks streak
         
         Starts from YESTERDAY (today excluded - user hasn't had full day).
         
@@ -185,29 +185,25 @@ class StreakService:
         # This replaces 90+ individual queries with just 1 query
         plans_with_counts = self.db.query(
             ActionPlan.plan_date,
-            ActionPlan.review_completed,
             func.count(ActionPlanItem.id).label('total_items'),
             func.sum(
                 case(
-                    (and_(ActionPlanItem.is_completed == True, ActionPlanItem.is_replaced.isnot(True)), 1),
+                    (ActionPlanItem.is_completed == True, 1),
                     else_=0
                 )
             ).label('completed_count')
         ).outerjoin(
             ActionPlanItem,
-            and_(
-                ActionPlanItem.plan_id == ActionPlan.id,
-                ActionPlanItem.is_replaced.isnot(True)
-            )
+            ActionPlanItem.plan_id == ActionPlan.id
         ).filter(
             ActionPlan.uid == uid,
             ActionPlan.plan_date >= first_plan_date,
             ActionPlan.plan_date <= check_date
-        ).group_by(ActionPlan.plan_date, ActionPlan.review_completed).all()
+        ).group_by(ActionPlan.plan_date).all()
         
-        # Convert to dict for O(1) lookup: {date: (total, completed, reviewed)}
+        # Convert to dict for O(1) lookup: {date: (total, completed)}
         plan_data = {
-            row.plan_date: (row.total_items or 0, row.completed_count or 0, row.review_completed or False)
+            row.plan_date: (row.total_items or 0, row.completed_count or 0)
             for row in plans_with_counts
         }
         
@@ -223,9 +219,9 @@ class StreakService:
             
             # Get plan data from pre-loaded dict (O(1) lookup)
             if check_date in plan_data:
-                total_items, completed_count, review_completed = plan_data[check_date]
+                total_items, completed_count = plan_data[check_date]
                 
-                logger.info(f"Streak calc: {check_date} - {completed_count}/{total_items} completed, reviewed={review_completed}, frozen={is_frozen}")
+                logger.info(f"Streak calc: {check_date} - {completed_count}/{total_items} completed, frozen={is_frozen}")
                 
                 # Case 0: Empty plan (0 items) = streak day (nothing to complete)
                 if total_items == 0:
@@ -233,16 +229,10 @@ class StreakService:
                     logger.info(f"  → EMPTY PLAN (0 items): streak={streak}")
                     check_date -= timedelta(days=1)
                 
-                # Case 1: ALL items completed = streak day
-                elif completed_count == total_items:
+                # Case 1: At least 1 action completed = streak day
+                elif completed_count > 0:
                     streak += 1
-                    logger.info(f"  → FULL COMPLETE: streak={streak}")
-                    check_date -= timedelta(days=1)
-                
-                # Case 1.5: Review Completed = streak day (user engaged and made choices)
-                elif review_completed:
-                    streak += 1
-                    logger.info(f"  → REVIEW COMPLETED: streak={streak}")
+                    logger.info(f"  → AT LEAST ONE COMPLETE: streak={streak}")
                     check_date -= timedelta(days=1)
                 
                 # Case 2: FROZEN = streak day (freeze protects regardless of completion)
@@ -429,10 +419,10 @@ class StreakService:
         Get list of consecutive missed days starting from yesterday going back.
         
         MISSED DAY RULES (consistent with streak calculation):
-        - Fully completed = NOT missed, STOP looking (streak is intact from here back)
+        - At least 1 action completed = NOT missed, STOP looking (streak is intact from here back)
         - Frozen = NOT missed, STOP looking (freeze protects the day and streak)
         - Empty plan (0 items) = NOT missed (nothing to complete)
-        - Incomplete and NOT frozen = MISSED
+        - 0 completions and NOT frozen = MISSED
         - No plan exists AND user has plan history = MISSED
         - No plan exists AND user has NO plan history = NOT missed (new user)
         
@@ -493,20 +483,16 @@ class StreakService:
             is_frozen = self._is_date_frozen(streak_data, check_date)
             
             if plan:
-                # Count total items in this plan (excluding replaced)
+                # Count total items in this plan
                 total_items = self.db.query(func.count(ActionPlanItem.id)).filter(
-                    and_(
-                        ActionPlanItem.plan_id == plan.id,
-                        ActionPlanItem.is_replaced.isnot(True)
-                    )
+                    ActionPlanItem.plan_id == plan.id
                 ).scalar() or 0
                 
-                # Count completed items
+                # Count completed items (includes review-replaced items completed by user)
                 completed_count = self.db.query(func.count(ActionPlanItem.id)).filter(
                     and_(
                         ActionPlanItem.plan_id == plan.id,
-                        ActionPlanItem.is_completed == True,
-                        ActionPlanItem.is_replaced.isnot(True)
+                        ActionPlanItem.is_completed == True
                     )
                 ).scalar() or 0
                 
@@ -515,8 +501,8 @@ class StreakService:
                     logger.info(f"Plan for {check_date} has 0 items - treating as complete, stopping")
                     break
                 
-                # Fully completed = stop, not missed (streak is intact from here back)
-                if completed_count == total_items:
+                # At least 1 completion = stop, not missed (streak is intact from here back)
+                if completed_count > 0:
                     break
                 
                 # Frozen day = STOP - freeze protects the streak from this point back
@@ -778,4 +764,3 @@ class StreakService:
             "today_completed": risk_status["today_completed"],
             "today_frozen": risk_status["today_frozen"]
         }
-

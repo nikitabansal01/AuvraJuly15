@@ -1445,9 +1445,9 @@ async def submit_daily_review(
     - 'was_completed': Already marked complete (just confirming)
     
     Streak logic:
-    - If after review, ALL items are marked complete (including forgot_mark + replaced) -> streak maintained
-    - If NOT all complete and use_freeze=True -> apply freeze, streak maintained
-    - If NOT all complete and use_freeze=False (or no freezes) -> streak breaks
+    - If after review, at least 1 item is marked complete (or plan is empty) -> streak maintained
+    - If 0 items complete and use_freeze=True -> apply freeze, streak maintained
+    - If 0 items complete and use_freeze=False (or no freezes) -> streak breaks
     
     Skipped items get carried forward to today's plan.
     """
@@ -1619,12 +1619,12 @@ async def submit_daily_review(
             # Day was frozen - streak is safe regardless of completion
             streak_maintained = True
             streak_action = "maintained"
-        elif (total_items == 0) or (total_items > 0 and final_completed == total_items):
-            # All completed (or empty plan) - streak maintained
+        elif (total_items == 0) or (final_completed > 0):
+            # At least one completion (or empty plan) - streak maintained
             streak_maintained = True
             streak_action = "maintained"
         elif request.use_freeze and streak_data.freeze_count > 0:
-            # Not enough completed but user wants to use freeze
+            # No completions but user wants to use freeze
             streak_data.freeze_count -= 1
             frozen_dates = list(streak_data.freeze_used_dates or [])
             if plan.plan_date.isoformat() not in frozen_dates:
@@ -1635,7 +1635,7 @@ async def submit_daily_review(
             streak_maintained = True
             streak_action = "used_freeze"
         else:
-            # Not enough completed and no freeze used
+            # No completions and no freeze used
             streak_broken = True
             streak_action = "broken"
             streak_data.current_streak = 0

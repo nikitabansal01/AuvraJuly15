@@ -14,7 +14,7 @@ ENHANCEMENTS:
 Features:
 - Refresh token gating (16-day streak, 2x per day)
 - LLM intent classification with feedback understanding
-- Skip action with streak warning (ANY skip risks streak)
+- Skip action with streak guidance (complete at least 1 action/day)
 - Multi-stage workflows (alternate suggestions)
 - UI Blocks integration
 - Cross-chatbot context awareness
@@ -623,7 +623,7 @@ Example variations (DON'T copy, just show variety):
 
 
 async def handle_skip_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Process skip with CRITICAL streak warning - ANY skip risks streak. Uses LLM for personalized response."""
+    """Process skip with streak guidance. Uses LLM for personalized response."""
     
     user_message = state.get("user_message", "")
     targeted_idx = state.get("targeted_action_index")
@@ -664,6 +664,10 @@ Output JSON: {{
     # LLM-GENERATED SKIP WARNING - Personalized and empathetic
     # ═══════════════════════════════════════════════════════════════════════
     current_streak = state.get("current_streak", 0)
+    completed_today_count = sum(
+        1 for item in action_items
+        if item.get("is_completed")
+    )
     
     skip_prompt = f"""Generate an empathetic but clear warning about skipping an action.
 
@@ -675,10 +679,14 @@ Details:
 - User's reason: {skip_reason}
 - Skip category: {skip_category}
 - Current streak: {current_streak} days
+- Completed actions today: {completed_today_count}
 
 Guidelines:
 1. Acknowledge their reason empathetically FIRST
-2. Explain streak risk clearly (skipping ANY action affects streak)
+2. Explain streak rule clearly:
+   - Streak is protected if they complete at least 1 action today
+   - If they already completed 1+, reassure them their streak is safe for today
+   - If they completed 0, remind them to complete one of the remaining actions
 3. Offer alternatives based on their reason:
    - no_time: Suggest quicker version
    - dont_like: Suggest swap
@@ -689,16 +697,38 @@ Guidelines:
 6. DON'T be preachy or guilt-tripping
 
 Example tone (don't copy exactly):
-"I totally get it - [action] isn't feeling right today. Just a heads up: skipping will affect your [X]-day streak. Want me to find something easier/quicker that works better for you?"
+"I totally get it - [action] isn't feeling right today. To protect your streak, complete at least one action today. Want me to find something easier/quicker that works better for you?"
 """
     
     try:
         response = await call_llm(skip_prompt, max_tokens=150)
         if not response or len(response.strip()) < 20:
-            response = f"Heads up: skipping {action_title} will put your {current_streak}-day streak at risk. Want a quicker or easier alternative instead?"
+            if completed_today_count > 0:
+                response = (
+                    f"No worries if you skip {action_title}. "
+                    f"Your streak is already protected today because you've completed {completed_today_count} action(s). "
+                    "Want a quicker or easier alternative instead?"
+                )
+            else:
+                response = (
+                    f"Heads up: skipping {action_title} is okay, but complete at least one action today "
+                    f"to protect your {current_streak}-day streak. "
+                    "Want a quicker or easier alternative instead?"
+                )
     except Exception as llm_error:
         logger.warning(f"Skip warning LLM failed: {llm_error}")
-        response = f"Heads up: skipping {action_title} will put your {current_streak}-day streak at risk. Want a quicker or easier alternative instead?"
+        if completed_today_count > 0:
+            response = (
+                f"No worries if you skip {action_title}. "
+                f"Your streak is already protected today because you've completed {completed_today_count} action(s). "
+                "Want a quicker or easier alternative instead?"
+            )
+        else:
+            response = (
+                f"Heads up: skipping {action_title} is okay, but complete at least one action today "
+                f"to protect your {current_streak}-day streak. "
+                "Want a quicker or easier alternative instead?"
+            )
     
     # Offer alternative based on reason
     if skip_category in ["no_time", "dont_like", "not_feeling_well", "no_ingredients"]:
