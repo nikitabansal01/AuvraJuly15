@@ -1273,6 +1273,42 @@ def _fix_required_fields(schema: dict) -> dict:
 
 ACTION_PLAN_SCHEMA = _fix_required_fields(_raw_schema)
 
+# ============================================================================
+# SINGLE-ACTION SCHEMA FOR REPLACEMENT (same structure, single item)
+# ============================================================================
+# Replacement returns a SINGLE ActionItemModel wrapped in {"action": {...}}
+# This ensures replacement uses the EXACT same strict schema as generation.
+
+class SingleActionResponseModel(BaseModel):
+    """Single action response for replacement - uses same ActionItemModel as generation."""
+    action: ActionItemModel
+    
+    model_config = {"extra": "forbid"}
+
+_raw_replacement_schema = SingleActionResponseModel.model_json_schema()
+SINGLE_ACTION_SCHEMA = _fix_required_fields(_raw_replacement_schema)
+
+# Title validation regex - titles must NOT contain verbs/amounts
+import re as _re
+_TITLE_BAD_PATTERNS = _re.compile(
+    r'\b(eat|have|do|practice|try|make|drink|take|add|include|consume|prepare)\b',
+    _re.IGNORECASE
+)
+_TITLE_AMOUNT_PATTERNS = _re.compile(
+    r'\b(\d+\s*(cup|tbsp|tsp|tablespoon|teaspoon|serving|min|minute|hour|oz|gram|mg|ml)s?)\b',
+    _re.IGNORECASE
+)
+
+def _validate_title_format(title: str) -> bool:
+    """Check if a title follows the rules: no verbs, no amounts, short noun phrase."""
+    if not title or len(title) > 60:
+        return False
+    if _TITLE_BAD_PATTERNS.search(title):
+        return False
+    if _TITLE_AMOUNT_PATTERNS.search(title):
+        return False
+    return True
+
 VARIANT_PROMPT_TEMPLATE = """For the {category} action "{title}", create 3 variants:
 
 Original action: {specific_action}
@@ -5950,7 +5986,7 @@ Each action object must follow the format above. Respond with valid JSON only.""
         else:
             prompt += """
 
-Respond with a single valid JSON object (the action). No markdown."""
+Respond with a JSON object wrapping the action: {"action": { ...action fields... }}. No markdown."""
 
         return prompt
 
@@ -7147,7 +7183,13 @@ Include these papers in the research_studies field of your response.
 
 
             # Generate replacement via GPT (no tool calling - research already fetched)
-            MAX_REPLACEMENT_RETRIES = 2
+            # ================================================================
+            # CRITICAL FIX: Use SAME structured outputs as action plan generation
+            # Previously used json_object which let GPT return malformed titles
+            # like "Have 1 cup cooked chickpeas" instead of "Chickpeas"
+            # Now uses json_schema with strict:True + SINGLE_ACTION_SCHEMA
+            # ================================================================
+            MAX_REPLACEMENT_RETRIES = 3
             replacement_action = None
             
             for attempt in range(1, MAX_REPLACEMENT_RETRIES + 1):
@@ -7166,7 +7208,14 @@ Include these papers in the research_studies field of your response.
                                 {"role": "user", "content": replacement_prompt}
                             ],
                             max_tokens=4000,
-                            response_format={"type": "json_object"}
+                            response_format={
+                                "type": "json_schema",
+                                "json_schema": {
+                                    "name": "replacement_action",
+                                    "strict": True,
+                                    "schema": SINGLE_ACTION_SCHEMA
+                                }
+                            }
                         )
                         response = await self.client.post(
                             "https://api.openai.com/v1/chat/completions",
@@ -7197,7 +7246,20 @@ Include these papers in the research_studies field of your response.
                         
                         # gpt-oss-120b is a reasoning model - doesn't support response_format
                         is_reasoning_model = "gpt-oss" in GROQ_FALLBACK_MODEL.lower()
-                        enhanced_prompt = replacement_prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown." if is_reasoning_model else replacement_prompt
+                        enhanced_prompt = replacement_prompt + '\n\nIMPORTANT: Respond with valid JSON only. No markdown. Wrap response as: {"action": { ...fields... }}' if is_reasoning_model else replacement_prompt
+                        
+                        groq_payload = {
+                            "model": GROQ_FALLBACK_MODEL,
+                            "messages": [
+                                {"role": "system", "content": personalized_system},
+                                {"role": "user", "content": enhanced_prompt}
+                            ],
+                            "temperature": 0.7,
+                            "max_tokens": 4000
+                        }
+                        # Add json_object response_format for non-reasoning models
+                        if not is_reasoning_model:
+                            groq_payload["response_format"] = {"type": "json_object"}
                         
                         response = await self.client.post(
                             "https://api.groq.com/openai/v1/chat/completions",
@@ -7205,15 +7267,7 @@ Include these papers in the research_studies field of your response.
                                 "Authorization": f"Bearer {GROQ_API_KEY}",
                                 "Content-Type": "application/json"
                             },
-                            json={
-                                "model": GROQ_FALLBACK_MODEL,
-                                "messages": [
-                                    {"role": "system", "content": personalized_system},
-                                    {"role": "user", "content": enhanced_prompt}
-                                ],
-                                "temperature": 0.7,
-                                "max_tokens": 4000
-                            },
+                            json=groq_payload,
                             timeout=90.0
                         )
                         
@@ -7233,20 +7287,45 @@ Include these papers in the research_studies field of your response.
                 if not content:
                     continue
                 
-                # Parse replacement action
+                # Parse replacement action with SAME validation as generation
                 if content.startswith("```"):
                     content = content.split("```")[1]
                     if content.startswith("json"):
                         content = content[4:]
                 
                 try:
-                    parsed_action = json.loads(content.strip())
+                    parsed_raw = json.loads(content.strip())
                     
-                    # Handle various response formats
-                    if isinstance(parsed_action, list) and len(parsed_action) > 0:
-                        parsed_action = parsed_action[0]
-                    elif isinstance(parsed_action, dict) and "actions" in parsed_action:
-                        parsed_action = parsed_action["actions"][0]
+                    # ============================================================
+                    # STEP 1: Extract action from various response formats
+                    # Structured outputs should return {"action": {...}} but
+                    # Groq fallback may return flat object, list, or {"actions": [...]}
+                    # ============================================================
+                    if isinstance(parsed_raw, dict) and "action" in parsed_raw:
+                        # Structured output format: {"action": {...}}
+                        parsed_action = parsed_raw["action"]
+                    elif isinstance(parsed_raw, list) and len(parsed_raw) > 0:
+                        parsed_action = parsed_raw[0]
+                    elif isinstance(parsed_raw, dict) and "actions" in parsed_raw:
+                        parsed_action = parsed_raw["actions"][0]
+                    elif isinstance(parsed_raw, dict):
+                        # Flat action object (Groq fallback)
+                        parsed_action = parsed_raw
+                    else:
+                        logger.error(f"Unexpected response format: {type(parsed_raw)}")
+                        continue
+                    
+                    # ============================================================
+                    # STEP 2: Pydantic validation - SAME as generation
+                    # This enforces the exact schema structure
+                    # ============================================================
+                    try:
+                        validated = ActionItemModel.model_validate(parsed_action)
+                        parsed_action = validated.model_dump()
+                        logger.info(f"✅ Pydantic validation passed for replacement: '{parsed_action.get('title', '')}'")
+                    except Exception as pydantic_err:
+                        logger.warning(f"⚠️ Pydantic validation failed (attempt {attempt}): {str(pydantic_err)[:200]}")
+                        # Continue with raw dict but apply fixes below
                     
                     # Normalize category
                     if "category" in parsed_action:
@@ -7258,7 +7337,6 @@ Include these papers in the research_studies field of your response.
                             parsed_action["research_studies"] = [research_paper]
                             logger.info(" Injected pre-fetched research paper into action")
                         elif isinstance(parsed_action.get("research_studies"), dict):
-                            # GPT returned a dict instead of list
                             parsed_action["research_studies"] = [research_paper]
                     
                     # Validate the action
@@ -7270,14 +7348,46 @@ Include these papers in the research_studies field of your response.
                         parsed_action["category"] = original.category
                         category = original.category
                     
+                    # ============================================================
+                    # STEP 3: Title format validation - CRITICAL FOR UI
+                    # Title must be a short noun phrase, NOT an instruction
+                    # e.g., "Chickpeas" not "Have 1 cup cooked chickpeas"
+                    # ============================================================
+                    title = parsed_action.get("title", "")
+                    if not _validate_title_format(title):
+                        logger.warning(f"🚨 TITLE FORMAT VIOLATION: '{title}' contains verbs/amounts/is too long")
+                        # Try to extract the core noun from the bad title
+                        # Strip common verb prefixes
+                        cleaned = title
+                        for prefix in ["Eat at least", "Have a", "Have", "Eat", "Do", "Practice", "Try", "Make", "Drink", "Take", "Add", "Include", "Consume", "Prepare"]:
+                            if cleaned.lower().startswith(prefix.lower()):
+                                cleaned = cleaned[len(prefix):].strip()
+                                break
+                        # Strip leading amounts like "1 cup", "1 serving of", "20 min of"
+                        import re as _re_local
+                        cleaned = _re_local.sub(r'^\d+\s*(cups?\s+of\s+|servings?\s+of\s+|tbsp\s+of\s+|tsp\s+of\s+|tablespoons?\s+of\s+|teaspoons?\s+of\s+|min\s+of\s+|minutes?\s+of\s+|cups?\s+cooked\s+|cups?\s+)', '', cleaned, flags=_re_local.IGNORECASE).strip()
+                        # Capitalize first letter of each word
+                        if cleaned:
+                            cleaned = cleaned.strip().title()
+                            # Truncate if still too long (max ~40 chars for home screen)
+                            if len(cleaned) > 50:
+                                cleaned = cleaned[:47] + "..."
+                            parsed_action["title"] = cleaned
+                            logger.info(f"✅ Title cleaned: '{title}' → '{cleaned}'")
+                        
+                        # If title is STILL bad after cleaning, reject and retry
+                        if not _validate_title_format(parsed_action.get("title", "")):
+                            if attempt < MAX_REPLACEMENT_RETRIES:
+                                logger.warning(f"⚠️ Title still invalid after cleaning, retrying (attempt {attempt})")
+                                continue
+                    
                     valid, missing = self._validate_action_fields(parsed_action, category)
                     
                     if valid:
-                        logger.info(f"✅ Replacement action valid (category: {category})")
+                        logger.info(f"✅ Replacement action valid (category: {category}, title: '{parsed_action.get('title', '')}')")
                         replacement_action = parsed_action
                         break
                     else:
-
                         logger.warning(f" Attempt {attempt} missing fields: {missing}")
                         if attempt >= MAX_REPLACEMENT_RETRIES:
                             logger.warning(" Applying minimal fallbacks for replacement")
