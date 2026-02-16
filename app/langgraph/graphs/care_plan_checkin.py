@@ -42,6 +42,9 @@ import os
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
+from app.langgraph.helpers.llm_config import get_llm_config, get_max_tokens_for_intent, get_temperature_for_intent
+from app.langgraph.helpers.llm_cache import call_llm_with_cache
+from app.langgraph.helpers.conversation_memory import truncate_conversation_smart, get_conversation_stats
 from app.langgraph.helpers.circuit_breaker import (
     call_with_circuit_breaker, 
     openai_breaker, 
@@ -395,16 +398,33 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
     4. temperature 0.1 → consistent classification across identical inputs
     5. Retry + timeout → handles transient API failures gracefully
     6. Fallback chain → function calling → JSON mode → default to 'general'
+    7. Conversation truncation → prevents token limit overflow (20 msgs/4000 tokens)
+    8. Circuit breaker → prevents cascading failures from OpenAI outages
     """
     
     user_message = state.get("user_message", "")
     if not user_message:
         return {**state, "error": "no_user_message", "phase": "complete"}
     
+    # ══════════════════════════════════════════════════════════════
+    # PRODUCTION FIX: Truncate conversation to prevent token overflow
+    # Keep last 20 messages OR 4000 tokens, whichever is smaller
+    # ══════════════════════════════════════════════════════════════
+    config = get_llm_config()
+    messages = state.get("messages", [])
+    original_message_count = len(messages)
+    
+    if len(messages) > config.max_conversation_messages:
+        messages = truncate_conversation_smart(
+            messages,
+            max_messages=config.max_conversation_messages,
+            max_tokens=config.max_conversation_tokens
+        )
+        logger.info(f"[INTENT] Truncated conversation: {original_message_count} → {len(messages)} messages")
+    
     # ════════════════════════════════════════════════════════════════════════
     # BUILD CONTEXT — same data, now fed into function calling
     # ════════════════════════════════════════════════════════════════════════
-    messages = state.get("messages", [])
     recent_msgs = messages[-10:]  # 5 turns of context (was 3 turns = 6 msgs)
     chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
 
@@ -758,7 +778,15 @@ Example variations (DON'T copy, just show variety):
 """
         
         try:
-            response = await call_llm(celebration_prompt, max_tokens=150)
+            # PRODUCTION FIX: Use cached LLM call with config
+            config = get_llm_config()
+            response = await call_llm_with_cache(
+                call_llm,
+                celebration_prompt,
+                temperature=config.celebration_temperature,
+                max_tokens=config.max_tokens_celebration,
+                intent="complete_action"
+            )
             if not response or len(response.strip()) < 10:
                 # Fallback
                 response = f"🎉 {hormone} is celebrating! That's {current} days strong. "
@@ -866,7 +894,15 @@ Example tone (don't copy exactly):
 """
     
     try:
-        response = await call_llm(skip_prompt, max_tokens=150)
+        # PRODUCTION FIX: Use cached LLM call with config
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            skip_prompt,
+            temperature=config.explanation_temperature,
+            max_tokens=config.max_tokens_skip,
+            intent="skip_action"
+        )
         if not response or len(response.strip()) < 20:
             if completed_today_count > 0:
                 response = (
@@ -1099,8 +1135,17 @@ Guidelines:
 Example: "I found 3 options that should work better with your schedule!"
 """
         
+        # PRODUCTION FIX: intro generation is actually fast enough sequentially
+        # (Alternative: could parallelize if we generate alternatives summary separately)
         try:
-            intro = await call_llm(intro_prompt, max_tokens=50)
+            config = get_llm_config()
+            intro = await call_llm_with_cache(
+                call_llm,
+                intro_prompt,
+                temperature=config.explanation_temperature,
+                max_tokens=config.max_tokens_alternatives_intro,
+                intent="request_alternates"
+            )
             if not intro or len(intro.strip()) < 10:
                 intro = f"Here are {len(alternates)} alternatives that might fit you better:"
         except:
@@ -1389,7 +1434,14 @@ Respond naturally as Auvra. Be specific, reference their data, and end with a cl
 </output_format>"""
 
     try:
-        response = await call_llm(prompt, max_tokens=300)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            prompt,
+            temperature=config.explanation_temperature,
+            max_tokens=config.max_tokens_negotiate,
+            intent="negotiate"
+        )
         
         if not response or len(response.strip()) < 20:
             # Fallback if LLM fails
@@ -1494,7 +1546,14 @@ Respond naturally as Auvra. Be specific with citations, connect to their profile
 </output_format>"""
 
     try:
-        response = await call_llm(prompt, max_tokens=400)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            prompt,
+            temperature=config.explanation_temperature,
+            max_tokens=config.max_tokens_challenge_science,
+            intent="challenge_science"
+        )
         
         if not response or len(response.strip()) < 20:
             # Fallback with whatever evidence we have
@@ -1610,7 +1669,14 @@ Respond as Auvra, walking through your personalization process with specific exa
 </output_format>"""
 
     try:
-        response = await call_llm(prompt, max_tokens=350)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            prompt,
+            temperature=config.explanation_temperature,
+            max_tokens=config.max_tokens_explain_plan,
+            intent="explain_plan"
+        )
         
         if not response or len(response.strip()) < 20:
             user_context = await _get_user_context_for_explanation(user_id)
@@ -1775,7 +1841,14 @@ Respond as Auvra with a helpful, personalized answer.
 </output>"""
 
     try:
-        response = await call_llm(prompt, max_tokens=300)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            prompt,
+            temperature=config.explanation_temperature,
+            max_tokens=config.max_tokens_health_question,
+            intent="health_question"
+        )
         
         if not response or len(response.strip()) < 20:
             logger.warning(f"LLM returned empty response for health question")
@@ -1881,7 +1954,14 @@ Respond directly as Auvra. Be warm, helpful, and specific to this user.
 </output>"""
 
     try:
-        response = await call_llm(prompt, max_tokens=250)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            prompt,
+            temperature=config.general_temperature,
+            max_tokens=config.max_tokens_general,
+            intent="general"
+        )
         
         if not response or len(response.strip()) < 10:
             # Fallback only if LLM completely fails
@@ -2052,7 +2132,14 @@ Guidelines:
 """
     
     try:
-        response = await call_llm(cancel_prompt, max_tokens=100)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            cancel_prompt,
+            temperature=config.celebration_temperature,
+            max_tokens=config.max_tokens_cancel,
+            intent="cancel_action"
+        )
         if not response or len(response.strip()) < 10:
             response = f"No problem! We'll keep {action_title} as is. You can always adjust things later if you need to."
     except:
@@ -2119,7 +2206,14 @@ Do NOT be generic - make them understand why this is FOR THEM.
 """
     
     try:
-        response = await call_llm(why_prompt, max_tokens=250)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            why_prompt,
+            temperature=config.explanation_temperature,
+            max_tokens=config.max_tokens_why,
+            intent="ask_why"
+        )
         if not response or len(response.strip()) < 20:
             response = f"{title} was chosen specifically for your {hormone} support during this phase. {purpose} Would you like more details or prefer an alternative?"
     except Exception as e:
@@ -2210,7 +2304,14 @@ Examples:
 """
     
     try:
-        response = await call_llm(clarification_prompt, max_tokens=250)
+        config = get_llm_config()
+        response = await call_llm_with_cache(
+            call_llm,
+            clarification_prompt,
+            temperature=config.explanation_temperature,
+            max_tokens=config.max_tokens_clarification,
+            intent="request_clarification"
+        )
         if not response or len(response.strip()) < 20:
             response = f"For {title}, I recommend {specific_action}. This should take about 15-20 minutes. Would you like more specific guidance?"
     except Exception as e:
