@@ -33,6 +33,11 @@ langchain>=0.3.0
 langchain-openai>=0.3.30
 langchain-core>=0.3.0
 langgraph>=0.2.0
+langgraph-checkpoint-postgres>=0.0.1  # Persistent conversation state
+
+# Production reliability & performance
+aiobreaker>=1.4.0  # Circuit breaker pattern for LLM calls
+redis[hiredis]>=5.0.0  # Response caching layer
 
 # Image processing
 Pillow>=10.0.0

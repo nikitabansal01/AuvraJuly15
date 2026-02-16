@@ -22,10 +22,16 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
+import random  # Retry jitter to prevent thundering herd  
+import json
+import os
+import logging
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.postgres import PostgresSaver  # Production persistent state
 from langgraph.types import interrupt, Command
 from pydantic import BaseModel
 import asyncio
@@ -36,6 +42,13 @@ import os
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
+from app.langgraph.helpers.circuit_breaker import (
+    call_with_circuit_breaker, 
+    openai_breaker, 
+    groq_breaker,
+    get_degraded_response,
+    CircuitBreakerError
+)
 from app.langgraph.helpers.database_helpers import (
     get_cycle_info, get_todays_action_plan, get_streak_info, get_reward_status
 )
@@ -43,7 +56,7 @@ from app.langgraph.helpers.ui_blocks_helper import (
     generate_intelligent_ctas, create_confirmation_block, 
     create_alternates_selection_block, clear_ui_blocks, create_action_selection_block
 )
-from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog, SessionLocal
+from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog, SessionLocal, get_db_session
 # NEW: Unified memory for cross-chatbot context
 from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
@@ -311,58 +324,59 @@ def create_initial_state(user_id: str, thread_id: str = None) -> CarePlanCheckIn
 async def load_daily_plan_and_tokens(state: CarePlanCheckInState) -> CarePlanCheckInState:
     """Load today's plan AND refresh token status AND unified cross-chatbot context."""
     try:
-        db = next(get_db())
-        user_id = state["user_id"]
-        
-        # ══════════════════════════════════════════════════════════════
-        # NEW: Load unified cross-chatbot memory context
-        # This gives us EVERYTHING about the user - past conversations,
-        # preferences, feedback from other chatbots, etc.
-        # ══════════════════════════════════════════════════════════════
-        unified_ctx = await get_unified_context(user_id, "care_plan_checkin")
-        formatted_ctx = format_context_for_prompt(unified_ctx)
-        
-        # Load cycle and streak info
-        cycle_info = get_cycle_info(user_id, db)
-        streak_info = get_streak_info(user_id, db)
-        
-        # Load today's action plan
-        plan_data = get_todays_action_plan(user_id, db)
-        
-        if not plan_data:
+        # FIX: Use context manager to prevent connection leaks
+        with get_db_session() as db:
+            user_id = state["user_id"]
+            
+            # ══════════════════════════════════════════════════════════════
+            # NEW: Load unified cross-chatbot memory context
+            # This gives us EVERYTHING about the user - past conversations,
+            # preferences, feedback from other chatbots, etc.
+            # ══════════════════════════════════════════════════════════════
+            unified_ctx = await get_unified_context(user_id, "care_plan_checkin")
+            formatted_ctx = format_context_for_prompt(unified_ctx)
+            
+            # Load cycle and streak info
+            cycle_info = get_cycle_info(user_id, db)
+            streak_info = get_streak_info(user_id, db)
+            
+            # Load today's action plan
+            plan_data = get_todays_action_plan(user_id, db)
+            
+            if not plan_data:
+                return {
+                    **state,
+                    "error": "no_plan_today",
+                    "bot_response": "You don't have an action plan for today yet.",
+                    "phase": "complete"
+                }
+            
+            # Check refresh tokens (16-day streak unlock, 2x per day)
+            current_streak = streak_info.get("current_streak", 0)
+            
+            from app.services.reward_service import RewardService
+            reward_service = RewardService(db)
+            status = reward_service.get_refresh_status(user_id)
+            
+            refresh_tokens = status["remaining"]
+            refresh_unlocked = status["limit"] > 0 # Basically if they have any limit at all
+            
             return {
                 **state,
-                "error": "no_plan_today",
-                "bot_response": "You don't have an action plan for today yet.",
-                "phase": "complete"
+                "plan_id": plan_data["plan_id"],
+                "plan_date": plan_data["plan_date"],
+                "action_items": plan_data["items"],
+                "cycle_day": cycle_info.get("cycle_day"),
+                "cycle_phase": cycle_info.get("phase"),
+                "primary_hormone": cycle_info.get("primary_hormone"),
+                "current_streak": current_streak,
+                "refresh_tokens_available": refresh_tokens,
+                "refresh_tokens_unlocked": refresh_unlocked,
+                # NEW: Unified cross-chatbot context for truly personalized responses
+                "unified_context": unified_ctx,
+                "formatted_context": formatted_ctx,
+                "phase": "loaded"
             }
-        
-        # Check refresh tokens (16-day streak unlock, 2x per day)
-        current_streak = streak_info.get("current_streak", 0)
-        
-        from app.services.reward_service import RewardService
-        reward_service = RewardService(db)
-        status = reward_service.get_refresh_status(user_id)
-        
-        refresh_tokens = status["remaining"]
-        refresh_unlocked = status["limit"] > 0 # Basically if they have any limit at all
-        
-        return {
-            **state,
-            "plan_id": plan_data["plan_id"],
-            "plan_date": plan_data["plan_date"],
-            "action_items": plan_data["items"],
-            "cycle_day": cycle_info.get("cycle_day"),
-            "cycle_phase": cycle_info.get("phase"),
-            "primary_hormone": cycle_info.get("primary_hormone"),
-            "current_streak": current_streak,
-            "refresh_tokens_available": refresh_tokens,
-            "refresh_tokens_unlocked": refresh_unlocked,
-            # NEW: Unified cross-chatbot context for truly personalized responses
-            "unified_context": unified_ctx,
-            "formatted_context": formatted_ctx,
-            "phase": "loaded"
-        }
     except Exception as e:
         logger.error(f"Error loading plan: {e}")
         return {**state, "error": str(e), "phase": "complete"}
@@ -506,25 +520,36 @@ User says: \"{user_message}\""""
 
     # ════════════════════════════════════════════════════════════════════════
     # PRIMARY: OpenAI Function Calling with tool_choice (strict schema)
+    # PRODUCTION FIX: Added circuit breaker protection to prevent cascading failures
     # Retry loop with exponential backoff — production pattern
     # ════════════════════════════════════════════════════════════════════════
     last_error = None
     for attempt in range(3):  # 1 initial + 2 retries
         try:
-            client = _get_care_plan_openai_client()
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": context_message}
-                    ],
-                    tools=CARE_PLAN_INTENT_TOOLS,
-                    tool_choice={"type": "function", "function": {"name": "classify_care_plan_intent"}},
-                    temperature=0.1  # Low temperature = consistent classification
-                ),
-                timeout=12.0
-            )
+            # Wrap OpenAI call with circuit breaker
+            async def _make_openai_call():
+                client = _get_care_plan_openai_client()
+                return await asyncio.wait_for(
+                    client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": context_message}
+                        ],
+                        tools=CARE_PLAN_INTENT_TOOLS,
+                        tool_choice={"type": "function", "function": {"name": "classify_care_plan_intent"}},
+                        temperature=0.1  # Low temperature = consistent classification
+                    ),
+                    timeout=12.0
+                )
+            
+            # Call with circuit breaker protection
+            try:
+                response = await openai_breaker.call(_make_openai_call)
+            except CircuitBreakerError:
+                # Circuit is OPEN - OpenAI is down, fall back immediately
+                logger.warning("[INTENT] Circuit breaker OPEN, falling back to JSON mode")
+                raise Exception("circuit_breaker_open")
             
             if response.choices and response.choices[0].message.tool_calls:
                 tool_call = response.choices[0].message.tool_calls[0]
@@ -589,7 +614,10 @@ User says: \"{user_message}\""""
             break  # Don't retry unexpected errors
         
         if attempt < 2:
-            await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
+            # PRODUCTION FIX: Add jitter to prevent thundering herd
+            base_delay = 0.5 * (attempt + 1)
+            jitter = random.uniform(0, base_delay * 0.5)  #±50% jitter
+            await asyncio.sleep(base_delay + jitter)
     
     # ════════════════════════════════════════════════════════════════════════
     # FALLBACK: JSON mode via call_llm_structured (includes Groq fallback)
@@ -645,43 +673,44 @@ Output JSON: {{"intent": "...", "targeted_action_index": 1-4 or null, "proposed_
 async def handle_complete_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
     """Mark action complete, update streak."""
     try:
-        db = next(get_db())
-        action_id = state.get("targeted_action_id")
-        
-        if not action_id:
-            return {
-                **state,
-                "bot_response": "I'm not sure which action you completed. Can you specify?",
-                "phase": "loaded"
-            }
-        
-        item = db.query(ActionPlanItem).get(action_id)
-        if not item:
-            return {
-                **state,
-                "bot_response": "I couldn't find that action. Please try again.",
-                "phase": "loaded"
-            }
-        
-        item.is_completed = True
-        item.completed_at = datetime.utcnow()
-        db.commit()
-        
-        # Update streak
-        from app.services.streak_service import StreakService
-        streak_service = StreakService(db)
-        current, longest = streak_service.update_streak_on_completion(state["user_id"])
-        
-        # ═══════════════════════════════════════════════════════════════════════
-        # LLM-GENERATED CELEBRATION - Uses unified context for personalization
-        # ═══════════════════════════════════════════════════════════════════════
-        hormone = (item.target_hormone or "hormone").capitalize()
-        action_title = item.title or "action"
-        formatted_context = state.get("formatted_context", "")
-        
-        action_items = state.get("action_items", [])
-        completed_count = sum(1 for a in action_items if a.get("is_completed") or a.get("id") == action_id)
-        remaining = 4 - completed_count
+        # FIX: Use context manager to prevent connection leaks
+        with get_db_session() as db:
+            action_id = state.get("targeted_action_id")
+            
+            if not action_id:
+                return {
+                    **state,
+                    "bot_response": "I'm not sure which action you completed. Can you specify?",
+                    "phase": "loaded"
+                }
+            
+            item = db.query(ActionPlanItem).get(action_id)
+            if not item:
+                return {
+                    **state,
+                    "bot_response": "I couldn't find that action. Please try again.",
+                    "phase": "loaded"
+                }
+            
+            item.is_completed = True
+            item.completed_at = datetime.utcnow()
+            # db.commit() now handled by context manager
+            
+            # Update streak
+            from app.services.streak_service import StreakService
+            streak_service = StreakService(db)
+            current, longest = streak_service.update_streak_on_completion(state["user_id"])
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # LLM-GENERATED CELEBRATION - Uses unified context for personalization
+            # ═══════════════════════════════════════════════════════════════════════
+            hormone = (item.target_hormone or "hormone").capitalize()
+            action_title = item.title or "action"
+            formatted_context = state.get("formatted_context", "")
+            
+            action_items = state.get("action_items", [])
+            completed_count = sum(1 for a in action_items if a.get("is_completed") or a.get("id") == action_id)
+            remaining = 4 - completed_count
         
         # Check if user mentioned OTHER actions in the same message (multi-action support)
         user_message = state.get("user_message", "")
@@ -2328,8 +2357,29 @@ def create_process_selection_graph():
     return workflow
 
 
-# Compile graphs with checkpointer for interrupts and resumable state
-_checkpointer = InMemorySaver()
+# ═══════════════════════════════════════════════════════════════════════════
+# PRODUCTION FIX: Persistent checkpointer (PostgresSaver)
+# 
+# Why PostgresSaver > InMemorySaver:
+# - InMemorySaver = lost on every deployment/restart (unacceptable for production)
+# - PostgresSaver = persistent ACID storage, survives restarts
+# - Auto-creates table: checkpoints (thread_id, checkpoint_id, checkpoint JSONB)
+# 
+# Migration note: Existing in-memory conversations will be lost on first deploy.
+# After deployment, all new conversations persist across restarts.
+# ═══════════════════════════════════════════════════════════════════════════
+from app.core.config import settings
+
+# Create PostgresSaver from existing database URL
+# This will auto-create the checkpoints table on first use
+try:
+    _checkpointer = PostgresSaver.from_conn_string(settings.DATABASE_URL)
+    logger.info("[CHECKPOINTER] PostgresSaver initialized - conversations will persist across restarts")
+except Exception as e:
+    # Fallback to InMemorySaver if Postgres connection fails (development only)
+    logger.warning(f"[CHECKPOINTER] Failed to initialize PostgresSaver: {e}. Falling back to InMemorySaver (NOT PRODUCTION SAFE)")
+    _checkpointer = InMemorySaver()
+
 care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
 care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
 care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_checkpointer)

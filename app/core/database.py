@@ -73,7 +73,7 @@ def get_async_session_maker():
 Base = declarative_base()
 
 def get_db():
-    """Create database session"""
+    """Create database session (for FastAPI dependency injection)"""
     db = SessionLocal()
     try:
         yield db
@@ -83,6 +83,59 @@ def get_db():
     finally:
         db.close()
         # Disable connection pool status logging (performance improvement)
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PRODUCTION FIX: Context managers for manual session creation (non-FastAPI)
+# Usage: Used in LangGraph nodes which can't use FastAPI Depends()
+# ═══════════════════════════════════════════════════════════════════════════
+from contextlib import contextmanager, asynccontextmanager
+
+@contextmanager
+def get_db_session():
+    """
+    Synchronous context manager for database sessions.
+    
+    Usage:
+        with get_db_session() as db:
+            # ...use db...
+            pass
+        # db is automatically closed
+    
+    This prevents connection leaks from `db = next(get_db())` pattern.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()  # Auto-commit on success
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def get_async_db_session():
+    """
+    Asynchronous context manager for database sessions.
+    
+    Usage:
+        async with get_async_db_session() as db:
+            # ...use db...
+            pass
+        # db is automatically closed
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
         pass
 
 def generate_session_id():
