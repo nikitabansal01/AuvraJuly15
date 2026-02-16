@@ -28,10 +28,13 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import interrupt, Command
 from pydantic import BaseModel
+import asyncio
 import uuid
 import json
 import logging
+import os
 
+from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
 from app.langgraph.helpers.database_helpers import (
     get_cycle_info, get_todays_action_plan, get_streak_info, get_reward_status
@@ -183,6 +186,78 @@ class AlternatesList(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# PRODUCTION-GRADE: OpenAI Function Calling for Intent Classification
+# Same pattern as CarePlanSemanticMatcher — proven in production.
+# Why function calling > JSON mode:
+#   1. Schema enforced by OpenAI (strict: true) — no parse errors
+#   2. tool_choice forces the LLM to call the function — guaranteed output
+#   3. Enum validation — intent MUST be one of the 13 valid values
+#   4. Lower temperature (0.1) — consistent classification
+# ═══════════════════════════════════════════════════════════════════
+
+_care_plan_openai_client = None
+
+def _get_care_plan_openai_client() -> AsyncOpenAI:
+    """Singleton OpenAI client with production settings."""
+    global _care_plan_openai_client
+    if _care_plan_openai_client is None:
+        _care_plan_openai_client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            timeout=10.0,
+            max_retries=2
+        )
+    return _care_plan_openai_client
+
+
+# Tool definition: ONE function with enum — the LLM MUST call this function
+# and MUST pick from the enum values. No ambiguity, no parse errors.
+CARE_PLAN_INTENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "classify_care_plan_intent",
+            "description": "Classify the user's message into one intent category for the daily care plan check-in",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "intent": {
+                        "type": "string",
+                        "enum": [
+                            "complete_action", "skip_action", "change_action",
+                            "request_alternates", "negotiate", "ask_why",
+                            "request_clarification", "cancel_action",
+                            "plan_feedback", "challenge_science", "explain_plan",
+                            "health_question", "general"
+                        ],
+                        "description": "The user's primary intent"
+                    },
+                    "targeted_action_index": {
+                        "type": ["integer", "null"],
+                        "description": "1-based index of the action the user refers to, or null if not about a specific action"
+                    },
+                    "proposed_replacement": {
+                        "type": ["string", "null"],
+                        "description": "Specific replacement item if user requests one (e.g. 'cashews', 'yoga'), otherwise null"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Classification confidence from 0.0 to 1.0"
+                    },
+                    "feedback_topic": {
+                        "type": ["string", "null"],
+                        "description": "For plan_feedback/challenge_science: generic, repetitive, not_personalized, science_question, or other. Null for other intents."
+                    }
+                },
+                "required": ["intent", "targeted_action_index", "proposed_replacement", "confidence", "feedback_topic"],
+                "additionalProperties": False
+            }
+        }
+    }
+]
+
+
+# ═══════════════════════════════════════════════════════════════════
 # HELPER: Create initial state
 # ═══════════════════════════════════════════════════════════════════
 
@@ -294,231 +369,275 @@ async def load_daily_plan_and_tokens(state: CarePlanCheckInState) -> CarePlanChe
 
 
 async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Use LLM to classify intent (replaces hardcoded string matching)."""
+    """
+    PRODUCTION-GRADE: OpenAI function calling with tool_choice for intent classification.
+    
+    Same pattern as CarePlanSemanticMatcher.classify_intent() — proven in this codebase.
+    
+    Why this is better than JSON mode (call_llm_structured):
+    1. strict: true → OpenAI validates the output schema, no parse errors
+    2. tool_choice → forces the LLM to call the function, guaranteed output
+    3. enum → intent MUST be one of 13 valid values, impossible to hallucinate
+    4. temperature 0.1 → consistent classification across identical inputs
+    5. Retry + timeout → handles transient API failures gracefully
+    6. Fallback chain → function calling → JSON mode → default to 'general'
+    """
     
     user_message = state.get("user_message", "")
     if not user_message:
         return {**state, "error": "no_user_message", "phase": "complete"}
     
     # ════════════════════════════════════════════════════════════════════════
-    # PRE-CLASSIFICATION: Catch clear feedback/science cases BEFORE LLM
-    # This prevents misclassification of important user concerns
+    # BUILD CONTEXT — same data, now fed into function calling
     # ════════════════════════════════════════════════════════════════════════
-    msg_lower = user_message.lower()
-    
-    # Keywords that STRONGLY indicate change_action / request_alternates
-    # These are requests to replace/change items in the plan
-    change_action_keywords = [
-        "suggest something", "suggest easy", "suggest different", "give me something",
-        "instead of", "replace", "swap", "change to", "change my", "change it",
-        "change my plan", "want to change", "i want to change",
-        "different option",
-        "don't work out", "can't do", "too hard", "too difficult",
-        "something easier", "easy activities", "simpler", "alternative",
-        "i don't exercise", "not for me", "doesn't suit",
-        "other options", "other suggestions", "something else"
-    ]
-    
-    # Check for change_action FIRST (user wants to modify their plan)
-    if any(kw in msg_lower for kw in change_action_keywords):
-        logger.info(f"[INTENT] Pre-classified as change_action due to keywords")
-        # IMPORTANT: Do NOT wipe out a previously selected action.
-        # When the UI sends an action selection event, the API persists
-        # targeted_action_index/targeted_action_id and then calls
-        # process_care_plan_message with text like "I want to change X".
-        # If we reset those fields here, the graph loops back to asking
-        # the user to choose an action again.
-        preserved_targeted_action_id = state.get("targeted_action_id")
-        preserved_targeted_action_index = state.get("targeted_action_index")
-        return {
-            **state,
-            "current_intent": "change_action",
-            "targeted_action_id": preserved_targeted_action_id,
-            "targeted_action_index": preserved_targeted_action_index,
-            "change_reason": user_message,  # Store the full message as context
-            "feedback_topic": None,
-            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-            "phase": "processing"
-        }
-    
-    # Keywords that STRONGLY indicate plan_feedback (about overall plan quality)
-    plan_feedback_keywords = [
-        "generic", "not personalized", "not personalised", "generic to do", "random", 
-        "same as yesterday", "doesn't match my", "doesn't fit my", "not specific",
-        "looks like a template", "feels generic", "not tailored", "cookie cutter",
-        "one size fits all", "doesn't address my", "my symptoms",
-        "my condition", "particularly for"
-    ]
-    
-    # Keywords that STRONGLY indicate challenge_science
-    science_keywords = [
-        "research", "study", "studies", "evidence", "proof", "backed by",
-        "scientific", "is this proven", "random suggestions", "just guessing",
-        "thorough research", "made up", "where did you get"
-    ]
-    
-    # Keywords that STRONGLY indicate health_question (general health education)
-    # These are questions about health topics, not about the specific plan items
-    health_question_keywords = [
-        "how can i regulate", "how do i regulate", "regulate my period",
-        "why do i feel", "what causes", "what helps with", "how to improve",
-        "what should i eat for", "what foods help", "tips for", "advice for",
-        "how to reduce", "how to manage", "natural ways to", "best way to",
-        "is it normal to", "why am i", "what can i do about",
-        "how does my cycle", "during my period", "before my period"
-    ]
-    
-    # Check for health_question FIRST (higher priority than plan_feedback for period questions)
-    if any(kw in msg_lower for kw in health_question_keywords):
-        logger.info(f"[INTENT] Pre-classified as health_question due to keywords")
-        return {
-            **state,
-            "current_intent": "health_question",
-            "targeted_action_id": None,
-            "targeted_action_index": None,
-            "feedback_topic": None,
-            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-            "phase": "processing"
-        }
-    
-    # Check for plan_feedback
-    if any(kw in msg_lower for kw in plan_feedback_keywords):
-        feedback_topic = "not_personalized" if "period" in msg_lower or "symptom" in msg_lower else "generic"
-        logger.info(f"[INTENT] Pre-classified as plan_feedback due to keywords. Topic: {feedback_topic}")
-        return {
-            **state,
-            "current_intent": "plan_feedback",
-            "targeted_action_id": None,
-            "targeted_action_index": None,
-            "feedback_topic": feedback_topic,
-            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-            "phase": "processing"
-        }
-    
-    # Check for challenge_science
-    if any(kw in msg_lower for kw in science_keywords):
-        logger.info(f"[INTENT] Pre-classified as challenge_science due to keywords")
-        return {
-            **state,
-            "current_intent": "challenge_science",
-            "targeted_action_id": None,
-            "targeted_action_index": None,
-            "feedback_topic": "science_question",
-            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-            "phase": "processing"
-        }
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # FALLBACK: Use LLM for other cases
-    # ════════════════════════════════════════════════════════════════════════
-    
-    # Build action list for context
     messages = state.get("messages", [])
-    recent_msgs = messages[-6:]
+    recent_msgs = messages[-10:]  # 5 turns of context (was 3 turns = 6 msgs)
     chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
 
-    # Build action list for context
     actions_list = "\n".join([
         f"{i+1}. {item.get('title', 'Unknown')} ({item.get('category', 'general')})"
         for i, item in enumerate(state.get("action_items", []))
     ])
     
-    # Get user profile context to help with classification
     unified_context = state.get("unified_context", {})
     user_profile = unified_context.get("user_profile", {})
     user_conditions = user_profile.get("conditions", [])
     user_symptoms = user_profile.get("primary_symptoms", [])
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # WORKFLOW STAGE CONTEXT — critical for mid-flow messages
+    # Without this, typing "the second one" during alternate selection
+    # gets misclassified as 'general' instead of alternate selection.
+    # ════════════════════════════════════════════════════════════════════════
+    workflow_stage = state.get("workflow_stage")
+    workflow_hint = ""
+    if workflow_stage == "awaiting_alternate_selection":
+        alternates = state.get("alternate_candidates", [])
+        alt_names = [a.get("title", f"Option {i+1}") for i, a in enumerate(alternates)]
+        workflow_hint = f"""\n\n⚠️ ACTIVE WORKFLOW: User is currently choosing between alternatives: {', '.join(alt_names)}.
+If they reference one by number/name/description ("the first one", "salmon", "I'll take option 2"), classify as change_action with the matching targeted_action_index from their ORIGINAL action items.
+If they say "none of these" or "show more" → request_alternates.
+If they say "never mind" or "keep original" → cancel_action."""
+    elif workflow_stage == "skip_decision":
+        workflow_hint = """\n\n⚠️ ACTIVE WORKFLOW: User was asked about skipping an action and shown 'Show alternatives' / 'Skip it' buttons.
+If they confirm skip ("yes", "skip it", "ok") → skip_action.
+If they want alternatives ("show me", "what else") → request_alternates.
+If they changed their mind ("no", "keep it") → cancel_action."""
+    elif workflow_stage == "awaiting_action_selection":
+        workflow_hint = """\n\n⚠️ ACTIVE WORKFLOW: User was asked to pick WHICH action to change/view alternatives for.
+If they name/number an action → change_action with targeted_action_index.
+If they cancel → cancel_action."""
+    elif workflow_stage == "awaiting_direct_replacement_selection":
+        workflow_hint = """\n\n⚠️ ACTIVE WORKFLOW: User was shown a specific replacement suggestion.
+If they confirm ("yes", "sounds good", "let's do it") → change_action.
+If they reject ("no", "something else") → request_alternates.
+If they cancel → cancel_action."""
 
-    prompt = f"""Classify the user's intent for this care plan check-in message.
+    # ════════════════════════════════════════════════════════════════════════
+    # SYSTEM PROMPT — teaches the LLM WHEN to pick each intent.
+    # The tool definition handles WHAT the output looks like (schema).
+    # This separation is a production best practice.
+    # ════════════════════════════════════════════════════════════════════════
+    system_prompt = """You are the intent classifier for Auvra, a women's hormone health app.
+Analyze the user's message and call classify_care_plan_intent.
 
-User Message: "{user_message}"
+INTENT GUIDE:
+- complete_action: User says they DID/FINISHED an action ("Done!", "I ate the walnuts", "✅")
+- skip_action: User wants to SKIP an action today ("Skip yoga", "Not today", "I'm too tired")
+- change_action: User wants to REPLACE/SWAP an action ("Change the salmon", "Suggest something easier", "I want to change my plan", "Not for me", "Something else")
+- request_alternates: User wants to SEE OPTIONS without deciding ("Show me alternatives", "Other options?")
+- negotiate: User has a BARRIER but is open to modifications ("I don't have walnuts", "I'm allergic", "Can I do 10 min instead?")
+- ask_why: User asks WHY/RATIONALE for ONE specific action ("Why walnuts?", "What does salmon do for hormones?")
+- request_clarification: User asks HOW/WHEN/HOW MUCH for a specific action ("When to take cinnamon?", "As breakfast or after meal?", "How long should I meditate?", "Before or after food?", "With water or milk?")
+- cancel_action: User wants to CANCEL/STOP a change ("Never mind", "Keep as is", "No thanks")
+- plan_feedback: User comments on OVERALL PLAN quality ("This looks generic", "Not personalized", "Same as yesterday")
+- challenge_science: User questions RESEARCH/EVIDENCE ("Is this backed by research?", "Any studies?")
+- explain_plan: User wants to understand HOW the plan was created ("How did you make this?", "Why these items?")
+- health_question: User asks a GENERAL health question ("How to regulate periods?", "What helps with cramps?")
+- general: Everything else — greetings, thanks, status checks, emotions ("Thanks!", "How many left?", "Good morning")
 
-User's Health Context:
-- Conditions: {", ".join(user_conditions) if user_conditions else "Not specified"}
-- Primary symptoms: {", ".join(user_symptoms) if user_symptoms else "Not specified"}
+⚠️ CRITICAL DISAMBIGUATION:
+- "Why walnuts?" → ask_why (rationale)
+- "When to take walnuts?" → request_clarification (timing)
+- "As breakfast or after meal?" → request_clarification (timing)
+- "Why these items?" / "This looks generic" → plan_feedback (whole plan)
+- "How can I regulate my periods?" → health_question (general health)
+- "I don't have salmon" → negotiate (barrier)
+- "Give me something else" → change_action (swap)
+- "Show me options" → request_alternates (browsing)
 
-Recent Chat History:
-{chat_context}
+THE KEY TEST:
+- About ONE specific action? → ask_why, request_clarification, change_action, skip_action, complete_action, negotiate
+- About the WHOLE plan? → plan_feedback, explain_plan, challenge_science
+- General topic? → health_question, general
 
-Today's Action Items:
+MORE EDGE CASES:
+- "I'll do it later" → skip_action (they're deferring, not refusing)
+- "Can I do half?" / "Can I do 10 minutes instead of 30?" → negotiate (modifying, not skipping)
+- "I already do this every day" → complete_action (they're confirming they do it regularly)
+- "Is there a vegetarian option?" / "Any dairy-free alternatives?" → negotiate (dietary barrier)
+- "What's the point?" / "Why bother?" → ask_why (questioning motivation)
+- "This is the same as yesterday" → plan_feedback (repetitive complaint)
+- "I did yoga AND ate the salmon" → complete_action (pick the FIRST mentioned action; the response handler will ask about others)
+- "Not sure about this" → general (vague, let handler ask what they mean)
+- "Is this safe during pregnancy?" → health_question (safety concern)
+- "How is this different from what I had before?" → explain_plan (plan creation question)
+
+MULTI-ACTION RULE: If user mentions completing/skipping MULTIPLE actions in one message, classify based on the FIRST action mentioned. Set targeted_action_index for that first action. The handler will acknowledge the others.
+
+WHEN IN DOUBT: Prefer the more specific intent over 'general'. All handlers can handle edge cases.
+
+targeted_action_index: Set 1-4 ONLY if user refers to ONE specific action by name/number/keyword. Match from the action items list. Null for whole-plan or general messages.
+proposed_replacement: Set ONLY if user names what they want instead. Null otherwise.
+feedback_topic: Only for plan_feedback/challenge_science."""
+
+    # User context message — compact but complete
+    context_message = f"""Today's Action Items:
 {actions_list}
 
-Intent Categories:
-1. **complete_action**: User completed an action ("Done!", "✓", "I ate the walnuts")
-2. **skip_action**: User skipping ("Skip yoga", "Can't do this", "Not today")
-3. **change_action**: User wants to replace a SPECIFIC action ("Change the salmon", "I want something else for action 2")
-4. **request_alternates**: Asking for options for a specific action ("Show me alternatives for the walnuts")
-5. **negotiate**: Conditional/barriers for specific action ("If I can't find X, what else?", "This is too hard")
-6. **ask_why**: Asking rationale for ONE specific action ("Why walnuts?", "What does salmon help?")
-7. **cancel_action**: User wants to stop changing/cancel request ("Never mind", "Cancel", "Go back", "Keep as is")
-8. **plan_feedback**: User is giving FEEDBACK about the OVERALL PLAN quality, NOT asking about a specific action!
-   Examples: "This looks generic", "Not personalized", "Seems random", "Doesn't match my symptoms", "Same as yesterday"
-9. **challenge_science**: User is questioning the RESEARCH or SCIENCE behind recommendations
-   Examples: "Is this backed by research?", "Have you done thorough research?", "Just random suggestions?"
-10. **explain_plan**: User wants to understand HOW the whole plan was created
-    Examples: "How did you make this?", "Why these specific items?", "What's the logic?"
-11. **health_question**: User is asking a GENERAL HEALTH QUESTION not specifically about today's plan
-    Examples: "How can I regulate my periods?", "What helps with cramps?", "Why do I feel bloated?"
-12. **general**: Casual conversation, acknowledgments, or unclear intent
+User Health: {', '.join(user_conditions) if user_conditions else 'Not specified'}
+Symptoms: {', '.join(user_symptoms) if user_symptoms else 'Not specified'}
+{f'Current Workflow Stage: {workflow_stage}' if workflow_stage else ''}
+{workflow_hint}
+Recent Chat:
+{chat_context}
 
-⚠️ CRITICAL DISTINCTIONS:
-- "Why walnuts?" → ask_why (about ONE action)
-- "Why these items?" or "My plan looks generic" → plan_feedback (about WHOLE plan)
-- "How can I regulate my periods?" → health_question (general health, not about specific plan items)
-- "All four of them" or "The whole plan" → This is about the ENTIRE plan, NOT a specific action!
-- "Thanks!" or "ok" → general
+User says: \"{user_message}\""""
 
-Rules for targeted_action_index:
-- ONLY set this if user clearly refers to ONE specific action by name/number
-- If user says "all of them", "the whole plan", "my actions", etc. → set to null
-- If user is giving general feedback about the plan → set to null
-
-Rules for feedback_topic (only for plan_feedback/challenge_science intents):
-- "generic": Plan feels like generic wellness, not personalized
-- "repetitive": Same items appearing repeatedly
-- "not_personalized": Doesn't match user's specific conditions/symptoms
-- "science_question": Questioning the research behind recommendations
-- "other": Other feedback
-
-Output JSON:
-{{
-  "intent": "complete_action|skip_action|change_action|request_alternates|negotiate|ask_why|cancel_action|plan_feedback|challenge_science|explain_plan|health_question|general",
-  "targeted_action_index": 1-4 or null,
-  "proposed_replacement": "string" or null,
-  "confidence": 0.0-1.0,
-  "feedback_topic": "generic|repetitive|not_personalized|science_question|other" or null
-}}
-"""
+    # ════════════════════════════════════════════════════════════════════════
+    # PRIMARY: OpenAI Function Calling with tool_choice (strict schema)
+    # Retry loop with exponential backoff — production pattern
+    # ════════════════════════════════════════════════════════════════════════
+    last_error = None
+    for attempt in range(3):  # 1 initial + 2 retries
+        try:
+            client = _get_care_plan_openai_client()
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": context_message}
+                    ],
+                    tools=CARE_PLAN_INTENT_TOOLS,
+                    tool_choice={"type": "function", "function": {"name": "classify_care_plan_intent"}},
+                    temperature=0.1  # Low temperature = consistent classification
+                ),
+                timeout=12.0
+            )
+            
+            if response.choices and response.choices[0].message.tool_calls:
+                tool_call = response.choices[0].message.tool_calls[0]
+                args = json.loads(tool_call.function.arguments)
+                
+                # Extract fields (all guaranteed by strict schema)
+                intent = args.get("intent", "general")
+                targeted_idx_raw = args.get("targeted_action_index")
+                replacement = args.get("proposed_replacement")
+                confidence = max(0.0, min(1.0, float(args.get("confidence", 0.8))))
+                feedback_topic = args.get("feedback_topic")
+                
+                # Validate intent against known set (defense in depth)
+                valid_intents = {
+                    "complete_action", "skip_action", "change_action",
+                    "request_alternates", "negotiate", "ask_why",
+                    "request_clarification", "cancel_action", "plan_feedback",
+                    "challenge_science", "explain_plan", "health_question", "general"
+                }
+                if intent not in valid_intents:
+                    intent = "general"
+                
+                # Map 1-based action index to actual ID (validate bounds)
+                targeted_id = state.get("targeted_action_id")      # Preserve existing
+                targeted_idx = state.get("targeted_action_index")  # Preserve existing
+                
+                if targeted_idx_raw is not None:
+                    idx = targeted_idx_raw - 1  # Convert 1-based → 0-based
+                    if 0 <= idx < len(state.get("action_items", [])):
+                        targeted_idx = idx
+                        targeted_id = state["action_items"][idx].get("id") or state["action_items"][idx].get("item_id")
+                
+                logger.info(f"[INTENT] Function calling classified: intent={intent}, action_idx={targeted_idx_raw}, conf={confidence:.2f}")
+                
+                return {
+                    **state,
+                    "current_intent": intent,
+                    "targeted_action_id": targeted_id,
+                    "targeted_action_index": targeted_idx,
+                    "change_reason": replacement or state.get("change_reason"),
+                    "feedback_topic": feedback_topic,
+                    "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
+                    "phase": "processing"
+                }
+        
+        except asyncio.TimeoutError:
+            last_error = "timeout"
+            logger.warning(f"[INTENT] Function calling timeout, attempt {attempt + 1}/3")
+        except RateLimitError as e:
+            last_error = f"rate_limit: {e}"
+            logger.warning(f"[INTENT] Rate limited, attempt {attempt + 1}/3")
+            await asyncio.sleep(0.5 * (attempt + 1))
+        except (APIError, APITimeoutError) as e:
+            last_error = f"api_error: {e}"
+            logger.warning(f"[INTENT] API error: {e}, attempt {attempt + 1}/3")
+        except json.JSONDecodeError as e:
+            last_error = f"json_parse: {e}"
+            logger.warning(f"[INTENT] Failed to parse tool call args: {e}")
+        except Exception as e:
+            last_error = f"unexpected: {e}"
+            logger.error(f"[INTENT] Unexpected error: {e}")
+            break  # Don't retry unexpected errors
+        
+        if attempt < 2:
+            await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # FALLBACK: JSON mode via call_llm_structured (includes Groq fallback)
+    # This fires only if function calling fails 3 times — extremely rare.
+    # ════════════════════════════════════════════════════════════════════════
+    logger.warning(f"[INTENT] Function calling failed after 3 attempts ({last_error}), falling back to JSON mode")
     
     try:
-        classification = await call_llm_structured(prompt, response_model=IntentClassification)
+        fallback_prompt = f"""Classify this care plan check-in message.
+
+User: "{user_message}"
+Actions: {actions_list}
+Chat: {chat_context}
+
+Intents: complete_action, skip_action, change_action, request_alternates, negotiate, ask_why, request_clarification, cancel_action, plan_feedback, challenge_science, explain_plan, health_question, general
+
+Output JSON: {{"intent": "...", "targeted_action_index": 1-4 or null, "proposed_replacement": "..." or null, "confidence": 0.0-1.0, "feedback_topic": "..." or null}}"""
         
-        # Map action index to actual ID (validate bounds)
-        targeted_id = state.get("targeted_action_id")      # Default to existing
-        targeted_idx = state.get("targeted_action_index")  # Default to existing
+        classification = await call_llm_structured(fallback_prompt, response_model=IntentClassification)
+        
+        targeted_id = state.get("targeted_action_id")
+        targeted_idx = state.get("targeted_action_index")
 
         if classification.targeted_action_index:
-            idx = classification.targeted_action_index - 1  # Convert to 0-based
+            idx = classification.targeted_action_index - 1
             if 0 <= idx < len(state.get("action_items", [])):
                 targeted_idx = idx
                 targeted_id = state["action_items"][idx].get("id") or state["action_items"][idx].get("item_id")
 
+        logger.info(f"[INTENT] JSON fallback classified: intent={classification.intent}")
+        
         return {
             **state,
             "current_intent": classification.intent,
             "targeted_action_id": targeted_id,
             "targeted_action_index": targeted_idx,
-            "change_reason": classification.proposed_replacement or state.get("change_reason"), # Store as reason if present
-            "feedback_topic": classification.feedback_topic,  # NEW: Pass feedback topic for feedback handlers
+            "change_reason": classification.proposed_replacement or state.get("change_reason"),
+            "feedback_topic": classification.feedback_topic,
             "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
             "phase": "processing"
         }
-    except Exception as e:
-        logger.error(f"Error classifying intent: {e}")
+    except Exception as fallback_e:
+        logger.error(f"[INTENT] Both function calling AND JSON fallback failed: {fallback_e}")
         return {
             **state,
             "current_intent": "general",
-            "error": str(e),
+            "error": f"classification_failed: {last_error} then {fallback_e}",
+            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
             "phase": "processing"
         }
 
@@ -564,6 +683,22 @@ async def handle_complete_action(state: CarePlanCheckInState) -> CarePlanCheckIn
         completed_count = sum(1 for a in action_items if a.get("is_completed") or a.get("id") == action_id)
         remaining = 4 - completed_count
         
+        # Check if user mentioned OTHER actions in the same message (multi-action support)
+        user_message = state.get("user_message", "")
+        other_incomplete = [
+            a.get("title", "action") for a in action_items
+            if not a.get("is_completed") and a.get("id") != action_id
+        ]
+        multi_action_hint = ""
+        if other_incomplete and len(user_message) > 15:
+            # If user wrote a longer message, they might have mentioned multiple actions
+            other_names = ", ".join(other_incomplete[:3])
+            multi_action_hint = f"""
+8. IMPORTANT: The user said: "{user_message}"
+   If they mentioned completing OTHER actions besides {action_title} (like "{other_names}"), 
+   acknowledge the first completion AND ask: "Did you also complete [other action]? I can mark that done too!"
+   Only ask about actions they actually mentioned, not all remaining ones."""
+        
         celebration_prompt = f"""Generate a celebration message for completing an action.
 
 User Context (use to personalize):
@@ -576,6 +711,7 @@ Details:
 - Longest streak: {longest} days
 - Actions completed today: {completed_count}/4
 - Remaining: {remaining}
+- User's original message: "{user_message}"
 
 Guidelines:
 1. Use the hormone buddy voice (e.g., "I'm {hormone}!")
@@ -584,7 +720,7 @@ Guidelines:
 4. If completed all 4, be EXTRA enthusiastic
 5. Keep it 2-3 sentences, warm and energetic
 6. Use an emoji that matches the hormone ({hormone})
-7. Vary the celebration style - don't always use same format
+7. Vary the celebration style - don't always use same format{multi_action_hint}
 
 Example variations (DON'T copy, just show variety):
 - Streak focus: "Your {current}-day streak is glowing!"
@@ -803,14 +939,10 @@ async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInSt
             "phase": "awaiting_selection"
         }
 
-    # EARLY CHECK: Do they have tokens?
-    if state.get("refresh_tokens_available", 0) <= 0:
-        current_streak = state.get("current_streak", 0)
-        return {
-            **state,
-            "bot_response": f"I'd love to help you adjust your plan, but you need more refresh credits! Reach a 16-day streak to unlock 2 daily refreshes. (Current streak: {current_streak})",
-            "phase": "complete"
-        }
+    # NOTE: Token check removed from here. Let users BROWSE alternatives freely.
+    # Token check happens at COMMIT time in check_refresh_tokens_and_replace().
+    # This way users with 0 tokens can still explore options and understand
+    # what's available — they only get blocked when trying to actually swap.
     
     action = action_items[targeted_idx]
     
@@ -1485,33 +1617,46 @@ Would you like me to explain any specific item in more detail?"""
     }
 
 
-async def _get_user_context_for_explanation(user_id: int) -> dict:
+async def _get_user_context_for_explanation(user_id) -> dict:
     """Fetch user context to explain plan personalization."""
     try:
-        from app.database import SessionLocal
-        from app.models.user import User
-        from app.models.response import Response
+        from app.core.database import SessionLocal, UserProfile, UserResponse
         
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            # user_id is Firebase UID (string), not integer
+            uid = str(user_id)
+            profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
             
-            # Get user's period concerns from responses
-            concerns_response = db.query(Response).filter(
-                Response.user_id == user_id,
-                Response.question_id == 5  # Period concerns question
-            ).first()
+            # Get user's concerns and conditions from UserResponse
+            user_response = db.query(UserResponse).filter(
+                UserResponse.uid == uid
+            ).order_by(UserResponse.id.desc()).first()
             
-            # Get diagnosed conditions
-            conditions_response = db.query(Response).filter(
-                Response.user_id == user_id,
-                Response.question_id == 18  # Diagnosed conditions question
-            ).first()
+            concerns = "hormone balance"
+            conditions = "none specified"
+            cycle_phase = "unknown"
+            
+            if user_response:
+                # Collect concerns from all concern fields
+                all_concerns = []
+                if user_response.period_concerns:
+                    all_concerns.extend(user_response.period_concerns if isinstance(user_response.period_concerns, list) else [str(user_response.period_concerns)])
+                if user_response.top_concern:
+                    all_concerns.append(user_response.top_concern)
+                if all_concerns:
+                    concerns = ", ".join(all_concerns[:3])
+                
+                if user_response.diagnosed_conditions:
+                    conditions = ", ".join(user_response.diagnosed_conditions)
+                
+                if user_response.primary_hormone:
+                    cycle_phase = f"{user_response.primary_hormone} focus"
             
             return {
-                "cycle_phase": getattr(user, 'current_cycle_phase', 'follicular') if user else 'unknown',
-                "concerns": concerns_response.answer_text if concerns_response else 'hormone balance',
-                "conditions": conditions_response.answer_text if conditions_response else 'none specified'
+                "cycle_phase": cycle_phase,
+                "concerns": concerns,
+                "conditions": conditions
             }
         finally:
             db.close()
@@ -1656,27 +1801,8 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
         actions_with_status.append(f"{i}. {item.get('title', 'Unknown')} [{status}]")
     actions_text = "\n".join(actions_with_status) if actions_with_status else "No actions loaded"
     
-    # Check for simple status questions that can be answered quickly
-    msg_lower = user_message.lower()
-    status_keywords = ["remaining", "left", "not completed", "how many", "what's left"]
-    
-    if any(kw in msg_lower for kw in status_keywords):
-        incomplete = [item for item in action_items if not item.get("is_completed")]
-        if not incomplete:
-            response = "Great work! You've completed all your actions for today. 🎉 How are you feeling about your progress?"
-        else:
-            titles = ", ".join([item.get("title", "action") for item in incomplete])
-            response = f"You have {len(incomplete)} action(s) remaining: {titles}. Would you like to start one, or do you need help with any of them?"
-        
-        return {
-            **state,
-            "bot_response": response,
-            "ui_blocks": [],
-            "phase": "complete"
-        }
-    
-    # For ALL other messages - use LLM with full context
-    # This handles questions, feedback, conversation, ANYTHING
+    # For ALL messages — use LLM with full context
+    # This handles questions, feedback, conversation, status checks, ANYTHING
     prompt = f"""<role>
 You are Auvra, a warm and knowledgeable hormone health companion. You're having a conversation with a user about their daily wellness plan.
 </role>
@@ -1700,13 +1826,15 @@ Respond naturally and helpfully as Auvra. Your response should:
 2. **Use their context** - reference their specific conditions, symptoms, cycle phase if relevant
 3. **Be conversational** - like talking to a supportive friend who happens to know about hormone health
 4. **Stay helpful** - if they're asking about something health-related, provide useful information
-5. **If truly unclear what they want** - ask a clarifying question, but make it natural
+5. **If they ask about progress or status** - look at today's plan above (✓ Done vs ○ Pending) and tell them exactly which ones are done and which remain
+6. **If truly unclear what they want** - ask a clarifying question, but make it natural
 
 IMPORTANT:
 - NEVER respond with generic templates like "Got it. Want to adjust anything?"
+- If they ask "how many left?" or "what's remaining?" → tell them specific pending items from the plan
 - If they ask about periods, hormones, symptoms - answer with knowledge
 - If they're giving feedback - acknowledge it genuinely
-- If they're confused - help clarify
+- If they express emotions (frustrated, happy, tired) - be empathetic and supportive
 - Keep response under 100 words unless detailed explanation needed
 
 Examples of what NOT to do:
@@ -1714,9 +1842,9 @@ Examples of what NOT to do:
 ❌ "I'm here to help with your plan. What would you like to do?"
 
 Examples of good responses:
-✓ For "Why these items for regulating my period?" → Answer about how the specific items help with period regulation
-✓ For "I don't understand this" → Ask what specifically is confusing
-✓ For "thanks!" → Acknowledge warmly and check if they need anything else
+✓ For "How many left?" → "You have 2 actions remaining: Evening Yoga and Drink Spearmint Tea. Ready to tackle one?"
+✓ For "thanks!" → "You're welcome! Let me know if you need anything else 💜"
+✓ For "I'm feeling tired today" → Empathize and connect to their health context
 </task>
 
 <output>
@@ -1769,6 +1897,7 @@ def route_by_intent(state: CarePlanCheckInState) -> str:
         "request_alternates": "handle_change_action", # Treat alternates as change request
         "negotiate": "handle_change_action",  # Treat negotiate as change
         "ask_why": "handle_ask_why",
+        "request_clarification": "handle_request_clarification",  # NEW: Handle timing/how-to questions
         "cancel_action": "handle_cancel_action",
         "plan_feedback": "handle_plan_feedback",  # Overall plan quality feedback
         "challenge_science": "handle_challenge_science",  # Questioning research
@@ -1987,6 +2116,98 @@ Do NOT be generic - make them understand why this is FOR THEM.
     }
 
 
+async def handle_request_clarification(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Handle user asking HOW/WHEN to do an action (timing, instructions, details)."""
+    
+    targeted_idx = state.get("targeted_action_index")
+    action_items = state.get("action_items", [])
+    formatted_context = state.get("formatted_context", "")
+    user_message = state.get("user_message", "")
+    
+    if targeted_idx is None or not (0 <= targeted_idx < len(action_items)):
+        # Ask which action they want clarification about
+        actions_list = "\n".join([f"{i+1}. {item.get('title', 'Action')}" for i, item in enumerate(action_items[:4])])
+        return {
+            **state,
+            "bot_response": f"I'd love to give you more details! Which action do you want to know more about?\n{actions_list}",
+            "ui_blocks": [],
+            "phase": "complete"
+        }
+
+    action = action_items[targeted_idx]
+    title = action.get('title', 'this action')
+    specific_action = action.get('specific_action', '')
+    category = action.get('category', 'action')
+    
+    # Extract relevant details based on category
+    details = {}
+    if category == 'nutrition':
+        details['food_items'] = action.get('food_items', [])
+        details['food_amounts'] = action.get('food_amounts', [])
+    elif category == 'movement':
+        details['exercise_types'] = action.get('exercise_types', [])
+        details['exercise_durations'] = action.get('exercise_durations', [])
+        details['exercise_intensities'] = action.get('exercise_intensities', [])
+    elif category == 'mindfulness':
+        details['mindfulness_techniques'] = action.get('mindfulness_techniques', [])
+        details['mindfulness_durations'] = action.get('mindfulness_durations', [])
+    
+    clarification_prompt = f"""Provide clear, practical instructions for HOW/WHEN to do this action.
+
+User Context:
+{formatted_context[:500] if formatted_context else "User in care plan check-in"}
+
+Action Details:
+- Title: {title}
+- Specific Action: {specific_action}
+- Category: {category}
+- Details: {json.dumps(details, indent=2)}
+
+User's Question: "{user_message}"
+
+Guidelines:
+1. Answer their SPECIFIC question (timing, duration, how-to, etc.)
+2. Be practical and actionable - give clear instructions
+3. If it's a timing question (when to take), suggest optimal timing based on the action
+4. If it's a how-to question, give step-by-step guidance
+5. Keep it 2-4 sentences, clear and helpful
+6. Reference their specific context if relevant
+7. End by asking if they need more help or are ready to do it
+
+Examples:
+- Q: "When to take cinnamon?" → A: "Take cinnamon with your breakfast! It helps regulate blood sugar when consumed with your morning meal. You can sprinkle it on oatmeal, add to coffee, or mix into yogurt. Ready to try it?"
+- Q: "How long should I do yoga?" → A: "Aim for 15-20 minutes of gentle yoga. Even 10 minutes will help with stress relief. Would you like a specific routine suggestion?"
+- Q: "As breakfast or after meal?" → A: "With breakfast is best! Taking it with food helps with absorption and prevents any stomach sensitivity. Sound good?"
+"""
+    
+    try:
+        response = await call_llm(clarification_prompt, max_tokens=250)
+        if not response or len(response.strip()) < 20:
+            response = f"For {title}, I recommend {specific_action}. This should take about 15-20 minutes. Would you like more specific guidance?"
+    except Exception as e:
+        logger.warning(f"LLM failed for request_clarification: {e}")
+        response = f"For {title}, I recommend {specific_action}. This should take about 15-20 minutes. Would you like more specific guidance?"
+    
+    # Add helpful follow-up options (was missing — every other handler has these)
+    ui_blocks = [
+        {
+            "type": "quick_replies",
+            "replies": [
+                {"label": "Got it, I'll do it!", "value": f"I completed {title}"},
+                {"label": "Tell me more", "value": f"Tell me more about how to do {title}"},
+                {"label": "Show alternatives", "value": f"Show me alternatives to {title}"}
+            ]
+        }
+    ]
+    
+    return {
+        **state,
+        "bot_response": response,
+        "ui_blocks": ui_blocks,
+        "phase": "complete"
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
 # GRAPH CONSTRUCTION - LOAD PLAN (Invocation 1)
 # ═══════════════════════════════════════════════════════════════════
@@ -2025,6 +2246,7 @@ def create_process_message_graph():
     workflow.add_node("handle_general_response", handle_general_response)
     workflow.add_node("handle_cancel_action", handle_cancel_action)
     workflow.add_node("handle_ask_why", handle_ask_why)
+    workflow.add_node("handle_request_clarification", handle_request_clarification)  # NEW: Handle timing/how-to questions
     # Feedback handling nodes
     workflow.add_node("handle_plan_feedback", handle_plan_feedback)
     workflow.add_node("handle_challenge_science", handle_challenge_science)
@@ -2047,6 +2269,7 @@ def create_process_message_graph():
             "handle_general_response": "handle_general_response",
             "handle_cancel_action": "handle_cancel_action",
             "handle_ask_why": "handle_ask_why",
+            "handle_request_clarification": "handle_request_clarification",  # NEW: Timing/how-to route
             # Feedback routes
             "handle_plan_feedback": "handle_plan_feedback",
             "handle_challenge_science": "handle_challenge_science",
@@ -2062,6 +2285,7 @@ def create_process_message_graph():
     workflow.add_edge("handle_general_response", END)
     workflow.add_edge("handle_cancel_action", END)
     workflow.add_edge("handle_ask_why", END)
+    workflow.add_edge("handle_request_clarification", END)  # NEW: Timing/how-to edge
     workflow.add_edge("generate_alternate_suggestions", END)
     workflow.add_edge("generate_direct_replacement_suggestion", END)
     # Feedback handlers go to END
