@@ -7,6 +7,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 import time
 import logging
 from contextlib import asynccontextmanager
@@ -15,6 +17,7 @@ from app.core.config import settings
 from app.api.v1.api import api_router
 from app.core.logging import setup_logging
 from app.core.firebase import initialize_firebase
+from app.core.rate_limiter import get_rate_limiter, custom_rate_limit_handler
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -61,6 +64,14 @@ def create_application() -> FastAPI:
         redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
         lifespan=lifespan,
     )
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # RATE LIMITING - Initialize slowapi with Redis backend
+    # ════════════════════════════════════════════════════════════════════════
+    limiter = get_rate_limiter()
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
+    logger.info(f"[RATE_LIMIT] Initialized with storage: {limiter.storage_uri}")
 
     # CORS middleware
     app.add_middleware(

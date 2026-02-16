@@ -12,7 +12,7 @@ Supported Flows:
 5. Know My Body: /langgraph/know-my-body/...
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Optional
@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
+from app.core.rate_limiter import get_rate_limiter, CONVERSATION_LIMIT
 
 # Import all LangGraph public APIs
 from app.langgraph.graphs import (
@@ -54,6 +55,9 @@ from app.langgraph.graphs import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Get rate limiter instance for endpoint protection
+limiter = get_rate_limiter()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -201,7 +205,9 @@ async def lg_weekly_start(
 
 
 @router.post("/weekly-checkin/continue", response_model=ContinueResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_weekly_continue(
+    http_request: Request,
     request: ContinueRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -255,7 +261,9 @@ async def lg_weekly_continue(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/care-plan/start", response_model=StartResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_care_plan_start(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -295,7 +303,9 @@ async def lg_care_plan_start(
 
 
 @router.post("/care-plan/continue", response_model=ContinueResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_care_plan_continue(
+    http_request: Request,
     request: ContinueRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -421,7 +431,9 @@ async def lg_symptom_start(
 
 
 @router.post("/symptom/continue", response_model=ContinueResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_symptom_continue(
+    http_request: Request,
     request: ContinueRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -501,7 +513,9 @@ async def lg_personalization_start(
 
 
 @router.post("/personalization/continue", response_model=ContinueResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_personalization_continue(
+    http_request: Request,
     request: ContinueRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -586,7 +600,9 @@ async def lg_know_my_body_start(
 
 
 @router.post("/know-my-body/ask", response_model=ContinueResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_know_my_body_ask(
+    http_request: Request,
     request: ContinueRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
