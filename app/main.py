@@ -7,7 +7,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 import time
 import logging
@@ -49,7 +48,14 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
+    # Shutdown - clean up resources
+    try:
+        from app.langgraph.helpers.llm_cache import close_redis_client
+        await close_redis_client()
+        logger.info("Redis connections closed")
+    except Exception as e:
+        logger.warning(f"Redis shutdown error (non-fatal): {e}")
+    
     logger.info("AUVRA application shutdown")
 
 
@@ -71,7 +77,7 @@ def create_application() -> FastAPI:
     limiter = get_rate_limiter()
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
-    logger.info(f"[RATE_LIMIT] Initialized with storage: {limiter.storage_uri}")
+    logger.info(f"[RATE_LIMIT] Initialized with storage: {getattr(limiter, '_storage_uri', 'redis')}")
 
     # CORS middleware
     app.add_middleware(

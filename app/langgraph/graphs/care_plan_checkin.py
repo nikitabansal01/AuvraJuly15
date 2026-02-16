@@ -27,18 +27,14 @@ import random  # Retry jitter to prevent thundering herd
 import json
 import os
 import logging
+import uuid
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.memory import InMemorySaver  # Fallback only if Postgres unavailable
 from langgraph.checkpoint.postgres import PostgresSaver  # Production persistent state
 from langgraph.types import interrupt, Command
 from pydantic import BaseModel
-import asyncio
-import uuid
-import json
-import logging
-import os
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
@@ -46,9 +42,7 @@ from app.langgraph.helpers.llm_config import get_llm_config, get_max_tokens_for_
 from app.langgraph.helpers.llm_cache import call_llm_with_cache
 from app.langgraph.helpers.conversation_memory import truncate_conversation_smart, get_conversation_stats
 from app.langgraph.helpers.circuit_breaker import (
-    call_with_circuit_breaker, 
-    openai_breaker, 
-    groq_breaker,
+    openai_breaker,
     get_degraded_response,
     CircuitBreakerError
 )

@@ -28,6 +28,16 @@ except ImportError:
     REDIS_AVAILABLE = False
     aioredis = None
 
+# Circuit breaker for LLM resilience (Netflix Hystrix pattern)
+try:
+    from app.langgraph.helpers.circuit_breaker import (
+        call_with_circuit_breaker, openai_breaker, CircuitBreakerError,
+        get_degraded_response
+    )
+    CIRCUIT_BREAKER_AVAILABLE = True
+except ImportError:
+    CIRCUIT_BREAKER_AVAILABLE = False
+
 from app.langgraph.helpers.llm_config import get_llm_config, get_cache_ttl_for_intent
 
 logger = logging.getLogger(__name__)
@@ -247,6 +257,20 @@ async def set_cached_response(
 # High-Level Wrapper
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _handle_cache_task_result(task: asyncio.Task) -> None:
+    """
+    Callback for fire-and-forget cache write tasks.
+    Prevents 'Task exception was never retrieved' warnings.
+    Pattern used by: Discord.py, aiohttp, Netflix Zuul
+    """
+    try:
+        exc = task.exception()
+        if exc:
+            logger.warning(f"Cache write failed (non-fatal): {exc}")
+    except asyncio.CancelledError:
+        pass  # Task was cancelled during shutdown — safe to ignore
+
+
 async def call_llm_with_cache(
     llm_func,
     prompt: str,
@@ -288,15 +312,32 @@ async def call_llm_with_cache(
     if cached:
         return cached
     
-    # Cache miss - call LLM
-    response = await llm_func(prompt, max_tokens=max_tokens, temperature=temperature, **kwargs)
+    # Cache miss - call LLM with circuit breaker protection
+    if CIRCUIT_BREAKER_AVAILABLE:
+        try:
+            response = await call_with_circuit_breaker(
+                primary_func=llm_func,
+                breaker=openai_breaker,
+                # Pass LLM args through to breaker → llm_func(prompt, model=..., ...)
+                prompt=prompt, model=model, max_tokens=max_tokens, temperature=temperature, **kwargs
+            )
+        except CircuitBreakerError:
+            # Circuit breaker is OPEN — return degraded response instead of crashing
+            logger.warning(f"[CACHE] Circuit breaker OPEN — returning degraded response for intent={intent}")
+            degraded = get_degraded_response(intent or "general")
+            return degraded.get("response", "I'm temporarily unable to respond. Please try again in 30 seconds.")
+    else:
+        response = await llm_func(
+            prompt, model=model, max_tokens=max_tokens, temperature=temperature, **kwargs
+        )
     
-    # Store in cache (fire-and-forget)
-    asyncio.create_task(
+    # Store in cache with error handling (prevents unobserved task exceptions)
+    task = asyncio.create_task(
         set_cached_response(
             prompt, model, temperature, max_tokens, response, intent=intent
         )
     )
+    task.add_done_callback(_handle_cache_task_result)
     
     return response
 

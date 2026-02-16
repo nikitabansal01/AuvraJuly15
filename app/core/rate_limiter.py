@@ -23,7 +23,7 @@ References:
 - Redis rate limiting pattern: https://redis.io/commands/incr#pattern-rate-limiter
 """
 
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi import Request
@@ -181,37 +181,7 @@ async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 # ════════════════════════════════════════════════════════════════════════════
 # RATE LIMIT BYPASS (for internal services, monitoring, load testing)
+# Integrated into slowapi via key_func — internal IPs get a separate bucket.
+# Health checks (/health, /) are excluded from rate limiting by default
+# since they don't have @limiter.limit() decorators applied.
 # ════════════════════════════════════════════════════════════════════════════
-RATE_LIMIT_BYPASS_IPS = {
-    "127.0.0.1",  # Localhost
-    "::1",        # IPv6 localhost
-    # Add Render internal IPs, DataDog agents, load balancers, etc.
-}
-
-def should_bypass_rate_limit(request: Request) -> bool:
-    """
-    Check if request should bypass rate limiting.
-    
-    Use cases:
-    - Health checks from load balancers
-    - Internal service-to-service calls
-    - Monitoring probes (DataDog, Pingdom)
-    - Load testing with X-Internal-Request header
-    
-    Returns:
-        True if should bypass, False otherwise
-    """
-    # Check for internal request header
-    if request.headers.get("X-Internal-Request") == "true":
-        return True
-    
-    # Check IP whitelist
-    client_ip = get_remote_address(request)
-    if client_ip in RATE_LIMIT_BYPASS_IPS:
-        return True
-    
-    # Check for health check paths
-    if request.url.path in ["/health", "/healthz", "/"]:
-        return True
-    
-    return False

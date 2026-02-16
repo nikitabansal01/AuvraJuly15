@@ -15,7 +15,13 @@ Strategies:
 
 import logging
 from typing import List, Dict, Any, Optional
-import tiktoken
+
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    tiktoken = None
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,11 @@ def count_tokens_exact(text: str, model: str = "gpt-4o") -> int:
     Exact token count using tiktoken.
     
     Use sparingly (has overhead). Prefer count_tokens_approx() for budgeting.
+    Falls back to approximation if tiktoken is not available.
     """
+    if not TIKTOKEN_AVAILABLE:
+        logger.debug("tiktoken not available, using approximation")
+        return count_tokens_approx(text)
     try:
         encoding = tiktoken.encoding_for_model(model)
         return len(encoding.encode(text))

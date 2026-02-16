@@ -23,6 +23,7 @@ from uuid import uuid4
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.rate_limiter import get_rate_limiter, CONVERSATION_LIMIT
+from app.langgraph.helpers.llm_cache import get_redis_client
 
 # Import all LangGraph public APIs
 from app.langgraph.graphs import (
@@ -61,26 +62,64 @@ limiter = get_rate_limiter()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STATE STORAGE (Redis-backed in production, in-memory for now)
+# STATE STORAGE (Redis-backed with TTL, in-memory fallback)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Simple in-memory state storage (replace with Redis in production)
-_state_store: Dict[str, Dict[str, Any]] = {}
+# In-memory fallback only used when Redis is unavailable
+_state_store_fallback: Dict[str, Dict[str, Any]] = {}
+_STATE_TTL_SECONDS = 3600  # 1 hour TTL — sessions expire after inactivity
+_STATE_PREFIX = "session:state:"
 
 
-def _store_state(session_id: str, state: Dict[str, Any]) -> None:
-    """Store state for a session."""
-    _state_store[session_id] = dict(state)
+async def _store_state(session_id: str, state: Dict[str, Any]) -> None:
+    """Store state in Redis with TTL. Falls back to in-memory if Redis unavailable."""
+    try:
+        redis = await get_redis_client()
+        if redis:
+            key = f"{_STATE_PREFIX}{session_id}"
+            await redis.setex(key, _STATE_TTL_SECONDS, json.dumps(state, default=str))
+            # Remove from fallback if it was there
+            _state_store_fallback.pop(session_id, None)
+            return
+    except Exception as e:
+        logger.warning(f"Redis state store failed, using fallback: {e}")
+    
+    # Fallback: in-memory with size guard (max 1000 sessions)
+    if len(_state_store_fallback) >= 1000:
+        # Evict oldest 100 sessions
+        keys_to_remove = list(_state_store_fallback.keys())[:100]
+        for k in keys_to_remove:
+            _state_store_fallback.pop(k, None)
+        logger.warning(f"[STATE] Evicted {len(keys_to_remove)} stale sessions from fallback store")
+    _state_store_fallback[session_id] = dict(state)
 
 
-def _get_state(session_id: str) -> Optional[Dict[str, Any]]:
-    """Retrieve state for a session."""
-    return _state_store.get(session_id)
+async def _get_state(session_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve state from Redis. Falls back to in-memory."""
+    try:
+        redis = await get_redis_client()
+        if redis:
+            key = f"{_STATE_PREFIX}{session_id}"
+            data = await redis.get(key)
+            if data:
+                return json.loads(data)
+            # Not in Redis, check fallback
+            return _state_store_fallback.get(session_id)
+    except Exception as e:
+        logger.warning(f"Redis state get failed, using fallback: {e}")
+    
+    return _state_store_fallback.get(session_id)
 
 
-def _delete_state(session_id: str) -> None:
-    """Delete state for a session."""
-    _state_store.pop(session_id, None)
+async def _delete_state(session_id: str) -> None:
+    """Delete state from Redis and fallback."""
+    try:
+        redis = await get_redis_client()
+        if redis:
+            await redis.delete(f"{_STATE_PREFIX}{session_id}")
+    except Exception as e:
+        logger.warning(f"Redis state delete failed: {e}")
+    _state_store_fallback.pop(session_id, None)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -166,7 +205,9 @@ def _state_to_tap_options(options: Optional[List[str]]) -> List[TapOption]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/weekly-checkin/start", response_model=StartResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_weekly_start(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -178,7 +219,7 @@ async def lg_weekly_start(
         session_id = state.get("session_id", str(uuid4()))
         
         # Store state for continuation
-        _store_state(session_id, state)
+        await _store_state(session_id, state)
         
         # Extract bot response from messages
         messages = state.get("messages", [])
@@ -216,7 +257,7 @@ async def lg_weekly_continue(
     uid = current_user["uid"]
     
     # Get stored state
-    state = _get_state(request.session_id)
+    state = await _get_state(request.session_id)
     if not state:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -232,7 +273,7 @@ async def lg_weekly_continue(
         )
         
         # Update stored state
-        _store_state(request.session_id, updated_state)
+        await _store_state(request.session_id, updated_state)
         
         messages = updated_state.get("messages", [])
         bot_response = messages[-1]["content"] if messages else ""
@@ -275,7 +316,7 @@ async def lg_care_plan_start(
         session_id = str(uuid4())
         state["session_id"] = session_id
         
-        _store_state(session_id, state)
+        await _store_state(session_id, state)
         
         if state.get("error"):
             return StartResponse(
@@ -313,7 +354,7 @@ async def lg_care_plan_continue(
     """Process user message about care plan."""
     uid = current_user["uid"]
     
-    state = _get_state(request.session_id)
+    state = await _get_state(request.session_id)
     if not state:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -326,7 +367,7 @@ async def lg_care_plan_continue(
             user_message=request.user_input
         )
         
-        _store_state(request.session_id, updated_state)
+        await _store_state(request.session_id, updated_state)
         
         # Build UI blocks from state
         ui_blocks = []
@@ -361,7 +402,9 @@ class SelectAlternateRequest(BaseModel):
 
 
 @router.post("/care-plan/select-alternate", response_model=ContinueResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_care_plan_select_alternate(
+    http_request: Request,
     request: SelectAlternateRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -369,7 +412,7 @@ async def lg_care_plan_select_alternate(
     """Select an alternate action."""
     uid = current_user["uid"]
     
-    state = _get_state(request.session_id)
+    state = await _get_state(request.session_id)
     if not state or state.get("user_id") != uid:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
@@ -379,7 +422,7 @@ async def lg_care_plan_select_alternate(
             selected_index=request.selected_index
         )
         
-        _store_state(request.session_id, updated_state)
+        await _store_state(request.session_id, updated_state)
         
         return ContinueResponse(
             session_id=request.session_id,
@@ -398,7 +441,9 @@ async def lg_care_plan_select_alternate(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/symptom/start", response_model=StartResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_symptom_start(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -409,7 +454,7 @@ async def lg_symptom_start(
         state = await start_symptom_checkin(user_id=uid)
         session_id = state.get("session_id", str(uuid4()))
         
-        _store_state(session_id, state)
+        await _store_state(session_id, state)
         
         messages = state.get("messages", [])
         bot_response = messages[-1]["content"] if messages else "Hi! I'm Dr. Auvra 💜"
@@ -441,7 +486,7 @@ async def lg_symptom_continue(
     """Continue symptom conversation."""
     uid = current_user["uid"]
     
-    state = _get_state(request.session_id)
+    state = await _get_state(request.session_id)
     if not state or state.get("user_id") != uid:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
@@ -451,7 +496,7 @@ async def lg_symptom_continue(
             user_input=request.user_input
         )
         
-        _store_state(request.session_id, updated_state)
+        await _store_state(request.session_id, updated_state)
         
         messages = updated_state.get("messages", [])
         bot_response = messages[-1]["content"] if messages else ""
@@ -478,7 +523,9 @@ async def lg_symptom_continue(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/personalization/start", response_model=StartResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_personalization_start(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -489,7 +536,7 @@ async def lg_personalization_start(
         state = await start_personalization(user_id=uid)
         session_id = state.get("session_id", str(uuid4()))
         
-        _store_state(session_id, state)
+        await _store_state(session_id, state)
         
         messages = state.get("messages", [])
         bot_response = messages[-1]["content"] if messages else "Let's personalize your experience!"
@@ -523,7 +570,7 @@ async def lg_personalization_continue(
     """Continue personalization conversation."""
     uid = current_user["uid"]
     
-    state = _get_state(request.session_id)
+    state = await _get_state(request.session_id)
     if not state or state.get("user_id") != uid:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
@@ -533,7 +580,7 @@ async def lg_personalization_continue(
             user_input=request.user_input
         )
         
-        _store_state(request.session_id, updated_state)
+        await _store_state(request.session_id, updated_state)
         
         messages = updated_state.get("messages", [])
         bot_response = messages[-1]["content"] if messages else ""
@@ -564,7 +611,9 @@ class AskQuestionRequest(BaseModel):
 
 
 @router.post("/know-my-body/start", response_model=StartResponse)
+@limiter.limit(CONVERSATION_LIMIT)
 async def lg_know_my_body_start(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -575,7 +624,7 @@ async def lg_know_my_body_start(
         state = await start_know_my_body(user_id=uid)
         session_id = state.get("session_id", str(uuid4()))
         
-        _store_state(session_id, state)
+        await _store_state(session_id, state)
         
         messages = state.get("messages", [])
         bot_response = messages[-1]["content"] if messages else "Hi! Ask me anything about your body and cycle 💜"
@@ -610,11 +659,11 @@ async def lg_know_my_body_ask(
     """Ask a question about the body/cycle."""
     uid = current_user["uid"]
     
-    state = _get_state(request.session_id)
+    state = await _get_state(request.session_id)
     if not state:
         # For know my body, allow starting fresh with a question
         state = await start_know_my_body(user_id=uid)
-        _store_state(request.session_id, state)
+        await _store_state(request.session_id, state)
     
     if state.get("user_id") != uid:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -625,7 +674,7 @@ async def lg_know_my_body_ask(
             question=request.user_input
         )
         
-        _store_state(request.session_id, updated_state)
+        await _store_state(request.session_id, updated_state)
         
         messages = updated_state.get("messages", [])
         bot_response = messages[-1]["content"] if messages else ""
