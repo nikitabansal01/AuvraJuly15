@@ -16,25 +16,38 @@ import asyncio
 import logging
 from typing import Optional, Callable, Any
 from aiobreaker import CircuitBreaker, CircuitBreakerError
-from functools import wraps
 
 logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Circuit Breakers (one per external service)
+# Config-driven: reads fail_max/timeout from LLMConfig (env-overridable)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _get_circuit_breaker_config():
+    """Lazy-load config to avoid circular imports at module level."""
+    try:
+        from app.langgraph.helpers.llm_config import get_llm_config
+        config = get_llm_config()
+        return config.circuit_breaker_fail_max, config.circuit_breaker_timeout
+    except Exception:
+        # Fallback defaults if config unavailable during import
+        return 5, 30
+
+
+_fail_max, _timeout = _get_circuit_breaker_config()
+
 openai_breaker = CircuitBreaker(
-    fail_max=5,              # Open after 5 consecutive failures
-    timeout_duration=30,     # Stay open for 30 seconds
+    fail_max=_fail_max,
+    timeout_duration=_timeout,
     name="openai_api",
     exclude=[asyncio.TimeoutError]  # Don't count timeouts (handled by retry logic)
 )
 
 groq_breaker = CircuitBreaker(
-    fail_max=5,
-    timeout_duration=30,
+    fail_max=_fail_max,
+    timeout_duration=_timeout,
     name="groq_api",
     exclude=[asyncio.TimeoutError]
 )
@@ -107,31 +120,6 @@ async def call_with_circuit_breaker(
         # Unexpected error - let it propagate (breaker will count it)
         logger.error(f"Error in primary function: {e}")
         raise
-
-
-def with_circuit_breaker(
-    breaker: CircuitBreaker = openai_breaker,
-    fallback_breaker: Optional[CircuitBreaker] = None
-):
-    """
-    Decorator to add circuit breaker protection to async functions.
-    
-    Usage:
-        @with_circuit_breaker(breaker=openai_breaker)
-        async def call_openai_api(...):
-            return await client.chat.completions.create(...)
-    """
-    def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            try:
-                return await breaker.call(func, *args, **kwargs)
-            except CircuitBreakerError:
-                logger.warning(f"Circuit breaker OPEN for {func.__name__}")
-                # Return safe default or raise
-                raise
-        return wrapper
-    return decorator
 
 
 # ═══════════════════════════════════════════════════════════════════════════

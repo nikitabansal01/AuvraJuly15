@@ -315,10 +315,10 @@ async def call_llm_with_cache(
     # Cache miss - call LLM with circuit breaker protection
     if CIRCUIT_BREAKER_AVAILABLE:
         try:
+            # Pass prompt positionally (first arg to llm_func), rest as kwargs
             response = await call_with_circuit_breaker(
                 primary_func=llm_func,
                 breaker=openai_breaker,
-                # Pass LLM args through to breaker → llm_func(prompt, model=..., ...)
                 prompt=prompt, model=model, max_tokens=max_tokens, temperature=temperature, **kwargs
             )
         except CircuitBreakerError:

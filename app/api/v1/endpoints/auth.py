@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional
 import firebase_admin
 from firebase_admin import auth
+
+from app.core.rate_limiter import limiter, AUTH_LIMIT
 
 router = APIRouter()
 security = HTTPBearer()
@@ -46,10 +48,11 @@ async def get_current_active_user(current_user: dict = Depends(get_current_user)
 
 
 @router.post("/verify", response_model=UserInfo)
-async def verify_token(request: FirebaseTokenRequest):
+@limiter.limit(AUTH_LIMIT)
+async def verify_token(request: Request, body: FirebaseTokenRequest):
     """Verify Firebase ID token."""
     try:
-        decoded_token = auth.verify_id_token(request.id_token)
+        decoded_token = auth.verify_id_token(body.id_token)
         
         return UserInfo(
             uid=decoded_token.get("uid"),
@@ -67,7 +70,8 @@ async def verify_token(request: FirebaseTokenRequest):
 
 
 @router.get("/me", response_model=UserInfo)
-async def get_current_user_info(current_user: dict = Depends(get_current_active_user)):
+@limiter.limit(AUTH_LIMIT)
+async def get_current_user_info(request: Request, current_user: dict = Depends(get_current_active_user)):
     """Get current user information."""
     return UserInfo(
         uid=current_user.get("uid"),
@@ -80,13 +84,15 @@ async def get_current_user_info(current_user: dict = Depends(get_current_active_
 
 
 @router.post("/logout")
-async def logout():
+@limiter.limit(AUTH_LIMIT)
+async def logout(request: Request):
     """User logout (handled by client)."""
     return {"message": "Logged out. Handle Firebase logout on client side."}
 
 
 @router.get("/providers")
-async def get_auth_providers():
+@limiter.limit(AUTH_LIMIT)
+async def get_auth_providers(request: Request):
     """Get available authentication providers."""
     return {
         "providers": [
