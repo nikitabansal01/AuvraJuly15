@@ -400,6 +400,90 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
         return {**state, "error": "no_user_message", "phase": "complete"}
     
     # ══════════════════════════════════════════════════════════════
+    # PRE-CLASSIFICATION: Regex-based fast path for OBVIOUS intents
+    # Catches clear patterns before expensive LLM call.
+    # Only triggers on HIGH-CONFIDENCE patterns to avoid false positives.
+    # ══════════════════════════════════════════════════════════════
+    import re
+    msg_lower = user_message.lower().strip()
+    workflow_stage = state.get("workflow_stage")
+    action_items = state.get("action_items", [])
+    
+    pre_classified_intent = None
+    pre_targeted_idx = None
+    
+    # Pattern 1: Timing/clarification questions about specific actions
+    timing_patterns = [
+        r'\b(?:when|what time|how long|how much|how many|before or after|as breakfast|after (?:a )?meal|before (?:a )?meal|with water|with milk|morning or night|before bed)\b'
+    ]
+    for pattern in timing_patterns:
+        if re.search(pattern, msg_lower):
+            # Check if they mention an action item by name
+            for i, item in enumerate(action_items):
+                item_title = item.get("title", "").lower()
+                item_words = [w for w in item_title.split() if len(w) > 3]
+                for word in item_words:
+                    if word in msg_lower:
+                        pre_classified_intent = "request_clarification"
+                        pre_targeted_idx = i
+                        break
+                if pre_classified_intent:
+                    break
+            if not pre_classified_intent and re.search(r'\b(?:when to take|how to take|how long|how much|how many|what time)\b', msg_lower):
+                # Generic timing question even without action match
+                pre_classified_intent = "request_clarification"
+            break
+    
+    # Pattern 2: Explicit change/swap requests
+    if not pre_classified_intent:
+        change_patterns = [
+            r'\b(?:i want to change|change (?:it|this|my plan|the)|suggest (?:something|easy|different|other)|not for me|replace|swap|switch|give me something else|something else instead|suggest easy|suggest (?:an )?alternative)\b',
+            r'\b(?:i don\'?t (?:work out|exercise|like (?:this|it|that))|too (?:hard|difficult|boring))\b.*\b(?:suggest|instead|change|easy|alternative|other)\b',
+        ]
+        for pattern in change_patterns:
+            if re.search(pattern, msg_lower):
+                pre_classified_intent = "change_action"
+                break
+    
+    # Pattern 3: Skip signals
+    if not pre_classified_intent:
+        skip_patterns = [r'\b(?:skip (?:it|this|that)|not today|i\'?ll (?:do it |)later|too tired|can\'?t do (?:it|this) today)\b']
+        for pattern in skip_patterns:
+            if re.search(pattern, msg_lower):
+                pre_classified_intent = "skip_action"
+                break
+    
+    # Pattern 4: Completion signals  
+    if not pre_classified_intent:
+        complete_patterns = [r'^(?:done|✅|completed|finished|i did (?:it|that)|already done|i ate|i drank|i took|i already do)\b']
+        for pattern in complete_patterns:
+            if re.search(pattern, msg_lower):
+                pre_classified_intent = "complete_action"
+                break
+    
+    # If pre-classified with high confidence, skip the LLM call
+    if pre_classified_intent:
+        targeted_id = state.get("targeted_action_id")
+        targeted_idx = state.get("targeted_action_index")
+        
+        if pre_targeted_idx is not None:
+            targeted_idx = pre_targeted_idx
+            targeted_id = action_items[pre_targeted_idx].get("id") or action_items[pre_targeted_idx].get("item_id")
+        
+        logger.info(f"[INTENT] Pre-classified (regex fast path): intent={pre_classified_intent}, action_idx={pre_targeted_idx}")
+        
+        return {
+            **state,
+            "current_intent": pre_classified_intent,
+            "targeted_action_id": targeted_id,
+            "targeted_action_index": targeted_idx,
+            "change_reason": None,
+            "feedback_topic": None,
+            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
+            "phase": "processing"
+        }
+    
+    # ══════════════════════════════════════════════════════════════
     # PRODUCTION FIX: Truncate conversation to prevent token overflow
     # Keep last 20 messages OR 4000 tokens, whichever is smaller
     # ══════════════════════════════════════════════════════════════
@@ -418,8 +502,17 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
     # ════════════════════════════════════════════════════════════════════════
     # BUILD CONTEXT — same data, now fed into function calling
     # ════════════════════════════════════════════════════════════════════════
-    recent_msgs = messages[-10:]  # 5 turns of context (was 3 turns = 6 msgs)
+    recent_msgs = messages[-15:]  # 7-8 turns of context (was 5 turns = 10 msgs)
     chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
+    
+    # CRITICAL FIX: Extract the LAST BOT MESSAGE separately
+    # Without this, the classifier can't understand references like "I want to change it",
+    # "the second one", "yes" — because it doesn't know what the bot just said/offered.
+    last_bot_message = ""
+    for m in reversed(messages):
+        if m.get("role") == "assistant":
+            last_bot_message = m.get("content", "")
+            break
 
     actions_list = "\n".join([
         f"{i+1}. {item.get('title', 'Unknown')} ({item.get('category', 'general')})"
@@ -466,59 +559,76 @@ If they cancel → cancel_action."""
     # This separation is a production best practice.
     # ════════════════════════════════════════════════════════════════════════
     system_prompt = """You are the intent classifier for Auvra, a women's hormone health app.
-Analyze the user's message and call classify_care_plan_intent.
+Analyze the user's message IN CONTEXT OF what the bot just said, and call classify_care_plan_intent.
+
+⚠️ MOST IMPORTANT RULE: Read the "LAST BOT MESSAGE" below BEFORE classifying.
+The user's message is a RESPONSE to what the bot just said. You MUST understand the bot's last message to classify correctly.
 
 INTENT GUIDE:
-- complete_action: User says they DID/FINISHED an action ("Done!", "I ate the walnuts", "✅")
-- skip_action: User wants to SKIP an action today ("Skip yoga", "Not today", "I'm too tired")
-- change_action: User wants to REPLACE/SWAP an action ("Change the salmon", "Suggest something easier", "I want to change my plan", "Not for me", "Something else")
-- request_alternates: User wants to SEE OPTIONS without deciding ("Show me alternatives", "Other options?")
-- negotiate: User has a BARRIER but is open to modifications ("I don't have walnuts", "I'm allergic", "Can I do 10 min instead?")
-- ask_why: User asks WHY/RATIONALE for ONE specific action ("Why walnuts?", "What does salmon do for hormones?")
-- request_clarification: User asks HOW/WHEN/HOW MUCH for a specific action ("When to take cinnamon?", "As breakfast or after meal?", "How long should I meditate?", "Before or after food?", "With water or milk?")
-- cancel_action: User wants to CANCEL/STOP a change ("Never mind", "Keep as is", "No thanks")
-- plan_feedback: User comments on OVERALL PLAN quality ("This looks generic", "Not personalized", "Same as yesterday")
+- complete_action: User says they DID/FINISHED an action ("Done!", "I ate the walnuts", "✅", "I already did that")
+- skip_action: User wants to SKIP an action today ("Skip yoga", "Not today", "I'm too tired", "I'll do it later")
+- change_action: User wants to REPLACE/SWAP an action ("Change the salmon", "Suggest something easier", "I want to change it", "I want to change my plan", "Not for me", "Something else", "I don't work out suggest easy activities", "Suggest easy activities for me instead")
+- request_alternates: User wants to SEE OPTIONS without deciding ("Show me alternatives", "Other options?", "What else do you have?")
+- negotiate: User has a BARRIER but is open to modifications ("I don't have walnuts", "I'm allergic", "Can I do 10 min instead?", "Is there a vegetarian option?")
+- ask_why: User asks WHY/RATIONALE for ONE specific action ("Why walnuts?", "What does salmon do for hormones?", "What's the point?")
+- request_clarification: User asks HOW/WHEN/HOW MUCH/TIMING for a specific action ("When to take cinnamon?", "As breakfast or after meal?", "How long should I meditate?", "Before or after food?", "With water or milk?", "When to take cinnamon today? As breakfast or after a meal?", "What time should I do yoga?", "How much water?", "How many walnuts?")
+- cancel_action: User wants to CANCEL/STOP a change ("Never mind", "Keep as is", "No thanks", "Keep original")
+- plan_feedback: User comments on OVERALL PLAN quality ("This looks generic", "Not personalized", "Same as yesterday", "This is the same as yesterday")
 - challenge_science: User questions RESEARCH/EVIDENCE ("Is this backed by research?", "Any studies?")
 - explain_plan: User wants to understand HOW the plan was created ("How did you make this?", "Why these items?")
-- health_question: User asks a GENERAL health question ("How to regulate periods?", "What helps with cramps?")
-- general: Everything else — greetings, thanks, status checks, emotions ("Thanks!", "How many left?", "Good morning")
+- health_question: User asks a GENERAL health question NOT about a specific action ("How to regulate periods?", "What helps with cramps?", "Is this safe during pregnancy?")
+- general: LAST RESORT — greetings, thanks, status checks, emotions ("Thanks!", "How many left?", "Good morning")
 
-⚠️ CRITICAL DISAMBIGUATION:
-- "Why walnuts?" → ask_why (rationale)
-- "When to take walnuts?" → request_clarification (timing)
-- "As breakfast or after meal?" → request_clarification (timing)
-- "Why these items?" / "This looks generic" → plan_feedback (whole plan)
-- "How can I regulate my periods?" → health_question (general health)
-- "I don't have salmon" → negotiate (barrier)
-- "Give me something else" → change_action (swap)
-- "Show me options" → request_alternates (browsing)
+⚠️ CRITICAL DISAMBIGUATION RULES:
+
+1. TIMING/HOW-TO QUESTIONS → ALWAYS request_clarification (NOT change_action):
+   - "When to take X?" → request_clarification
+   - "As breakfast or after meal?" → request_clarification  
+   - "How long should I do X?" → request_clarification
+   - "Before or after food?" → request_clarification
+   - "How many?" / "How much?" → request_clarification
+   - "What time?" → request_clarification
+
+2. CHANGE/REPLACE REQUESTS → ALWAYS change_action (NOT general):
+   - "I want to change it" → change_action
+   - "I want to change my plan" → change_action
+   - "Suggest something easier/different" → change_action
+   - "Not for me" / "I don't like this" → change_action
+   - "I don't work out, suggest easy activities" → change_action
+   - "Suggest easy activities for me instead of today action plan" → change_action
+   - "Can you give me something else?" → change_action
+   - 👎 emoji or negative reaction to plan → change_action
+
+3. WHY vs WHEN vs CHANGE:
+   - "Why walnuts?" → ask_why (asking for rationale/reason)
+   - "When to take walnuts?" → request_clarification (asking for timing)
+   - "Change the walnuts" → change_action (wants replacement)
+   - "I don't have walnuts" → negotiate (has a barrier)
+
+4. NEVER classify as 'general' if the user:
+   - Mentions ANY action item by name → match the appropriate action-related intent
+   - Asks ANY question (how/when/why/what) → use the specific question intent
+   - Expresses dissatisfaction → change_action or plan_feedback
+   - Refers to changing/modifying anything → change_action or negotiate
 
 THE KEY TEST:
 - About ONE specific action? → ask_why, request_clarification, change_action, skip_action, complete_action, negotiate
 - About the WHOLE plan? → plan_feedback, explain_plan, challenge_science
-- General topic? → health_question, general
+- General health topic? → health_question
+- ONLY if none of above match → general
 
-MORE EDGE CASES:
-- "I'll do it later" → skip_action (they're deferring, not refusing)
-- "Can I do half?" / "Can I do 10 minutes instead of 30?" → negotiate (modifying, not skipping)
-- "I already do this every day" → complete_action (they're confirming they do it regularly)
-- "Is there a vegetarian option?" / "Any dairy-free alternatives?" → negotiate (dietary barrier)
-- "What's the point?" / "Why bother?" → ask_why (questioning motivation)
-- "This is the same as yesterday" → plan_feedback (repetitive complaint)
-- "I did yoga AND ate the salmon" → complete_action (pick the FIRST mentioned action; the response handler will ask about others)
-- "Not sure about this" → general (vague, let handler ask what they mean)
-- "Is this safe during pregnancy?" → health_question (safety concern)
-- "How is this different from what I had before?" → explain_plan (plan creation question)
+MULTI-ACTION RULE: If user mentions completing/skipping MULTIPLE actions in one message, classify based on the FIRST action mentioned. Set targeted_action_index for that first action.
 
-MULTI-ACTION RULE: If user mentions completing/skipping MULTIPLE actions in one message, classify based on the FIRST action mentioned. Set targeted_action_index for that first action. The handler will acknowledge the others.
-
-WHEN IN DOUBT: Prefer the more specific intent over 'general'. All handlers can handle edge cases.
+WHEN IN DOUBT: Prefer the MORE SPECIFIC intent over 'general'. 'general' should be RARE. All handlers can handle edge cases gracefully.
 
 targeted_action_index: Set 1-4 ONLY if user refers to ONE specific action by name/number/keyword. Match from the action items list. Null for whole-plan or general messages.
-proposed_replacement: Set ONLY if user names what they want instead. Null otherwise.
+proposed_replacement: Set ONLY if user names what they want instead ("cashews instead of walnuts"). Null otherwise.
 feedback_topic: Only for plan_feedback/challenge_science."""
 
     # User context message — compact but complete
+    # CRITICAL FIX: Added LAST BOT MESSAGE prominently so classifier understands
+    # what the user is responding to. Without this, "I want to change it" or 
+    # "the second one" gets misclassified because the LLM doesn't know the context.
     context_message = f"""Today's Action Items:
 {actions_list}
 
@@ -526,10 +636,14 @@ User Health: {', '.join(user_conditions) if user_conditions else 'Not specified'
 Symptoms: {', '.join(user_symptoms) if user_symptoms else 'Not specified'}
 {f'Current Workflow Stage: {workflow_stage}' if workflow_stage else ''}
 {workflow_hint}
-Recent Chat:
+
+LAST BOT MESSAGE (what the bot just said — the user is responding to THIS):
+\"\"\"{last_bot_message if last_bot_message else 'Bot just presented the daily action plan.'}\"\"\"
+
+Recent Chat History:
 {chat_context}
 
-User says: \"{user_message}\""""
+User's NEW message (classify THIS): \"{user_message}\""""
 
     # ════════════════════════════════════════════════════════════════════════
     # PRIMARY: OpenAI Function Calling with tool_choice (strict schema)
@@ -1879,6 +1993,9 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
     
     This is the fallback handler - if we can't classify the intent clearly, we let
     the LLM respond naturally using all available context about the user.
+    
+    ADDITIONAL FIX: Added repeat detection — if the general handler keeps firing
+    with the same generic response, we force a more helpful approach.
     """
     
     user_message = state.get("user_message", "")
@@ -1889,6 +2006,21 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
     formatted_context = state.get("formatted_context", "")
     unified_context = state.get("unified_context", {})
     
+    # REPEAT DETECTION: Check if the last bot messages were generic fallbacks
+    # If user keeps getting generic responses, something is wrong — be more proactive
+    messages = state.get("messages", [])
+    recent_bot_msgs = [m.get("content", "") for m in messages[-6:] if m.get("role") == "assistant"]
+    generic_patterns = ["i'm here to help", "want to adjust", "what would you like", "is there something specific"]
+    repeat_count = sum(1 for msg in recent_bot_msgs if any(p in msg.lower() for p in generic_patterns))
+    is_repeating = repeat_count >= 2
+    
+    # Get the last bot message for context
+    last_bot_message = ""
+    for m in reversed(messages):
+        if m.get("role") == "assistant":
+            last_bot_message = m.get("content", "")
+            break
+    
     # Build action plan context
     actions_with_status = []
     for i, item in enumerate(action_items[:4], 1):
@@ -1896,8 +2028,19 @@ async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckI
         actions_with_status.append(f"{i}. {item.get('title', 'Unknown')} [{status}]")
     actions_text = "\n".join(actions_with_status) if actions_with_status else "No actions loaded"
     
+    # Build repeat avoidance instruction
+    repeat_instruction = ""
+    if is_repeating:
+        repeat_instruction = """
+⚠️ CRITICAL: The bot has been giving GENERIC responses repeatedly. The user is likely frustrated.
+DO NOT give another generic response. Instead:
+- If user seems to want to change something → proactively offer to change/replace an action
+- If user seems confused → walk them through what they can do with their plan
+- If user asked a question → ANSWER IT directly using your knowledge
+- Reference their SPECIFIC actions and health context in your response
+"""
+    
     # For ALL messages — use LLM with full context
-    # This handles questions, feedback, conversation, status checks, ANYTHING
     prompt = f"""<role>
 You are Auvra, a warm and knowledgeable hormone health companion. You're having a conversation with a user about their daily wellness plan.
 </role>
@@ -1910,10 +2053,14 @@ You are Auvra, a warm and knowledgeable hormone health companion. You're having 
 {actions_text}
 </todays_plan>
 
+<last_bot_message>
+{last_bot_message if last_bot_message else "Bot just presented the daily action plan."}
+</last_bot_message>
+
 <conversation>
 User just said: "{user_message}"
 </conversation>
-
+{repeat_instruction}
 <task>
 Respond naturally and helpfully as Auvra. Your response should:
 
@@ -1922,28 +2069,23 @@ Respond naturally and helpfully as Auvra. Your response should:
 3. **Be conversational** - like talking to a supportive friend who happens to know about hormone health
 4. **Stay helpful** - if they're asking about something health-related, provide useful information
 5. **If they ask about progress or status** - look at today's plan above (✓ Done vs ○ Pending) and tell them exactly which ones are done and which remain
-6. **If truly unclear what they want** - ask a clarifying question, but make it natural
+6. **If they seem to want changes** - proactively ask which action they'd like to change and offer to find alternatives
+7. **If truly unclear what they want** - ask a clarifying question, but make it natural and reference THEIR plan
 
 IMPORTANT:
 - NEVER respond with generic templates like "Got it. Want to adjust anything?"
+- NEVER say "I'm here to help! Is there something specific..."
+- NEVER repeat the same response structure as the last bot message
 - If they ask "how many left?" or "what's remaining?" → tell them specific pending items from the plan
-- If they ask about periods, hormones, symptoms - answer with knowledge
-- If they're giving feedback - acknowledge it genuinely
-- If they express emotions (frustrated, happy, tired) - be empathetic and supportive
+- If they ask about periods, hormones, symptoms → answer with medical knowledge
+- If they're giving feedback → acknowledge it genuinely
+- If they express emotions (frustrated, happy, tired) → be empathetic and supportive
 - Keep response under 100 words unless detailed explanation needed
-
-Examples of what NOT to do:
-❌ "Got it. Want to adjust anything in today's plan?"
-❌ "I'm here to help with your plan. What would you like to do?"
-
-Examples of good responses:
-✓ For "How many left?" → "You have 2 actions remaining: Evening Yoga and Drink Spearmint Tea. Ready to tackle one?"
-✓ For "thanks!" → "You're welcome! Let me know if you need anything else 💜"
-✓ For "I'm feeling tired today" → Empathize and connect to their health context
+- Always reference AT LEAST ONE specific detail from their plan or health context
 </task>
 
 <output>
-Respond directly as Auvra. Be warm, helpful, and specific to this user.
+Respond directly as Auvra. Be warm, helpful, and specific to this user. NO generic responses.
 </output>"""
 
     try:
@@ -1961,12 +2103,18 @@ Respond directly as Auvra. Be warm, helpful, and specific to this user.
             logger.warning(f"LLM returned empty/short response for general handler")
             incomplete = [item for item in action_items if not item.get("is_completed")]
             if incomplete:
-                response = f"I'd love to help! You have {len(incomplete)} actions for today. What would you like to know or discuss?"
+                names = [item.get("title", "action") for item in incomplete[:3]]
+                response = f"You still have {', '.join(names)} on your list today. Would you like tips on any of them, or want to swap one out?"
             else:
-                response = "I'm here to help! What would you like to know about your plan or your health?"
+                response = "Looks like you've completed all your actions today — amazing work! 💜 Anything else on your mind?"
     except Exception as e:
         logger.error(f"Error in handle_general_response LLM call: {e}")
-        response = "I'm here to help! Is there something specific about your plan or health you'd like to discuss?"
+        incomplete = [item for item in action_items if not item.get("is_completed")]
+        if incomplete:
+            names = [item.get("title", "action") for item in incomplete[:3]]
+            response = f"You have {', '.join(names)} remaining today. Want to know more about any of them?"
+        else:
+            response = "Great job completing all your actions today! 🎉 Let me know if you have any health questions."
     
     # Smart UI blocks based on whether response is a question
     ui_blocks = []

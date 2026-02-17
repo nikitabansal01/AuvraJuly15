@@ -57,13 +57,20 @@ class TranscribeResponse(BaseModel):
     text: str
 
 # --- Helpers ---
-def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePlanCheckInService) -> CarePlanCheckInState:
-    """Helper to reconstruct full LangGraph state from thread and service context."""
+async def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePlanCheckInService) -> CarePlanCheckInState:
+    """Helper to reconstruct full LangGraph state from thread and service context.
+    
+    CRITICAL FIX: Now async and loads unified context + cycle info.
+    Previously, unified_context and formatted_context were NEVER loaded here,
+    causing ALL handlers to receive empty context → generic "I'm here to help!" responses.
+    """
     saved_context = thread.actionable_insights or {}
     
-    # Build message history (subset for context)
+    # Build message history - CRITICAL FIX: Use 20 messages (was 8) for proper context
+    # 8 messages = only 4 turns of conversation → context lost after 4 exchanges
+    # 20 messages = 10 turns → much better conversational continuity
     graph_messages = []
-    for rm in (thread.raw_messages or [])[-8:]:
+    for rm in (thread.raw_messages or [])[-20:]:
         graph_messages.append({
             "role": "assistant" if rm["role"] == "bot" else rm["role"], 
             "content": rm["content"]
@@ -101,6 +108,22 @@ def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePla
     refresh_status = reward_service.get_refresh_status(uid)
     streak_status = StreakService(service.db).get_full_streak_status(uid)
     
+    # CRITICAL FIX: Load cycle info for personalized responses
+    # Previously was always None → handlers couldn't reference cycle phase
+    from app.langgraph.helpers.database_helpers import get_cycle_info
+    cycle_info = get_cycle_info(uid, service.db)
+    
+    # CRITICAL FIX: Load unified cross-chatbot context
+    # Without this, ALL LLM handlers get empty formatted_context → generic responses
+    from app.langgraph.memory import get_unified_context, format_context_for_prompt
+    try:
+        unified_ctx = await get_unified_context(uid, "care_plan_checkin")
+        formatted_ctx = format_context_for_prompt(unified_ctx) if unified_ctx else ""
+    except Exception as e:
+        logger.warning(f"Failed to load unified context for {uid}: {e}")
+        unified_ctx = {}
+        formatted_ctx = ""
+    
     # Reconstruct state
     return {
         "user_id": uid,
@@ -109,7 +132,7 @@ def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePla
         "action_items": [i for i in items],
         "messages": graph_messages,
         
-    # Restore persistent context
+        # Restore persistent context
         "workflow_stage": saved_context.get("workflow_stage"),
         "targeted_action_index": saved_context.get("targeted_action_index"),
         "targeted_action_id": saved_context.get("targeted_action_id"),
@@ -118,14 +141,22 @@ def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: CarePla
         "change_reason": saved_context.get("change_reason"),
         "alternate_candidates": saved_context.get("alternate_candidates", []),
         
-        # Defaults/Context (could be loaded from streak_service/plan_generator if needed)
+        # FIXED: Load actual cycle info instead of None
         "current_streak": streak_status.get("current_streak", 0),
         "refresh_tokens_available": refresh_status.get("remaining", 0),
         "refresh_tokens_unlocked": refresh_status.get("limit", 0) > 0,
-        "plan_date": plan_date, "cycle_day": None, "cycle_phase": None, "primary_hormone": None,
+        "plan_date": plan_date,
+        "cycle_day": cycle_info.get("cycle_day"),
+        "cycle_phase": cycle_info.get("phase"),
+        "primary_hormone": cycle_info.get("primary_hormone"),
         "current_intent": None, "user_message": None,
         "selected_alternate_index": None, "selected_alternate": None,
         "ui_blocks": [], "bot_response": "", "actions_to_execute": [], 
+        
+        # CRITICAL FIX: Include unified context so handlers can personalize
+        "unified_context": unified_ctx,
+        "formatted_context": formatted_ctx,
+        
         "phase": "loaded", "error": None
     }
 
@@ -262,7 +293,7 @@ async def respond_care_plan_checkin(
         db.refresh(thread)
             
         # 2. Reconstruct State
-        state = _reconstruct_state(thread, uid, service)
+        state = await _reconstruct_state(thread, uid, service)
 
         # 3. Invoke Graph
         final_state = await process_care_plan_message(state, message_text, thread_id=thread.id)
@@ -427,7 +458,7 @@ async def care_plan_ui_event(
 
         # Handle action selection from change-action UI block
         if action_id.startswith("select_action_"):
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             action_items = stored_state.get("action_items", [])
 
             # Extract item_id from action_id
@@ -468,7 +499,7 @@ async def care_plan_ui_event(
             thread.actionable_insights = insights
 
             # Reconstruct state with updated insights and run change flow
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             user_message = f"Show me alternatives for {display_title}" if is_alternates else f"I want to change {display_title}"
             result = await process_care_plan_message(
                 state=stored_state,
@@ -533,7 +564,7 @@ async def care_plan_ui_event(
                 selected_idx = 0
             
             # Get the alternate title from stored candidates for display
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             candidates = stored_state.get("alternate_candidates", [])
             if candidates and selected_idx < len(candidates):
                 alt_title = candidates[selected_idx].get("title", f"Option {selected_idx + 1}") if isinstance(candidates[selected_idx], dict) else f"Option {selected_idx + 1}"
@@ -546,7 +577,7 @@ async def care_plan_ui_event(
             logger.info(f"[SELECT_ALT] Step 2: Index={selected_idx}, reconstructing state...")
             
             # Load current state from thread
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             logger.info(f"[SELECT_ALT] Step 3: State reconstructed, invoking graph...")
             
             # Process the selection through LangGraph
@@ -632,7 +663,7 @@ async def care_plan_ui_event(
             # Add user's tap as visible message
             _add_user_tap_message(thread, action_display_text.get(action_id, "Yes, skip it"))
             
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             
             # Get the targeted action to mark as skipped
             targeted_action_id = stored_state.get("targeted_action_id")
@@ -725,7 +756,7 @@ async def care_plan_ui_event(
             # Add user's tap as visible message
             _add_user_tap_message(thread, action_display_text.get(action_id, action_id.replace("_", " ").title()))
             
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             resume_value = True if action_id == "confirm_replace" else False
             result = await process_alternate_selection(
                 state=stored_state,
@@ -763,7 +794,7 @@ async def care_plan_ui_event(
             # Add user's tap as visible message
             _add_user_tap_message(thread, action_display_text.get(action_id, "Show me alternatives"))
             
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             result = await process_care_plan_message(
                 state=stored_state,
                 user_message="Show me alternatives",
@@ -825,7 +856,7 @@ async def care_plan_ui_event(
             # Add user's tap as visible message
             _add_user_tap_message(thread, action_display_text.get(action_id, action_id.replace("_", " ").title()))
             
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             
             # Convert to natural language message
             message_map = {
@@ -902,7 +933,7 @@ async def care_plan_ui_event(
             # Add user's tap as visible message
             _add_user_tap_message(thread, action_display_text.get(action_id, tap_to_message[action_id]))
             
-            stored_state = _reconstruct_state(thread, uid, service)
+            stored_state = await _reconstruct_state(thread, uid, service)
             user_message = tap_to_message[action_id]
             
             result = await process_care_plan_message(
