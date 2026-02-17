@@ -316,23 +316,40 @@ async def respond_care_plan_checkin(
         else:
             tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
         
-        # Convert Graph UI Blocks to Pydantic
+        # Convert Graph UI Blocks to Pydantic with STRICT VALIDATION
         resp_ui_blocks = []
         for block in final_state.get("ui_blocks", []):
-            actions = []
+            # Validate actions - filter out empty/invalid ones
+            valid_actions = []
             for act in block.get("actions", []):
-                actions.append(UIBlockAction(
-                    id=act.get("id"), title=act.get("title"), 
-                    action_type=act.get("action_type", "submit_event"), payload=act.get("payload", {}),
+                title = act.get("title", "").strip()
+                if not title:  # Skip actions with no title
+                    logger.warning(f"Skipping action with empty title in block {block.get('id')}")
+                    continue
+                valid_actions.append(UIBlockAction(
+                    id=act.get("id"), 
+                    title=title, 
+                    action_type=act.get("action_type", "submit_event"), 
+                    payload=act.get("payload", {}),
                     style=act.get("style", "primary")
                 ))
+            
+            # Validate block itself - must have title OR subtitle OR valid actions
+            block_title = (block.get("title") or "").strip()
+            block_subtitle = (block.get("description") or block.get("subtitle") or "").strip()
+            
+            # Skip completely empty blocks
+            if not block_title and not block_subtitle and not valid_actions:
+                logger.warning(f"Skipping empty UI block: {block.get('id')}")
+                continue
+            
             resp_ui_blocks.append(UIBlock(
                 id=block.get("id", str(uuid4())),
                 type=block.get("type") or "quick_actions",
-                title=block.get("title"),
-                subtitle=block.get("description") or block.get("subtitle"),
+                title=block_title if block_title else None,
+                subtitle=block_subtitle if block_subtitle else None,
                 payload=block.get("payload", {}),
-                actions=actions,
+                actions=valid_actions,
                 dismissible=True, priority="high", 
                 analytics={"surface": "care_plan_checkin", "source": "langgraph"}
             ))
