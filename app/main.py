@@ -44,14 +44,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Firebase initialization failed: {e}")
     
-    # Initialize LangGraph checkpointer
-    try:
-        from app.langgraph.graphs.care_plan_checkin import initialize_checkpointer
-        await initialize_checkpointer()
-        logger.info("LangGraph checkpointer initialized")
-    except Exception as e:
-        logger.warning(f"LangGraph checkpointer initialization failed: {e}")
-    
     logger.info("AUVRA application started successfully")
     
     yield

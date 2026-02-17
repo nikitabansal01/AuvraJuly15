@@ -31,10 +31,8 @@ import uuid
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import InMemorySaver  # Fallback only if Postgres unavailable
-from langgraph_checkpoint_postgres import AsyncPostgresSaver  # Production persistent state
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import interrupt, Command
-import asyncpg
 from pydantic import BaseModel
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
@@ -2454,56 +2452,12 @@ def create_process_selection_graph():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PRODUCTION FIX: Persistent checkpointer (AsyncPostgresSaver)
-# 
-# Why AsyncPostgresSaver > InMemorySaver:
-# - InMemorySaver = lost on every deployment/restart (unacceptable for production)
-# - AsyncPostgresSaver = persistent ACID storage, survives restarts
-# - Auto-creates table: checkpoints (thread_id, checkpoint_id, checkpoint JSONB)
-# 
-# Migration note: Existing in-memory conversations will be lost on first deploy.
-# After deployment, all new conversations persist across restarts.
+# Checkpointer: Using InMemorySaver for conversation state
+# Note: State is lost on restart - will upgrade to PostgreSQL persistence later
 # ═══════════════════════════════════════════════════════════════════════════
-from app.core.config import settings
 
-# Create checkpointer - use InMemorySaver as default, will be replaced with PostgresSaver at startup
-# We use InMemorySaver at module load time because creating async connection requires event loop
 _checkpointer = InMemorySaver()
-_postgres_checkpointer = None
 
-async def initialize_checkpointer():
-    """Initialize PostgreSQL checkpointer with async connection pool."""
-    global _postgres_checkpointer, _checkpointer, care_plan_load_graph, care_plan_process_graph, care_plan_selection_graph
-    
-    if _postgres_checkpointer is not None:
-        return _postgres_checkpointer
-    
-    try:
-        # Create async connection pool
-        pool = await asyncpg.create_pool(
-            settings.DATABASE_URL,
-            min_size=1,
-            max_size=10,
-        )
-        
-        # Create AsyncPostgresSaver with the pool
-        _postgres_checkpointer = AsyncPostgresSaver(pool)
-        
-        # Setup database tables
-        await _postgres_checkpointer.setup()
-        
-        # Recompile graphs with PostgresSaver
-        care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_postgres_checkpointer)
-        care_plan_process_graph = create_process_message_graph().compile(checkpointer=_postgres_checkpointer)
-        care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_postgres_checkpointer)
-        
-        logger.info("[CHECKPOINTER] AsyncPostgresSaver initialized - conversations will persist across restarts")
-        return _postgres_checkpointer
-    except Exception as e:
-        logger.warning(f"[CHECKPOINTER] Failed to initialize AsyncPostgresSaver: {e}. Using InMemorySaver (NOT PRODUCTION SAFE)")
-        return _checkpointer
-
-# Compile graphs with InMemorySaver initially (will be swapped for PostgresSaver at runtime)
 care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
 care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
 care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_checkpointer)
