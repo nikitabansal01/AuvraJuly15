@@ -176,7 +176,11 @@ def create_initial_state(user_id: str, session_id: str = None) -> WeeklyCheckInS
         identified_relief_factors=[],
         
         # Error
-        error=None
+        error=None,
+        
+        # Memory context
+        unified_context=None,
+        formatted_context=None
     )
 
 
@@ -233,7 +237,7 @@ async def load_user_context(state: WeeklyCheckInState) -> WeeklyCheckInState:
         }
     except Exception as e:
         logger.error(f"Error loading user context: {e}")
-        return {**state, "error": str(e)}
+        return {**state, "error": str(e), "unified_context": {}, "formatted_context": ""}
 
 
 async def generate_greeting(state: WeeklyCheckInState) -> WeeklyCheckInState:
@@ -564,12 +568,12 @@ async def save_to_insights_page(state: WeeklyCheckInState) -> WeeklyCheckInState
         # Save to database using WeeklyCheckInSession model
         from datetime import date as date_type
         weekly_session = WeeklyCheckInSession(
-            uid=user_id,
+            uid=state["user_id"],
             session_date=date_type.today(),
             questions_asked=state.get("answers_collected", []),
             question_count=state.get("question_count", 0),
             topics_covered=state.get("topics_covered", []),
-            weekly_summary=summary_text,
+            weekly_summary=state.get("summary", ""),
             insights={
                 "severity_trend": state.get("severity_trend"),
                 "triggers": state.get("identified_triggers", []),

@@ -163,7 +163,11 @@ def create_initial_state(user_id: str) -> PersonalizationState:
         trait_chips=[],
         discovery_prompts=[],
         
-        error=None
+        error=None,
+        
+        # Memory context
+        unified_context=None,
+        formatted_context=None
     )
 
 
@@ -312,7 +316,9 @@ async def load_profile_and_check_unlocks(state: PersonalizationState) -> Persona
             **state,
             "error": str(e),
             "bot_response": "Let's personalize your experience! What would you like to share?",
-            "phase": "loaded"
+            "phase": "loaded",
+            "unified_context": {},
+            "formatted_context": ""
         }
 
 

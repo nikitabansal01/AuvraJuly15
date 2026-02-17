@@ -202,7 +202,11 @@ def create_initial_state(user_id: str, session_id: str = None) -> SymptomCheckIn
         logged_symptom_ids=[],
         tap_options=None,
         
-        error=None
+        error=None,
+        
+        # Memory context
+        unified_context=None,
+        formatted_context=None
     )
 
 
@@ -286,7 +290,9 @@ Keep it 2-3 sentences, warm. If you have context from other conversations, refer
             **state,
             "messages": [{"role": "assistant", "content": "Hi! I'm Dr. Auvra 💜 How are you feeling today?"}],
             "phase": "greeting",
-            "error": str(e)
+            "error": str(e),
+            "unified_context": {},
+            "formatted_context": ""
         }
 
 

@@ -27,6 +27,7 @@ import random  # Retry jitter to prevent thundering herd
 import json
 import os
 import logging
+import re
 import uuid
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
@@ -403,63 +404,87 @@ async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInSt
     # PRE-CLASSIFICATION: Regex-based fast path for OBVIOUS intents
     # Catches clear patterns before expensive LLM call.
     # Only triggers on HIGH-CONFIDENCE patterns to avoid false positives.
+    #
+    # CRITICAL: SKIP pre-classification when in an ACTIVE WORKFLOW STAGE.
+    # During workflows (e.g., alternate selection, skip decision), the user's
+    # message must be interpreted in context of the workflow, not by regex.
+    # e.g., "done" during alternate selection means "I'm done choosing", not
+    # "I completed an action". The LLM classifier handles this via workflow_hint.
     # ══════════════════════════════════════════════════════════════
-    import re
     msg_lower = user_message.lower().strip()
     workflow_stage = state.get("workflow_stage")
     action_items = state.get("action_items", [])
     
+    # Only pre-classify when NOT in a multi-step workflow
+    active_workflow_stages = {
+        "awaiting_alternate_selection", "skip_decision",
+        "awaiting_action_selection", "awaiting_direct_replacement_selection",
+        "generating_alternates", "generating_direct_replacement"
+    }
+    
     pre_classified_intent = None
     pre_targeted_idx = None
     
-    # Pattern 1: Timing/clarification questions about specific actions
-    timing_patterns = [
-        r'\b(?:when|what time|how long|how much|how many|before or after|as breakfast|after (?:a )?meal|before (?:a )?meal|with water|with milk|morning or night|before bed)\b'
-    ]
-    for pattern in timing_patterns:
-        if re.search(pattern, msg_lower):
-            # Check if they mention an action item by name
-            for i, item in enumerate(action_items):
-                item_title = item.get("title", "").lower()
-                item_words = [w for w in item_title.split() if len(w) > 3]
-                for word in item_words:
-                    if word in msg_lower:
-                        pre_classified_intent = "request_clarification"
-                        pre_targeted_idx = i
-                        break
-                if pre_classified_intent:
-                    break
-            if not pre_classified_intent and re.search(r'\b(?:when to take|how to take|how long|how much|how many|what time)\b', msg_lower):
-                # Generic timing question even without action match
-                pre_classified_intent = "request_clarification"
-            break
-    
-    # Pattern 2: Explicit change/swap requests
-    if not pre_classified_intent:
-        change_patterns = [
-            r'\b(?:i want to change|change (?:it|this|my plan|the)|suggest (?:something|easy|different|other)|not for me|replace|swap|switch|give me something else|something else instead|suggest easy|suggest (?:an )?alternative)\b',
-            r'\b(?:i don\'?t (?:work out|exercise|like (?:this|it|that))|too (?:hard|difficult|boring))\b.*\b(?:suggest|instead|change|easy|alternative|other)\b',
+    if workflow_stage not in active_workflow_stages:
+        # Pattern 1: Timing/clarification questions about specific actions
+        timing_patterns = [
+            r'\b(?:when|what time|how long|how much|how many|before or after|as breakfast|after (?:a )?meal|before (?:a )?meal|with water|with milk|morning or night|before bed)\b'
         ]
-        for pattern in change_patterns:
+        for pattern in timing_patterns:
             if re.search(pattern, msg_lower):
-                pre_classified_intent = "change_action"
+                # Check if they mention an action item by name
+                for i, item in enumerate(action_items):
+                    item_title = item.get("title", "").lower()
+                    item_words = [w for w in item_title.split() if len(w) > 3]
+                    for word in item_words:
+                        if word in msg_lower:
+                            pre_classified_intent = "request_clarification"
+                            pre_targeted_idx = i
+                            break
+                    if pre_classified_intent:
+                        break
+                if not pre_classified_intent and re.search(r'\b(?:when to take|how to take|how long|how much|how many|what time)\b', msg_lower):
+                    # Generic timing question even without action match
+                    pre_classified_intent = "request_clarification"
                 break
-    
-    # Pattern 3: Skip signals
-    if not pre_classified_intent:
-        skip_patterns = [r'\b(?:skip (?:it|this|that)|not today|i\'?ll (?:do it |)later|too tired|can\'?t do (?:it|this) today)\b']
-        for pattern in skip_patterns:
-            if re.search(pattern, msg_lower):
-                pre_classified_intent = "skip_action"
-                break
-    
-    # Pattern 4: Completion signals  
-    if not pre_classified_intent:
-        complete_patterns = [r'^(?:done|✅|completed|finished|i did (?:it|that)|already done|i ate|i drank|i took|i already do)\b']
-        for pattern in complete_patterns:
-            if re.search(pattern, msg_lower):
+        
+        # Pattern 2: Explicit change/swap requests
+        if not pre_classified_intent:
+            change_patterns = [
+                r'\b(?:i want to change|change (?:it|this|my plan|the)|suggest (?:something|easy|different|other)|not for me|replace|swap|switch|give me something else|something else instead|suggest easy|suggest (?:an )?alternative)\b',
+                r'\b(?:i don\'?t (?:work out|exercise|like (?:this|it|that))|too (?:hard|difficult|boring))\b.*\b(?:suggest|instead|change|easy|alternative|other)\b',
+            ]
+            for pattern in change_patterns:
+                if re.search(pattern, msg_lower):
+                    pre_classified_intent = "change_action"
+                    break
+        
+        # Pattern 3: Skip signals
+        if not pre_classified_intent:
+            skip_patterns = [r'\b(?:skip (?:it|this|that)|not today|i\'?ll (?:do it |)later|too tired|can\'?t do (?:it|this) today)\b']
+            for pattern in skip_patterns:
+                if re.search(pattern, msg_lower):
+                    pre_classified_intent = "skip_action"
+                    break
+        
+        # Pattern 4: Completion signals — ONLY exact short messages to avoid false positives
+        # e.g., "done" or "✅" is completion, but "I ate salmon for breakfast and then went shopping" is ambiguous
+        if not pre_classified_intent:
+            # Short exact matches (message is ONLY a completion signal)
+            if msg_lower in {"done", "✅", "completed", "finished", "already done", "i did it", "i did that"}:
                 pre_classified_intent = "complete_action"
-                break
+            # Longer messages starting with completion verbs need action item match
+            elif re.search(r'^(?:i ate|i drank|i took|i already do|i completed|i finished|i did)\b', msg_lower):
+                for i, item in enumerate(action_items):
+                    item_title = item.get("title", "").lower()
+                    item_words = [w for w in item_title.split() if len(w) > 3]
+                    for word in item_words:
+                        if word in msg_lower:
+                            pre_classified_intent = "complete_action"
+                            pre_targeted_idx = i
+                            break
+                    if pre_classified_intent:
+                        break
     
     # If pre-classified with high confidence, skip the LLM call
     if pre_classified_intent:

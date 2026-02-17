@@ -161,7 +161,11 @@ def create_initial_state(user_id: str) -> KnowMyBodyState:
         bot_response="",
         educational_content={},
         
-        error=None
+        error=None,
+        
+        # Memory context
+        unified_context=None,
+        formatted_context=None
     )
 
 
@@ -214,7 +218,9 @@ async def load_context(state: KnowMyBodyState) -> KnowMyBodyState:
             "bot_response": "Hi! Ask me anything about your cycle, hormones, or health!",
             "messages": [{"role": "assistant", "content": "Hi! Ask me anything about your cycle, hormones, or health!"}],
             "phase": "loaded",
-            "error": str(e)
+            "error": str(e),
+            "unified_context": {},
+            "formatted_context": ""
         }
 
 
