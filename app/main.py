@@ -55,6 +55,13 @@ async def lifespan(app: FastAPI):
         logger.info("Redis connections closed")
     except Exception as e:
         logger.warning(f"Redis shutdown error (non-fatal): {e}")
+
+    try:
+        from app.langgraph.graphs.care_plan_checkin import close_care_plan_graph_runtime
+        await close_care_plan_graph_runtime()
+        logger.info("Care plan graph runtime closed")
+    except Exception as e:
+        logger.warning(f"Care plan graph shutdown error (non-fatal): {e}")
     
     logger.info("AUVRA application shutdown")
 

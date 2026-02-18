@@ -27,7 +27,6 @@ import random  # Retry jitter to prevent thundering herd
 import json
 import os
 import logging
-import sqlite3
 import uuid
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
@@ -37,9 +36,17 @@ try:
 except Exception:  # pragma: no cover - optional dependency in some envs
     PostgresSaver = None
 try:
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore
+except Exception:  # pragma: no cover - optional dependency in some envs
+    AsyncPostgresSaver = None
+try:
     from langgraph.checkpoint.sqlite import SqliteSaver  # type: ignore
 except Exception:  # pragma: no cover - optional dependency in some envs
     SqliteSaver = None
+try:
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
+except Exception:  # pragma: no cover - optional dependency in some envs
+    AsyncSqliteSaver = None
 from langgraph.types import interrupt, Command
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -2551,55 +2558,112 @@ def create_process_selection_graph():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Persistent checkpointer (PostgresSaver preferred; SqliteSaver fallback)
+# Async graph runtime and checkpointer bootstrap
 # ═══════════════════════════════════════════════════════════════════════════
 
+_graph_runtime_lock = asyncio.Lock()
+_graph_runtime: Optional[Dict[str, Any]] = None
 
-def _create_persistent_checkpointer():
+
+async def _run_checkpointer_setup(checkpointer: Any) -> None:
+    setup = getattr(checkpointer, "setup", None)
+    if callable(setup):
+        maybe_awaitable = setup()
+        if asyncio.iscoroutine(maybe_awaitable):
+            await maybe_awaitable
+
+
+async def _create_async_checkpointer():
+    """Create an async-compatible checkpointer for ainvoke/astream flows."""
     postgres_dsn = os.getenv("LANGGRAPH_CHECKPOINT_POSTGRES_DSN")
     if postgres_dsn:
-        if PostgresSaver is None:
+        if AsyncPostgresSaver is not None:
+            saver_cm = AsyncPostgresSaver.from_conn_string(postgres_dsn)
+            saver = await saver_cm.__aenter__()
+            await _run_checkpointer_setup(saver)
+            logger.info("Care plan checkpointer configured: AsyncPostgresSaver")
+            return saver, saver_cm
+
+        if PostgresSaver is not None:
             logger.error(
-                "LANGGRAPH_CHECKPOINT_POSTGRES_DSN is set but PostgresSaver is unavailable. "
-                "Install langgraph-checkpoint-postgres."
+                "PostgresSaver is sync-only for this runtime path. "
+                "Install/use AsyncPostgresSaver for async ainvoke/astream."
             )
         else:
-            saver = PostgresSaver.from_conn_string(postgres_dsn)
-            if hasattr(saver, "setup"):
-                saver.setup()
-            logger.info("Care plan checkpointer configured: PostgresSaver")
-            return saver
+            logger.error(
+                "LANGGRAPH_CHECKPOINT_POSTGRES_DSN is set but Postgres checkpoint package is unavailable. "
+                "Install langgraph-checkpoint-postgres."
+            )
 
     sqlite_path = os.getenv(
         "LANGGRAPH_CHECKPOINT_SQLITE_PATH",
         os.path.join(os.getcwd(), ".langgraph", "checkpoints", "care_plan_checkin.sqlite"),
     )
-    if SqliteSaver is None:
+    sqlite_dir = os.path.dirname(sqlite_path)
+    if sqlite_dir:
+        os.makedirs(sqlite_dir, exist_ok=True)
+
+    if AsyncSqliteSaver is not None:
+        saver_cm = AsyncSqliteSaver.from_conn_string(sqlite_path)
+        saver = await saver_cm.__aenter__()
+        await _run_checkpointer_setup(saver)
+        logger.info(f"Care plan checkpointer configured: AsyncSqliteSaver ({sqlite_path})")
+        return saver, saver_cm
+
+    if SqliteSaver is not None:
+        logger.error(
+            "SqliteSaver is sync-only and incompatible with async ainvoke/astream. "
+            "Install/use AsyncSqliteSaver (requires aiosqlite)."
+        )
+    else:
         logger.warning(
-            "SqliteSaver is unavailable and no PostgresSaver is configured. "
+            "No SQLite checkpointer implementation available. "
             "Compiling care-plan graphs without a checkpointer."
         )
-        return None
 
-    os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
-    conn = sqlite3.connect(sqlite_path, check_same_thread=False)
-    saver = SqliteSaver(conn)
-    if hasattr(saver, "setup"):
-        saver.setup()
-    logger.info(f"Care plan checkpointer configured: SqliteSaver ({sqlite_path})")
-    return saver
+    return None, None
 
 
-_checkpointer = _create_persistent_checkpointer()
+async def _get_graph_runtime() -> Dict[str, Any]:
+    global _graph_runtime
+    if _graph_runtime is not None:
+        return _graph_runtime
 
-if _checkpointer is None:
-    care_plan_load_graph = create_load_plan_graph().compile()
-    care_plan_process_graph = create_process_message_graph().compile()
-    care_plan_selection_graph = create_process_selection_graph().compile()
-else:
-    care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
-    care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
-    care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_checkpointer)
+    async with _graph_runtime_lock:
+        if _graph_runtime is not None:
+            return _graph_runtime
+
+        checkpointer, checkpointer_cm = await _create_async_checkpointer()
+        if checkpointer is None:
+            load_graph = create_load_plan_graph().compile()
+            process_graph = create_process_message_graph().compile()
+            selection_graph = create_process_selection_graph().compile()
+        else:
+            load_graph = create_load_plan_graph().compile(checkpointer=checkpointer)
+            process_graph = create_process_message_graph().compile(checkpointer=checkpointer)
+            selection_graph = create_process_selection_graph().compile(checkpointer=checkpointer)
+
+        _graph_runtime = {
+            "checkpointer": checkpointer,
+            "checkpointer_cm": checkpointer_cm,
+            "load_graph": load_graph,
+            "process_graph": process_graph,
+            "selection_graph": selection_graph,
+        }
+        return _graph_runtime
+
+
+async def close_care_plan_graph_runtime() -> None:
+    """Close async checkpointer context on app shutdown if wired by caller."""
+    global _graph_runtime
+    if _graph_runtime is None:
+        return
+
+    runtime = _graph_runtime
+    _graph_runtime = None
+    checkpointer_cm = runtime.get("checkpointer_cm")
+    if checkpointer_cm is not None and hasattr(checkpointer_cm, "__aexit__"):
+        await checkpointer_cm.__aexit__(None, None, None)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2608,9 +2672,11 @@ else:
 
 async def load_care_plan(user_id: str, thread_id: Optional[str] = None) -> CarePlanCheckInState:
     """Load today's care plan."""
+    runtime = await _get_graph_runtime()
     state = create_initial_state(user_id)
     config = {"configurable": {"thread_id": thread_id}} if thread_id else None
-    result = await care_plan_load_graph.ainvoke(state, config=config) if config else await care_plan_load_graph.ainvoke(state)
+    load_graph = runtime["load_graph"]
+    result = await load_graph.ainvoke(state, config=config) if config else await load_graph.ainvoke(state)
     return result
 
 
@@ -2620,9 +2686,11 @@ async def process_care_plan_message(
     thread_id: Optional[str] = None
 ) -> CarePlanCheckInState:
     """Process user message about care plan."""
+    runtime = await _get_graph_runtime()
     updated_state = {**state, "user_message": user_message}
     config = {"configurable": {"thread_id": thread_id}} if thread_id else None
-    result = await care_plan_process_graph.ainvoke(updated_state, config=config) if config else await care_plan_process_graph.ainvoke(updated_state)
+    process_graph = runtime["process_graph"]
+    result = await process_graph.ainvoke(updated_state, config=config) if config else await process_graph.ainvoke(updated_state)
     return result
 
 
@@ -2633,13 +2701,15 @@ async def stream_care_plan_message(
     stream_mode: str = STREAM_MODE_TEXT,
 ):
     """Streaming helper: use stream_mode='messages' for text or stream_mode='custom' for UI elements."""
+    runtime = await _get_graph_runtime()
     updated_state = {**state, "user_message": user_message}
     config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    process_graph = runtime["process_graph"]
     if config:
-        async for chunk in care_plan_process_graph.astream(updated_state, config=config, stream_mode=stream_mode):
+        async for chunk in process_graph.astream(updated_state, config=config, stream_mode=stream_mode):
             yield chunk
     else:
-        async for chunk in care_plan_process_graph.astream(updated_state, stream_mode=stream_mode):
+        async for chunk in process_graph.astream(updated_state, stream_mode=stream_mode):
             yield chunk
 
 
@@ -2650,12 +2720,14 @@ async def process_alternate_selection(
     resume: Optional[bool] = None
 ) -> CarePlanCheckInState:
     """Process alternate selection and check tokens."""
+    runtime = await _get_graph_runtime()
     updated_state = {**state, "selected_alternate_index": selected_index}
     config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    selection_graph = runtime["selection_graph"]
     if resume is not None:
-        result = await care_plan_selection_graph.ainvoke(Command(resume=resume), config=config) if config else await care_plan_selection_graph.ainvoke(Command(resume=resume))
+        result = await selection_graph.ainvoke(Command(resume=resume), config=config) if config else await selection_graph.ainvoke(Command(resume=resume))
     else:
-        result = await care_plan_selection_graph.ainvoke(updated_state, config=config) if config else await care_plan_selection_graph.ainvoke(updated_state)
+        result = await selection_graph.ainvoke(updated_state, config=config) if config else await selection_graph.ainvoke(updated_state)
     return result
 
 
@@ -2666,11 +2738,13 @@ async def stream_alternate_selection(
     stream_mode: str = STREAM_MODE_UI,
 ):
     """Streaming helper for alternate-selection UI events (default stream_mode='custom')."""
+    runtime = await _get_graph_runtime()
     updated_state = {**state, "selected_alternate_index": selected_index}
     config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    selection_graph = runtime["selection_graph"]
     if config:
-        async for chunk in care_plan_selection_graph.astream(updated_state, config=config, stream_mode=stream_mode):
+        async for chunk in selection_graph.astream(updated_state, config=config, stream_mode=stream_mode):
             yield chunk
     else:
-        async for chunk in care_plan_selection_graph.astream(updated_state, stream_mode=stream_mode):
+        async for chunk in selection_graph.astream(updated_state, stream_mode=stream_mode):
             yield chunk
