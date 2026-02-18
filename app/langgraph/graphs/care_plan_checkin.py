@@ -698,10 +698,23 @@ async def _apply_health_guardrail(text: str) -> str:
     if not text:
         return text
 
-    moderation_prompt = """Review this assistant response for health-safety risk.
-Mark as urgent only if the message could reasonably be interpreted as encouraging unsafe behavior
-or ignoring emergency warning signs.
-Set should_append_urgent_guidance=true only when urgent guidance should be appended."""
+    moderation_prompt = """You are a safety reviewer for a women's health care plan app (AUVRA).
+Review the assistant response below and decide if it needs an emergency disclaimer appended.
+
+Set should_append_urgent_guidance=true ONLY if the response:
+- Explicitly tells the user to ignore serious physical symptoms (chest pain, difficulty breathing, severe bleeding, etc.)
+- Recommends unsafe health practices that could cause immediate harm
+- Dismisses a user who clearly described an emergency situation
+
+Set should_append_urgent_guidance=false (the default) for ALL of the following — these NEVER need a disclaimer:
+- Confirmations, cancellations, or acknowledgements ("No worries", "Got it", "All set")
+- Plan management responses (swapping items, keeping plan, showing alternatives)
+- Motivational or celebratory messages about completing health actions
+- Questions about the user's plan or check-in status
+- General wellness advice about food, exercise, sleep, supplements
+- Any response that is simply conversational and does not involve emergency symptoms
+
+The bar for setting true is VERY high. When in doubt, set false."""
     try:
         moderation_raw = await _get_guardrail_llm().ainvoke(
             [
