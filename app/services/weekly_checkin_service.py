@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
+from pydantic import BaseModel
 
 from fastapi import UploadFile
 from openai import AsyncOpenAI
@@ -24,6 +25,7 @@ from app.core.database import (
     SymptomLog, ActionPlan, ActionPlanItem
 )
 from app.core.config import Settings
+from app.langgraph.helpers.llm_client import call_llm_structured
 from app.utils.timezone_utils import get_user_current_date
 
 logger = logging.getLogger(__name__)
@@ -424,10 +426,12 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
         
         # Store initial bot message
         messages = [{
+            "id": str(uuid.uuid4()),
             "role": "assistant",
             "content": first_question.message,
             "question_key": first_question.question_key,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "created_at": datetime.utcnow().isoformat(),
         }]
         checkin.raw_messages = messages
         from sqlalchemy.orm.attributes import flag_modified
@@ -444,10 +448,13 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
             
         for i, msg in enumerate(checkin.raw_messages):
             is_bot = msg.get("role") == "assistant"
+            created_at = msg.get("timestamp") or msg.get("created_at")
             history.append({
-                "id": f"hist_{i}",
+                "id": msg.get("id") or f"hist_{i}",
                 "text": msg.get("content", ""),
-                "isBot": is_bot
+                "isBot": is_bot,
+                "created_at": created_at,
+                "ui_blocks": msg.get("ui_blocks", []) if isinstance(msg.get("ui_blocks"), list) else [],
             })
         return history
 
@@ -607,17 +614,23 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
         if checkin.is_complete:
             raise ValueError(f"Check-in {checkin_id} is already complete")
         
+        normalized_response = response
+        if question_key == "concern_severity":
+            normalized_response = await self._normalize_concern_severity(response)
+
         # Store response based on question key
-        self._store_response(checkin, question_key, response)
+        self._store_response(checkin, question_key, normalized_response)
         
         # Add to raw messages log
         if message_text:
             messages = checkin.raw_messages or []
             messages.append({
+                "id": str(uuid.uuid4()),
                 "role": "user",
                 "content": message_text,
                 "question_key": question_key,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
+                "created_at": datetime.utcnow().isoformat(),
             })
             checkin.raw_messages = messages
         
@@ -630,7 +643,7 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
         next_ai_question = await ai_engine.generate_followup_question(
             uid=checkin.uid,
             checkin=checkin,
-            previous_response=response,
+            previous_response=normalized_response,
             previous_question_key=question_key
         )
         
@@ -638,10 +651,12 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
              # Store bot message
              messages = checkin.raw_messages or []
              messages.append({
+                "id": str(uuid.uuid4()),
                 "role": "assistant",
                 "content": next_ai_question.message,
                 "question_key": next_ai_question.question_key,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
+                "created_at": datetime.utcnow().isoformat(),
              })
              checkin.raw_messages = messages
              from sqlalchemy.orm.attributes import flag_modified
@@ -669,30 +684,10 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
             checkin.top_concern = response
         elif question_key == "concern_severity":
             try:
-                # Try to convert to int directly
                 val = int(response)
-                checkin.concern_severity = val
+                checkin.concern_severity = max(1, min(9, val))
             except (ValueError, TypeError):
-                # If response is text (e.g. from "Type" mode), try to extract a number
-                import re
-                if isinstance(response, str):
-                    numbers = re.findall(r'\d+', response)
-                    if numbers:
-                        val = int(numbers[0])
-                        # Clamp to 1-9
-                        val = max(1, min(9, val))
-                        checkin.concern_severity = val
-                        # Update response variable so next steps use the parsed int
-                        response = val
-                    else:
-                        # Fallback if no number found - default to Moderate (5)
-                        # This ensures the flow continues even if user just typed "It was bad"
-                        logger.warning(f"Could not parse severity from '{response}', defaulting to 5")
-                        checkin.concern_severity = 5
-                        response = 5
-                else:
-                    checkin.concern_severity = 5
-                    response = 5
+                checkin.concern_severity = 5
         elif question_key == "overall_wellbeing":
             checkin.overall_wellbeing = int(response)
         elif question_key == "factors_positive":
@@ -711,6 +706,34 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
             checkin.concerns_next_week = response
         
         # Other keys (greeting, closing) don't need storage
+
+    async def _normalize_concern_severity(self, response: Any) -> int:
+        """LLM-driven normalization for concern severity (1-9) without regex parsing."""
+        if isinstance(response, int):
+            return max(1, min(9, response))
+
+        raw = str(response or "").strip()
+        if not raw:
+            return 5
+
+        class SeverityExtraction(BaseModel):
+            severity: Optional[int] = None
+
+        try:
+            parsed = await call_llm_structured(
+                f"""Extract the user's severity score from 1 to 9.
+User response: "{raw}"
+Return strict JSON:
+{{
+  "severity": integer 1-9 or null
+}}""",
+                response_model=SeverityExtraction,
+            )
+            if parsed.severity is None:
+                return 5
+            return max(1, min(9, int(parsed.severity)))
+        except Exception:
+            return 5
     
     def _should_show_question(self, question: WeeklyCheckInQuestion, checkin: WeeklyCheckIn) -> bool:
         """Check if question should be shown based on conditions."""

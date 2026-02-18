@@ -621,6 +621,29 @@ class SymptomLog(Base):
     )
 
 
+class MoodLog(Base):
+    """User daily mood/energy logs (durable replacement for in-memory mood storage)."""
+    __tablename__ = "mood_logs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255), ForeignKey("user_profiles.uid", ondelete="CASCADE"), nullable=False, index=True)
+
+    mood_level = Column(Integer, nullable=False)  # 1-7
+    energy_level = Column(Integer, nullable=False)  # 1-5
+    notes = Column(Text, nullable=True)
+
+    logged_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    logged_date = Column(Date, default=date.today, nullable=False, index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_mood_logs_user_date_unique', 'user_id', 'logged_date', unique=True),
+        Index('idx_mood_logs_user_logged_at', 'user_id', 'logged_at'),
+    )
+
+
 class ConversationSummary(Base):
     """Summarized conversation insights for memory (Layer 2)"""
     __tablename__ = "conversation_summaries"

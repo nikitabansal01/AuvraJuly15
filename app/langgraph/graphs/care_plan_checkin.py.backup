@@ -22,12 +22,13 @@ from __future__ import annotations
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import interrupt, Command
 from pydantic import BaseModel
 import uuid
 import json
 import logging
+import sqlite3
 
 from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
 from app.langgraph.helpers.database_helpers import (
@@ -1085,7 +1086,7 @@ def create_process_selection_graph():
 
 
 # Compile graphs with checkpointer for interrupts and resumable state
-_checkpointer = InMemorySaver()
+_checkpointer = SqliteSaver(sqlite3.connect(":memory:", check_same_thread=False))
 care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
 care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
 care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_checkpointer)

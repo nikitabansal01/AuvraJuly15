@@ -12,12 +12,32 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
+from time import perf_counter
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints._chatbot_runtime import ensure_actionable_insights
 from app.services.weekly_checkin_service import WeeklyCheckInService
 
 router = APIRouter()
+
+
+def _weekly_trace(
+    *,
+    thread_id: str,
+    action_id: str,
+    latency_ms: Optional[float] = None,
+    workflow_stage: Optional[str] = None,
+) -> Dict[str, Any]:
+    trace: Dict[str, Any] = {
+        "flow": "weekly_checkin",
+        "thread_id": thread_id,
+        "action_id": action_id,
+        "workflow_stage": workflow_stage,
+    }
+    if latency_ms is not None:
+        trace["latency_ms"] = int(latency_ms)
+    return trace
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -33,6 +53,8 @@ class ChatMessage(BaseModel):
     id: str
     text: str
     isBot: bool
+    created_at: Optional[str] = None
+    ui_blocks: List[Dict[str, Any]] = []
 
 
 class QuestionResponse(BaseModel):
@@ -64,12 +86,21 @@ class CheckInStatusResponse(BaseModel):
 
 class StartCheckInResponse(BaseModel):
     """Response when starting a new check-in session."""
+    # Legacy fields (backward compatible)
     checkin_id: str
     week_number: int
     year: int
     question: QuestionResponse
     is_already_completed: bool = False  # True if viewing completed check-in in read-only mode
     next_due_date: Optional[str] = None  # When the next check-in is available
+    # Standardized chatbot contract fields
+    thread_id: str
+    local_date: str
+    history: List[ChatMessage] = []
+    tap_options: List[TapOption] = []
+    ui_blocks: List[Dict[str, Any]] = []
+    actionable_insights: Dict[str, Any] = {}
+    trace: Optional[Dict[str, Any]] = None
 
 
 class SubmitResponseRequest(BaseModel):
@@ -82,8 +113,17 @@ class SubmitResponseRequest(BaseModel):
 
 class SubmitResponseResponse(BaseModel):
     """Response after submitting an answer."""
+    # Legacy fields (backward compatible)
     checkin_id: str
     question: QuestionResponse
+    # Standardized chatbot contract fields
+    thread_id: str
+    local_date: str
+    history: List[ChatMessage] = []
+    tap_options: List[TapOption] = []
+    ui_blocks: List[Dict[str, Any]] = []
+    actionable_insights: Dict[str, Any] = {}
+    trace: Optional[Dict[str, Any]] = None
 
 
 class TranscribeResponse(BaseModel):
@@ -163,6 +203,7 @@ async def start_checkin(
     
     Returns the first question (or the current question if resuming).
     """
+    started_at = perf_counter()
     uid = current_user["uid"]
     service = WeeklyCheckInService(db)
     
@@ -193,8 +234,21 @@ async def start_checkin(
                     id=msg.get("id", ""),
                     text=msg.get("text", ""),
                     isBot=msg.get("isBot", False),
+                    created_at=msg.get("created_at"),
+                    ui_blocks=msg.get("ui_blocks") if isinstance(msg.get("ui_blocks"), list) else [],
                 )
             )
+
+    actionable_insights = ensure_actionable_insights(
+        checkin.actionable_insights if isinstance(checkin.actionable_insights, dict) else {},
+        flow="weekly_checkin",
+    )
+    trace = _weekly_trace(
+        thread_id=checkin.id,
+        action_id="start",
+        latency_ms=(perf_counter() - started_at) * 1000,
+        workflow_stage="in_progress" if not checkin.is_complete else "complete",
+    )
     
     return StartCheckInResponse(
         checkin_id=checkin.id,
@@ -202,6 +256,13 @@ async def start_checkin(
         year=checkin.year,
         is_already_completed=question_data.get("is_already_completed", False),
         next_due_date=question_data.get("next_due_date"),
+        thread_id=checkin.id,
+        local_date=checkin.check_in_date.isoformat() if checkin.check_in_date else "",
+        history=history,
+        tap_options=tap_options,
+        ui_blocks=[],
+        actionable_insights=actionable_insights,
+        trace=trace,
         question=QuestionResponse(
             is_complete=question_data.get("is_complete", False),
             question_key=question_data.get("question_key"),
@@ -229,6 +290,7 @@ async def submit_response(
     
     Returns the next question or completion message.
     """
+    started_at = perf_counter()
     uid = current_user["uid"]
     service = WeeklyCheckInService(db)
     
@@ -261,11 +323,31 @@ async def submit_response(
             history.append(ChatMessage(
                 id=msg.get("id", ""),
                 text=msg.get("text", ""),
-                isBot=msg.get("isBot", False)
+                isBot=msg.get("isBot", False),
+                created_at=msg.get("created_at"),
+                ui_blocks=msg.get("ui_blocks") if isinstance(msg.get("ui_blocks"), list) else [],
             ))
+
+    actionable_insights = ensure_actionable_insights(
+        checkin.actionable_insights if isinstance(checkin.actionable_insights, dict) else {},
+        flow="weekly_checkin",
+    )
+    trace = _weekly_trace(
+        thread_id=checkin.id,
+        action_id="respond",
+        latency_ms=(perf_counter() - started_at) * 1000,
+        workflow_stage="complete" if question_data.get("is_complete") else "in_progress",
+    )
     
     return SubmitResponseResponse(
         checkin_id=checkin.id,
+        thread_id=checkin.id,
+        local_date=checkin.check_in_date.isoformat() if checkin.check_in_date else "",
+        history=history,
+        tap_options=tap_options,
+        ui_blocks=[],
+        actionable_insights=actionable_insights,
+        trace=trace,
         question=QuestionResponse(
             is_complete=question_data.get("is_complete", False),
             question_key=question_data.get("question_key"),

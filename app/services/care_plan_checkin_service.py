@@ -227,13 +227,17 @@ class CarePlanCheckInService:
         out: List[Dict[str, Any]] = []
         for msg in (thread.raw_messages or []):
             role = msg.get("role")
-            out.append(
-                {
-                    "id": msg.get("id") or self._new_message_id(),
-                    "text": msg.get("content") or "",
-                    "isBot": role != "user",
-                }
-            )
+            formatted: Dict[str, Any] = {
+                "id": msg.get("id") or self._new_message_id(),
+                "text": msg.get("content") or "",
+                "isBot": role != "user",
+                "created_at": msg.get("created_at") or datetime.utcnow().isoformat(),
+            }
+            # Preserve per-message UI blocks so historical CTAs can render in transcript.
+            ui_blocks = msg.get("ui_blocks")
+            if isinstance(ui_blocks, list) and ui_blocks:
+                formatted["ui_blocks"] = ui_blocks
+            out.append(formatted)
         return out
 
     # ──────────────────────────────────────────────────────────────────────────

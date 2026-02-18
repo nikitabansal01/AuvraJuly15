@@ -13,17 +13,18 @@ from __future__ import annotations
 
 import io
 import logging
-import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import UploadFile
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.database import ActionPlan, ActionPlanItem, CarePlanCheckInThread, SymptomCheckInThread, SymptomLog, UserProfile, UserResponse, WeeklyCheckIn
+from app.langgraph.helpers.llm_client import call_llm_structured
 from app.services.symptom_checkin_ai import SymptomCheckInAI, SymptomAIResponse
 from app.services.cycle_service import CycleService
 from app.utils.timezone_utils import get_user_current_date
@@ -257,13 +258,16 @@ class SymptomCheckInService:
         out: List[Dict[str, Any]] = []
         for msg in (thread.raw_messages or []):
             role = msg.get("role")
-            out.append(
-                {
-                    "id": msg.get("id") or self._new_message_id(),
-                    "text": msg.get("content") or "",
-                    "isBot": role != "user",
-                }
-            )
+            formatted: Dict[str, Any] = {
+                "id": msg.get("id") or self._new_message_id(),
+                "text": msg.get("content") or "",
+                "isBot": role != "user",
+                "created_at": msg.get("created_at") or datetime.utcnow().isoformat(),
+            }
+            ui_blocks = msg.get("ui_blocks")
+            if isinstance(ui_blocks, list) and ui_blocks:
+                formatted["ui_blocks"] = ui_blocks
+            out.append(formatted)
         return out
 
     async def respond(self, uid: str, thread_id: str, message_text: str) -> Tuple[SymptomCheckInThread, SymptomAIResponse]:
@@ -290,7 +294,7 @@ class SymptomCheckInService:
         # write a structured SymptomLog entry so it affects action plans/replacements.
         logged_note: Optional[str] = None
         try:
-            parsed = self._parse_symptom_log_from_text(message_text)
+            parsed = await self._parse_symptom_log_from_text(message_text)
             if parsed:
                 created = self.create_symptom_log(
                     uid=uid,
@@ -376,46 +380,46 @@ class SymptomCheckInService:
 
         return thread, ai_response
 
-    def _parse_symptom_log_from_text(self, text: str) -> Optional[Dict[str, Any]]:
-        """Best-effort parsing for messages like:
-        - "log cramps 7/9"
-        - "track headache 6"
-        - "cramps 8/9 today" (only if 'log'/'track' present)
-
-        We keep this intentionally conservative to avoid accidental logging.
-        """
-
+    async def _parse_symptom_log_from_text(self, text: str) -> Optional[Dict[str, Any]]:
+        """LLM-driven symptom log extraction (no regex heuristics)."""
         raw = (text or "").strip()
         if not raw:
             return None
+        class SymptomLogExtraction(BaseModel):
+            should_log: bool
+            symptom_type: Optional[str] = None
+            severity: Optional[int] = None
 
-        lowered = raw.lower()
-        if not (lowered.startswith("log ") or lowered.startswith("track ") or lowered.startswith("add symptom")):
+        try:
+            parsed = await call_llm_structured(
+                f"""You are extracting structured symptom logging intents.
+User message: "{raw}"
+
+Decide if this message should create a symptom log entry.
+Rules:
+- Only set should_log=true if the message clearly includes both:
+  1) a concrete symptom, and
+  2) a clear severity from 1 to 9.
+- If either is missing/ambiguous, should_log=false.
+
+Return strict JSON:
+{{
+  "should_log": true|false,
+  "symptom_type": "normalized symptom name or null",
+  "severity": 1-9 or null
+}}""",
+                response_model=SymptomLogExtraction,
+            )
+        except Exception:
             return None
 
-        # Extract severity: 1-9 with optional /9
-        m = re.search(r"\b([1-9])\s*(?:/\s*9)?\b", lowered)
-        if not m:
+        if not parsed.should_log:
             return None
-        severity = int(m.group(1))
+        if not parsed.symptom_type or parsed.severity is None:
+            return None
 
-        # Try to extract symptom type: take words after the leading command up to the severity
-        # Example: "log cramps 7/9" -> "cramps"
-        before_sev = lowered[: m.start()].strip()
-        before_sev = re.sub(r"^(log|track|add symptom)\s+", "", before_sev).strip()
-        symptom_type = (before_sev or "").strip(" ,.-")
-
-        # Small normalization for common phrasing
-        synonym_map = {
-            "period cramps": "cramps",
-            "menstrual cramps": "cramps",
-            "head ache": "headache",
-            "migraine": "headache",
-            "tired": "fatigue",
-            "low energy": "fatigue",
-        }
-        symptom_type = synonym_map.get(symptom_type, symptom_type)
-
+        severity = max(1, min(9, int(parsed.severity)))
+        symptom_type = sanitize_string_field(parsed.symptom_type, "symptom_type").lower()
         if not symptom_type:
             return None
 

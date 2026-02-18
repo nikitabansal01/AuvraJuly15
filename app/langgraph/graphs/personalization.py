@@ -195,11 +195,18 @@ def validate_profile_field(field_name: str, value: Any) -> ValidationResult:
     if field_name in numeric_fields:
         try:
             if isinstance(value, str):
-                # Extract numbers
-                import re
-                numbers = re.findall(r'[\d.]+', value)
-                if numbers:
-                    value = float(numbers[0])
+                # Extract first numeric token without regex to avoid brittle parsing.
+                token_chars: List[str] = []
+                found = False
+                for ch in value:
+                    if ch.isdigit() or ch == ".":
+                        token_chars.append(ch)
+                        found = True
+                    elif found:
+                        break
+                token = "".join(token_chars).strip(".")
+                if token:
+                    value = float(token)
                 else:
                     return ValidationResult(is_valid=False, cleaned_value=None, 
                                           error_message="Please provide a number")
@@ -439,10 +446,9 @@ Output JSON:
         
         skip_result = await call_llm_structured(skip_detection_prompt, response_model=SkipCheck)
         wants_to_skip = skip_result.wants_to_skip
-    except:
-        # Fallback to simple keyword check
-        skip_signals = ["skip", "pass", "don't want to", "later", "not now", "rather not", "move on"]
-        wants_to_skip = any(signal in user_input.lower() for signal in skip_signals)
+    except Exception:
+        # If structured skip detection fails, stay conservative and continue the topic.
+        wants_to_skip = False
     
     if wants_to_skip:
         # Remove from gaps and generate personalized response

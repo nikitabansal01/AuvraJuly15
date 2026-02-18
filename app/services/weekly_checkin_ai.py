@@ -19,7 +19,6 @@ PROVIDER STRATEGY: OpenAI primary, Groq fallback on ANY error
 """
 import logging
 import json
-import re
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
@@ -175,9 +174,23 @@ class WeeklyCheckInAI:
     def _slugify_option_id(self, text: str) -> str:
         """Create a stable, frontend-safe id from a tap option label."""
         s = (text or "").strip().lower()
-        s = re.sub(r"[^a-z0-9]+", "_", s)
-        s = re.sub(r"_+", "_", s).strip("_")
-        return s or "option"
+        if not s:
+            return "option"
+
+        out: List[str] = []
+        prev_sep = False
+        for ch in s:
+            if ("a" <= ch <= "z") or ("0" <= ch <= "9"):
+                out.append(ch)
+                prev_sep = False
+            elif not prev_sep:
+                out.append("_")
+                prev_sep = True
+
+        slug = "".join(out).strip("_")
+        while "__" in slug:
+            slug = slug.replace("__", "_")
+        return slug or "option"
 
     def _infer_tap_option_category(self, question_text: str) -> Optional[str]:
         qt = (question_text or "").lower()

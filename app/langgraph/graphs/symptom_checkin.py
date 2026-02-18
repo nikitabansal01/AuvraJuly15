@@ -306,9 +306,23 @@ async def process_user_message(state: SymptomCheckInState) -> SymptomCheckInStat
     # Add to messages
     messages = state.get("messages", []) + [{"role": "user", "content": user_input}]
     
-    # Check for end signals
-    end_signals = ["that's all", "nothing else", "thanks", "thank you", "bye", "done"]
-    if any(signal in user_input.lower() for signal in end_signals):
+    # Detect natural "I'm done" intent via structured LLM (no keyword/regex routing).
+    user_signaled_end = False
+    try:
+        class EndSignalDecision(BaseModel):
+            user_signaled_end: bool
+
+        end_result = await call_llm_structured(
+            f"""Decide if the user is signaling they want to end symptom logging for now.
+User message: "{user_input}"
+Return JSON: {{"user_signaled_end": true|false}}""",
+            response_model=EndSignalDecision,
+        )
+        user_signaled_end = bool(end_result.user_signaled_end)
+    except Exception:
+        user_signaled_end = False
+
+    if user_signaled_end:
         return {
             **state,
             "messages": messages,
@@ -536,11 +550,22 @@ async def process_severity_response(state: SymptomCheckInState) -> SymptomCheckI
     elif "severe" in input_lower or "7-9" in input_lower:
         severity = 8
     else:
-        # Try to extract number
-        import re
-        numbers = re.findall(r'\d+', user_input)
-        if numbers:
-            severity = min(9, max(1, int(numbers[0])))
+        # LLM-only numeric extraction (no regex heuristics).
+        class SeverityExtraction(BaseModel):
+            severity: Optional[int] = None
+
+        try:
+            parsed = await call_llm_structured(
+                f"""Extract the severity score from this user response.
+If no numeric severity is present, return null.
+User response: "{user_input}"
+Return JSON: {{"severity": integer 1-9 or null}}""",
+                response_model=SeverityExtraction,
+            )
+            if parsed.severity is not None:
+                severity = min(9, max(1, int(parsed.severity)))
+        except Exception:
+            pass
     
     # Log the symptom
     db = next(get_db())

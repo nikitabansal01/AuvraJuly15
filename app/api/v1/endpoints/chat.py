@@ -16,15 +16,16 @@ Endpoints:
 
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 import json
 
-from app.core.database import get_db, UserProfile
+from app.core.database import get_db, MoodLog as MoodLogRecord, UserProfile
 from app.services.chat.chat_service import ChatService
+from app.api.v1.endpoints._chatbot_runtime import ensure_actionable_insights
 from app.models.chat_models import (
     ChatMessageRequest, ChatMessageResponse, VoiceMessageRequest,
     ConversationContext, InputMode, ResponseType
@@ -763,10 +764,20 @@ async def get_wellness_score(
         
         logger.info(f"Calculating wellness score for {user_id}")
         
-        # Load mood data from in-memory storage
-        user_moods = _mood_storage.get(user_id, [])
+        # Load mood data from durable DB storage
         today = datetime.now().strftime("%Y-%m-%d")
-        today_mood = next((m for m in user_moods if m["date"] == today), None)
+        today_mood_row = db.query(MoodLogRecord).filter(
+            MoodLogRecord.user_id == user_id,
+            MoodLogRecord.logged_date == datetime.now().date(),
+        ).first()
+        today_mood = (
+            {
+                "mood_level": today_mood_row.mood_level,
+                "energy_level": today_mood_row.energy_level,
+            }
+            if today_mood_row
+            else None
+        )
         
         # Build mood data from today's entry or defaults
         mood_data = {
@@ -1005,17 +1016,10 @@ class MoodEntry(BaseModel):
     date: str
 
 
-# In-memory mood storage (TODO: Replace with database table for persistence)
-# This data is lost on server restart - implement MoodLog table in database.py
-_mood_storage: Dict[str, List[Dict[str, Any]]] = {}
-
-
 @router.post("/mood-log")
 async def log_mood(request: MoodLogRequest, db: Session = Depends(get_db)):
     """Log user's daily mood and energy level."""
     try:
-        import uuid
-        
         # Validate user
         if not validate_user(request.user_id, db):
             raise HTTPException(
@@ -1025,38 +1029,58 @@ async def log_mood(request: MoodLogRequest, db: Session = Depends(get_db)):
         
         logger.info(f"Logging mood for user {request.user_id}: mood={request.mood_level}, energy={request.energy_level}")
         
-        # Create mood entry
-        timestamp = request.timestamp or datetime.now().isoformat()
-        date = timestamp.split("T")[0]
-        
-        entry = {
-            "id": str(uuid.uuid4()),
-            "user_id": request.user_id,
-            "mood_level": request.mood_level,
-            "energy_level": request.energy_level,
-            "notes": request.notes,
-            "timestamp": timestamp,
-            "date": date
+        # Upsert one entry per user/day.
+        parsed_ts: datetime
+        if request.timestamp:
+            try:
+                raw_ts = request.timestamp.replace("Z", "+00:00")
+                parsed_ts = datetime.fromisoformat(raw_ts)
+                if parsed_ts.tzinfo is not None:
+                    parsed_ts = parsed_ts.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                parsed_ts = datetime.utcnow()
+        else:
+            parsed_ts = datetime.utcnow()
+        logged_date = parsed_ts.date()
+
+        entry = db.query(MoodLogRecord).filter(
+            MoodLogRecord.user_id == request.user_id,
+            MoodLogRecord.logged_date == logged_date,
+        ).first()
+
+        if entry:
+            entry.mood_level = request.mood_level
+            entry.energy_level = request.energy_level
+            entry.notes = request.notes
+            entry.logged_at = parsed_ts
+        else:
+            entry = MoodLogRecord(
+                user_id=request.user_id,
+                mood_level=request.mood_level,
+                energy_level=request.energy_level,
+                notes=request.notes,
+                logged_at=parsed_ts,
+                logged_date=logged_date,
+            )
+            db.add(entry)
+
+        db.commit()
+        db.refresh(entry)
+
+        streak = calculate_mood_streak(request.user_id, db)
+        entry_payload = {
+            "id": entry.id,
+            "user_id": entry.user_id,
+            "mood_level": entry.mood_level,
+            "energy_level": entry.energy_level,
+            "notes": entry.notes,
+            "timestamp": entry.logged_at.isoformat() if entry.logged_at else parsed_ts.isoformat(),
+            "date": entry.logged_date.isoformat() if entry.logged_date else logged_date.isoformat(),
         }
-        
-        # Store in memory (TODO: Store in database)
-        if request.user_id not in _mood_storage:
-            _mood_storage[request.user_id] = []
-        
-        # Remove existing entry for today if any
-        _mood_storage[request.user_id] = [
-            m for m in _mood_storage[request.user_id] if m["date"] != date
-        ]
-        
-        # Add new entry
-        _mood_storage[request.user_id].append(entry)
-        
-        # Calculate streak
-        streak = calculate_mood_streak(request.user_id)
         
         return {
             "success": True,
-            "entry": entry,
+            "entry": entry_payload,
             "streak": streak,
             "message": "Mood logged successfully! 🌟"
         }
@@ -1086,20 +1110,23 @@ async def get_mood_history(
                 detail="User not found"
             )
         
-        # Get from storage
-        user_moods = _mood_storage.get(user_id, [])
-        
-        # Filter by date range - use timedelta for correct date math
         cutoff_date = datetime.now() - timedelta(days=days)
-        cutoff_str = cutoff_date.strftime("%Y-%m-%d")
-        
+        rows = db.query(MoodLogRecord).filter(
+            MoodLogRecord.user_id == user_id,
+            MoodLogRecord.logged_at >= cutoff_date,
+        ).order_by(MoodLogRecord.logged_at.desc()).all()
         recent_moods = [
-            m for m in user_moods
-            if m["date"] >= cutoff_str
+            {
+                "id": row.id,
+                "user_id": row.user_id,
+                "mood_level": row.mood_level,
+                "energy_level": row.energy_level,
+                "notes": row.notes,
+                "timestamp": row.logged_at.isoformat() if row.logged_at else "",
+                "date": row.logged_date.isoformat() if row.logged_date else "",
+            }
+            for row in rows
         ]
-        
-        # Sort by date descending
-        recent_moods.sort(key=lambda x: x["date"], reverse=True)
         
         # Calculate statistics
         if recent_moods:
@@ -1121,7 +1148,7 @@ async def get_mood_history(
                 "total_entries": len(recent_moods),
                 "trend": trend
             },
-            "streak": calculate_mood_streak(user_id)
+            "streak": calculate_mood_streak(user_id, db)
         }
         
     except Exception as e:
@@ -1132,20 +1159,22 @@ async def get_mood_history(
         )
 
 
-def calculate_mood_streak(user_id: str) -> int:
+def calculate_mood_streak(user_id: str, db: Session) -> int:
     """Calculate consecutive days of mood logging."""
-    user_moods = _mood_storage.get(user_id, [])
-    if not user_moods:
+    rows = db.query(MoodLogRecord).filter(
+        MoodLogRecord.user_id == user_id
+    ).order_by(MoodLogRecord.logged_date.desc()).all()
+    if not rows:
         return 0
     
-    # Get unique dates sorted descending
-    dates = sorted(set(m["date"] for m in user_moods), reverse=True)
+    # Get unique local dates sorted descending
+    dates = sorted({r.logged_date for r in rows if r.logged_date is not None}, reverse=True)
     
     if not dates:
         return 0
     
     # Check if today is logged
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().date()
     if dates[0] != today:
         return 0
     
@@ -1153,9 +1182,7 @@ def calculate_mood_streak(user_id: str) -> int:
     streak = 1
     for i in range(1, len(dates)):
         expected_date = datetime.now() - timedelta(days=i)
-        expected_str = expected_date.strftime("%Y-%m-%d")
-        
-        if dates[i] == expected_str:
+        if dates[i] == expected_date.date():
             streak += 1
         else:
             break
@@ -1186,7 +1213,7 @@ def calculate_mood_trend(moods: List[Dict[str, Any]]) -> str:
 # THREAD HISTORY ENDPOINTS - Per-flow chat history
 # ═══════════════════════════════════════════════════════════════════════════════
 
-from app.core.database import CarePlanCheckInThread, SymptomCheckInThread
+from app.core.database import CarePlanCheckInThread, SymptomCheckInThread, WeeklyCheckIn, ChatSession, ChatMessage as ChatMessageRecord
 from app.api.v1.endpoints.auth import get_current_user
 
 
@@ -1238,6 +1265,7 @@ async def get_threads_by_flow(
     flow_type options:
     - care_plan: Care Plan Check-in threads
     - symptom: Symptom Check-in threads
+    - weekly_checkin: Weekly check-in threads
     - personalise: Personalization threads (stored in care_plan table with context)
     - know_body: Know My Body threads (stored in care_plan table with context)
     """
@@ -1281,11 +1309,43 @@ async def get_threads_by_flow(
                 updated_at=row.updated_at.isoformat() if row.updated_at else "",
                 is_active=not row.is_closed
             ))
+
+    elif flow_type in ("weekly", "weekly_checkin"):
+        rows = db.query(WeeklyCheckIn).filter(
+            WeeklyCheckIn.uid == uid
+        ).order_by(WeeklyCheckIn.check_in_date.desc(), WeeklyCheckIn.started_at.desc()).limit(limit).all()
+
+        for row in rows:
+            messages = row.raw_messages or []
+            summary = row.conversation_summary or _summarize_messages(messages)
+            threads.append(ThreadSummary(
+                id=row.id,
+                flow_type="weekly_checkin",
+                local_date=row.check_in_date.isoformat() if row.check_in_date else "",
+                summary=summary,
+                message_count=len(messages),
+                created_at=row.started_at.isoformat() if row.started_at else "",
+                updated_at=row.completed_at.isoformat() if row.completed_at else (row.started_at.isoformat() if row.started_at else ""),
+                is_active=not row.is_complete
+            ))
     
     elif flow_type in ("personalise", "know_body"):
-        # These use the LangGraph state storage - for now return empty
-        # In production, create separate tables or use unified chat session table
-        pass
+        rows = db.query(ChatSession).filter(
+            ChatSession.user_id == uid,
+            ChatSession.conversation_context == flow_type,
+        ).order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc()).limit(limit).all()
+
+        for row in rows:
+            threads.append(ThreadSummary(
+                id=row.id,
+                flow_type=flow_type,
+                local_date=row.started_at.date().isoformat() if row.started_at else "",
+                summary=row.summary or "Conversation started",
+                message_count=len(row.messages or []),
+                created_at=row.created_at.isoformat() if row.created_at else "",
+                updated_at=row.updated_at.isoformat() if row.updated_at else "",
+                is_active=row.status == "active"
+            ))
     
     else:
         raise HTTPException(status_code=400, detail=f"Unknown flow_type: {flow_type}")
@@ -1319,6 +1379,43 @@ async def get_thread_messages(
             SymptomCheckInThread.id == thread_id,
             SymptomCheckInThread.uid == uid
         ).first()
+    elif flow_type in ("weekly", "weekly_checkin"):
+        thread = db.query(WeeklyCheckIn).filter(
+            WeeklyCheckIn.id == thread_id,
+            WeeklyCheckIn.uid == uid
+        ).first()
+    elif flow_type in ("personalise", "know_body"):
+        session = db.query(ChatSession).filter(
+            ChatSession.id == thread_id,
+            ChatSession.user_id == uid,
+            ChatSession.conversation_context == flow_type,
+        ).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+        session_messages = db.query(ChatMessageRecord).filter(
+            ChatMessageRecord.session_id == session.id
+        ).order_by(ChatMessageRecord.created_at.asc()).all()
+
+        return {
+            "thread_id": session.id,
+            "flow_type": flow_type,
+            "local_date": session.started_at.date().isoformat() if session.started_at else "",
+            "messages": [
+                {
+                    "id": msg.id,
+                    "text": msg.content or "",
+                    "isBot": msg.role == "assistant",
+                    "created_at": msg.created_at.isoformat() if msg.created_at else "",
+                    "ui_blocks": [],
+                }
+                for msg in session_messages
+            ],
+            "message_count": len(session_messages),
+            "tap_options": [],
+            "ui_blocks": [],
+            "actionable_insights": {},
+        }
     else:
         raise HTTPException(status_code=400, detail=f"Unknown flow_type: {flow_type}")
     
@@ -1326,19 +1423,51 @@ async def get_thread_messages(
         raise HTTPException(status_code=404, detail="Thread not found")
     
     messages = thread.raw_messages or []
+    if flow_type in ("care_plan", "care_plan_checkin"):
+        flow_name = "care_plan_checkin"
+    elif flow_type in ("symptom", "symptom_checkin"):
+        flow_name = "symptom_checkin"
+    else:
+        flow_name = "weekly_checkin"
+    actionable_insights = ensure_actionable_insights(getattr(thread, "actionable_insights", {}) or {}, flow=flow_name)
+    persisted_ui_blocks = actionable_insights.get("ui_elements") or actionable_insights.get("ui_blocks") or []
+
+    if flow_type in ("care_plan", "care_plan_checkin"):
+        # Keep manage-plan always available; show full defaults when no CTA block is active.
+        tap_options = [{"id": "manage_plan", "text": "🧩 Manage plan"}]
+        if not persisted_ui_blocks:
+            tap_options = [
+                {"id": "want-to-change", "text": "👎 I want to change it"},
+                {"id": "alternate-suggestions", "text": "🔁 I want alternate suggestions"},
+                {"id": "manage_plan", "text": "🧩 Manage plan"},
+            ]
+    elif flow_type in ("symptom", "symptom_checkin"):
+        tap_options = actionable_insights.get("tap_options") or []
+    elif flow_type in ("weekly", "weekly_checkin"):
+        tap_options = actionable_insights.get("tap_options") or []
+    else:
+        tap_options = []
     
     return {
         "thread_id": thread.id,
         "flow_type": flow_type,
-        "local_date": thread.local_date.isoformat() if thread.local_date else "",
+        "local_date": (
+            thread.local_date.isoformat() if getattr(thread, "local_date", None)
+            else thread.check_in_date.isoformat() if getattr(thread, "check_in_date", None)
+            else ""
+        ),
         "messages": [
             {
                 "id": msg.get("id", ""),
                 "text": msg.get("content", ""),
-                "isBot": msg.get("role") == "bot",
-                "created_at": msg.get("created_at", "")
+                "isBot": msg.get("role") in {"bot", "assistant"},
+                "created_at": msg.get("created_at") or msg.get("timestamp", ""),
+                "ui_blocks": msg.get("ui_blocks", []),
             }
             for msg in messages
         ],
-        "message_count": len(messages)
+        "message_count": len(messages),
+        "tap_options": tap_options,
+        "ui_blocks": persisted_ui_blocks,
+        "actionable_insights": actionable_insights,
     }

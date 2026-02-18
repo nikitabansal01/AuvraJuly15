@@ -389,8 +389,24 @@ async def process_user_input(state: WeeklyCheckInState) -> WeeklyCheckInState:
     if not user_input:
         return {**state, "error": "No user input provided"}
     
-    # Check if user selected "something else" - they want to type
-    if input_mode == "tap" and "something else" in user_input.lower():
+    # Detect "I want to type instead" intent via structured LLM (no keyword/regex routing).
+    wants_text_input = False
+    if input_mode == "tap":
+        class TapToTypeIntent(BaseModel):
+            wants_text_input: bool
+
+        try:
+            intent_result = await call_llm_structured(
+                f"""Classify whether this tap response means the user wants to type a custom answer.
+Response: "{user_input}"
+Return JSON: {{"wants_text_input": true|false}}""",
+                response_model=TapToTypeIntent,
+            )
+            wants_text_input = bool(intent_result.wants_text_input)
+        except Exception:
+            wants_text_input = False
+
+    if input_mode == "tap" and wants_text_input:
         return {
             **state,
             "input_mode": "type",

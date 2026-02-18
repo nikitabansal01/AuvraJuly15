@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 import logging
 import datetime
+from time import perf_counter
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db, CarePlanCheckInThread, ActionPlan, ActionPlanItem, ActionPlanFeedback
@@ -14,6 +15,11 @@ from app.services.care_plan_checkin_service import CarePlanCheckInService
 from app.services.reward_service import RewardService
 from app.services.streak_service import StreakService
 from app.utils.timezone_utils import get_user_current_date
+from app.api.v1.endpoints._chatbot_runtime import (
+    build_chatbot_response_payload,
+    ensure_actionable_insights,
+    ensure_event_not_duplicate,
+)
 # Import Graph
 from app.langgraph.graphs.care_plan_checkin import (
     process_care_plan_message, 
@@ -33,13 +39,16 @@ class ChatMessage(BaseModel):
     id: str
     text: str
     isBot: bool
+    ui_blocks: List[Dict[str, Any]] = []
 
 class StartCarePlanCheckInResponse(BaseModel):
     thread_id: str
     local_date: str
     history: List[ChatMessage]
     tap_options: List[TapOption] = []
+    actionable_insights: Dict[str, Any] = {}
     ui_blocks: List[UIBlock] = []
+    trace: Optional[Dict[str, Any]] = None
 
 class RespondCarePlanCheckInRequest(BaseModel):
     thread_id: str
@@ -52,6 +61,7 @@ class RespondCarePlanCheckInResponse(BaseModel):
     tap_options: List[TapOption] = []
     actionable_insights: Dict[str, Any] = {}
     ui_blocks: List[UIBlock] = []
+    trace: Optional[Dict[str, Any]] = None
 
 class TranscribeResponse(BaseModel):
     text: str
@@ -64,7 +74,7 @@ async def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: C
     Previously, unified_context and formatted_context were NEVER loaded here,
     causing ALL handlers to receive empty context → generic "I'm here to help!" responses.
     """
-    saved_context = thread.actionable_insights or {}
+    saved_context = ensure_actionable_insights(thread.actionable_insights or {}, flow="care_plan_checkin")
     
     # Build message history - CRITICAL FIX: Use 20 messages (was 8) for proper context
     # 8 messages = only 4 turns of conversation → context lost after 4 exchanges
@@ -125,11 +135,17 @@ async def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: C
         formatted_ctx = ""
     
     # Reconstruct state
+    persisted_ui_blocks = saved_context.get("ui_blocks", [])
+    persisted_ui_elements = saved_context.get("ui_elements", persisted_ui_blocks)
+    persisted_action_plan = saved_context.get("action_plan")
+    hydrated_action_plan = persisted_action_plan if isinstance(persisted_action_plan, list) and persisted_action_plan else [i for i in items]
+
     return {
         "user_id": uid,
         "thread_id": thread.id,
         "message_id": str(uuid4()),
         "action_items": [i for i in items],
+        "action_plan": hydrated_action_plan,
         "messages": graph_messages,
         
         # Restore persistent context
@@ -143,6 +159,7 @@ async def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: C
         
         # FIXED: Load actual cycle info instead of None
         "current_streak": streak_status.get("current_streak", 0),
+        "streak": int(saved_context.get("streak", streak_status.get("current_streak", 0)) or 0),
         "refresh_tokens_available": refresh_status.get("remaining", 0),
         "refresh_tokens_unlocked": refresh_status.get("limit", 0) > 0,
         "plan_date": plan_date,
@@ -151,7 +168,11 @@ async def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: C
         "primary_hormone": cycle_info.get("primary_hormone"),
         "current_intent": None, "user_message": None,
         "selected_alternate_index": None, "selected_alternate": None,
-        "ui_blocks": [], "bot_response": "", "actions_to_execute": [], 
+        "last_options_shown": saved_context.get("last_options_shown"),
+        "user_preferences": saved_context.get("user_preferences", {}) or {},
+        "ui_blocks": persisted_ui_blocks,
+        "ui_elements": persisted_ui_elements,
+        "bot_response": "", "actions_to_execute": [], 
         
         # CRITICAL FIX: Include unified context so handlers can personalize
         "unified_context": unified_ctx,
@@ -162,7 +183,7 @@ async def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: C
 
 def _persist_state(thread: CarePlanCheckInThread, final_state: CarePlanCheckInState):
     """Update thread actionable_insights with persistent LangGraph state."""
-    new_insights = dict(thread.actionable_insights or {})
+    new_insights = ensure_actionable_insights(thread.actionable_insights or {}, flow="care_plan_checkin")
     
     # Serialize Pydantic objects to dicts
     def serialize(obj):
@@ -173,6 +194,13 @@ def _persist_state(thread: CarePlanCheckInThread, final_state: CarePlanCheckInSt
     raw_candidates = final_state.get("alternate_candidates", [])
     serialized_candidates = [serialize(c) for c in raw_candidates]
 
+    # Serialize ui_blocks too
+    raw_ui_blocks = final_state.get("ui_blocks", [])
+    serialized_ui_blocks = [serialize(b) for b in raw_ui_blocks]
+    raw_ui_elements = final_state.get("ui_elements", raw_ui_blocks)
+    serialized_ui_elements = [serialize(b) for b in raw_ui_elements]
+    action_plan = final_state.get("action_plan", final_state.get("action_items", []))
+
     new_insights.update({
         "workflow_stage": final_state.get("workflow_stage"),
         "targeted_action_index": final_state.get("targeted_action_index"),
@@ -181,8 +209,150 @@ def _persist_state(thread: CarePlanCheckInThread, final_state: CarePlanCheckInSt
         "barrier_type": final_state.get("barrier_type"),
         "change_reason": final_state.get("change_reason"),
         "alternate_candidates": serialized_candidates,
+        "ui_blocks": serialized_ui_blocks,  # FIX: Persist CTA buttons across requests
+        "ui_elements": serialized_ui_elements,
+        "last_options_shown": final_state.get("last_options_shown"),
+        "user_preferences": final_state.get("user_preferences", {}),
+        "action_plan": [serialize(i) for i in (action_plan or [])],
+        "streak": int(final_state.get("streak") or final_state.get("current_streak") or 0),
     })
     thread.actionable_insights = new_insights
+
+
+def _care_plan_trace(
+    *,
+    flow: str,
+    thread_id: str,
+    intent: Optional[str] = None,
+    workflow_stage: Optional[str] = None,
+    action_id: Optional[str] = None,
+    latency_ms: Optional[float] = None,
+    guardrail_status: Optional[str] = None,
+) -> Dict[str, Any]:
+    trace: Dict[str, Any] = {
+        "flow": flow,
+        "thread_id": thread_id,
+        "intent": intent,
+        "workflow_stage": workflow_stage,
+        "action_id": action_id,
+        "guardrail_status": guardrail_status or "unknown",
+    }
+    if latency_ms is not None:
+        trace["latency_ms"] = int(latency_ms)
+    return trace
+
+
+def _build_care_plan_response(
+    *,
+    thread: CarePlanCheckInThread,
+    history: List[Dict[str, Any]],
+    tap_options: List[Dict[str, Any]],
+    ui_blocks: List[Any],
+    source: str,
+    trace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    resp_ui_blocks = _build_response_ui_blocks(ui_blocks, source=source)
+    return build_chatbot_response_payload(
+        thread_id=thread.id,
+        local_date=thread.local_date.isoformat(),
+        history=history,
+        tap_options=tap_options,
+        ui_blocks=resp_ui_blocks,
+        actionable_insights=thread.actionable_insights or {},
+        flow="care_plan_checkin",
+        trace=trace,
+    )
+
+
+def _serialize_value(obj: Any) -> Any:
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    return obj
+
+
+def _normalize_ui_blocks(blocks: Optional[List[Any]]) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    for block in blocks or []:
+        serialized = _serialize_value(block)
+        if isinstance(serialized, dict):
+            normalized.append(serialized)
+    return normalized
+
+
+def _attach_ui_blocks_to_latest_bot(raw_messages: List[Dict[str, Any]], ui_blocks: Optional[List[Any]]) -> List[Dict[str, Any]]:
+    serialized = _normalize_ui_blocks(ui_blocks)
+    if not serialized:
+        return raw_messages
+    for msg in reversed(raw_messages):
+        if msg.get("role") in {"bot", "assistant"}:
+            msg["ui_blocks"] = serialized
+            break
+    return raw_messages
+
+
+def _append_bot_message(
+    thread_obj: CarePlanCheckInThread,
+    content: str,
+    *,
+    role: str = "bot",
+    ui_blocks: Optional[List[Any]] = None,
+) -> None:
+    if not content:
+        return
+    normalized_role = "bot" if role == "assistant" else role
+    raw = list(thread_obj.raw_messages or [])
+    entry: Dict[str, Any] = {
+        "id": str(uuid4()),
+        "role": normalized_role,
+        "content": content,
+        "created_at": datetime.datetime.utcnow().isoformat(),
+    }
+    serialized_ui = _normalize_ui_blocks(ui_blocks)
+    if serialized_ui:
+        entry["ui_blocks"] = serialized_ui
+    raw.append(entry)
+    thread_obj.raw_messages = raw
+
+
+def _build_response_ui_blocks(raw_blocks: Optional[List[Any]], *, source: str) -> List[UIBlock]:
+    resp_ui_blocks: List[UIBlock] = []
+    for block in _normalize_ui_blocks(raw_blocks):
+        actions: List[UIBlockAction] = []
+        for action in block.get("actions", []):
+            title = (action.get("title") or "").strip()
+            if not title:
+                continue
+            actions.append(
+                UIBlockAction(
+                    id=action.get("id", str(uuid4())),
+                    title=title,
+                    action_type=action.get("action_type", "submit_event"),
+                    payload=action.get("payload", {}),
+                    style=action.get("style", "primary"),
+                )
+            )
+
+        block_title = (block.get("title") or "").strip()
+        block_subtitle = (block.get("description") or block.get("subtitle") or "").strip()
+        if not block_title and not block_subtitle and not actions:
+            continue
+
+        resp_ui_blocks.append(
+            UIBlock(
+                id=block.get("id", str(uuid4())),
+                type=block.get("type") or "quick_actions",
+                title=block_title or None,
+                subtitle=block_subtitle or None,
+                payload=block.get("payload", {}),
+                actions=actions,
+                dismissible=True,
+                priority="high",
+                analytics={"surface": "care_plan_checkin", "source": source},
+            )
+        )
+    return resp_ui_blocks
 
 def _ensure_tap_option(tap_options: List[Dict[str, str]], option_id: str, text: str) -> List[Dict[str, str]]:
     existing_ids = {t.get("id") for t in (tap_options or [])}
@@ -226,6 +396,7 @@ async def start_care_plan_checkin(
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        started_at = perf_counter()
         uid = current_user["uid"]
         service = CarePlanCheckInService(db)
         if force_new:
@@ -236,14 +407,23 @@ async def start_care_plan_checkin(
         history = service.format_history_for_mobile(thread)
         tap_options = _default_tap_options()
         tap_options = _ensure_tap_option(tap_options, "manage_plan", "🧩 Manage plan")
-
-        return {
-            "thread_id": thread.id,
-            "local_date": thread.local_date.isoformat(),
-            "history": history,
-            "tap_options": tap_options,
-            "ui_blocks": _default_ui_blocks_for_start(),
-        }
+        trace = _care_plan_trace(
+            flow="care_plan_checkin",
+            thread_id=thread.id,
+            action_id="start",
+            latency_ms=(perf_counter() - started_at) * 1000,
+            guardrail_status="not_applicable",
+        )
+        payload = _build_care_plan_response(
+            thread=thread,
+            history=history,
+            tap_options=tap_options,
+            ui_blocks=_default_ui_blocks_for_start(),
+            source="start",
+            trace=trace,
+        )
+        logger.info("CARE_PLAN_START", extra={"trace": trace})
+        return payload
     except Exception as e:
         logger.error(f"Start error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -259,6 +439,7 @@ async def respond_care_plan_checkin(
     Replaces old manual logic with graph-based state machine.
     """
     try:
+        started_at = perf_counter()
         uid = current_user["uid"]
         service = CarePlanCheckInService(db)
         logger.info(f"CARE_PLAN_RESPOND_V2 for uid={uid}")
@@ -299,10 +480,7 @@ async def respond_care_plan_checkin(
         final_state = await process_care_plan_message(state, message_text, thread_id=thread.id)
 
         # 4. Save Result to DB
-        # NOTE: User message was already saved above, so we only save bot messages here
-        raw = list(thread.raw_messages or [])
-        
-        # Only append new bot/assistant messages from the graph (skip user messages - already saved)
+        # NOTE: User message was already saved above, so we only save bot messages here.
         new_msgs_count = len(final_state["messages"]) - len(state["messages"])
         if new_msgs_count > 0:
             new_msgs = final_state["messages"][-new_msgs_count:]
@@ -311,25 +489,20 @@ async def respond_care_plan_checkin(
                 if msg.get("role") == "user":
                     continue
                 role = "bot" if msg["role"] == "assistant" else msg["role"]
-                raw.append({
-                    "id": str(uuid4()),
-                    "role": role,
-                    "content": msg["content"],
-                    "created_at": datetime.datetime.utcnow().isoformat()
-                })
+                _append_bot_message(thread, msg.get("content", ""), role=role)
 
-        # Always append bot_response if provided
-        bot_response = (final_state.get("bot_response") or "").strip()
-        if bot_response:
-            raw.append({
-                "id": str(uuid4()),
-                "role": "bot",
-                "content": bot_response,
-                "created_at": datetime.datetime.utcnow().isoformat()
-            })
-
-        if raw:
-            thread.raw_messages = raw
+        # Append bot_response ONLY if no new messages were found from the graph diff
+        # Graph nodes set both messages[] and bot_response — avoid duplicates
+        if new_msgs_count <= 0:
+            bot_response = (final_state.get("bot_response") or "").strip()
+            if bot_response:
+                _append_bot_message(thread, bot_response, role="bot", ui_blocks=final_state.get("ui_blocks"))
+        else:
+            # Attach this turn's CTA payload to the latest bot message so historical transcript can render it.
+            thread.raw_messages = _attach_ui_blocks_to_latest_bot(
+                list(thread.raw_messages or []),
+                final_state.get("ui_blocks"),
+            )
 
         # Persist context
         _persist_state(thread, final_state)
@@ -347,52 +520,25 @@ async def respond_care_plan_checkin(
         else:
             tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
         
-        # Convert Graph UI Blocks to Pydantic with STRICT VALIDATION
-        resp_ui_blocks = []
-        for block in final_state.get("ui_blocks", []):
-            # Validate actions - filter out empty/invalid ones
-            valid_actions = []
-            for act in block.get("actions", []):
-                title = act.get("title", "").strip()
-                if not title:  # Skip actions with no title
-                    logger.warning(f"Skipping action with empty title in block {block.get('id')}")
-                    continue
-                valid_actions.append(UIBlockAction(
-                    id=act.get("id"), 
-                    title=title, 
-                    action_type=act.get("action_type", "submit_event"), 
-                    payload=act.get("payload", {}),
-                    style=act.get("style", "primary")
-                ))
-            
-            # Validate block itself - must have title OR subtitle OR valid actions
-            block_title = (block.get("title") or "").strip()
-            block_subtitle = (block.get("description") or block.get("subtitle") or "").strip()
-            
-            # Skip completely empty blocks
-            if not block_title and not block_subtitle and not valid_actions:
-                logger.warning(f"Skipping empty UI block: {block.get('id')}")
-                continue
-            
-            resp_ui_blocks.append(UIBlock(
-                id=block.get("id", str(uuid4())),
-                type=block.get("type") or "quick_actions",
-                title=block_title if block_title else None,
-                subtitle=block_subtitle if block_subtitle else None,
-                payload=block.get("payload", {}),
-                actions=valid_actions,
-                dismissible=True, priority="high", 
-                analytics={"surface": "care_plan_checkin", "source": "langgraph"}
-            ))
-
-        return {
-            "thread_id": thread.id,
-            "local_date": thread.local_date.isoformat(),
-            "history": history,
-            "tap_options": tap_options,
-            "actionable_insights": thread.actionable_insights or {},
-            "ui_blocks": resp_ui_blocks,
-        }
+        trace = _care_plan_trace(
+            flow="care_plan_checkin",
+            thread_id=thread.id,
+            intent=final_state.get("current_intent"),
+            workflow_stage=final_state.get("workflow_stage"),
+            action_id="respond",
+            latency_ms=(perf_counter() - started_at) * 1000,
+            guardrail_status="post_model_hook",
+        )
+        payload = _build_care_plan_response(
+            thread=thread,
+            history=history,
+            tap_options=tap_options,
+            ui_blocks=final_state.get("ui_blocks", []),
+            source="langgraph",
+            trace=trace,
+        )
+        logger.info("CARE_PLAN_RESPOND", extra={"trace": trace})
+        return payload
 
     except Exception as e:
         logger.error(f"Respond error: {e}")
@@ -414,6 +560,7 @@ async def care_plan_ui_event(
     - show_alternates: User wants to see alternatives
     """
     try:
+        started_at = perf_counter()
         uid = current_user["uid"]
         if not payload.thread_id:
             raise HTTPException(status_code=400, detail="thread_id is required")
@@ -425,6 +572,38 @@ async def care_plan_ui_event(
         
         action_id = (payload.action_id or "").strip()
         meta = payload.metadata or {}
+        insights = ensure_actionable_insights(thread.actionable_insights or {}, flow="care_plan_checkin")
+        idempotency_key = payload.idempotency_key
+        if not ensure_event_not_duplicate(insights=insights, idempotency_key=idempotency_key):
+            thread.actionable_insights = insights
+            db.add(thread)
+            db.commit()
+            db.refresh(thread)
+
+            history = service.format_history_for_mobile(thread)
+            persisted_ui_blocks = insights.get("ui_elements") or insights.get("ui_blocks") or []
+            tap_options = [{"id": "manage_plan", "text": "🧩 Manage plan"}]
+            if not persisted_ui_blocks:
+                tap_options = _ensure_tap_option(_default_tap_options(), "manage_plan", "🧩 Manage plan")
+
+            trace = _care_plan_trace(
+                flow="care_plan_checkin",
+                thread_id=thread.id,
+                workflow_stage=insights.get("workflow_stage"),
+                action_id=action_id,
+                latency_ms=(perf_counter() - started_at) * 1000,
+                guardrail_status="idempotent_replay",
+            )
+            logger.info("CARE_PLAN_EVENT_DUPLICATE", extra={"trace": trace, "idempotency_key": idempotency_key})
+            return _build_care_plan_response(
+                thread=thread,
+                history=history,
+                tap_options=tap_options,
+                ui_blocks=persisted_ui_blocks,
+                source="idempotent_replay",
+                trace=trace,
+            )
+        thread.actionable_insights = insights
         
         logger.info(f"CARE_PLAN_EVENT_V2: action_id={action_id}, thread={payload.thread_id}")
         
@@ -510,14 +689,7 @@ async def care_plan_ui_event(
             # Update thread with bot response
             bot_response = result.get("bot_response", "")
             if bot_response:
-                raw_messages = list(thread.raw_messages or [])
-                raw_messages.append({
-                    "id": str(uuid4()),
-                    "role": "assistant",
-                    "content": bot_response,
-                    "created_at": datetime.datetime.utcnow().isoformat(),
-                })
-                thread.raw_messages = raw_messages
+                _append_bot_message(thread, bot_response, role="bot", ui_blocks=result.get("ui_blocks"))
 
             _persist_state(thread, result)
             db.add(thread)
@@ -525,26 +697,7 @@ async def care_plan_ui_event(
             db.refresh(thread)
 
             history = service.format_history_for_mobile(thread)
-            resp_ui_blocks = []
-            for block in result.get("ui_blocks", []):
-                actions = []
-                for a in block.get("actions", []):
-                    actions.append(UIBlockAction(
-                        id=a.get("id", str(uuid4())),
-                        title=a.get("title", "Action"),
-                        action_type=a.get("action_type", "submit_event"),
-                        style=a.get("style", "primary")
-                    ))
-                resp_ui_blocks.append(UIBlock(
-                    id=block.get("id", str(uuid4())),
-                    type=block.get("type") or "quick_actions",
-                    title=block.get("title"),
-                    subtitle=block.get("subtitle"),
-                    payload=block.get("payload", {}),
-                    actions=actions,
-                    dismissible=True, priority="high",
-                    analytics={"surface": "care_plan_checkin", "source": "action_select"}
-                ))
+            resp_ui_blocks = _build_response_ui_blocks(result.get("ui_blocks", []), source="action_select")
 
             return {
                 "thread_id": thread.id,
@@ -606,6 +759,12 @@ async def care_plan_ui_event(
                 )
 
                 # Persist state for resume
+                _append_bot_message(
+                    thread,
+                    (payload.get("message") if isinstance(payload, dict) else "Confirm this replacement?") or "Confirm this replacement?",
+                    role="bot",
+                    ui_blocks=[ui_block],
+                )
                 _persist_state(thread, result)
                 db.add(thread)
                 db.commit()
@@ -624,14 +783,7 @@ async def care_plan_ui_event(
             
             # Update thread with bot response
             bot_response = result.get("bot_response", "I've made the change for you!")
-            raw_messages = list(thread.raw_messages or [])
-            raw_messages.append({
-                "id": str(uuid4()),
-                "role": "assistant",
-                "content": bot_response,
-                "created_at": datetime.datetime.utcnow().isoformat(),
-            })
-            thread.raw_messages = raw_messages
+            _append_bot_message(thread, bot_response, role="bot", ui_blocks=result.get("ui_blocks"))
             
             # Persist state correctly
             _persist_state(thread, result)
@@ -655,7 +807,7 @@ async def care_plan_ui_event(
                 "history": history,
                 "tap_options": [],  # Clear CTAs after selection
                 "actionable_insights": actionable_insights,
-                "ui_blocks": [],  # Clear UI blocks after selection
+                "ui_blocks": _build_response_ui_blocks(result.get("ui_blocks", []), source="alternate_selection"),
             }
         
         # Handle confirm_skip
@@ -725,14 +877,7 @@ async def care_plan_ui_event(
             if skipped_item and "carry" not in bot_response.lower():
                 bot_response = f"Got it, I've skipped {skipped_item_title}. It'll be carried forward to tomorrow's plan so you can try it then. 💪"
             
-            raw_messages = list(thread.raw_messages or [])
-            raw_messages.append({
-                "id": str(uuid4()),
-                "role": "assistant",
-                "content": bot_response,
-                "created_at": datetime.datetime.utcnow().isoformat(),
-            })
-            thread.raw_messages = raw_messages
+            _append_bot_message(thread, bot_response, role="bot", ui_blocks=result.get("ui_blocks"))
             
             # Persist state
             _persist_state(thread, result)
@@ -748,7 +893,7 @@ async def care_plan_ui_event(
                 "history": history,
                 "tap_options": [],
                 "actionable_insights": thread.actionable_insights or {},
-                "ui_blocks": [],
+                "ui_blocks": _build_response_ui_blocks(result.get("ui_blocks", []), source="confirm_skip"),
             }
         
         # Handle interrupt confirmations
@@ -765,14 +910,7 @@ async def care_plan_ui_event(
             )
 
             bot_response = result.get("bot_response", "All set.")
-            raw_messages = list(thread.raw_messages or [])
-            raw_messages.append({
-                "id": str(uuid4()),
-                "role": "assistant",
-                "content": bot_response,
-                "created_at": datetime.datetime.utcnow().isoformat(),
-            })
-            thread.raw_messages = raw_messages
+            _append_bot_message(thread, bot_response, role="assistant", ui_blocks=result.get("ui_blocks"))
 
             _persist_state(thread, result)
             db.add(thread)
@@ -786,7 +924,7 @@ async def care_plan_ui_event(
                 "history": history,
                 "tap_options": [],
                 "actionable_insights": thread.actionable_insights or {},
-                "ui_blocks": [],
+                "ui_blocks": _build_response_ui_blocks(result.get("ui_blocks", []), source="interrupt_resume"),
             }
 
         # Handle show_alternates
@@ -802,14 +940,7 @@ async def care_plan_ui_event(
             )
             
             bot_response = result.get("bot_response", "Here are some alternatives:")
-            raw_messages = list(thread.raw_messages or [])
-            raw_messages.append({
-                "id": str(uuid4()),
-                "role": "assistant",
-                "content": bot_response,
-                "created_at": datetime.datetime.utcnow().isoformat(),
-            })
-            thread.raw_messages = raw_messages
+            _append_bot_message(thread, bot_response, role="assistant", ui_blocks=result.get("ui_blocks"))
             
             # Persist state
             _persist_state(thread, result)
@@ -820,27 +951,7 @@ async def care_plan_ui_event(
             
             history = service.format_history_for_mobile(thread)
             
-            # Format UI blocks from result
-            resp_ui_blocks = []
-            for block in result.get("ui_blocks", []):
-                actions = []
-                for a in block.get("actions", []):
-                    actions.append(UIBlockAction(
-                        id=a.get("id", str(uuid4())),
-                        title=a.get("title", "Action"),
-                        action_type=a.get("action_type", "submit_event"),
-                        style=a.get("style", "primary")
-                    ))
-                resp_ui_blocks.append(UIBlock(
-                    id=block.get("id", str(uuid4())),
-                    type=block.get("type") or "quick_actions",
-                    title=block.get("title"),
-                    subtitle=block.get("subtitle"),
-                    payload=block.get("payload", {}),
-                    actions=actions,
-                    dismissible=True, priority="high",
-                    analytics={"surface": "care_plan_checkin", "source": "langgraph_event"}
-                ))
+            resp_ui_blocks = _build_response_ui_blocks(result.get("ui_blocks", []), source="langgraph_event")
             
             return {
                 "thread_id": thread.id,
@@ -874,14 +985,7 @@ async def care_plan_ui_event(
             
             bot_response = result.get("bot_response", "")
             if bot_response:
-                raw_messages = list(thread.raw_messages or [])
-                raw_messages.append({
-                    "id": str(uuid4()),
-                    "role": "assistant",
-                    "content": bot_response,
-                    "created_at": datetime.datetime.utcnow().isoformat(),
-                })
-                thread.raw_messages = raw_messages
+                _append_bot_message(thread, bot_response, role="assistant", ui_blocks=result.get("ui_blocks"))
             
             _persist_state(thread, result)
             db.add(thread)
@@ -890,27 +994,7 @@ async def care_plan_ui_event(
             
             history = service.format_history_for_mobile(thread)
             
-            # Format UI blocks from result
-            resp_ui_blocks = []
-            for block in result.get("ui_blocks", []):
-                actions = []
-                for a in block.get("actions", []):
-                    actions.append(UIBlockAction(
-                        id=a.get("id", str(uuid4())),
-                        title=a.get("title", "Action"),
-                        action_type=a.get("action_type", "submit_event"),
-                        style=a.get("style", "primary")
-                    ))
-                resp_ui_blocks.append(UIBlock(
-                    id=block.get("id", str(uuid4())),
-                    type=block.get("type") or "quick_actions",
-                    title=block.get("title"),
-                    subtitle=block.get("subtitle"),
-                    payload=block.get("payload", {}),
-                    actions=actions,
-                    dismissible=True, priority="high",
-                    analytics={"surface": "care_plan_checkin", "source": "langgraph_event"}
-                ))
+            resp_ui_blocks = _build_response_ui_blocks(result.get("ui_blocks", []), source="langgraph_event")
             
             return {
                 "thread_id": thread.id,
@@ -944,14 +1028,7 @@ async def care_plan_ui_event(
             
             bot_response = result.get("bot_response", "")
             if bot_response:
-                raw_messages = list(thread.raw_messages or [])
-                raw_messages.append({
-                    "id": str(uuid4()),
-                    "role": "assistant",
-                    "content": bot_response,
-                    "created_at": datetime.datetime.utcnow().isoformat(),
-                })
-                thread.raw_messages = raw_messages
+                _append_bot_message(thread, bot_response, role="assistant", ui_blocks=result.get("ui_blocks"))
             
             _persist_state(thread, result)
             db.add(thread)
@@ -960,27 +1037,7 @@ async def care_plan_ui_event(
             
             history = service.format_history_for_mobile(thread)
             
-            # Format UI blocks from result
-            resp_ui_blocks = []
-            for block in result.get("ui_blocks", []):
-                actions = []
-                for a in block.get("actions", []):
-                    actions.append(UIBlockAction(
-                        id=a.get("id", str(uuid4())),
-                        title=a.get("title", "Action"),
-                        action_type=a.get("action_type", "submit_event"),
-                        style=a.get("style", "primary")
-                    ))
-                resp_ui_blocks.append(UIBlock(
-                    id=block.get("id", str(uuid4())),
-                    type=block.get("type") or "quick_actions",
-                    title=block.get("title"),
-                    subtitle=block.get("subtitle"),
-                    payload=block.get("payload", {}),
-                    actions=actions,
-                    dismissible=True, priority="high",
-                    analytics={"surface": "care_plan_checkin", "source": "tap_option"}
-                ))
+            resp_ui_blocks = _build_response_ui_blocks(result.get("ui_blocks", []), source="tap_option")
             
             # Rebuild tap options - always include manage_plan for access to PlanManagerModal
             if not resp_ui_blocks:
@@ -1005,13 +1062,14 @@ async def care_plan_ui_event(
         # Unknown action - return with manage_plan option
         logger.warning(f"Unknown UI event action: {action_id}")
         history = service.format_history_for_mobile(thread)
+        persisted_ui_blocks = (thread.actionable_insights or {}).get("ui_elements") or (thread.actionable_insights or {}).get("ui_blocks") or []
         return {
             "thread_id": thread.id,
             "local_date": thread.local_date.isoformat(),
             "history": history,
             "tap_options": [{"id": "manage_plan", "text": "🧩 Manage plan"}],
             "actionable_insights": thread.actionable_insights or {},
-            "ui_blocks": [],
+            "ui_blocks": _build_response_ui_blocks(persisted_ui_blocks, source="unknown_action"),
         }
         
     except Exception as e:

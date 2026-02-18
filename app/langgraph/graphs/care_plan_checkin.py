@@ -27,14 +27,19 @@ import random  # Retry jitter to prevent thundering herd
 import json
 import os
 import logging
-import re
+import sqlite3
 import uuid
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from datetime import date, datetime
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import InMemorySaver
+try:
+    from langgraph.checkpoint.postgres import PostgresSaver  # type: ignore
+except Exception:  # pragma: no cover - optional dependency in some envs
+    PostgresSaver = None
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import interrupt, Command
 from pydantic import BaseModel
+from langchain_openai import ChatOpenAI
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from app.langgraph.helpers.llm_client import call_llm, call_llm_structured
@@ -58,6 +63,9 @@ from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog, Sess
 from app.langgraph.memory import get_unified_context, format_context_for_prompt
 
 logger = logging.getLogger(__name__)
+
+STREAM_MODE_UI = "custom"
+STREAM_MODE_TEXT = "messages"
 
 
 async def _maybe_add_ctas(
@@ -95,12 +103,14 @@ class CarePlanCheckInState(TypedDict):
     plan_id: Optional[int]
     plan_date: Optional[date]
     action_items: List[Dict[str, Any]]
+    action_plan: List[Dict[str, Any]]
     
     # User context
     cycle_day: Optional[int]
     cycle_phase: Optional[str]
     primary_hormone: Optional[str]
     current_streak: int
+    streak: int
     
     # REFRESH TOKENS (CRITICAL)
     refresh_tokens_available: int
@@ -123,9 +133,12 @@ class CarePlanCheckInState(TypedDict):
     alternate_candidates: List[Dict[str, Any]]
     selected_alternate_index: Optional[int]
     selected_alternate: Optional[Dict[str, Any]]
+    last_options_shown: Optional[List[str]]
+    user_preferences: Dict[str, Any]
     
     # UI Elements
     ui_blocks: List[Dict[str, Any]]
+    ui_elements: List[Dict[str, Any]]
     
     # Outputs
     bot_response: str
@@ -281,11 +294,13 @@ def create_initial_state(user_id: str, thread_id: str = None) -> CarePlanCheckIn
         plan_id=None,
         plan_date=None,
         action_items=[],
+        action_plan=[],
         
         cycle_day=None,
         cycle_phase=None,
         primary_hormone=None,
         current_streak=0,
+        streak=0,
         
         refresh_tokens_available=0,
         refresh_tokens_unlocked=False,
@@ -298,19 +313,26 @@ def create_initial_state(user_id: str, thread_id: str = None) -> CarePlanCheckIn
         targeted_action_index=None,
         change_reason=None,
         barrier_type=None,
+        feedback_topic=None,
         
         workflow_stage=None,
         alternate_candidates=[],
         selected_alternate_index=None,
         selected_alternate=None,
+        last_options_shown=None,
+        user_preferences={},
         
         ui_blocks=[],
+        ui_elements=[],
         
         bot_response="",
         actions_to_execute=[],
         
         phase="init",
         error=None
+        ,
+        unified_context=None,
+        formatted_context=None
     )
 
 
@@ -363,10 +385,12 @@ async def load_daily_plan_and_tokens(state: CarePlanCheckInState) -> CarePlanChe
                 "plan_id": plan_data["plan_id"],
                 "plan_date": plan_data["plan_date"],
                 "action_items": plan_data["items"],
+                "action_plan": plan_data["items"],
                 "cycle_day": cycle_info.get("cycle_day"),
                 "cycle_phase": cycle_info.get("phase"),
                 "primary_hormone": cycle_info.get("primary_hormone"),
                 "current_streak": current_streak,
+                "streak": current_streak,
                 "refresh_tokens_available": refresh_tokens,
                 "refresh_tokens_unlocked": refresh_unlocked,
                 # NEW: Unified cross-chatbot context for truly personalized responses
@@ -379,447 +403,270 @@ async def load_daily_plan_and_tokens(state: CarePlanCheckInState) -> CarePlanChe
         return {**state, "error": str(e), "phase": "complete"}
 
 
-async def classify_user_intent(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """
-    PRODUCTION-GRADE: OpenAI function calling with tool_choice for intent classification.
-    
-    Same pattern as CarePlanSemanticMatcher.classify_intent() — proven in this codebase.
-    
-    Why this is better than JSON mode (call_llm_structured):
-    1. strict: true → OpenAI validates the output schema, no parse errors
-    2. tool_choice → forces the LLM to call the function, guaranteed output
-    3. enum → intent MUST be one of 13 valid values, impossible to hallucinate
-    4. temperature 0.1 → consistent classification across identical inputs
-    5. Retry + timeout → handles transient API failures gracefully
-    6. Fallback chain → function calling → JSON mode → default to 'general'
-    7. Conversation truncation → prevents token limit overflow (20 msgs/4000 tokens)
-    8. Circuit breaker → prevents cascading failures from OpenAI outages
-    """
-    
-    user_message = state.get("user_message", "")
+INTENT_TO_NODE: Dict[str, str] = {
+    "complete_action": "handle_complete_action",
+    "skip_action": "handle_skip_action",
+    "change_action": "handle_change_action",
+    "request_alternates": "handle_change_action",
+    "negotiate": "handle_change_action",
+    "ask_why": "handle_ask_why",
+    "request_clarification": "handle_request_clarification",
+    "cancel_action": "handle_cancel_action",
+    "plan_feedback": "handle_plan_feedback",
+    "challenge_science": "handle_challenge_science",
+    "explain_plan": "handle_explain_plan",
+    "health_question": "handle_health_question",
+    "show_streak": "handle_show_streak",
+    "general": "handle_general_response",
+}
+
+
+class IntentRoutingOutput(BaseModel):
+    """Structured intent schema used with with_structured_output()."""
+    intent: Literal[
+        "complete_action",
+        "skip_action",
+        "change_action",
+        "request_alternates",
+        "negotiate",
+        "ask_why",
+        "request_clarification",
+        "cancel_action",
+        "plan_feedback",
+        "challenge_science",
+        "explain_plan",
+        "health_question",
+        "show_streak",
+        "general",
+    ]
+    targeted_action_index: Optional[int] = None  # 1-based (user-facing)
+    proposed_replacement: Optional[str] = None
+    feedback_topic: Optional[str] = None
+
+
+class HealthGuardrailOutput(BaseModel):
+    """Structured moderation output for health-safety post checks."""
+    safety_level: Literal["safe", "caution", "urgent"]
+    should_append_urgent_guidance: bool = False
+
+
+_intent_router_llm = None
+_guardrail_llm = None
+
+
+def _get_intent_router_llm():
+    """Singleton structured LLM router."""
+    global _intent_router_llm
+    if _intent_router_llm is None:
+        model = os.getenv("CARE_PLAN_INTENT_MODEL", "gpt-5-mini")
+        _intent_router_llm = ChatOpenAI(model=model, temperature=0).with_structured_output(IntentRoutingOutput)
+    return _intent_router_llm
+
+
+def _get_guardrail_llm():
+    """Singleton structured LLM moderation model for post-response safety checks."""
+    global _guardrail_llm
+    if _guardrail_llm is None:
+        model = os.getenv("CARE_PLAN_GUARDRAIL_MODEL", os.getenv("CARE_PLAN_INTENT_MODEL", "gpt-5-mini"))
+        _guardrail_llm = ChatOpenAI(model=model, temperature=0).with_structured_output(HealthGuardrailOutput)
+    return _guardrail_llm
+
+
+async def classify_user_intent(state: CarePlanCheckInState) -> Command:
+    """Classify intent with structured output and route via Command(goto=...)."""
+    user_message = (state.get("user_message") or "").strip()
     if not user_message:
-        return {**state, "error": "no_user_message", "phase": "complete"}
-    
-    # ══════════════════════════════════════════════════════════════
-    # PRE-CLASSIFICATION: Regex-based fast path for OBVIOUS intents
-    # Catches clear patterns before expensive LLM call.
-    # Only triggers on HIGH-CONFIDENCE patterns to avoid false positives.
-    #
-    # CRITICAL: SKIP pre-classification when in an ACTIVE WORKFLOW STAGE.
-    # During workflows (e.g., alternate selection, skip decision), the user's
-    # message must be interpreted in context of the workflow, not by regex.
-    # e.g., "done" during alternate selection means "I'm done choosing", not
-    # "I completed an action". The LLM classifier handles this via workflow_hint.
-    # ══════════════════════════════════════════════════════════════
-    msg_lower = user_message.lower().strip()
-    workflow_stage = state.get("workflow_stage")
-    action_items = state.get("action_items", [])
-    
-    # Only pre-classify when NOT in a multi-step workflow
-    active_workflow_stages = {
-        "awaiting_alternate_selection", "skip_decision",
-        "awaiting_action_selection", "awaiting_direct_replacement_selection",
-        "generating_alternates", "generating_direct_replacement"
-    }
-    
-    pre_classified_intent = None
-    pre_targeted_idx = None
-    
-    if workflow_stage not in active_workflow_stages:
-        # Pattern 1: Timing/clarification questions about specific actions
-        timing_patterns = [
-            r'\b(?:when|what time|how long|how much|how many|before or after|as breakfast|after (?:a )?meal|before (?:a )?meal|with water|with milk|morning or night|before bed)\b'
-        ]
-        for pattern in timing_patterns:
-            if re.search(pattern, msg_lower):
-                # Check if they mention an action item by name
-                for i, item in enumerate(action_items):
-                    item_title = item.get("title", "").lower()
-                    item_words = [w for w in item_title.split() if len(w) > 3]
-                    for word in item_words:
-                        if word in msg_lower:
-                            pre_classified_intent = "request_clarification"
-                            pre_targeted_idx = i
-                            break
-                    if pre_classified_intent:
-                        break
-                if not pre_classified_intent and re.search(r'\b(?:when to take|how to take|how long|how much|how many|what time)\b', msg_lower):
-                    # Generic timing question even without action match
-                    pre_classified_intent = "request_clarification"
-                break
-        
-        # Pattern 2: Explicit change/swap requests
-        if not pre_classified_intent:
-            change_patterns = [
-                r'\b(?:i want to change|change (?:it|this|my plan|the)|suggest (?:something|easy|different|other)|not for me|replace|swap|switch|give me something else|something else instead|suggest easy|suggest (?:an )?alternative)\b',
-                r'\b(?:i don\'?t (?:work out|exercise|like (?:this|it|that))|too (?:hard|difficult|boring))\b.*\b(?:suggest|instead|change|easy|alternative|other)\b',
-            ]
-            for pattern in change_patterns:
-                if re.search(pattern, msg_lower):
-                    pre_classified_intent = "change_action"
-                    break
-        
-        # Pattern 3: Skip signals
-        if not pre_classified_intent:
-            skip_patterns = [r'\b(?:skip (?:it|this|that)|not today|i\'?ll (?:do it |)later|too tired|can\'?t do (?:it|this) today)\b']
-            for pattern in skip_patterns:
-                if re.search(pattern, msg_lower):
-                    pre_classified_intent = "skip_action"
-                    break
-        
-        # Pattern 4: Completion signals — ONLY exact short messages to avoid false positives
-        # e.g., "done" or "✅" is completion, but "I ate salmon for breakfast and then went shopping" is ambiguous
-        if not pre_classified_intent:
-            # Short exact matches (message is ONLY a completion signal)
-            if msg_lower in {"done", "✅", "completed", "finished", "already done", "i did it", "i did that"}:
-                pre_classified_intent = "complete_action"
-            # Longer messages starting with completion verbs need action item match
-            elif re.search(r'^(?:i ate|i drank|i took|i already do|i completed|i finished|i did)\b', msg_lower):
-                for i, item in enumerate(action_items):
-                    item_title = item.get("title", "").lower()
-                    item_words = [w for w in item_title.split() if len(w) > 3]
-                    for word in item_words:
-                        if word in msg_lower:
-                            pre_classified_intent = "complete_action"
-                            pre_targeted_idx = i
-                            break
-                    if pre_classified_intent:
-                        break
-    
-    # If pre-classified with high confidence, skip the LLM call
-    if pre_classified_intent:
-        targeted_id = state.get("targeted_action_id")
-        targeted_idx = state.get("targeted_action_index")
-        
-        if pre_targeted_idx is not None:
-            targeted_idx = pre_targeted_idx
-            targeted_id = action_items[pre_targeted_idx].get("id") or action_items[pre_targeted_idx].get("item_id")
-        
-        logger.info(f"[INTENT] Pre-classified (regex fast path): intent={pre_classified_intent}, action_idx={pre_targeted_idx}")
-        
-        return {
-            **state,
-            "current_intent": pre_classified_intent,
-            "targeted_action_id": targeted_id,
-            "targeted_action_index": targeted_idx,
-            "change_reason": None,
-            "feedback_topic": None,
-            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-            "phase": "processing"
-        }
-    
-    # ══════════════════════════════════════════════════════════════
-    # PRODUCTION FIX: Truncate conversation to prevent token overflow
-    # Keep last 20 messages OR 4000 tokens, whichever is smaller
-    # ══════════════════════════════════════════════════════════════
-    config = get_llm_config()
-    messages = state.get("messages", [])
-    original_message_count = len(messages)
-    
-    if len(messages) > config.max_conversation_messages:
-        messages = truncate_conversation_smart(
-            messages,
-            max_messages=config.max_conversation_messages,
-            max_tokens=config.max_conversation_tokens
+        return Command(
+            update={**state, "error": "no_user_message", "current_intent": "general", "phase": "processing"},
+            goto="handle_general_response",
         )
-        logger.info(f"[INTENT] Truncated conversation: {original_message_count} → {len(messages)} messages")
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # BUILD CONTEXT — same data, now fed into function calling
-    # ════════════════════════════════════════════════════════════════════════
-    recent_msgs = messages[-15:]  # 7-8 turns of context (was 5 turns = 10 msgs)
-    chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_msgs])
-    
-    # CRITICAL FIX: Extract the LAST BOT MESSAGE separately
-    # Without this, the classifier can't understand references like "I want to change it",
-    # "the second one", "yes" — because it doesn't know what the bot just said/offered.
-    last_bot_message = ""
-    for m in reversed(messages):
-        if m.get("role") == "assistant":
-            last_bot_message = m.get("content", "")
+
+    messages = list(state.get("messages") or [])
+    action_items = list(state.get("action_items") or [])
+    last_assistant = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "assistant":
+            last_assistant = msg.get("content", "")
             break
 
-    actions_list = "\n".join([
-        f"{i+1}. {item.get('title', 'Unknown')} ({item.get('category', 'general')})"
-        for i, item in enumerate(state.get("action_items", []))
-    ])
-    
-    unified_context = state.get("unified_context", {})
-    user_profile = unified_context.get("user_profile", {})
-    user_conditions = user_profile.get("conditions", [])
-    user_symptoms = user_profile.get("primary_symptoms", [])
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # WORKFLOW STAGE CONTEXT — critical for mid-flow messages
-    # Without this, typing "the second one" during alternate selection
-    # gets misclassified as 'general' instead of alternate selection.
-    # ════════════════════════════════════════════════════════════════════════
-    workflow_stage = state.get("workflow_stage")
-    workflow_hint = ""
-    if workflow_stage == "awaiting_alternate_selection":
-        alternates = state.get("alternate_candidates", [])
-        alt_names = [a.get("title", f"Option {i+1}") for i, a in enumerate(alternates)]
-        workflow_hint = f"""\n\n⚠️ ACTIVE WORKFLOW: User is currently choosing between alternatives: {', '.join(alt_names)}.
-If they reference one by number/name/description ("the first one", "salmon", "I'll take option 2"), classify as change_action with the matching targeted_action_index from their ORIGINAL action items.
-If they say "none of these" or "show more" → request_alternates.
-If they say "never mind" or "keep original" → cancel_action."""
-    elif workflow_stage == "skip_decision":
-        workflow_hint = """\n\n⚠️ ACTIVE WORKFLOW: User was asked about skipping an action and shown 'Show alternatives' / 'Skip it' buttons.
-If they confirm skip ("yes", "skip it", "ok") → skip_action.
-If they want alternatives ("show me", "what else") → request_alternates.
-If they changed their mind ("no", "keep it") → cancel_action."""
-    elif workflow_stage == "awaiting_action_selection":
-        workflow_hint = """\n\n⚠️ ACTIVE WORKFLOW: User was asked to pick WHICH action to change/view alternatives for.
-If they name/number an action → change_action with targeted_action_index.
-If they cancel → cancel_action."""
-    elif workflow_stage == "awaiting_direct_replacement_selection":
-        workflow_hint = """\n\n⚠️ ACTIVE WORKFLOW: User was shown a specific replacement suggestion.
-If they confirm ("yes", "sounds good", "let's do it") → change_action.
-If they reject ("no", "something else") → request_alternates.
-If they cancel → cancel_action."""
+    actions_list = "\n".join(
+        [f"{idx + 1}. {item.get('title', 'Unknown')} ({item.get('category', 'general')})" for idx, item in enumerate(action_items)]
+    ) or "No actions loaded."
 
-    # ════════════════════════════════════════════════════════════════════════
-    # SYSTEM PROMPT — teaches the LLM WHEN to pick each intent.
-    # The tool definition handles WHAT the output looks like (schema).
-    # This separation is a production best practice.
-    # ════════════════════════════════════════════════════════════════════════
-    system_prompt = """You are the intent classifier for Auvra, a women's hormone health app.
-Analyze the user's message IN CONTEXT OF what the bot just said, and call classify_care_plan_intent.
+    workflow_stage = state.get("workflow_stage") or "none"
+    last_options_shown = state.get("last_options_shown") or []
+    recent_messages = messages[-10:]
+    chat_context = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent_messages])
 
-⚠️ MOST IMPORTANT RULE: Read the "LAST BOT MESSAGE" below BEFORE classifying.
-The user's message is a RESPONSE to what the bot just said. You MUST understand the bot's last message to classify correctly.
-
-INTENT GUIDE:
-- complete_action: User says they DID/FINISHED an action ("Done!", "I ate the walnuts", "✅", "I already did that")
-- skip_action: User wants to SKIP an action today ("Skip yoga", "Not today", "I'm too tired", "I'll do it later")
-- change_action: User wants to REPLACE/SWAP an action ("Change the salmon", "Suggest something easier", "I want to change it", "I want to change my plan", "Not for me", "Something else", "I don't work out suggest easy activities", "Suggest easy activities for me instead")
-- request_alternates: User wants to SEE OPTIONS without deciding ("Show me alternatives", "Other options?", "What else do you have?")
-- negotiate: User has a BARRIER but is open to modifications ("I don't have walnuts", "I'm allergic", "Can I do 10 min instead?", "Is there a vegetarian option?")
-- ask_why: User asks WHY/RATIONALE for ONE specific action ("Why walnuts?", "What does salmon do for hormones?", "What's the point?")
-- request_clarification: User asks HOW/WHEN/HOW MUCH/TIMING for a specific action ("When to take cinnamon?", "As breakfast or after meal?", "How long should I meditate?", "Before or after food?", "With water or milk?", "When to take cinnamon today? As breakfast or after a meal?", "What time should I do yoga?", "How much water?", "How many walnuts?")
-- cancel_action: User wants to CANCEL/STOP a change ("Never mind", "Keep as is", "No thanks", "Keep original")
-- plan_feedback: User comments on OVERALL PLAN quality ("This looks generic", "Not personalized", "Same as yesterday", "This is the same as yesterday")
-- challenge_science: User questions RESEARCH/EVIDENCE ("Is this backed by research?", "Any studies?")
-- explain_plan: User wants to understand HOW the plan was created ("How did you make this?", "Why these items?")
-- health_question: User asks a GENERAL health question NOT about a specific action ("How to regulate periods?", "What helps with cramps?", "Is this safe during pregnancy?")
-- general: LAST RESORT — greetings, thanks, status checks, emotions ("Thanks!", "How many left?", "Good morning")
-
-⚠️ CRITICAL DISAMBIGUATION RULES:
-
-1. TIMING/HOW-TO QUESTIONS → ALWAYS request_clarification (NOT change_action):
-   - "When to take X?" → request_clarification
-   - "As breakfast or after meal?" → request_clarification  
-   - "How long should I do X?" → request_clarification
-   - "Before or after food?" → request_clarification
-   - "How many?" / "How much?" → request_clarification
-   - "What time?" → request_clarification
-
-2. CHANGE/REPLACE REQUESTS → ALWAYS change_action (NOT general):
-   - "I want to change it" → change_action
-   - "I want to change my plan" → change_action
-   - "Suggest something easier/different" → change_action
-   - "Not for me" / "I don't like this" → change_action
-   - "I don't work out, suggest easy activities" → change_action
-   - "Suggest easy activities for me instead of today action plan" → change_action
-   - "Can you give me something else?" → change_action
-   - 👎 emoji or negative reaction to plan → change_action
-
-3. WHY vs WHEN vs CHANGE:
-   - "Why walnuts?" → ask_why (asking for rationale/reason)
-   - "When to take walnuts?" → request_clarification (asking for timing)
-   - "Change the walnuts" → change_action (wants replacement)
-   - "I don't have walnuts" → negotiate (has a barrier)
-
-4. NEVER classify as 'general' if the user:
-   - Mentions ANY action item by name → match the appropriate action-related intent
-   - Asks ANY question (how/when/why/what) → use the specific question intent
-   - Expresses dissatisfaction → change_action or plan_feedback
-   - Refers to changing/modifying anything → change_action or negotiate
-
-THE KEY TEST:
-- About ONE specific action? → ask_why, request_clarification, change_action, skip_action, complete_action, negotiate
-- About the WHOLE plan? → plan_feedback, explain_plan, challenge_science
-- General health topic? → health_question
-- ONLY if none of above match → general
-
-MULTI-ACTION RULE: If user mentions completing/skipping MULTIPLE actions in one message, classify based on the FIRST action mentioned. Set targeted_action_index for that first action.
-
-WHEN IN DOUBT: Prefer the MORE SPECIFIC intent over 'general'. 'general' should be RARE. All handlers can handle edge cases gracefully.
-
-targeted_action_index: Set 1-4 ONLY if user refers to ONE specific action by name/number/keyword. Match from the action items list. Null for whole-plan or general messages.
-proposed_replacement: Set ONLY if user names what they want instead ("cashews instead of walnuts"). Null otherwise.
-feedback_topic: Only for plan_feedback/challenge_science."""
-
-    # User context message — compact but complete
-    # CRITICAL FIX: Added LAST BOT MESSAGE prominently so classifier understands
-    # what the user is responding to. Without this, "I want to change it" or 
-    # "the second one" gets misclassified because the LLM doesn't know the context.
-    context_message = f"""Today's Action Items:
+    system_prompt = """You classify care-plan chat intent for a women's health app.
+Always return one of the schema intents.
+Important rules:
+- Requests like "I need more options", "show me more", "actually show me more options" MUST be request_alternates.
+- If workflow stage is awaiting_alternate_selection and the user asks for different/new/more options, use request_alternates.
+- If user dislikes an item and asks for alternatives, use request_alternates or change_action (prefer request_alternates when explicitly asking for options).
+- If user asks why they take something, use ask_why.
+- If user asks how/when/how much, use request_clarification.
+- If user confirms completion, use complete_action.
+- If user asks streak/progress/milestones, use show_streak.
+Use last assistant message and workflow stage context."""
+    context_prompt = f"""Workflow stage: {workflow_stage}
+Last assistant message: {last_assistant or "none"}
+Last option titles shown: {", ".join([str(o) for o in last_options_shown]) if last_options_shown else "none"}
+Today's actions:
 {actions_list}
-
-User Health: {', '.join(user_conditions) if user_conditions else 'Not specified'}
-Symptoms: {', '.join(user_symptoms) if user_symptoms else 'Not specified'}
-{f'Current Workflow Stage: {workflow_stage}' if workflow_stage else ''}
-{workflow_hint}
-
-LAST BOT MESSAGE (what the bot just said — the user is responding to THIS):
-\"\"\"{last_bot_message if last_bot_message else 'Bot just presented the daily action plan.'}\"\"\"
-
-Recent Chat History:
+Recent chat:
 {chat_context}
+User message: {user_message}
 
-User's NEW message (classify THIS): \"{user_message}\""""
+Return targeted_action_index as 1-based when user references a specific action."""
 
-    # ════════════════════════════════════════════════════════════════════════
-    # PRIMARY: OpenAI Function Calling with tool_choice (strict schema)
-    # PRODUCTION FIX: Added circuit breaker protection to prevent cascading failures
-    # Retry loop with exponential backoff — production pattern
-    # ════════════════════════════════════════════════════════════════════════
-    last_error = None
-    for attempt in range(3):  # 1 initial + 2 retries
-        try:
-            # Wrap OpenAI call with circuit breaker
-            async def _make_openai_call():
-                client = _get_care_plan_openai_client()
-                return await asyncio.wait_for(
-                    client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": context_message}
-                        ],
-                        tools=CARE_PLAN_INTENT_TOOLS,
-                        tool_choice={"type": "function", "function": {"name": "classify_care_plan_intent"}},
-                        temperature=0.1  # Low temperature = consistent classification
-                    ),
-                    timeout=12.0
-                )
-            
-            # Call with circuit breaker protection
-            try:
-                response = await openai_breaker.call(_make_openai_call)
-            except CircuitBreakerError:
-                # Circuit is OPEN - OpenAI is down, fall back immediately
-                logger.warning("[INTENT] Circuit breaker OPEN, falling back to JSON mode")
-                raise Exception("circuit_breaker_open")
-            
-            if response.choices and response.choices[0].message.tool_calls:
-                tool_call = response.choices[0].message.tool_calls[0]
-                args = json.loads(tool_call.function.arguments)
-                
-                # Extract fields (all guaranteed by strict schema)
-                intent = args.get("intent", "general")
-                targeted_idx_raw = args.get("targeted_action_index")
-                replacement = args.get("proposed_replacement")
-                confidence = max(0.0, min(1.0, float(args.get("confidence", 0.8))))
-                feedback_topic = args.get("feedback_topic")
-                
-                # Validate intent against known set (defense in depth)
-                valid_intents = {
-                    "complete_action", "skip_action", "change_action",
-                    "request_alternates", "negotiate", "ask_why",
-                    "request_clarification", "cancel_action", "plan_feedback",
-                    "challenge_science", "explain_plan", "health_question", "general"
-                }
-                if intent not in valid_intents:
-                    intent = "general"
-                
-                # Map 1-based action index to actual ID (validate bounds)
-                targeted_id = state.get("targeted_action_id")      # Preserve existing
-                targeted_idx = state.get("targeted_action_index")  # Preserve existing
-                
-                if targeted_idx_raw is not None:
-                    idx = targeted_idx_raw - 1  # Convert 1-based → 0-based
-                    if 0 <= idx < len(state.get("action_items", [])):
-                        targeted_idx = idx
-                        targeted_id = state["action_items"][idx].get("id") or state["action_items"][idx].get("item_id")
-                
-                logger.info(f"[INTENT] Function calling classified: intent={intent}, action_idx={targeted_idx_raw}, conf={confidence:.2f}")
-                
-                return {
-                    **state,
-                    "current_intent": intent,
-                    "targeted_action_id": targeted_id,
-                    "targeted_action_index": targeted_idx,
-                    "change_reason": replacement or state.get("change_reason"),
-                    "feedback_topic": feedback_topic,
-                    "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-                    "phase": "processing"
-                }
-        
-        except asyncio.TimeoutError:
-            last_error = "timeout"
-            logger.warning(f"[INTENT] Function calling timeout, attempt {attempt + 1}/3")
-        except RateLimitError as e:
-            last_error = f"rate_limit: {e}"
-            logger.warning(f"[INTENT] Rate limited, attempt {attempt + 1}/3")
-            await asyncio.sleep(0.5 * (attempt + 1))
-        except (APIError, APITimeoutError) as e:
-            last_error = f"api_error: {e}"
-            logger.warning(f"[INTENT] API error: {e}, attempt {attempt + 1}/3")
-        except json.JSONDecodeError as e:
-            last_error = f"json_parse: {e}"
-            logger.warning(f"[INTENT] Failed to parse tool call args: {e}")
-        except Exception as e:
-            last_error = f"unexpected: {e}"
-            logger.error(f"[INTENT] Unexpected error: {e}")
-            break  # Don't retry unexpected errors
-        
-        if attempt < 2:
-            # PRODUCTION FIX: Add jitter to prevent thundering herd
-            base_delay = 0.5 * (attempt + 1)
-            jitter = random.uniform(0, base_delay * 0.5)  #±50% jitter
-            await asyncio.sleep(base_delay + jitter)
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # FALLBACK: JSON mode via call_llm_structured (includes Groq fallback)
-    # This fires only if function calling fails 3 times — extremely rare.
-    # ════════════════════════════════════════════════════════════════════════
-    logger.warning(f"[INTENT] Function calling failed after 3 attempts ({last_error}), falling back to JSON mode")
-    
     try:
-        fallback_prompt = f"""Classify this care plan check-in message.
+        structured_llm = _get_intent_router_llm()
+        classification = await structured_llm.ainvoke(
+            [{"role": "system", "content": system_prompt}, {"role": "user", "content": context_prompt}]
+        )
+    except Exception as e:
+        logger.warning(f"[INTENT] Structured router failed, fallback to general: {e}")
+        fallback_intent = "request_alternates" if workflow_stage == "awaiting_alternate_selection" else "general"
+        classification = IntentRoutingOutput(intent=fallback_intent)
 
-User: "{user_message}"
-Actions: {actions_list}
-Chat: {chat_context}
+    if workflow_stage == "awaiting_alternate_selection" and classification.intent == "general" and last_options_shown:
+        classification = IntentRoutingOutput(
+            intent="request_alternates",
+            targeted_action_index=classification.targeted_action_index,
+            proposed_replacement=classification.proposed_replacement,
+            feedback_topic=classification.feedback_topic,
+        )
 
-Intents: complete_action, skip_action, change_action, request_alternates, negotiate, ask_why, request_clarification, cancel_action, plan_feedback, challenge_science, explain_plan, health_question, general
+    targeted_idx = state.get("targeted_action_index")
+    targeted_id = state.get("targeted_action_id")
 
-Output JSON: {{"intent": "...", "targeted_action_index": 1-4 or null, "proposed_replacement": "..." or null, "confidence": 0.0-1.0, "feedback_topic": "..." or null}}"""
-        
-        classification = await call_llm_structured(fallback_prompt, response_model=IntentClassification)
-        
-        targeted_id = state.get("targeted_action_id")
+    if classification.targeted_action_index is not None:
+        idx = int(classification.targeted_action_index) - 1
+        if 0 <= idx < len(action_items):
+            targeted_idx = idx
+            targeted_id = action_items[idx].get("id") or action_items[idx].get("item_id")
+    elif classification.intent in {"request_alternates", "change_action", "ask_why", "request_clarification"}:
+        # Preserve previously-selected item through multi-step workflows.
         targeted_idx = state.get("targeted_action_index")
+        targeted_id = state.get("targeted_action_id")
 
-        if classification.targeted_action_index:
-            idx = classification.targeted_action_index - 1
-            if 0 <= idx < len(state.get("action_items", [])):
-                targeted_idx = idx
-                targeted_id = state["action_items"][idx].get("id") or state["action_items"][idx].get("item_id")
+    # Track preferences from conversational cues.
+    user_preferences = dict(state.get("user_preferences") or {})
+    dislikes = list(user_preferences.get("dislikes", []))
+    if classification.intent in {"change_action", "request_alternates", "negotiate"} and targeted_idx is not None:
+        action_title = action_items[targeted_idx].get("title")
+        if action_title and action_title not in dislikes:
+            dislikes.append(action_title)
+    if dislikes:
+        user_preferences["dislikes"] = dislikes[-20:]
+    if classification.proposed_replacement:
+        preferred = list(user_preferences.get("preferred_replacements", []))
+        preferred.append(classification.proposed_replacement)
+        # keep order, drop duplicates
+        seen = set()
+        deduped = []
+        for item in preferred:
+            key = str(item).strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        user_preferences["preferred_replacements"] = deduped[-20:]
 
-        logger.info(f"[INTENT] JSON fallback classified: intent={classification.intent}")
-        
-        return {
-            **state,
-            "current_intent": classification.intent,
-            "targeted_action_id": targeted_id,
-            "targeted_action_index": targeted_idx,
-            "change_reason": classification.proposed_replacement or state.get("change_reason"),
-            "feedback_topic": classification.feedback_topic,
-            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-            "phase": "processing"
-        }
-    except Exception as fallback_e:
-        logger.error(f"[INTENT] Both function calling AND JSON fallback failed: {fallback_e}")
-        return {
-            **state,
-            "current_intent": "general",
-            "error": f"classification_failed: {last_error} then {fallback_e}",
-            "messages": state.get("messages", []) + [{"role": "user", "content": user_message}],
-            "phase": "processing"
-        }
+    updated_state = {
+        **state,
+        "current_intent": classification.intent,
+        "targeted_action_index": targeted_idx,
+        "targeted_action_id": targeted_id,
+        "change_reason": classification.proposed_replacement or state.get("change_reason"),
+        "feedback_topic": classification.feedback_topic,
+        "user_preferences": user_preferences,
+        "messages": messages + [{"role": "user", "content": user_message}],
+        "phase": "processing",
+    }
+
+    goto_node = INTENT_TO_NODE.get(classification.intent, "handle_general_response")
+    return Command(update=updated_state, goto=goto_node)
+
+
+async def pre_model_hook_trim_messages(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Trim message history to 20 before model routing, and hydrate ui_blocks from persisted ui_elements."""
+    messages = list(state.get("messages") or [])
+    if len(messages) > 20:
+        trimmed = truncate_conversation_smart(messages, max_messages=20, max_tokens=get_llm_config().max_conversation_tokens)
+    else:
+        trimmed = messages
+
+    ui_elements = list(state.get("ui_elements") or [])
+    ui_blocks = list(state.get("ui_blocks") or [])
+    if not ui_blocks and ui_elements:
+        ui_blocks = ui_elements
+
+    return {
+        **state,
+        "messages": trimmed,
+        "ui_blocks": ui_blocks,
+    }
+
+
+async def _apply_health_guardrail(text: str) -> str:
+    """Post-model health guardrail using structured LLM moderation."""
+    if not text:
+        return text
+
+    moderation_prompt = """Review this assistant response for health-safety risk.
+Mark as urgent only if the message could reasonably be interpreted as encouraging unsafe behavior
+or ignoring emergency warning signs.
+Set should_append_urgent_guidance=true only when urgent guidance should be appended."""
+    try:
+        moderation = await _get_guardrail_llm().ainvoke(
+            [
+                {"role": "system", "content": moderation_prompt},
+                {"role": "user", "content": f"Assistant response:\n{text}"},
+            ]
+        )
+    except Exception as e:
+        logger.warning(f"[GUARDRAIL] Primary moderation model failed: {e}")
+        try:
+            fallback_model = os.getenv("CARE_PLAN_GUARDRAIL_FALLBACK_MODEL", "gpt-4o-mini")
+            fallback_llm = ChatOpenAI(model=fallback_model, temperature=0).with_structured_output(HealthGuardrailOutput)
+            moderation = await fallback_llm.ainvoke(
+                [
+                    {"role": "system", "content": moderation_prompt},
+                    {"role": "user", "content": f"Assistant response:\n{text}"},
+                ]
+            )
+        except Exception as fallback_error:
+            logger.warning(f"[GUARDRAIL] Fallback moderation failed; returning original text: {fallback_error}")
+            return text
+
+    if moderation.should_append_urgent_guidance:
+        return (
+            f"{text}\n\nIf you have severe symptoms or feel unsafe, seek urgent medical care or call emergency services now."
+        )
+    return text
+
+
+async def post_model_hook_guardrail(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Ensure guardrails and persistent UI element state run on every response."""
+    ui_blocks = list(state.get("ui_blocks") or [])
+    ui_elements = list(state.get("ui_elements") or [])
+
+    if ui_blocks:
+        ui_elements = ui_blocks
+    elif not ui_blocks and ui_elements and state.get("workflow_stage"):
+        # Preserve latest CTA set while user is in an active workflow.
+        ui_blocks = ui_elements
+
+    return {
+        **state,
+        "bot_response": await _apply_health_guardrail((state.get("bot_response") or "").strip()),
+        "ui_blocks": ui_blocks,
+        "ui_elements": ui_elements,
+        "action_plan": list(state.get("action_plan") or state.get("action_items") or []),
+        "streak": int(state.get("streak") or state.get("current_streak") or 0),
+    }
 
 
 async def handle_complete_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
@@ -938,7 +785,10 @@ Example variations (DON'T copy, just show variety):
             **state,
             "bot_response": response,
             "current_streak": current,
+            "streak": current,
+            "action_plan": action_items,
             "actions_to_execute": [{"type": "refresh_plan"}],
+            "workflow_stage": None,  # Clear any active workflow
             "ui_blocks": [], # Clear any previous buttons
             "phase": "complete"
         }
@@ -1086,7 +936,7 @@ Example tone (don't copy exactly):
             "phase": "awaiting_selection"
         }
     else:
-        return {**state, "bot_response": response, "phase": "complete"}
+        return {**state, "bot_response": response, "workflow_stage": None, "ui_blocks": [], "phase": "complete"}
 
 
 async def handle_change_action(state: CarePlanCheckInState) -> CarePlanCheckInState:
@@ -1189,11 +1039,20 @@ Output JSON: {{
               
         targeted_action_id = action.get("id") or action.get("item_id") or state.get("targeted_action_id")
 
+        user_preferences = dict(state.get("user_preferences") or {})
+        dislikes = list(user_preferences.get("dislikes", []))
+        current_title = action.get("title")
+        if current_title and current_title not in dislikes:
+            dislikes.append(current_title)
+        user_preferences["dislikes"] = dislikes[-20:]
+
         return {
             **state,
             "barrier_type": barrier_data.barrier_type,
             "change_reason": barrier_data.requested_item or barrier_data.specific_barrier,
             "targeted_action_id": targeted_action_id,
+            "user_preferences": user_preferences,
+            "last_options_shown": None,
             "workflow_stage": target_stage,
             "phase": "processing"
         }
@@ -1209,7 +1068,7 @@ Output JSON: {{
 
 
 async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePlanCheckInState:
-    """Generate 3 alternatives - token check happens at SELECTION."""
+    """Generate alternatives with dedupe against last_options_shown, then keep 4 CTA choices."""
     
     targeted_idx = state.get("targeted_action_index")
     action_items = state.get("action_items", [])
@@ -1230,7 +1089,7 @@ async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePla
                 user_id=state["user_id"],
                 item_id=action.get("id") or action.get("item_id"),
                 reason=reason,
-                n=3,
+                n=6,
                 db=async_db,
                 enforce_same_category=True
             )
@@ -1245,7 +1104,39 @@ async def generate_alternate_suggestions(state: CarePlanCheckInState) -> CarePla
                 "phase": "complete"
             }
 
-        alternates = result.get("actions", [])
+        raw_alternates = result.get("actions", []) or []
+        previous_titles = {str(t).strip().lower() for t in (state.get("last_options_shown") or []) if str(t).strip()}
+        deduped: List[Dict[str, Any]] = []
+        seen_titles = set()
+
+        for alt in raw_alternates:
+            title = str(alt.get("title") or "").strip()
+            key = title.lower()
+            if not title or key in seen_titles or key in previous_titles:
+                continue
+            seen_titles.add(key)
+            deduped.append(alt)
+
+        # If the generator returned too few net-new options, allow previously seen ones as fallback.
+        if len(deduped) < 4:
+            for alt in raw_alternates:
+                title = str(alt.get("title") or "").strip()
+                key = title.lower()
+                if not title or key in seen_titles:
+                    continue
+                seen_titles.add(key)
+                deduped.append(alt)
+                if len(deduped) >= 4:
+                    break
+
+        alternates = deduped[:4]
+        if not alternates:
+            return {
+                **state,
+                "bot_response": "I couldn't find new options yet. Want me to try a different style of alternatives?",
+                "workflow_stage": "awaiting_alternate_selection",
+                "phase": "awaiting_selection",
+            }
         
         # Generate personalized introduction for alternatives
         barrier_type = state.get("barrier_type", "preference")
@@ -1264,7 +1155,7 @@ Guidelines:
 3. Keep it 1 short sentence
 4. Be encouraging
 
-Example: "I found 3 options that should work better with your schedule!"
+Example: "I found 4 options that should work better with your schedule!"
 """
         
         # PRODUCTION FIX: intro generation is actually fast enough sequentially
@@ -1291,6 +1182,7 @@ Example: "I found 3 options that should work better with your schedule!"
         return {
             **state,
             "alternate_candidates": alternates,
+            "last_options_shown": [str(alt.get("title") or "").strip() for alt in alternates if str(alt.get("title") or "").strip()],
             "ui_blocks": [ui_block],
             "workflow_stage": "awaiting_alternate_selection",
             "bot_response": intro,
@@ -2009,6 +1901,51 @@ Respond as Auvra with a helpful, personalized answer.
     }
 
 
+async def handle_show_streak(state: CarePlanCheckInState) -> CarePlanCheckInState:
+    """Return streak/progress details with milestone-aware messaging."""
+    try:
+        with get_db_session() as db:
+            from app.services.streak_service import StreakService
+
+            streak_status = StreakService(db).get_full_streak_status(state["user_id"])
+
+        current = int(streak_status.get("current_streak") or state.get("current_streak") or 0)
+        longest = int(streak_status.get("longest_streak") or current)
+        freeze_count = int(streak_status.get("freeze_count") or 0)
+        refresh_tokens = int(state.get("refresh_tokens_available") or 0)
+
+        milestone_days = [7, 14, 21, 30]
+        next_milestone = next((d for d in milestone_days if d > current), None)
+        if next_milestone is None:
+            milestone_text = "You've cleared all core milestones. Keep stacking healthy days."
+        else:
+            remaining = max(0, next_milestone - current)
+            milestone_text = f"{remaining} more day{'s' if remaining != 1 else ''} to your {next_milestone}-day milestone."
+
+        response = (
+            f"You're on a {current}-day streak (longest: {longest}). "
+            f"You currently have {freeze_count} freeze token{'s' if freeze_count != 1 else ''} "
+            f"and {refresh_tokens} refresh credit{'s' if refresh_tokens != 1 else ''} left today. "
+            f"{milestone_text}"
+        )
+
+        return {
+            **state,
+            "current_streak": current,
+            "streak": current,
+            "bot_response": response,
+            "phase": "complete",
+        }
+    except Exception as e:
+        logger.error(f"Error in handle_show_streak: {e}")
+        current = int(state.get("current_streak") or state.get("streak") or 0)
+        return {
+            **state,
+            "bot_response": f"You're currently on a {current}-day streak. Keep going - you're building real momentum.",
+            "phase": "complete",
+        }
+
+
 async def handle_general_response(state: CarePlanCheckInState) -> CarePlanCheckInState:
     """
     Handle general/unclear intents with FULL LLM INTELLIGENCE.
@@ -2152,6 +2089,7 @@ Respond directly as Auvra. Be warm, helpful, and specific to this user. NO gener
     return {
         **state,
         "bot_response": response,
+        "workflow_stage": None,  # Clear any active workflow
         "ui_blocks": ui_blocks,
         "phase": "complete"
     }
@@ -2314,6 +2252,7 @@ Guidelines:
     return {
         **state,
         "bot_response": response,
+        "workflow_stage": None,  # Clear active workflow
         "ui_blocks": [],
         "phase": "complete"
     }
@@ -2533,6 +2472,7 @@ def create_process_message_graph():
     workflow = StateGraph(CarePlanCheckInState)
     
     # Add all nodes
+    workflow.add_node("pre_model_hook_trim_messages", pre_model_hook_trim_messages)
     workflow.add_node("classify_user_intent", classify_user_intent)
     workflow.add_node("handle_complete_action", handle_complete_action)
     workflow.add_node("handle_skip_action", handle_skip_action)
@@ -2549,47 +2489,28 @@ def create_process_message_graph():
     workflow.add_node("handle_explain_plan", handle_explain_plan)
     # NEW: Health question handler for cross-chatbot functionality
     workflow.add_node("handle_health_question", handle_health_question)
+    workflow.add_node("handle_show_streak", handle_show_streak)
+    workflow.add_node("post_model_hook_guardrail", post_model_hook_guardrail)
     
     # Set entry point
-    workflow.set_entry_point("classify_user_intent")
+    workflow.set_entry_point("pre_model_hook_trim_messages")
+    workflow.add_edge("pre_model_hook_trim_messages", "classify_user_intent")
     
-    # Intent routing
-    workflow.add_conditional_edges(
-        "classify_user_intent",
-        route_by_intent,
-        {
-            "handle_complete_action": "handle_complete_action",
-            "handle_skip_action": "handle_skip_action",
-            "handle_change_action": "handle_change_action",
-            "generate_alternate_suggestions": "generate_alternate_suggestions",
-            "handle_general_response": "handle_general_response",
-            "handle_cancel_action": "handle_cancel_action",
-            "handle_ask_why": "handle_ask_why",
-            "handle_request_clarification": "handle_request_clarification",  # NEW: Timing/how-to route
-            # Feedback routes
-            "handle_plan_feedback": "handle_plan_feedback",
-            "handle_challenge_science": "handle_challenge_science",
-            "handle_explain_plan": "handle_explain_plan",
-            # NEW: Health question route
-            "handle_health_question": "handle_health_question"
-        }
-    )
-    
-    # All handlers go to END
-    workflow.add_edge("handle_complete_action", END)
-    workflow.add_edge("handle_skip_action", END)
-    workflow.add_edge("handle_general_response", END)
-    workflow.add_edge("handle_cancel_action", END)
-    workflow.add_edge("handle_ask_why", END)
-    workflow.add_edge("handle_request_clarification", END)  # NEW: Timing/how-to edge
-    workflow.add_edge("generate_alternate_suggestions", END)
-    workflow.add_edge("generate_direct_replacement_suggestion", END)
-    # Feedback handlers go to END
-    workflow.add_edge("handle_plan_feedback", END)
-    workflow.add_edge("handle_challenge_science", END)
-    workflow.add_edge("handle_explain_plan", END)
-    # NEW: Health question handler goes to END
-    workflow.add_edge("handle_health_question", END)
+    # All handlers pass through post-model guardrails before END.
+    workflow.add_edge("handle_complete_action", "post_model_hook_guardrail")
+    workflow.add_edge("handle_skip_action", "post_model_hook_guardrail")
+    workflow.add_edge("handle_general_response", "post_model_hook_guardrail")
+    workflow.add_edge("handle_cancel_action", "post_model_hook_guardrail")
+    workflow.add_edge("handle_ask_why", "post_model_hook_guardrail")
+    workflow.add_edge("handle_request_clarification", "post_model_hook_guardrail")
+    workflow.add_edge("generate_alternate_suggestions", "post_model_hook_guardrail")
+    workflow.add_edge("generate_direct_replacement_suggestion", "post_model_hook_guardrail")
+    workflow.add_edge("handle_plan_feedback", "post_model_hook_guardrail")
+    workflow.add_edge("handle_challenge_science", "post_model_hook_guardrail")
+    workflow.add_edge("handle_explain_plan", "post_model_hook_guardrail")
+    workflow.add_edge("handle_health_question", "post_model_hook_guardrail")
+    workflow.add_edge("handle_show_streak", "post_model_hook_guardrail")
+    workflow.add_edge("post_model_hook_guardrail", END)
     
     # Change action → alternates
     workflow.add_conditional_edges(
@@ -2598,7 +2519,7 @@ def create_process_message_graph():
         {
             "generate_alternate_suggestions": "generate_alternate_suggestions",
             "generate_direct_replacement_suggestion": "generate_direct_replacement_suggestion",
-            "END": END
+            "END": "post_model_hook_guardrail",
         }
     )
 
@@ -2616,20 +2537,44 @@ def create_process_selection_graph():
     workflow = StateGraph(CarePlanCheckInState)
     
     workflow.add_node("check_refresh_tokens_and_replace", check_refresh_tokens_and_replace)
+    workflow.add_node("post_model_hook_guardrail", post_model_hook_guardrail)
     
     workflow.set_entry_point("check_refresh_tokens_and_replace")
-    workflow.add_edge("check_refresh_tokens_and_replace", END)
+    workflow.add_edge("check_refresh_tokens_and_replace", "post_model_hook_guardrail")
+    workflow.add_edge("post_model_hook_guardrail", END)
 
     # Return the uncompiled graph; we compile once below with a checkpointer.
     return workflow
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Checkpointer: Using InMemorySaver for conversation state
-# Note: State is lost on restart - will upgrade to PostgreSQL persistence later
+# Persistent checkpointer (PostgresSaver preferred; SqliteSaver fallback)
 # ═══════════════════════════════════════════════════════════════════════════
 
-_checkpointer = InMemorySaver()
+
+def _create_persistent_checkpointer():
+    postgres_dsn = os.getenv("LANGGRAPH_CHECKPOINT_POSTGRES_DSN")
+    if postgres_dsn and PostgresSaver is not None:
+        saver = PostgresSaver.from_conn_string(postgres_dsn)
+        if hasattr(saver, "setup"):
+            saver.setup()
+        logger.info("Care plan checkpointer configured: PostgresSaver")
+        return saver
+
+    sqlite_path = os.getenv(
+        "LANGGRAPH_CHECKPOINT_SQLITE_PATH",
+        os.path.join(os.getcwd(), ".langgraph", "checkpoints", "care_plan_checkin.sqlite"),
+    )
+    os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
+    conn = sqlite3.connect(sqlite_path, check_same_thread=False)
+    saver = SqliteSaver(conn)
+    if hasattr(saver, "setup"):
+        saver.setup()
+    logger.info(f"Care plan checkpointer configured: SqliteSaver ({sqlite_path})")
+    return saver
+
+
+_checkpointer = _create_persistent_checkpointer()
 
 care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
 care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
@@ -2660,6 +2605,23 @@ async def process_care_plan_message(
     return result
 
 
+async def stream_care_plan_message(
+    state: CarePlanCheckInState,
+    user_message: str,
+    thread_id: Optional[str] = None,
+    stream_mode: str = STREAM_MODE_TEXT,
+):
+    """Streaming helper: use stream_mode='messages' for text or stream_mode='custom' for UI elements."""
+    updated_state = {**state, "user_message": user_message}
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    if config:
+        async for chunk in care_plan_process_graph.astream(updated_state, config=config, stream_mode=stream_mode):
+            yield chunk
+    else:
+        async for chunk in care_plan_process_graph.astream(updated_state, stream_mode=stream_mode):
+            yield chunk
+
+
 async def process_alternate_selection(
     state: CarePlanCheckInState,
     selected_index: Optional[int] = None,
@@ -2674,3 +2636,20 @@ async def process_alternate_selection(
     else:
         result = await care_plan_selection_graph.ainvoke(updated_state, config=config) if config else await care_plan_selection_graph.ainvoke(updated_state)
     return result
+
+
+async def stream_alternate_selection(
+    state: CarePlanCheckInState,
+    selected_index: Optional[int] = None,
+    thread_id: Optional[str] = None,
+    stream_mode: str = STREAM_MODE_UI,
+):
+    """Streaming helper for alternate-selection UI events (default stream_mode='custom')."""
+    updated_state = {**state, "selected_alternate_index": selected_index}
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    if config:
+        async for chunk in care_plan_selection_graph.astream(updated_state, config=config, stream_mode=stream_mode):
+            yield chunk
+    else:
+        async for chunk in care_plan_selection_graph.astream(updated_state, stream_mode=stream_mode):
+            yield chunk

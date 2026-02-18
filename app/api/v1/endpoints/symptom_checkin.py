@@ -12,11 +12,17 @@ from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Optional
 
 from uuid import uuid4
+from time import perf_counter
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
 from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.symptom_checkin_service import SymptomCheckInService
+from app.api.v1.endpoints._chatbot_runtime import (
+    build_chatbot_response_payload,
+    ensure_actionable_insights,
+    ensure_event_not_duplicate,
+)
 
 router = APIRouter()
 
@@ -30,6 +36,7 @@ class ChatMessage(BaseModel):
     id: str
     text: str
     isBot: bool
+    ui_blocks: List[Dict[str, Any]] = []
 
 
 class StartSymptomCheckInResponse(BaseModel):
@@ -37,7 +44,9 @@ class StartSymptomCheckInResponse(BaseModel):
     local_date: str
     history: List[ChatMessage]
     tap_options: List[TapOption] = []
+    actionable_insights: Dict[str, Any] = {}
     ui_blocks: List[UIBlock] = []
+    trace: Optional[Dict[str, Any]] = None
 
 
 class RespondSymptomCheckInRequest(BaseModel):
@@ -52,6 +61,7 @@ class RespondSymptomCheckInResponse(BaseModel):
     tap_options: List[TapOption] = []
     actionable_insights: Dict[str, Any] = {}
     ui_blocks: List[UIBlock] = []
+    trace: Optional[Dict[str, Any]] = None
 
 
 def _ensure_tap_option(tap_options: List[Dict[str, str]], option_id: str, text: str) -> List[Dict[str, str]]:
@@ -193,6 +203,46 @@ def _open_symptom_manager_block() -> UIBlock:
     )
 
 
+def _symptom_trace(
+    *,
+    thread_id: str,
+    action_id: str,
+    latency_ms: Optional[float] = None,
+    workflow_stage: Optional[str] = None,
+) -> Dict[str, Any]:
+    trace: Dict[str, Any] = {
+        "flow": "symptom_checkin",
+        "thread_id": thread_id,
+        "action_id": action_id,
+        "workflow_stage": workflow_stage,
+    }
+    if latency_ms is not None:
+        trace["latency_ms"] = int(latency_ms)
+    return trace
+
+
+def _build_symptom_response(
+    *,
+    thread_id: str,
+    local_date: str,
+    history: List[Dict[str, Any]],
+    tap_options: List[Dict[str, Any]],
+    actionable_insights: Optional[Dict[str, Any]],
+    ui_blocks: List[UIBlock],
+    trace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return build_chatbot_response_payload(
+        thread_id=thread_id,
+        local_date=local_date,
+        history=history,
+        tap_options=tap_options,
+        ui_blocks=ui_blocks,
+        actionable_insights=actionable_insights,
+        flow="symptom_checkin",
+        trace=trace,
+    )
+
+
 class SymptomLogCreateRequest(BaseModel):
     symptom_type: str
     severity: int  # 1-9
@@ -231,6 +281,7 @@ async def start_symptom_checkin(
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        started_at = perf_counter()
         uid = current_user["uid"]
         service = SymptomCheckInService(db)
         
@@ -251,13 +302,20 @@ async def start_symptom_checkin(
             # First time - show common symptoms to pick from
             tap_options = _dr_auvra_first_time_tap_options()
 
-        return {
-            "thread_id": thread.id,
-            "local_date": thread.local_date.isoformat(),
-            "history": history,
-            "tap_options": tap_options,
-            "ui_blocks": [],
-        }
+        trace = _symptom_trace(
+            thread_id=thread.id,
+            action_id="start",
+            latency_ms=(perf_counter() - started_at) * 1000,
+        )
+        return _build_symptom_response(
+            thread_id=thread.id,
+            local_date=thread.local_date.isoformat(),
+            history=history,
+            tap_options=tap_options,
+            actionable_insights=thread.actionable_insights or {},
+            ui_blocks=[],
+            trace=trace,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -269,6 +327,7 @@ async def respond_symptom_checkin(
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        started_at = perf_counter()
         uid = current_user["uid"]
         service = SymptomCheckInService(db)
         thread, ai_response = await service.respond(uid, payload.thread_id, payload.message_text)
@@ -284,14 +343,20 @@ async def respond_symptom_checkin(
             # Fallback: always provide good conversational options to keep the chat flowing
             tap_options = _conversational_tap_options()
 
-        return {
-            "thread_id": thread.id,
-            "local_date": thread.local_date.isoformat(),
-            "history": history,
-            "tap_options": tap_options,
-            "actionable_insights": thread.actionable_insights or {},
-            "ui_blocks": [],
-        }
+        trace = _symptom_trace(
+            thread_id=thread.id,
+            action_id="respond",
+            latency_ms=(perf_counter() - started_at) * 1000,
+        )
+        return _build_symptom_response(
+            thread_id=thread.id,
+            local_date=thread.local_date.isoformat(),
+            history=history,
+            tap_options=tap_options,
+            actionable_insights=thread.actionable_insights or {},
+            ui_blocks=[],
+            trace=trace,
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -372,11 +437,39 @@ async def symptom_ui_event(
     - any explicit send_text in metadata is routed through the existing `/respond` flow.
     """
     try:
+        started_at = perf_counter()
         uid = current_user["uid"]
         if not payload.thread_id:
             raise HTTPException(status_code=400, detail="thread_id is required")
 
         service = SymptomCheckInService(db)
+        thread = service.get_thread_by_id(uid, payload.thread_id)
+        insights = ensure_actionable_insights(thread.actionable_insights or {}, flow="symptom_checkin")
+        idempotency_key = payload.idempotency_key
+        if not ensure_event_not_duplicate(insights=insights, idempotency_key=idempotency_key):
+            history = service.format_history_for_mobile(thread)
+            tap_options = _ensure_tap_option([], "track_symptom", "📊 Track a symptom")
+            tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
+            tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
+            trace = _symptom_trace(
+                thread_id=thread.id,
+                action_id=payload.action_id or "idempotent_replay",
+                latency_ms=(perf_counter() - started_at) * 1000,
+                workflow_stage=insights.get("workflow_stage"),
+            )
+            return _build_symptom_response(
+                thread_id=thread.id,
+                local_date=thread.local_date.isoformat(),
+                history=history,
+                tap_options=tap_options,
+                actionable_insights=insights,
+                ui_blocks=[],
+                trace=trace,
+            )
+        thread.actionable_insights = insights
+        db.add(thread)
+        db.commit()
+        db.refresh(thread)
 
         action_id = (payload.action_id or "").strip()
         meta = payload.metadata or {}
@@ -405,14 +498,19 @@ async def symptom_ui_event(
             tap_options = _ensure_tap_option([], "track_symptom", "📊 Track a symptom")
             tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
             tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
-            return {
-                "thread_id": thread.id,
-                "local_date": thread.local_date.isoformat(),
-                "history": history,
-                "tap_options": tap_options,
-                "actionable_insights": thread.actionable_insights or {},
-                "ui_blocks": [_symptom_slider_block(st)],
-            }
+            return _build_symptom_response(
+                thread_id=thread.id,
+                local_date=thread.local_date.isoformat(),
+                history=history,
+                tap_options=tap_options,
+                actionable_insights=thread.actionable_insights or {},
+                ui_blocks=[_symptom_slider_block(st)],
+                trace=_symptom_trace(
+                    thread_id=thread.id,
+                    action_id=action_id,
+                    latency_ms=(perf_counter() - started_at) * 1000,
+                ),
+            )
 
         if action_id in {"open_symptom_manager", "manage_symptoms"}:
             thread = service.get_thread_by_id(uid, payload.thread_id)
@@ -420,14 +518,19 @@ async def symptom_ui_event(
             tap_options = _ensure_tap_option([], "manage_symptoms", "🧩 Manage symptoms")
             tap_options = _ensure_tap_option(tap_options, "track_symptom", "📊 Track a symptom")
             tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
-            return {
-                "thread_id": thread.id,
-                "local_date": thread.local_date.isoformat(),
-                "history": history,
-                "tap_options": tap_options,
-                "actionable_insights": thread.actionable_insights or {},
-                "ui_blocks": [_open_symptom_manager_block()],
-            }
+            return _build_symptom_response(
+                thread_id=thread.id,
+                local_date=thread.local_date.isoformat(),
+                history=history,
+                tap_options=tap_options,
+                actionable_insights=thread.actionable_insights or {},
+                ui_blocks=[_open_symptom_manager_block()],
+                trace=_symptom_trace(
+                    thread_id=thread.id,
+                    action_id=action_id,
+                    latency_ms=(perf_counter() - started_at) * 1000,
+                ),
+            )
 
         if payload.event_type == "slider_submit":
             symptom_type = (meta.get("symptom_type") or "").strip()
@@ -463,14 +566,19 @@ async def symptom_ui_event(
                 else:
                     tap_options = _conversational_tap_options()
                     
-                return {
-                    "thread_id": thread.id,
-                    "local_date": thread.local_date.isoformat(),
-                    "history": history,
-                    "tap_options": tap_options,
-                    "actionable_insights": thread.actionable_insights or {},
-                    "ui_blocks": [],
-                }
+                return _build_symptom_response(
+                    thread_id=thread.id,
+                    local_date=thread.local_date.isoformat(),
+                    history=history,
+                    tap_options=tap_options,
+                    actionable_insights=thread.actionable_insights or {},
+                    ui_blocks=[],
+                    trace=_symptom_trace(
+                        thread_id=thread.id,
+                        action_id=payload.event_type,
+                        latency_ms=(perf_counter() - started_at) * 1000,
+                    ),
+                )
 
         send_text = (meta.get("send_text") or "").strip()
         if send_text:
@@ -485,14 +593,19 @@ async def symptom_ui_event(
             else:
                 tap_options = _conversational_tap_options()
                 
-            return {
-                "thread_id": thread.id,
-                "local_date": thread.local_date.isoformat(),
-                "history": history,
-                "tap_options": tap_options,
-                "actionable_insights": thread.actionable_insights or {},
-                "ui_blocks": [],
-            }
+            return _build_symptom_response(
+                thread_id=thread.id,
+                local_date=thread.local_date.isoformat(),
+                history=history,
+                tap_options=tap_options,
+                actionable_insights=thread.actionable_insights or {},
+                ui_blocks=[],
+                trace=_symptom_trace(
+                    thread_id=thread.id,
+                    action_id=action_id or "send_text",
+                    latency_ms=(perf_counter() - started_at) * 1000,
+                ),
+            )
 
         # Default: no-op
         thread = service.get_thread_by_id(uid, payload.thread_id)
@@ -500,14 +613,19 @@ async def symptom_ui_event(
         tap_options = _ensure_tap_option([], "track_symptom", "📊 Track a symptom")
         tap_options = _ensure_tap_option(tap_options, "show_patterns", "🔍 Show my patterns")
         tap_options = _ensure_tap_option(tap_options, "manage_symptoms", "🧩 Manage symptoms")
-        return {
-            "thread_id": thread.id,
-            "local_date": thread.local_date.isoformat(),
-            "history": history,
-            "tap_options": tap_options,
-            "actionable_insights": thread.actionable_insights or {},
-            "ui_blocks": [],
-        }
+        return _build_symptom_response(
+            thread_id=thread.id,
+            local_date=thread.local_date.isoformat(),
+            history=history,
+            tap_options=tap_options,
+            actionable_insights=thread.actionable_insights or {},
+            ui_blocks=[],
+            trace=_symptom_trace(
+                thread_id=thread.id,
+                action_id=action_id or "noop",
+                latency_ms=(perf_counter() - started_at) * 1000,
+            ),
+        )
     except HTTPException:
         raise
     except Exception as e:

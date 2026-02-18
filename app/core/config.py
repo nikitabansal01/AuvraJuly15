@@ -65,6 +65,19 @@ class Settings(BaseSettings):
     
     # API settings
     API_V1_STR: str = "/api/v1"
+
+    # Production hardening flags (2026 rollout controls)
+    FEATURE_GRAPH_UNIFICATION: bool = False
+    FEATURE_FRONTEND_ENGINE_V2: bool = False
+    FEATURE_STRICT_CONTRACT_MODE: bool = False
+
+    # LangGraph checkpointing defaults
+    LANGGRAPH_CHECKPOINT_POSTGRES_DSN: str = ""
+    LANGGRAPH_CHECKPOINT_SQLITE_PATH: str = ".langgraph/checkpoints/langgraph.sqlite"
+
+    # Care-plan endpoint guardrails / alert thresholds
+    CARE_PLAN_EVENT_ERROR_RATE_ALERT_THRESHOLD: float = 0.05
+    CARE_PLAN_EVENT_P95_LATENCY_MS_ALERT_THRESHOLD: int = 2500
     
     # File upload settings
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB

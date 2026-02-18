@@ -19,8 +19,10 @@ from typing import Any, Dict, List, Optional
 import json
 import logging
 from uuid import uuid4
+from datetime import date, datetime
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.rate_limiter import get_rate_limiter, CONVERSATION_LIMIT
 from app.langgraph.helpers.llm_cache import get_redis_client
@@ -71,19 +73,50 @@ _STATE_TTL_SECONDS = 3600  # 1 hour TTL — sessions expire after inactivity
 _STATE_PREFIX = "session:state:"
 
 
+def _state_json_default(value: Any) -> Any:
+    """Preserve core temporal types instead of coercing everything to string."""
+    if isinstance(value, datetime):
+        return {"__lg_type": "datetime", "value": value.isoformat()}
+    if isinstance(value, date):
+        return {"__lg_type": "date", "value": value.isoformat()}
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _state_json_object_hook(obj: Dict[str, Any]) -> Any:
+    marker = obj.get("__lg_type")
+    if marker == "datetime":
+        try:
+            return datetime.fromisoformat(obj["value"])
+        except Exception:
+            return obj
+    if marker == "date":
+        try:
+            return date.fromisoformat(obj["value"])
+        except Exception:
+            return obj
+    return obj
+
+
 async def _store_state(session_id: str, state: Dict[str, Any]) -> None:
     """Store state in Redis with TTL. Falls back to in-memory if Redis unavailable."""
+    # Guardrail: keep state payload bounded even when callers forget to trim.
+    if isinstance(state.get("messages"), list) and len(state["messages"]) > 20:
+        state = {**state, "messages": state["messages"][-20:]}
+
     try:
         redis = await get_redis_client()
         if redis:
             key = f"{_STATE_PREFIX}{session_id}"
-            await redis.setex(key, _STATE_TTL_SECONDS, json.dumps(state, default=str))
+            await redis.setex(key, _STATE_TTL_SECONDS, json.dumps(state, default=_state_json_default))
             # Remove from fallback if it was there
             _state_store_fallback.pop(session_id, None)
             return
     except Exception as e:
         logger.warning(f"Redis state store failed, using fallback: {e}")
-    
+
+    if settings.ENVIRONMENT == "production":
+        raise RuntimeError("Redis state store unavailable in production")
+
     # Fallback: in-memory with size guard (max 1000 sessions)
     if len(_state_store_fallback) >= 1000:
         # Evict oldest 100 sessions
@@ -102,12 +135,16 @@ async def _get_state(session_id: str) -> Optional[Dict[str, Any]]:
             key = f"{_STATE_PREFIX}{session_id}"
             data = await redis.get(key)
             if data:
-                return json.loads(data)
+                return json.loads(data, object_hook=_state_json_object_hook)
             # Not in Redis, check fallback
+            if settings.ENVIRONMENT == "production":
+                return None
             return _state_store_fallback.get(session_id)
     except Exception as e:
         logger.warning(f"Redis state get failed, using fallback: {e}")
-    
+        if settings.ENVIRONMENT == "production":
+            return None
+
     return _state_store_fallback.get(session_id)
 
 
@@ -119,6 +156,8 @@ async def _delete_state(session_id: str) -> None:
             await redis.delete(f"{_STATE_PREFIX}{session_id}")
     except Exception as e:
         logger.warning(f"Redis state delete failed: {e}")
+        if settings.ENVIRONMENT == "production":
+            return
     _state_store_fallback.pop(session_id, None)
 
 
@@ -137,6 +176,7 @@ class UIBlock(BaseModel):
     title: Optional[str] = None
     subtitle: Optional[str] = None
     payload: Optional[Dict[str, Any]] = None
+    actions: List[Dict[str, Any]] = []
 
 
 class ChatMessage(BaseModel):
@@ -327,11 +367,35 @@ async def lg_care_plan_start(
                 metadata={"error": state.get("error")}
             )
         
+        start_ui_blocks: List[UIBlock] = []
+        for block in (state.get("ui_blocks") or []):
+            if isinstance(block, dict):
+                start_ui_blocks.append(
+                    UIBlock(
+                        id=block.get("id", str(uuid4())),
+                        type=block.get("type", "quick_actions"),
+                        title=block.get("title"),
+                        subtitle=block.get("subtitle"),
+                        payload=block.get("payload", {}),
+                        actions=block.get("actions", []) if isinstance(block.get("actions"), list) else [],
+                    )
+                )
+
+        tap_options_payload = state.get("tap_options") if isinstance(state.get("tap_options"), list) else []
+        tap_options = [
+            TapOption(id=o.get("id", ""), text=o.get("text", ""))
+            for o in tap_options_payload
+            if isinstance(o, dict) and o.get("id") and o.get("text")
+        ]
+        if not tap_options:
+            tap_options = [TapOption(id="manage_plan", text="🧩 Manage plan")]
+
         return StartResponse(
             session_id=session_id,
             flow_type="care_plan",
             bot_response=state.get("bot_response", "Here's your care plan for today!"),
-            tap_options=[TapOption(id="done", text="✅ Done"), TapOption(id="change", text="🔄 Change")],
+            tap_options=tap_options,
+            ui_blocks=start_ui_blocks,
             is_complete=False,
             metadata={
                 "action_items": state.get("action_items", []),
@@ -377,7 +441,8 @@ async def lg_care_plan_continue(
                 type=block.get("type", "card"),
                 title=block.get("title"),
                 subtitle=block.get("subtitle"),
-                payload=block.get("payload")
+                payload=block.get("payload"),
+                actions=block.get("actions", []) if isinstance(block.get("actions"), list) else [],
             ))
         
         return ContinueResponse(
