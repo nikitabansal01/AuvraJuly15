@@ -59,7 +59,8 @@ EDGE CASES & CLINICAL CONSIDERATIONS:
 
 import logging
 from datetime import datetime, date, timedelta
-from typing import Optional, Tuple, Dict, NamedTuple
+from typing import Optional, Tuple, Dict, NamedTuple, Any
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.database import UserResponse, UserProfile
 from app.models.cycle_models import CyclePhaseInfo
@@ -167,8 +168,53 @@ class CycleService:
     - Ovulation occurs ~14 days BEFORE next period (not after last period)
     """
     
-    def __init__(self, db: Session):
+    def __init__(self, db: Optional[Session] = None):
         self.db = db
+
+    def _default_cycle_info(self, user_name: str = "Unknown") -> CyclePhaseInfo:
+        return CyclePhaseInfo(user_name=user_name, cycle_day=None, phase=None)
+
+    def _build_cycle_phase_info(
+        self,
+        uid: str,
+        user_profile: Optional[UserProfile],
+        user_response: Optional[UserResponse],
+    ) -> CyclePhaseInfo:
+        """Build cycle phase payload from profile + response records."""
+        if not user_profile:
+            logger.info(f"User profile not found: uid={uid}")
+            return self._default_cycle_info()
+
+        if not user_response:
+            logger.info(f"User response data not found: uid={uid}")
+            return self._default_cycle_info(user_name=user_profile.name or "Unknown")
+
+        logger.info(
+            "Data verification: last_period_date_utc=%s, cycle_length=%s",
+            user_response.last_period_date_utc,
+            user_response.cycle_length,
+        )
+        if not user_response.last_period_date_utc or not user_response.cycle_length:
+            logger.info(
+                "Required data missing: last_period_date_utc=%s, cycle_length=%s",
+                user_response.last_period_date_utc,
+                user_response.cycle_length,
+            )
+            return self._default_cycle_info(user_name=user_profile.name or "Unknown")
+
+        cycle_day, phase = self._calculate_cycle_phase(
+            user_response.last_period_date_utc,
+            user_response.cycle_length,
+            user_response.period_description,
+            user_response.diagnosed_conditions,
+            user_profile.current_timezone,
+        )
+        logger.info(f"Calculation result: cycle_day={cycle_day}, phase={phase}")
+        return CyclePhaseInfo(
+            user_name=user_profile.name or "Unknown",
+            cycle_day=cycle_day,
+            phase=phase,
+        )
     
     def get_cycle_phase_info(self, uid: str) -> CyclePhaseInfo:
         """
@@ -181,66 +227,47 @@ class CycleService:
             Menstrual cycle information
         """
         try:
-            # Get user profile (current timezone)
-            user_profile = self.db.query(UserProfile).filter(
-                UserProfile.uid == uid
-            ).first()
-            
-            if not user_profile:
-                logger.info(f"User profile not found: uid={uid}")
-                return CyclePhaseInfo(
-                    user_name="Unknown",
-                    cycle_day=None,
-                    phase=None
-                )
-            
-            # Get user response data
-            user_response = self.db.query(UserResponse).filter(
-                UserResponse.uid == uid
-            ).first()
-            
-            if not user_response:
-                logger.info(f"User response data not found: uid={uid}")
-                return CyclePhaseInfo(
-                    user_name=user_profile.name or "Unknown",
-                    cycle_day=None,
-                    phase=None
-                )
-            
-            # Check required data
-            logger.info(f"Data verification: last_period_date_utc={user_response.last_period_date_utc}, cycle_length={user_response.cycle_length}")
-            if not user_response.last_period_date_utc or not user_response.cycle_length:
-                logger.info(f"Required data missing: last_period_date_utc={user_response.last_period_date_utc}, cycle_length={user_response.cycle_length}")
-                return CyclePhaseInfo(
-                    user_name=user_profile.name or "Unknown",
-                    cycle_day=None,
-                    phase=None
-                )
-            
-            # Calculate menstrual cycle (based on user's current timezone)
-            cycle_day, phase = self._calculate_cycle_phase(
-                user_response.last_period_date_utc,
-                user_response.cycle_length,
-                user_response.period_description,
-                user_response.diagnosed_conditions,
-                user_profile.current_timezone
-            )
-            
-            logger.info(f"Calculation result: cycle_day={cycle_day}, phase={phase}")
-            
-            return CyclePhaseInfo(
-                user_name=user_profile.name or "Unknown",
-                cycle_day=cycle_day,
-                phase=phase
-            )
-            
+            if self.db is None:
+                logger.error("CycleService.get_cycle_phase_info called without db session")
+                return self._default_cycle_info()
+
+            user_profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+            user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+            return self._build_cycle_phase_info(uid, user_profile, user_response)
         except Exception as e:
             logger.error(f"Failed to calculate menstrual cycle information: {str(e)}")
-            return CyclePhaseInfo(
-                user_name="Unknown",
-                cycle_day=None,
-                phase=None
+            return self._default_cycle_info()
+
+    async def get_cycle_phase_info_async(self, uid: str, db: Any) -> Dict[str, Optional[Any]]:
+        """
+        Async-compatible cycle phase lookup used by async services.
+
+        Returns:
+            Dict with user_name, cycle_day, phase keys (legacy-compatible shape).
+        """
+        try:
+            profile_result = await db.execute(
+                select(UserProfile).where(UserProfile.uid == uid)
             )
+            user_profile = profile_result.scalar_one_or_none()
+
+            response_result = await db.execute(
+                select(UserResponse)
+                .where(UserResponse.uid == uid)
+                .order_by(UserResponse.created_at.desc())
+                .limit(1)
+            )
+            user_response = response_result.scalar_one_or_none()
+
+            cycle_info = self._build_cycle_phase_info(uid, user_profile, user_response)
+            return {
+                "user_name": cycle_info.user_name,
+                "cycle_day": cycle_info.cycle_day,
+                "phase": cycle_info.phase,
+            }
+        except Exception as e:
+            logger.error(f"Failed to calculate async menstrual cycle information: {str(e)}")
+            return {"user_name": "Unknown", "cycle_day": None, "phase": None}
     
     def _calculate_cycle_phase(
         self, 
@@ -456,6 +483,6 @@ class CycleService:
 # FACTORY FUNCTION
 # ============================================================================
 
-def get_cycle_service(db: Session) -> CycleService:
+def get_cycle_service(db: Optional[Session] = None) -> CycleService:
     """Factory function to create CycleService instance."""
     return CycleService(db)
