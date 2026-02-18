@@ -489,25 +489,16 @@ async def respond_care_plan_checkin(
         final_state = await process_care_plan_message(state, message_text, thread_id=thread.id)
 
         # 4. Save Result to DB
-        # NOTE: User message was already saved above, so we only save bot messages here.
-        new_msgs_count = len(final_state["messages"]) - len(state["messages"])
-        if new_msgs_count > 0:
-            new_msgs = final_state["messages"][-new_msgs_count:]
-            for msg in new_msgs:
-                # Skip user messages - already saved at the start
-                if msg.get("role") == "user":
-                    continue
-                role = "bot" if msg["role"] == "assistant" else msg["role"]
-                _append_bot_message(thread, msg.get("content", ""), role=role)
-
-        # Append bot_response ONLY if no new messages were found from the graph diff
-        # Graph nodes set both messages[] and bot_response — avoid duplicates
-        if new_msgs_count <= 0:
-            bot_response = (final_state.get("bot_response") or "").strip()
-            if bot_response:
-                _append_bot_message(thread, bot_response, role="bot", ui_blocks=final_state.get("ui_blocks"))
-        else:
-            # Attach this turn's CTA payload to the latest bot message so historical transcript can render it.
+        # NOTE: User message was already saved above. We save the bot response here.
+        # IMPORTANT: classify_user_intent adds user_message to state["messages"] even though
+        # it was already loaded from thread (since user message was saved before graph ran).
+        # This makes new_msgs_count=1 always (duplicate user msg). We must NOT rely on
+        # new_msgs_count to determine whether to save bot_response — always save it directly.
+        bot_response_text = (final_state.get("bot_response") or "").strip()
+        if bot_response_text:
+            _append_bot_message(thread, bot_response_text, role="bot", ui_blocks=final_state.get("ui_blocks"))
+        elif final_state.get("ui_blocks"):
+            # No response text but UI blocks present — attach to latest bot message in history
             thread.raw_messages = _attach_ui_blocks_to_latest_bot(
                 list(thread.raw_messages or []),
                 final_state.get("ui_blocks"),

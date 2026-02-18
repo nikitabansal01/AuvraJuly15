@@ -647,6 +647,16 @@ Return targeted_action_index as 1-based when user references a specific action."
             deduped.append(item)
         user_preferences["preferred_replacements"] = deduped[-20:]
 
+    # Only append user message to conversation if it's not already the last message.
+    # The endpoint saves user message to thread BEFORE calling the graph, so _reconstruct_state
+    # already includes it in state["messages"]. Adding it again creates duplicates that break
+    # conversation context and cause the bot-response-saving logic to skip saving responses.
+    last_msg = messages[-1] if messages else {}
+    already_in_messages = (
+        last_msg.get("role") == "user" and last_msg.get("content", "").strip() == user_message.strip()
+    )
+    updated_messages = messages if already_in_messages else messages + [{"role": "user", "content": user_message}]
+
     updated_state = {
         **state,
         "current_intent": classification.intent,
@@ -655,7 +665,7 @@ Return targeted_action_index as 1-based when user references a specific action."
         "change_reason": classification.proposed_replacement or state.get("change_reason"),
         "feedback_topic": classification.feedback_topic,
         "user_preferences": user_preferences,
-        "messages": messages + [{"role": "user", "content": user_message}],
+        "messages": updated_messages,
         "phase": "processing",
     }
 
@@ -1554,12 +1564,15 @@ Respond naturally as Auvra. Be specific, reference their data, and end with a cl
     
     ui_blocks = [
         {
-            "type": "quick_replies",
-            "replies": [
-                {"label": "Explain each action", "value": "explain why you chose each of these items for me specifically"},
-                {"label": "Regenerate plan", "value": "give me a completely different plan with new items"},
-                {"label": "Update my profile", "value": "I want to update my health information"}
-            ]
+            "id": "plan_feedback_actions",
+            "type": "quick_actions",
+            "title": None,
+            "actions": [
+                {"id": "explain_each_action", "title": "Why these items?", "style": "primary", "action_type": "send_text", "payload": {"text": "explain why you chose each of these items for me specifically"}},
+                {"id": "regenerate_plan", "title": "Give me a new plan", "style": "secondary", "action_type": "send_text", "payload": {"text": "give me a completely different plan with new items"}},
+                {"id": "update_profile", "title": "Update my info", "style": "ghost", "action_type": "send_text", "payload": {"text": "I want to update my health information"}},
+            ],
+            "dismissible": True,
         }
     ]
     
@@ -1673,12 +1686,15 @@ Respond naturally as Auvra. Be specific with citations, connect to their profile
     
     ui_blocks = [
         {
-            "type": "quick_replies",
-            "replies": [
-                {"label": "Tell me more", "value": "explain more about the research behind these items"},
-                {"label": "Different options", "value": "show me alternative items with different research backing"},
-                {"label": "Looks good!", "value": "okay I trust the science, let's continue"}
-            ]
+            "id": "challenge_science_actions",
+            "type": "quick_actions",
+            "title": None,
+            "actions": [
+                {"id": "more_research", "title": "Tell me more", "style": "secondary", "action_type": "send_text", "payload": {"text": "explain more about the research behind these items"}},
+                {"id": "different_options", "title": "Different options", "style": "secondary", "action_type": "send_text", "payload": {"text": "show me alternative items with different research backing"}},
+                {"id": "trust_science", "title": "Looks good!", "style": "ghost", "action_type": "send_text", "payload": {"text": "okay I trust the science, let's continue"}},
+            ],
+            "dismissible": True,
         }
     ]
     
@@ -1797,15 +1813,18 @@ Would you like me to explain any specific item in more detail?"""
     
     ui_blocks = [
         {
-            "type": "quick_replies",
-            "replies": [
-                {"label": "Makes sense!", "value": "great, let's continue with the plan"},
-                {"label": "Still concerns", "value": "I still have concerns about the personalization"},
-                {"label": "Change something", "value": "I'd like to swap one of the items"}
-            ]
+            "id": "explain_plan_actions",
+            "type": "quick_actions",
+            "title": None,
+            "actions": [
+                {"id": "plan_makes_sense", "title": "Makes sense!", "style": "primary", "action_type": "send_text", "payload": {"text": "great, let's continue with the plan"}},
+                {"id": "still_concerns", "title": "Still have concerns", "style": "secondary", "action_type": "send_text", "payload": {"text": "I still have concerns about the personalization"}},
+                {"id": "change_something", "title": "Change something", "style": "secondary", "action_type": "send_text", "payload": {"text": "I'd like to swap one of the items"}},
+            ],
+            "dismissible": True,
         }
     ]
-    
+
     return {
         **state,
         "bot_response": response,
@@ -1962,12 +1981,15 @@ Respond as Auvra with a helpful, personalized answer.
     # Add helpful follow-up options
     ui_blocks = [
         {
-            "type": "quick_replies",
-            "replies": [
-                {"label": "Tell me more", "value": "Please explain more about this"},
-                {"label": "How does my plan help?", "value": "How does today's plan help with this?"},
-                {"label": "Back to my plan", "value": "Let's go back to my daily plan"}
-            ]
+            "id": "health_question_actions",
+            "type": "quick_actions",
+            "title": None,
+            "actions": [
+                {"id": "tell_me_more", "title": "Tell me more", "style": "secondary", "action_type": "send_text", "payload": {"text": "Please explain more about this"}},
+                {"id": "how_plan_helps", "title": "How does my plan help?", "style": "secondary", "action_type": "send_text", "payload": {"text": "How does today's plan help with this?"}},
+                {"id": "back_to_plan", "title": "Back to my plan", "style": "ghost", "action_type": "send_text", "payload": {"text": "Let's go back to my daily plan"}},
+            ],
+            "dismissible": True,
         }
     ]
     
@@ -2405,12 +2427,15 @@ Do NOT be generic - make them understand why this is FOR THEM.
     
     ui_blocks = [
         {
-            "type": "quick_replies",
-            "replies": [
-                {"label": "Tell me more", "value": f"Tell me more about why {title} helps"},
-                {"label": "Show alternatives", "value": f"Show me alternatives to {title}"},
-                {"label": "Keep it", "value": "That makes sense, keep it"}
-            ]
+            "id": "ask_why_actions",
+            "type": "quick_actions",
+            "title": None,
+            "actions": [
+                {"id": "tell_me_more_why", "title": "Tell me more", "style": "secondary", "action_type": "send_text", "payload": {"text": f"Tell me more about why {title} helps"}},
+                {"id": "show_alternatives_why", "title": "Show alternatives", "style": "secondary", "action_type": "send_text", "payload": {"text": f"Show me alternatives to {title}"}},
+                {"id": "keep_it", "title": "Keep it", "style": "ghost", "action_type": "send_text", "payload": {"text": "That makes sense, keep it"}},
+            ],
+            "dismissible": True,
         }
     ]
 
@@ -2504,12 +2529,15 @@ Examples:
     # Add helpful follow-up options (was missing — every other handler has these)
     ui_blocks = [
         {
-            "type": "quick_replies",
-            "replies": [
-                {"label": "Got it, I'll do it!", "value": f"I completed {title}"},
-                {"label": "Tell me more", "value": f"Tell me more about how to do {title}"},
-                {"label": "Show alternatives", "value": f"Show me alternatives to {title}"}
-            ]
+            "id": "clarification_actions",
+            "type": "quick_actions",
+            "title": None,
+            "actions": [
+                {"id": "mark_clarification_done", "title": "Got it, I'll do it!", "style": "primary", "action_type": "send_text", "payload": {"text": f"I completed {title}"}},
+                {"id": "clarify_more", "title": "Tell me more", "style": "secondary", "action_type": "send_text", "payload": {"text": f"Tell me more about how to do {title}"}},
+                {"id": "show_alts_clarify", "title": "Show alternatives", "style": "ghost", "action_type": "send_text", "payload": {"text": f"Show me alternatives to {title}"}},
+            ],
+            "dismissible": True,
         }
     ]
     
