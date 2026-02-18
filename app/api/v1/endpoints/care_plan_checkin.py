@@ -294,6 +294,10 @@ def _attach_ui_blocks_to_latest_bot(raw_messages: List[Dict[str, Any]], ui_block
     serialized = _normalize_ui_blocks(ui_blocks)
     if not serialized:
         return raw_messages
+    # Clear old ui_blocks from all messages first, then attach to latest bot msg only
+    for msg in raw_messages:
+        if "ui_blocks" in msg:
+            del msg["ui_blocks"]
     for msg in reversed(raw_messages):
         if msg.get("role") in {"bot", "assistant"}:
             msg["ui_blocks"] = serialized
@@ -312,6 +316,11 @@ def _append_bot_message(
         return
     normalized_role = "bot" if role == "assistant" else role
     raw = list(thread_obj.raw_messages or [])
+    # Clear ui_blocks from all previous messages — only the latest response
+    # should have active CTAs. Old alternatives/buttons from prior turns are stale.
+    for msg in raw:
+        if "ui_blocks" in msg:
+            del msg["ui_blocks"]
     entry: Dict[str, Any] = {
         "id": str(uuid4()),
         "role": normalized_role,
