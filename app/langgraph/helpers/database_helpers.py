@@ -3,14 +3,31 @@ Database Helper Functions for LangGraph Nodes
 Provides convenient access to user data, cycle info, streaks, etc.
 """
 
+import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db, UserProfile, SymptomLog, ActionPlan, ActionPlanItem
+from app.core.database import get_db, UserProfile, UserResponse, SymptomLog, ActionPlan, ActionPlanItem
 from app.services.cycle_service import CycleService
 from app.services.streak_service import StreakService
 from app.services.reward_service import RewardService
+
+logger = logging.getLogger(__name__)
+
+
+def _fallback_hormones_for_phase(phase: Optional[str]) -> tuple[Optional[str], List[str]]:
+    """Fallback hormone mapping when signup hormone profile is unavailable."""
+    phase_lower = (phase or "").lower()
+    if "luteal" in phase_lower:
+        return "progesterone", ["cortisol"]
+    if "ovulation" in phase_lower:
+        return "estrogen", ["LH"]
+    if "follicular" in phase_lower:
+        return "estrogen", ["FSH"]
+    if "menses" in phase_lower or "menstrual" in phase_lower:
+        return "estrogen", ["prostaglandins"]
+    return None, []
 
 
 def get_user_profile(user_id: str, db: Session) -> Optional[UserProfile]:
@@ -33,15 +50,36 @@ def get_cycle_info(user_id: str, db: Session) -> Dict[str, Any]:
             "primary_hormone": None,
             "secondary_hormones": []
         }
-    
-    cycle_service = CycleService()
-    cycle_info = cycle_service.get_cycle_info(profile.to_dict())
-    
+
+    cycle_day = None
+    phase = None
+    try:
+        cycle_service = CycleService(db)
+        cycle_data = cycle_service.get_cycle_phase_info(user_id)
+        cycle_day = cycle_data.cycle_day
+        phase = cycle_data.phase
+    except Exception as exc:
+        logger.warning("Failed to load cycle info for user_id=%s: %s", user_id, exc)
+
+    user_response = (
+        db.query(UserResponse)
+        .filter(UserResponse.uid == user_id)
+        .order_by(UserResponse.created_at.desc())
+        .first()
+    )
+    primary_hormone = user_response.primary_hormone if user_response else None
+    secondary_hormones = list(user_response.secondary_hormones or []) if user_response else []
+
+    if not primary_hormone:
+        primary_hormone, fallback_secondary = _fallback_hormones_for_phase(phase)
+        if not secondary_hormones:
+            secondary_hormones = fallback_secondary
+
     return {
-        "cycle_day": cycle_info.get("cycle_day"),
-        "phase": cycle_info.get("phase"),
-        "primary_hormone": cycle_info.get("primary_hormone"),
-        "secondary_hormones": cycle_info.get("secondary_hormones", [])
+        "cycle_day": cycle_day,
+        "phase": phase,
+        "primary_hormone": primary_hormone,
+        "secondary_hormones": secondary_hormones,
     }
 
 
