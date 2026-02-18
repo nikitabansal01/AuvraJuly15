@@ -20,6 +20,8 @@ import json
 import logging
 from typing import Optional, Any, Dict
 import asyncio
+import os
+import time
 
 try:
     import redis.asyncio as aioredis
@@ -49,6 +51,33 @@ logger = logging.getLogger(__name__)
 
 _redis_client: Optional[Any] = None
 _redis_enabled: bool = False
+_redis_permanently_disabled: bool = False
+_redis_reconnect_after_ts: float = 0.0
+_redis_failure_backoff_seconds: int = 300
+_redis_disabled_reason: Optional[str] = None
+
+
+def _disable_redis(reason: str, *, permanent: bool) -> None:
+    """Disable Redis caching with either permanent or backoff mode."""
+    global _redis_enabled, _redis_client, _redis_permanently_disabled
+    global _redis_reconnect_after_ts, _redis_disabled_reason
+
+    prev_reason = _redis_disabled_reason
+    _redis_client = None
+    _redis_enabled = False
+    _redis_disabled_reason = reason
+
+    if permanent:
+        if not _redis_permanently_disabled or prev_reason != reason:
+            logger.info(f"{reason} Caching disabled.")
+        _redis_permanently_disabled = True
+        _redis_reconnect_after_ts = 0.0
+    else:
+        _redis_permanently_disabled = False
+        _redis_reconnect_after_ts = time.monotonic() + _redis_failure_backoff_seconds
+        logger.warning(
+            f"{reason} Caching disabled for {_redis_failure_backoff_seconds}s before retry."
+        )
 
 
 async def get_redis_client():
@@ -60,16 +89,40 @@ async def get_redis_client():
     global _redis_client, _redis_enabled
     
     if not REDIS_AVAILABLE:
-        if _redis_enabled:  # Only log once
-            logger.warning("Redis library not installed - caching disabled")
-            _redis_enabled = False
+        _disable_redis("Redis library not installed.", permanent=True)
+        return None
+
+    if _redis_permanently_disabled:
+        return None
+
+    if _redis_reconnect_after_ts and time.monotonic() < _redis_reconnect_after_ts:
         return None
     
     if _redis_client is None:
         try:
             from app.core.config import settings
+            redis_url = (settings.REDIS_URL or "").strip()
+            env = (settings.ENVIRONMENT or "").lower()
+            redis_url_from_env = "REDIS_URL" in os.environ
+
+            if not redis_url:
+                _disable_redis("REDIS_URL not configured.", permanent=True)
+                return None
+
+            # Root fix: in production with no explicit REDIS_URL, don't spam localhost retries.
+            if (
+                env == "production"
+                and redis_url in {"redis://localhost:6379", "redis://127.0.0.1:6379"}
+                and not redis_url_from_env
+            ):
+                _disable_redis(
+                    "Production environment has no explicit REDIS_URL (default localhost detected).",
+                    permanent=True,
+                )
+                return None
+
             _redis_client = await aioredis.from_url(
-                settings.REDIS_URL,
+                redis_url,
                 encoding="utf-8",
                 decode_responses=True,
                 max_connections=20,
@@ -79,22 +132,22 @@ async def get_redis_client():
             # Test connection
             await _redis_client.ping()
             _redis_enabled = True
-            logger.info(f"Redis client initialized: {settings.REDIS_URL}")
+            logger.info(f"Redis client initialized: {redis_url}")
         except Exception as e:
-            logger.warning(f"Redis connection failed: {e}. Caching disabled.")
-            _redis_client = None
-            _redis_enabled = False
+            _disable_redis(f"Redis connection failed: {e}.", permanent=False)
     
     return _redis_client
 
 
 async def close_redis_client():
     """Close Redis connection (call on shutdown)."""
-    global _redis_client
+    global _redis_client, _redis_enabled, _redis_reconnect_after_ts
     if _redis_client:
         await _redis_client.close()
         _redis_client = None
-        logger.info("Redis client closed")
+    _redis_enabled = False
+    _redis_reconnect_after_ts = 0.0
+    logger.info("Redis client closed")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

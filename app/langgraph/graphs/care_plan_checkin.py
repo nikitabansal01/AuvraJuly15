@@ -469,7 +469,10 @@ def _get_intent_router_llm():
     global _intent_router_llm
     if _intent_router_llm is None:
         model = os.getenv("CARE_PLAN_INTENT_MODEL", "gpt-5-mini")
-        _intent_router_llm = ChatOpenAI(model=model, temperature=0).with_structured_output(IntentRoutingOutput)
+        _intent_router_llm = ChatOpenAI(model=model, temperature=0).with_structured_output(
+            IntentRoutingOutput,
+            include_raw=False,
+        )
     return _intent_router_llm
 
 
@@ -478,8 +481,67 @@ def _get_guardrail_llm():
     global _guardrail_llm
     if _guardrail_llm is None:
         model = os.getenv("CARE_PLAN_GUARDRAIL_MODEL", os.getenv("CARE_PLAN_INTENT_MODEL", "gpt-5-mini"))
-        _guardrail_llm = ChatOpenAI(model=model, temperature=0).with_structured_output(HealthGuardrailOutput)
+        _guardrail_llm = ChatOpenAI(model=model, temperature=0).with_structured_output(
+            HealthGuardrailOutput,
+            include_raw=False,
+        )
     return _guardrail_llm
+
+
+def _coerce_intent_routing_output(raw: Any) -> IntentRoutingOutput:
+    """Normalize structured intent output across LangChain return shapes."""
+    if isinstance(raw, IntentRoutingOutput):
+        return raw
+
+    parsed = getattr(raw, "parsed", None)
+    if isinstance(parsed, IntentRoutingOutput):
+        return parsed
+    if isinstance(parsed, dict):
+        return IntentRoutingOutput.model_validate(parsed)
+
+    if isinstance(raw, dict):
+        candidate = raw.get("parsed", raw)
+        if isinstance(candidate, IntentRoutingOutput):
+            return candidate
+        if isinstance(candidate, dict):
+            return IntentRoutingOutput.model_validate(candidate)
+
+    if hasattr(raw, "intent"):
+        return IntentRoutingOutput(
+            intent=getattr(raw, "intent"),
+            targeted_action_index=getattr(raw, "targeted_action_index", None),
+            proposed_replacement=getattr(raw, "proposed_replacement", None),
+            feedback_topic=getattr(raw, "feedback_topic", None),
+        )
+
+    raise ValueError(f"Unsupported intent routing output type: {type(raw)}")
+
+
+def _coerce_guardrail_output(raw: Any) -> HealthGuardrailOutput:
+    """Normalize structured guardrail output across LangChain return shapes."""
+    if isinstance(raw, HealthGuardrailOutput):
+        return raw
+
+    parsed = getattr(raw, "parsed", None)
+    if isinstance(parsed, HealthGuardrailOutput):
+        return parsed
+    if isinstance(parsed, dict):
+        return HealthGuardrailOutput.model_validate(parsed)
+
+    if isinstance(raw, dict):
+        candidate = raw.get("parsed", raw)
+        if isinstance(candidate, HealthGuardrailOutput):
+            return candidate
+        if isinstance(candidate, dict):
+            return HealthGuardrailOutput.model_validate(candidate)
+
+    if hasattr(raw, "safety_level"):
+        return HealthGuardrailOutput(
+            safety_level=getattr(raw, "safety_level"),
+            should_append_urgent_guidance=bool(getattr(raw, "should_append_urgent_guidance", False)),
+        )
+
+    raise ValueError(f"Unsupported guardrail output type: {type(raw)}")
 
 
 async def classify_user_intent(state: CarePlanCheckInState) -> Command:
@@ -532,9 +594,10 @@ Return targeted_action_index as 1-based when user references a specific action."
 
     try:
         structured_llm = _get_intent_router_llm()
-        classification = await structured_llm.ainvoke(
+        classification_raw = await structured_llm.ainvoke(
             [{"role": "system", "content": system_prompt}, {"role": "user", "content": context_prompt}]
         )
+        classification = _coerce_intent_routing_output(classification_raw)
     except Exception as e:
         logger.warning(f"[INTENT] Structured router failed, fallback to general: {e}")
         fallback_intent = "request_alternates" if workflow_stage == "awaiting_alternate_selection" else "general"
@@ -630,23 +693,28 @@ Mark as urgent only if the message could reasonably be interpreted as encouragin
 or ignoring emergency warning signs.
 Set should_append_urgent_guidance=true only when urgent guidance should be appended."""
     try:
-        moderation = await _get_guardrail_llm().ainvoke(
+        moderation_raw = await _get_guardrail_llm().ainvoke(
             [
                 {"role": "system", "content": moderation_prompt},
                 {"role": "user", "content": f"Assistant response:\n{text}"},
             ]
         )
+        moderation = _coerce_guardrail_output(moderation_raw)
     except Exception as e:
         logger.warning(f"[GUARDRAIL] Primary moderation model failed: {e}")
         try:
             fallback_model = os.getenv("CARE_PLAN_GUARDRAIL_FALLBACK_MODEL", "gpt-4o-mini")
-            fallback_llm = ChatOpenAI(model=fallback_model, temperature=0).with_structured_output(HealthGuardrailOutput)
-            moderation = await fallback_llm.ainvoke(
+            fallback_llm = ChatOpenAI(model=fallback_model, temperature=0).with_structured_output(
+                HealthGuardrailOutput,
+                include_raw=False,
+            )
+            moderation_raw = await fallback_llm.ainvoke(
                 [
                     {"role": "system", "content": moderation_prompt},
                     {"role": "user", "content": f"Assistant response:\n{text}"},
                 ]
             )
+            moderation = _coerce_guardrail_output(moderation_raw)
         except Exception as fallback_error:
             logger.warning(f"[GUARDRAIL] Fallback moderation failed; returning original text: {fallback_error}")
             return text

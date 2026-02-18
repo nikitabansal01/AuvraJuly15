@@ -9,7 +9,7 @@ import datetime
 from time import perf_counter
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.core.database import get_db, CarePlanCheckInThread, ActionPlan, ActionPlanItem, ActionPlanFeedback
+from app.core.database import get_db, CarePlanCheckInThread, ActionPlan, ActionPlanItem, ActionPlanFeedback, UserProfile
 from app.models.ui_blocks import UIBlock, UIBlockAction, UIEventRequest
 from app.services.care_plan_checkin_service import CarePlanCheckInService
 from app.services.reward_service import RewardService
@@ -114,9 +114,18 @@ async def _reconstruct_state(thread: CarePlanCheckInThread, uid: str, service: C
         plan_date = thread.local_date
 
     # Get refresh tokens + streak
+    user_timezone = thread.timezone
+    if not user_timezone:
+        profile = (
+            service.db.query(UserProfile)
+            .filter(UserProfile.uid == uid)
+            .first()
+        )
+        user_timezone = getattr(profile, "current_timezone", None) or getattr(profile, "timezone", None)
+
     reward_service = RewardService(service.db)
     refresh_status = reward_service.get_refresh_status(uid)
-    streak_status = StreakService(service.db).get_full_streak_status(uid)
+    streak_status = StreakService(service.db).get_full_streak_status(uid, user_timezone=user_timezone)
     
     # CRITICAL FIX: Load cycle info for personalized responses
     # Previously was always None → handlers couldn't reference cycle phase
