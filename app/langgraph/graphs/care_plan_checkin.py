@@ -1340,8 +1340,10 @@ async def check_refresh_tokens_and_replace(state: CarePlanCheckInState) -> CareP
     if approval is False:
         return {
             **state,
-            "bot_response": "No worries — we’ll keep your plan as it is.",
+            "bot_response": "No worries — we'll keep your plan as it is.",
             "ui_blocks": [],
+            "workflow_stage": None,  # Clear so frontend doesn't preserve stale cards
+            "alternate_candidates": [],  # Clear candidates — no longer needed
             "phase": "complete"
         }
 
@@ -2353,6 +2355,7 @@ Guidelines:
         **state,
         "bot_response": response,
         "workflow_stage": None,  # Clear active workflow
+        "alternate_candidates": [],  # Clear so frontend doesn't preserve stale cards
         "ui_blocks": [],
         "phase": "complete"
     }
