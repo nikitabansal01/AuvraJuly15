@@ -36,7 +36,10 @@ try:
     from langgraph.checkpoint.postgres import PostgresSaver  # type: ignore
 except Exception:  # pragma: no cover - optional dependency in some envs
     PostgresSaver = None
-from langgraph.checkpoint.sqlite import SqliteSaver
+try:
+    from langgraph.checkpoint.sqlite import SqliteSaver  # type: ignore
+except Exception:  # pragma: no cover - optional dependency in some envs
+    SqliteSaver = None
 from langgraph.types import interrupt, Command
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -2554,17 +2557,30 @@ def create_process_selection_graph():
 
 def _create_persistent_checkpointer():
     postgres_dsn = os.getenv("LANGGRAPH_CHECKPOINT_POSTGRES_DSN")
-    if postgres_dsn and PostgresSaver is not None:
-        saver = PostgresSaver.from_conn_string(postgres_dsn)
-        if hasattr(saver, "setup"):
-            saver.setup()
-        logger.info("Care plan checkpointer configured: PostgresSaver")
-        return saver
+    if postgres_dsn:
+        if PostgresSaver is None:
+            logger.error(
+                "LANGGRAPH_CHECKPOINT_POSTGRES_DSN is set but PostgresSaver is unavailable. "
+                "Install langgraph-checkpoint-postgres."
+            )
+        else:
+            saver = PostgresSaver.from_conn_string(postgres_dsn)
+            if hasattr(saver, "setup"):
+                saver.setup()
+            logger.info("Care plan checkpointer configured: PostgresSaver")
+            return saver
 
     sqlite_path = os.getenv(
         "LANGGRAPH_CHECKPOINT_SQLITE_PATH",
         os.path.join(os.getcwd(), ".langgraph", "checkpoints", "care_plan_checkin.sqlite"),
     )
+    if SqliteSaver is None:
+        logger.warning(
+            "SqliteSaver is unavailable and no PostgresSaver is configured. "
+            "Compiling care-plan graphs without a checkpointer."
+        )
+        return None
+
     os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
     conn = sqlite3.connect(sqlite_path, check_same_thread=False)
     saver = SqliteSaver(conn)
@@ -2576,9 +2592,14 @@ def _create_persistent_checkpointer():
 
 _checkpointer = _create_persistent_checkpointer()
 
-care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
-care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
-care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_checkpointer)
+if _checkpointer is None:
+    care_plan_load_graph = create_load_plan_graph().compile()
+    care_plan_process_graph = create_process_message_graph().compile()
+    care_plan_selection_graph = create_process_selection_graph().compile()
+else:
+    care_plan_load_graph = create_load_plan_graph().compile(checkpointer=_checkpointer)
+    care_plan_process_graph = create_process_message_graph().compile(checkpointer=_checkpointer)
+    care_plan_selection_graph = create_process_selection_graph().compile(checkpointer=_checkpointer)
 
 
 # ═══════════════════════════════════════════════════════════════════
