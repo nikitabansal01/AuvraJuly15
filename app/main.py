@@ -29,13 +29,16 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting AUVRA application...")
     
-    # Initialize database
+    # Initialize database. This is deliberately fail-closed: migrations run in
+    # Render's start command, and the server must not accept traffic unless the
+    # configured database connections are reachable.
     try:
-        from app.core.database import create_tables
-        create_tables()
-        logger.info("Database initialized")
-    except Exception as e:
-        logger.warning(f"Database initialization failed: {e}")
+        from app.core.database import initialize_database
+        initialize_database()
+        logger.info("Database connections verified")
+    except Exception:
+        logger.exception("Database initialization failed; aborting startup")
+        raise
     
     # Initialize Firebase
     try:

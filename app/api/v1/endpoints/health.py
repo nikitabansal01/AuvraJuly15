@@ -1,15 +1,18 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from app.core.config import settings
-from datetime import datetime
+from app.core.database import check_database_connection
+import logging
 import os
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("")
 @router.get("/")
 async def health_check():
-    """Check application health status."""
+    """Lightweight liveness probe; intentionally performs no dependency I/O."""
     return {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
@@ -18,6 +21,21 @@ async def health_check():
         "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
         "render_service_id": os.getenv("RENDER_SERVICE_ID"),
     }
+
+
+@router.get("/ready")
+def database_readiness_check():
+    """Report readiness only when the application database answers a query."""
+    try:
+        check_database_connection()
+    except Exception:
+        logger.exception("Database readiness probe failed")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": "unavailable"},
+        )
+
+    return {"status": "ready", "database": "available"}
 
 
 @router.get("/detailed")
@@ -58,4 +76,4 @@ async def db_pool_status():
             "utilization_percent": round((checked_out / (pool_size + engine.pool._max_overflow)) * 100, 2)
         }
     except Exception as e:
-        return {"error": f"Failed to get pool status: {str(e)}"} 
+        return {"error": f"Failed to get pool status: {str(e)}"}

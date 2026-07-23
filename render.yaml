@@ -3,14 +3,18 @@ services:
     name: auvra-backend
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head; uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /api/v1/health
+    # Never serve traffic against a schema whose migrations failed.
+    startCommand: alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # Readiness checks the database; /api/v1/health remains a lightweight liveness probe.
+    healthCheckPath: /api/v1/health/ready
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
+        sync: false
+      - key: LANGGRAPH_CHECKPOINT_POSTGRES_DSN
         sync: false
       - key: FIREBASE_PROJECT_ID
         sync: false

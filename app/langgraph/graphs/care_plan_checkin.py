@@ -68,6 +68,7 @@ from app.langgraph.helpers.ui_blocks_helper import (
     generate_intelligent_ctas, create_confirmation_block, 
     create_alternates_selection_block, clear_ui_blocks, create_action_selection_block
 )
+from app.core.config import settings
 from app.core.database import get_db, ActionPlanItem, ActionPlanRefreshLog, SessionLocal, get_db_session
 # NEW: Unified memory for cross-chatbot context
 from app.langgraph.memory import get_unified_context, format_context_for_prompt
@@ -2687,7 +2688,7 @@ async def _run_checkpointer_setup(checkpointer: Any) -> None:
 
 async def _create_async_checkpointer():
     """Create an async-compatible checkpointer for ainvoke/astream flows."""
-    postgres_dsn = os.getenv("LANGGRAPH_CHECKPOINT_POSTGRES_DSN")
+    postgres_dsn = settings.LANGGRAPH_CHECKPOINT_POSTGRES_DSN.strip()
     if postgres_dsn:
         if AsyncPostgresSaver is not None:
             saver_cm = AsyncPostgresSaver.from_conn_string(postgres_dsn)
@@ -2706,6 +2707,16 @@ async def _create_async_checkpointer():
                 "LANGGRAPH_CHECKPOINT_POSTGRES_DSN is set but Postgres checkpoint package is unavailable. "
                 "Install langgraph-checkpoint-postgres."
             )
+
+        if settings.ENVIRONMENT == "production":
+            raise RuntimeError(
+                "A PostgreSQL LangGraph checkpointer is required in production"
+            )
+
+    elif settings.ENVIRONMENT == "production":
+        raise RuntimeError(
+            "LANGGRAPH_CHECKPOINT_POSTGRES_DSN is required in production"
+        )
 
     sqlite_path = os.getenv(
         "LANGGRAPH_CHECKPOINT_SQLITE_PATH",

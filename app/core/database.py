@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ARRAY, Text, ForeignKey, Date, Index, BigInteger, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -14,13 +15,53 @@ logger = logging.getLogger(__name__)
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
+
+_SAFE_POSTGRES_SSL_MODES = frozenset({"require", "verify-ca", "verify-full"})
+
+
+def normalize_postgres_tls_url(database_url: str) -> str:
+    """Return a PostgreSQL URL that enforces encrypted transport.
+
+    Production must never silently accept libpq's weaker ``disable``,
+    ``allow``, or ``prefer`` modes. Existing safe modes are preserved and a
+    missing mode is upgraded to ``require`` without exposing credentials in
+    any error message.
+    """
+    try:
+        parsed = make_url(database_url)
+    except Exception as exc:
+        raise RuntimeError("Invalid PostgreSQL database URL") from exc
+
+    if parsed.get_backend_name() != "postgresql":
+        raise RuntimeError("Production database URLs must use PostgreSQL")
+
+    query = dict(parsed.query)
+    sslmode = str(query.get("sslmode", "")).strip().lower()
+    if sslmode and sslmode not in _SAFE_POSTGRES_SSL_MODES:
+        raise RuntimeError(
+            "Production PostgreSQL sslmode must be require, verify-ca, or verify-full"
+        )
+    query["sslmode"] = sslmode or "require"
+    return parsed.set(query=query).render_as_string(hide_password=False)
+
+
+def _asyncpg_url(database_url: str) -> str:
+    """Convert a normalized sync PostgreSQL URL for SQLAlchemy asyncpg."""
+    parsed = make_url(database_url)
+    query = dict(parsed.query)
+    sslmode = query.pop("sslmode", None)
+    if sslmode is not None:
+        query["ssl"] = sslmode
+    return parsed.set(
+        drivername="postgresql+asyncpg",
+        query=query,
+    ).render_as_string(hide_password=False)
+
 # Database engine creation
 # For Supabase Session Pooler, use NullPool (no local pooling)
 # Supabase Session Pooler already manages connection pooling on their side
 if settings.ENVIRONMENT == "production":
-    database_url = settings.DATABASE_URL
-    if "?" not in database_url:
-        database_url += "?sslmode=require"
+    database_url = normalize_postgres_tls_url(settings.DATABASE_URL)
     
     # Sync Engine
     # Use NullPool - Supabase Session Pooler handles all connection pooling
@@ -33,8 +74,7 @@ if settings.ENVIRONMENT == "production":
 
     # Async Engine
     # asyncpg uses 'ssl' parameter, not 'sslmode' - convert for compatibility
-    async_database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
-    async_database_url = async_database_url.replace("sslmode=", "ssl=")
+    async_database_url = _asyncpg_url(database_url)
     async_engine = create_async_engine(
         async_database_url,
         poolclass=NullPool,
@@ -1436,5 +1476,98 @@ class ActionPlanRefreshLog(Base):
 
 # Database table creation
 def create_tables():
-    """Create tables"""
-    Base.metadata.create_all(bind=engine) 
+    """Create tables for local development.
+
+    Production schema changes are owned by Alembic and must complete before the
+    application process starts. Calling ``create_all`` in production can hide a
+    broken or incomplete migration chain, so :func:`initialize_database` never
+    calls this helper there.
+    """
+    Base.metadata.create_all(bind=engine)
+
+
+def check_database_connection() -> None:
+    """Raise when the primary application database cannot answer a query."""
+    with engine.connect() as connection:
+        result = connection.execute(text("SELECT 1")).scalar_one()
+        if result != 1:
+            raise RuntimeError("Database readiness query returned an unexpected result")
+
+
+def _is_missing_or_placeholder_database_url(value: str) -> bool:
+    """Return whether a database URL is unsuitable for production."""
+    normalized = (value or "").strip().lower()
+    placeholder_markers = (
+        "user:password@",
+        "[your-password]",
+        "<password>",
+        "your-password",
+    )
+    return not normalized or any(marker in normalized for marker in placeholder_markers)
+
+
+def validate_database_configuration() -> None:
+    """Require both durable PostgreSQL connections in production.
+
+    ``DATABASE_URL`` owns application data. LangGraph checkpoints are a
+    separate runtime concern and must never fall back to Render's ephemeral
+    filesystem in production, even when both variables point at the same
+    PostgreSQL database.
+    """
+    if settings.ENVIRONMENT != "production":
+        return
+
+    invalid_keys = []
+    if _is_missing_or_placeholder_database_url(settings.DATABASE_URL):
+        invalid_keys.append("DATABASE_URL")
+    if _is_missing_or_placeholder_database_url(
+        settings.LANGGRAPH_CHECKPOINT_POSTGRES_DSN
+    ):
+        invalid_keys.append("LANGGRAPH_CHECKPOINT_POSTGRES_DSN")
+
+    if invalid_keys:
+        joined_keys = ", ".join(invalid_keys)
+        raise RuntimeError(
+            f"Missing or placeholder production database configuration: {joined_keys}"
+        )
+
+    # Validate both DSNs even when they point to the same database. This is a
+    # configuration check only and does not open a connection.
+    normalize_postgres_tls_url(settings.DATABASE_URL)
+    normalize_postgres_tls_url(settings.LANGGRAPH_CHECKPOINT_POSTGRES_DSN)
+
+
+def _check_postgres_url(database_url: str) -> None:
+    """Raise when an additional PostgreSQL DSN cannot answer a query."""
+    connection_url = normalize_postgres_tls_url(database_url)
+
+    probe_engine = create_engine(connection_url, poolclass=NullPool, echo=False)
+    try:
+        with probe_engine.connect() as connection:
+            result = connection.execute(text("SELECT 1")).scalar_one()
+            if result != 1:
+                raise RuntimeError(
+                    "Checkpoint database readiness query returned an unexpected result"
+                )
+    finally:
+        probe_engine.dispose()
+
+
+def initialize_database() -> None:
+    """Initialize local schema and verify all required database connections.
+
+    Any exception is intentionally allowed to propagate so application startup
+    fails closed instead of advertising a healthy service without persistence.
+    """
+    validate_database_configuration()
+
+    if settings.ENVIRONMENT != "production":
+        create_tables()
+
+    check_database_connection()
+
+    if (
+        settings.ENVIRONMENT == "production"
+        and settings.LANGGRAPH_CHECKPOINT_POSTGRES_DSN != settings.DATABASE_URL
+    ):
+        _check_postgres_url(settings.LANGGRAPH_CHECKPOINT_POSTGRES_DSN)
