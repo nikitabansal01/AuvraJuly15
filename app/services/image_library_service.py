@@ -45,7 +45,7 @@ class ImageLibraryService:
     # Lower = more reuse (faster), Higher = more specificity
     SIMILARITY_THRESHOLD = 0.88  # Cosine similarity threshold for semantic image matching
     
-    COST_PER_IMAGE = 0.0  # Gemini is free
+    COST_PER_IMAGE = 0.0  # Provider billing is not metered by this service.
     
     # Embedding model
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
@@ -84,6 +84,8 @@ class ImageLibraryService:
         
         # HTTP clients
         self.client = httpx.AsyncClient(timeout=120.0)
+        self._gemini_request_semaphore = asyncio.Semaphore(1)
+        self._gemini_retry_after = 0.0
         self._cloudinary_upload_semaphore = asyncio.Semaphore(1)
         
         # In-memory cache for embeddings (avoid repeated API calls)
@@ -511,7 +513,7 @@ class ImageLibraryService:
         prompt_embedding: Optional[List[float]],
         db: AsyncSession
     ) -> Tuple[str, bool, float]:
-        """Generate a new image using Gemini 2.5 Flash Image and store it."""
+        """Generate a new Gemini image and store it."""
         start_time = time.time()
 
         try:
@@ -558,44 +560,59 @@ class ImageLibraryService:
     ) -> Optional[bytes]:
         """Generate an image using the Gemini REST API."""
         if not self.gemini_api_key:
-            return await self._generate_pil_placeholder(prompt)
+            return None
+
+        if time.monotonic() < self._gemini_retry_after:
+            return None
 
         try:
-            enhanced = self._enhance_prompt(prompt, category, variant_type)
-            logger.info(f"🎨 [GEMINI] generating: {prompt[:50]}...")
+            async with self._gemini_request_semaphore:
+                if time.monotonic() < self._gemini_retry_after:
+                    return None
 
-            response = await self.client.post(
-                (
-                    "https://generativelanguage.googleapis.com/v1/models/"
-                    f"{self.gemini_model_name}:generateContent"
-                ),
-                headers={
-                    "x-goog-api-key": self.gemini_api_key,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "contents": [{
-                        "parts": [{
-                            "text": f"Generate a high-quality square image: {enhanced}"
-                        }]
-                    }],
-                    "generationConfig": {
-                        "responseModalities": ["IMAGE"]
+                enhanced = self._enhance_prompt(prompt, category, variant_type)
+                logger.info(f"🎨 [GEMINI] generating: {prompt[:50]}...")
+
+                response = await self.client.post(
+                    (
+                        "https://generativelanguage.googleapis.com/v1/models/"
+                        f"{self.gemini_model_name}:generateContent"
+                    ),
+                    headers={
+                        "x-goog-api-key": self.gemini_api_key,
+                        "Content-Type": "application/json",
                     },
-                },
-                timeout=120.0,
-            )
-            response.raise_for_status()
+                    json={
+                        "contents": [{
+                            "parts": [{
+                                "text": f"Generate a high-quality square image: {enhanced}"
+                            }]
+                        }],
+                        "generationConfig": {
+                            "responseModalities": ["IMAGE"]
+                        },
+                    },
+                    timeout=120.0,
+                )
 
-            payload = response.json()
-            for candidate in payload.get("candidates", []):
-                for part in candidate.get("content", {}).get("parts", []):
-                    inline_data = part.get("inlineData") or part.get("inline_data")
-                    if inline_data and inline_data.get("data"):
-                        return base64.b64decode(inline_data["data"])
+                if response.status_code == 429:
+                    self._gemini_retry_after = time.monotonic() + 60.0
+                    logger.warning(
+                        "Gemini image quota unavailable (429); using hosted fallback images for 60 seconds"
+                    )
+                    return None
+
+                response.raise_for_status()
+
+                payload = response.json()
+                for candidate in payload.get("candidates", []):
+                    for part in candidate.get("content", {}).get("parts", []):
+                        inline_data = part.get("inlineData") or part.get("inline_data")
+                        if inline_data and inline_data.get("data"):
+                            return base64.b64decode(inline_data["data"])
 
             logger.warning("[GEMINI] No image data in response")
-            return await self._generate_pil_placeholder(prompt)
+            return None
 
         except Exception as e:
             error_str = str(e)
@@ -603,7 +620,7 @@ class ImageLibraryService:
                 logger.warning("Gemini rate limited (429), using placeholder")
             else:
                 logger.error(f"Gemini image generation failed: {e}")
-            return await self._generate_pil_placeholder(prompt)
+            return None
 
     async def _generate_pil_placeholder(self, prompt: str) -> Optional[bytes]:
         """Generate a placeholder image using PIL."""

@@ -9119,21 +9119,28 @@ Respond with valid JSON only."""
                 elif not isinstance(raw_variants, list):
                     raw_variants = []
                 
-                for variant in raw_variants[:3]:
-                    # Skip if variant is not a dict
-                    if not isinstance(variant, dict):
-                        logger.warning(f"Skipping invalid variant: {type(variant)}")
+                for variant_index, variant in enumerate(raw_variants[:3]):
+                    category = replacement_action.get("category", "food")
+                    defaults = {
+                        "food": ["healthy", "easy", "tasty"],
+                        "movement": ["gentle", "quick", "energizing"],
+                        "mindfulness": ["brief", "guided", "solo"],
+                    }.get(category, ["alternative"])
+
+                    # Some fallback models return variant titles as strings.
+                    # Preserve them as usable variants instead of discarding them.
+                    if isinstance(variant, str):
+                        variant = {
+                            "variant_type": defaults[variant_index % len(defaults)],
+                            "title": variant,
+                            "description": f"An alternative way to try {variant}.",
+                        }
+                    elif not isinstance(variant, dict):
                         continue
                     
                     v_type = variant.get("variant_type")
                     if not v_type or v_type == "alternative":
-                        category = replacement_action.get("category", "food")
-                        defaults = {
-                            "food": ["healthy", "easy", "tasty"],
-                            "movement": ["gentle", "quick", "energizing"],
-                            "mindfulness": ["brief", "guided", "solo"]
-                        }.get(category, ["alternative"])
-                        v_type = defaults[raw_variants.index(variant) % len(defaults)]
+                        v_type = defaults[variant_index % len(defaults)]
                     
                     # Use variant TITLE for cache matching
                     replacement_title = replacement_action.get("title", "Action")
