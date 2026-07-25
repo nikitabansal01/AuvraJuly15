@@ -49,9 +49,8 @@ def _asyncpg_url(database_url: str) -> str:
     """Convert a normalized sync PostgreSQL URL for SQLAlchemy asyncpg."""
     parsed = make_url(database_url)
     query = dict(parsed.query)
-    sslmode = query.pop("sslmode", None)
-    if sslmode is not None:
-        query["ssl"] = sslmode
+    query.pop("sslmode", None)
+    query.pop("ssl", None)
     return parsed.set(
         drivername="postgresql+asyncpg",
         query=query,
