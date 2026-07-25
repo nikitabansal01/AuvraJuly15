@@ -4613,40 +4613,29 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
         # Gather ALL concerns the user has
         all_concerns = []
         top_concern = user_context.get("top_concern", "")
-        if top_concern and top_concern.lower() not in ["none", "general wellness", ""]:
+        if isinstance(top_concern, str) and top_concern and top_concern.lower() not in ["none", "general wellness", ""]:
             all_concerns.append(top_concern)
         
+        # Helper function to extract concerns safely whether list or str
+        def extract_concerns(val):
+            if not val:
+                return
+            if isinstance(val, list):
+                all_concerns.extend([str(c).strip() for c in val if c and str(c).lower() not in ["none specified", "none", ""]])
+            elif isinstance(val, str) and val.lower() not in ["none specified", "none", ""]:
+                all_concerns.append(val.strip())
+        
         # Period concerns
-        period_concerns_val = user_context.get("period_concerns", "")
-        if period_concerns_val and period_concerns_val.lower() not in ["none specified", "none", ""]:
-            if isinstance(period_concerns_val, list):
-                all_concerns.extend([c for c in period_concerns_val if c])
-            elif isinstance(period_concerns_val, str):
-                all_concerns.append(period_concerns_val.strip())
+        extract_concerns(user_context.get("period_concerns"))
         
         # Body concerns
-        body_concerns_val = user_context.get("body_concerns", "")
-        if body_concerns_val and body_concerns_val.lower() not in ["none specified", "none", ""]:
-            if isinstance(body_concerns_val, list):
-                all_concerns.extend([c for c in body_concerns_val if c])
-            elif isinstance(body_concerns_val, str):
-                all_concerns.append(body_concerns_val.strip())
+        extract_concerns(user_context.get("body_concerns"))
         
         # Skin/hair concerns
-        skin_hair_concerns_val = user_context.get("skin_hair_concerns", "")
-        if skin_hair_concerns_val and skin_hair_concerns_val.lower() not in ["none specified", "none", ""]:
-            if isinstance(skin_hair_concerns_val, list):
-                all_concerns.extend([c for c in skin_hair_concerns_val if c])
-            elif isinstance(skin_hair_concerns_val, str):
-                all_concerns.append(skin_hair_concerns_val.strip())
+        extract_concerns(user_context.get("skin_hair_concerns"))
         
         # Mental health concerns
-        mental_health_concerns_val = user_context.get("mental_health_concerns", "")
-        if mental_health_concerns_val and mental_health_concerns_val.lower() not in ["none specified", "none", ""]:
-            if isinstance(mental_health_concerns_val, list):
-                all_concerns.extend([c for c in mental_health_concerns_val if c])
-            elif isinstance(mental_health_concerns_val, str):
-                all_concerns.append(mental_health_concerns_val.strip())
+        extract_concerns(user_context.get("mental_health_concerns"))
         
         # Remove duplicates while preserving order
         seen = set()
@@ -4659,7 +4648,12 @@ For {secondary_persona.get('name', 'Hormone')} ({secondary_hormone}):
         
         # Family history (only if relevant)
         family_history_val = user_context.get("family_history", "")
-        has_family_history = family_history_val and family_history_val.lower() not in ["none specified", "none", ""]
+        if isinstance(family_history_val, list):
+            has_family_history = bool([f for f in family_history_val if f and str(f).lower() not in ["none specified", "none", ""]])
+        elif isinstance(family_history_val, str):
+            has_family_history = family_history_val.lower() not in ["none specified", "none", ""]
+        else:
+            has_family_history = False
         
         # Build intelligent health situation summary
         summary_parts = []
