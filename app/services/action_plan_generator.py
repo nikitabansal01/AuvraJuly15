@@ -8513,6 +8513,7 @@ PMID: {paper.get('pmid', '')}
             for item in original_items:
                 items_to_replace.append({
                     "slot": item.slot,
+                    "time_slot": item.time_slot,
                     "original_title": item.title,
                     "original_category": item.category,
                     "target_hormone": item.target_hormone,
@@ -8625,6 +8626,19 @@ Respond with valid JSON only."""
                 
                 if self.openai_api_key:
                     try:
+                        openai_payload = self.build_openai_payload(
+                            model=self.GPT_MODEL,
+                            messages=[
+                                {"role": "system", "content": personalized_system},
+                                {"role": "user", "content": batch_prompt},
+                            ],
+                            max_tokens=16000,
+                            temperature=0.3,
+                            tools=[PUBMED_SEARCH_TOOL],
+                            reasoning_effort="minimal",
+                        )
+                        openai_payload["tool_choice"] = "auto"
+
                         # Generate replacement actions WITH tool calling for real citations
                         response = await self.client.post(
                             "https://api.openai.com/v1/chat/completions",
@@ -8632,18 +8646,7 @@ Respond with valid JSON only."""
                                 "Authorization": f"Bearer {self.openai_api_key}",
                                 "Content-Type": "application/json"
                             },
-                            json={
-                                "model": self.GPT_MODEL,
-                                "messages": [
-                                    {"role": "system", "content": personalized_system},
-                                    {"role": "user", "content": batch_prompt}
-                                ],
-                                "tools": [PUBMED_SEARCH_TOOL],
-                                "tool_choice": "auto",
-                                "temperature": 0.3,
-                                "max_completion_tokens": 16000,
-                                "reasoning_effort": "minimal"  # Disable reasoning for speed
-                            }
+                            json=openai_payload,
                         )
                         
                         if response.status_code != 200:
@@ -8719,19 +8722,19 @@ Respond with valid JSON only."""
                                         "Authorization": f"Bearer {self.openai_api_key}",
                                         "Content-Type": "application/json"
                                     },
-                                    json={
-                                        "model": self.GPT_MODEL,
-                                        "messages": [
+                                    json=self.build_openai_payload(
+                                        model=self.GPT_MODEL,
+                                        messages=[
                                             {"role": "system", "content": personalized_system},
                                             {"role": "user", "content": batch_prompt},
                                             assistant_message,
                                             *tool_results
                                         ],
-                                        "temperature": 0.3,
-                                        "max_completion_tokens": 16000,
-                                        "response_format": {"type": "json_object"},
-                                        "reasoning_effort": "minimal"  # Disable reasoning for speed
-                                    }
+                                        max_tokens=16000,
+                                        temperature=0.3,
+                                        response_format={"type": "json_object"},
+                                        reasoning_effort="minimal",
+                                    ),
                                 )
                                 
                                 if response2.status_code != 200:
@@ -8858,9 +8861,17 @@ Respond with valid JSON only."""
                 if not isinstance(attempt_actions, list):
                     attempt_actions = [attempt_actions]
                 
-                # Normalize categories to lowercase (same as _generate_actions_via_gpt)
-                for action in attempt_actions:
-                    if "category" in action:
+                # Slot, timing, category, and hormone come from the existing item,
+                # not from model output. This keeps replacements in the same UI
+                # position and makes fallback-model responses deterministic.
+                for index, action in enumerate(attempt_actions):
+                    if index < len(original_items):
+                        original = original_items[index]
+                        action["slot"] = original.slot
+                        action["time_slot"] = original.time_slot
+                        action["category"] = original.category.lower()
+                        action["target_hormone"] = original.target_hormone
+                    elif "category" in action:
                         action["category"] = action["category"].lower()
                 
                 # Validate all replacement actions
