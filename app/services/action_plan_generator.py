@@ -6914,7 +6914,7 @@ JSON ONLY:
             return {
                 "success": True,
                 "plan_id": plan.id,
-                "plan_date": plan.plan_date.isoformat(),
+                "plan_date": plan.plan_date.isoformat() if hasattr(plan.plan_date, "isoformat") else str(plan.plan_date),
                 "primary_hormone": plan.primary_hormone,
                 "secondary_hormones": plan.secondary_hormones,
                 "cycle_day": plan.cycle_day,
@@ -6925,7 +6925,7 @@ JSON ONLY:
             }
             
         except Exception as e:
-            logger.error(f"Error formatting plan response: {e}")
+            logger.error(f"Error formatting plan response: {e}", exc_info=True)
             return {"success": False, "error": "Failed to load plan. Please try again."}
     
     async def _background_generate_variants(
