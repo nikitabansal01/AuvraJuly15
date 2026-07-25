@@ -556,38 +556,47 @@ class ImageLibraryService:
         category: str = "food",
         variant_type: Optional[str] = None
     ) -> Optional[bytes]:
-        """Generate an image using the current Google GenAI SDK."""
+        """Generate an image using the Gemini REST API."""
         if not self.gemini_api_key:
             return await self._generate_pil_placeholder(prompt)
 
-        client = None
         try:
-            from google import genai
-            from google.genai import types
-
             enhanced = self._enhance_prompt(prompt, category, variant_type)
-            client = genai.Client(api_key=self.gemini_api_key)
-
             logger.info(f"🎨 [GEMINI] generating: {prompt[:50]}...")
 
-            response = await client.aio.models.generate_content(
-                model=self.gemini_model_name,
-                contents=f"Generate a high-quality square image: {enhanced}",
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE"],
+            response = await self.client.post(
+                (
+                    "https://generativelanguage.googleapis.com/v1/models/"
+                    f"{self.gemini_model_name}:generateContent"
                 ),
+                headers={
+                    "x-goog-api-key": self.gemini_api_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "contents": [{
+                        "parts": [{
+                            "text": f"Generate a high-quality square image: {enhanced}"
+                        }]
+                    }],
+                    "generationConfig": {
+                        "responseModalities": ["IMAGE"]
+                    },
+                },
+                timeout=120.0,
             )
+            response.raise_for_status()
 
-            for part in response.parts or []:
-                if part.inline_data and part.inline_data.data:
-                    return part.inline_data.data
+            payload = response.json()
+            for candidate in payload.get("candidates", []):
+                for part in candidate.get("content", {}).get("parts", []):
+                    inline_data = part.get("inlineData") or part.get("inline_data")
+                    if inline_data and inline_data.get("data"):
+                        return base64.b64decode(inline_data["data"])
 
             logger.warning("[GEMINI] No image data in response")
             return await self._generate_pil_placeholder(prompt)
 
-        except ImportError:
-            logger.error("google-genai package not installed")
-            return await self._generate_pil_placeholder(prompt)
         except Exception as e:
             error_str = str(e)
             if "429" in error_str:
@@ -595,12 +604,6 @@ class ImageLibraryService:
             else:
                 logger.error(f"Gemini image generation failed: {e}")
             return await self._generate_pil_placeholder(prompt)
-        finally:
-            if client is not None:
-                try:
-                    await client.aio.aclose()
-                except Exception:
-                    pass
 
     async def _generate_pil_placeholder(self, prompt: str) -> Optional[bytes]:
         """Generate a placeholder image using PIL."""

@@ -26,7 +26,6 @@ openai>=1.104.2
 python-dateutil==2.8.2
 pytz==2023.3
 google-generativeai==0.3.2
-google-genai==2.14.0
 rank-bm25==0.2.2
 nltk==3.8.1
 
