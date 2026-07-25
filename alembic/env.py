@@ -24,6 +24,31 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 target_metadata = Base.metadata
 
+# These tables are created and migrated by LangGraph's Postgres checkpointer
+# at runtime. They deliberately live outside AUVRA's ORM/Alembic metadata and
+# must never be interpreted as stale application tables during autogenerate.
+LANGGRAPH_RUNTIME_TABLES = frozenset(
+    {
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
+        "checkpoint_migrations",
+    }
+)
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    """Exclude only the known LangGraph-owned checkpoint objects."""
+    if type_ == "table" and name in LANGGRAPH_RUNTIME_TABLES:
+        return False
+
+    if type_ == "index":
+        table = getattr(object_, "table", None)
+        if table is not None and table.name in LANGGRAPH_RUNTIME_TABLES:
+            return False
+
+    return True
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
@@ -53,6 +78,9 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        compare_server_default=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -76,7 +104,11 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            compare_server_default=True,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
@@ -87,4 +119,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
- 

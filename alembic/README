@@ -1,1 +1,13 @@
-Generic single-database configuration.
+# AUVRA database migrations
+
+The active Alembic revision path is `recovery_versions/`. It starts with the
+immutable `20260723_0001` canonical baseline for a completely blank PostgreSQL
+17 database.
+
+The files in `versions/` are historical evidence only. They are deliberately
+not included in `version_locations`: replaying them is not a supported install
+or recovery path. Never point the canonical baseline at an old populated
+database and never stamp an old database as the canonical baseline.
+
+For bootstrap, validation, and approved legacy-data migration instructions,
+see `docs/DATABASE_RECOVERY.md`.
