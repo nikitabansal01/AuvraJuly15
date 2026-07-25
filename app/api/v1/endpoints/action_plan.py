@@ -236,54 +236,59 @@ async def get_today_assignments(
             ).first()
             
             if processing and processing.processing_status in ["queued", "in_progress"]:
-                # Session is still generating - return 202 with progress info
                 elapsed = 0
                 if processing.started_at:
                     elapsed = (datetime.utcnow() - processing.started_at).total_seconds()
                 
-                progress = processing.progress or 0
-                phase = processing.phase or "Generating"
-                
-                # Calculate estimated remaining time
-                if progress <= 15:
-                    estimated_total = 60
-                elif progress <= 35:
-                    estimated_total = 90
-                elif progress <= 60:
-                    estimated_total = 120
-                elif progress <= 95:
-                    estimated_total = 140
+                # If processing has been running for > 120 seconds, treat as timed out/failed
+                if elapsed > 120:
+                    logger.warning(f"[STALE_SESSION] Session {linked_session.session_id} has been in state '{processing.processing_status}' for {int(elapsed)}s (>120s). Marking failed.")
+                    processing.processing_status = "failed"
+                    db.commit()
                 else:
-                    estimated_total = 150
-                
-                if progress > 0:
-                    remaining_ratio = (100 - progress) / 100
-                    estimated_remaining = estimated_total * remaining_ratio
-                else:
-                    estimated_remaining = estimated_total
-                
-                estimated_remaining = min(estimated_remaining, 180)
-                
-                logger.info(f"[DUPLICATE_PREVENTION] Session {linked_session.session_id} is generating for {uid} ({progress}% complete). Returning 202 instead of duplicating.")
-                
-                from fastapi.responses import JSONResponse
-                return JSONResponse(
-                    status_code=202,
-                    content={
-                        "success": True,
-                        "generating": True,
-                        "plan_exists": False,
-                        "session_id": linked_session.session_id,
-                        "processing_status": processing.processing_status,
-                        "progress": progress,
-                        "phase": phase,
-                        "elapsed_seconds": int(elapsed),
-                        "estimated_remaining_seconds": int(estimated_remaining),
-                        "message": f"Your personalized plan is {progress}% complete...",
-                        "poll_endpoint": "/action-plan/assignments/today/status",
-                        "poll_interval_ms": 3000,
-                    }
-                )
+                    progress = processing.progress or 0
+                    phase = processing.phase or "Generating"
+                    
+                    # Calculate estimated remaining time
+                    if progress <= 15:
+                        estimated_total = 60
+                    elif progress <= 35:
+                        estimated_total = 90
+                    elif progress <= 60:
+                        estimated_total = 120
+                    elif progress <= 95:
+                        estimated_total = 140
+                    else:
+                        estimated_total = 150
+                    
+                    if progress > 0:
+                        remaining_ratio = (100 - progress) / 100
+                        estimated_remaining = estimated_total * remaining_ratio
+                    else:
+                        estimated_remaining = estimated_total
+                    
+                    estimated_remaining = min(estimated_remaining, 180)
+                    
+                    logger.info(f"[DUPLICATE_PREVENTION] Session {linked_session.session_id} is generating for {uid} ({progress}% complete). Returning 202 instead of duplicating.")
+                    
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=202,
+                        content={
+                            "success": True,
+                            "generating": True,
+                            "plan_exists": False,
+                            "session_id": linked_session.session_id,
+                            "processing_status": processing.processing_status,
+                            "progress": progress,
+                            "phase": phase,
+                            "elapsed_seconds": int(elapsed),
+                            "estimated_remaining_seconds": int(estimated_remaining),
+                            "message": f"Your personalized plan is {progress}% complete...",
+                            "poll_endpoint": "/action-plan/assignments/today/status",
+                            "poll_interval_ms": 3000,
+                        }
+                    )
         
         # Get async session for generator
         async_db = await get_async_db_session()
