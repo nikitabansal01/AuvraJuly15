@@ -2,8 +2,8 @@
 AUVRA Image Library Service
 
 Semantic image caching and generation using:
-- RunPod FLUX.1 Schnell for fast, high-quality image generation
-- OpenAI ada-002 for embeddings ($0.0001/call)  
+- Google Gemini 2.5 Flash Image for free image generation (500 RPD)
+- OpenAI ada-002 for embeddings ($0.0001/call)
 - Cloudinary for image hosting
 - PostgreSQL for semantic matching
 
@@ -11,7 +11,7 @@ Features:
 - Semantic embedding matching (cosine similarity > 0.85)
 - Cross-user image reuse (never same image for same user)
 - All 16 images generated per day (4 actions × 4 variants)
-- Fast 4-step inference with 512x512 resolution
+- 512x512 resolution for action cards
 """
 
 import os
@@ -36,7 +36,7 @@ class ImageLibraryService:
     """
     Image generation and semantic caching service.
     
-    Uses RunPod FLUX.1 Schnell for fast, high-quality images with 512x512 resolution.
+    Uses Gemini 2.5 Flash Image for free image generation with 512x512 resolution.
     Stores all images with embeddings for semantic reuse.
     """
     
@@ -45,22 +45,13 @@ class ImageLibraryService:
     # Lower = more reuse (faster), Higher = more specificity
     SIMILARITY_THRESHOLD = 0.88  # Cosine similarity threshold for semantic image matching
     
-    # RunPod FLUX.1 Schnell pricing
-    COST_PER_IMAGE = 0.005  # $0.005 per image
+    COST_PER_IMAGE = 0.0  # Gemini is free
     
     # Embedding model
     EMBEDDING_MODEL = "text-embedding-ada-002"  # or "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
-    # Retry settings - fast failure, fast retry
-    MAX_IMAGE_RETRIES = 3  # 3 retries for shared endpoint variability
-    RETRY_DELAYS = [1.0, 2.0, 4.0]  # Progressive delays for retries
-    
-    # RunPod timeout settings - synchronous call is much faster
-    RUNPOD_SYNC_TIMEOUT = 60.0  # 60s for sync call (includes cold start)
-    RUNPOD_POLL_TIMEOUT = 120  # 120 seconds (2 min) max wait - shared endpoint can be slow
-    RUNPOD_POLL_INTERVAL = 0.5  # Poll every 0.5 second
-    
+
     # Fallback images when generation fails - prevents empty image URLs in database
     # These are hosted on Cloudinary and match the app's visual style
     FALLBACK_IMAGE_URLS = {
@@ -71,14 +62,10 @@ class ImageLibraryService:
     
     def __init__(self):
         """Initialize the image library service."""
-        # RunPod configuration - uses FLUX.1 Schnell for fast, high-quality generation
-        self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
-        # FLUX.1 Schnell endpoint - fast inference, 512x512 resolution
-        self.runpod_endpoint = "black-forest-labs-flux-1-schnell"
+        # Google Gemini for free image generation (500 RPD)
+        self.gemini_api_key = os.getenv("IMAGE_API")
+        self.gemini_model_name = "gemini-2.5-flash-image-preview"
 
-        # Short-circuit: if RunPod returns 402 (insufficient balance), skip all future calls
-        self._runpod_disabled = False
-        
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         
@@ -123,7 +110,7 @@ class ImageLibraryService:
                 logger.warning(f"Failed to configure Cloudinary: {e}")
         
         logger.info(f"ImageLibraryService initialized")
-        logger.info(f"  RunPod configured: {bool(self.runpod_api_key)}")
+        logger.info(f"  Gemini Image: {bool(self.gemini_api_key)} (model: {self.gemini_model_name})")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
         logger.info(f"  Cloudinary configured: {self._cloudinary_configured}")
         logger.info(f"  Supabase configured: {bool(self.supabase_url and self.supabase_key)}")
@@ -520,382 +507,119 @@ class ImageLibraryService:
         prompt_embedding: Optional[List[float]],
         db: AsyncSession
     ) -> Tuple[str, bool, float]:
-        """Generate a new image using RunPod FLUX.1 Schnell and store it."""
+        """Generate a new image using Gemini 2.5 Flash Image and store it."""
         start_time = time.time()
-        
+
         try:
-            # Generate image via RunPod with retry logic (Fix #14)
-            result, generation_time_ms = await self._call_runpod_flux_with_retry(prompt, category, variant_type)
-            
-            if not result:
-                logger.error(f"Failed to generate image via RunPod, using fallback for {category}")
+            image_bytes = await self._call_gemini_image(prompt, category, variant_type)
+
+            if not image_bytes:
                 fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
                 return (fallback_url, False, 0.0)
-            
-            image_url = None
-            
-            # Handle different result formats from FLUX.1 Schnell
-            if isinstance(result, dict):
-                # FLUX returns {"image": "base64data"} - decode and upload
-                base64_data = result.get("image")
-                if base64_data:
-                    try:
-                        # Decode base64 to bytes
-                        image_bytes = base64.b64decode(base64_data)
-                        image_url = await self._upload_to_cloudinary(image_bytes, category, variant_type)
-                        if not image_url:
-                            image_url = await self._upload_to_supabase(image_bytes, category, variant_type)
-                    except Exception as decode_error:
-                        logger.error(f"Failed to decode base64 image: {decode_error}")
-                
-                # Also check for direct URL in dict
-                if not image_url:
-                    url_from_dict = result.get("image_url") or result.get("result")
-                    if url_from_dict and isinstance(url_from_dict, str) and url_from_dict.startswith("http"):
-                        image_url = await self._upload_to_cloudinary_from_url(url_from_dict, category, variant_type)
-                        # DO NOT fall back to RunPod URL - it expires!
-                        # If Cloudinary upload failed, we'll use the fallback URL below
-            
-            elif isinstance(result, str) and result.startswith("http"):
-                # RunPod returned a URL directly - upload to Cloudinary for permanent storage
-                image_url = await self._upload_to_cloudinary_from_url(result, category, variant_type)
-                # DO NOT fall back to RunPod URL - it expires!
-                # If Cloudinary upload failed, image_url stays None and we'll use fallback below
 
-            elif isinstance(result, bytes):
-                # We have image bytes - upload to Cloudinary or Supabase
-                image_url = await self._upload_to_cloudinary(result, category, variant_type)
-                if not image_url:
-                    image_url = await self._upload_to_supabase(result, category, variant_type)
-            
+            image_url = await self._upload_to_cloudinary(image_bytes, category, variant_type)
             if not image_url:
-                logger.error(f"Failed to process image result (type: {type(result)}), using fallback for {category}")
+                image_url = await self._upload_to_supabase(image_bytes, category, variant_type)
+
+            if not image_url:
                 fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-                # DO NOT cache fallback URLs - return directly
                 return (fallback_url, False, 0.0)
 
-            # CRITICAL: Only store in cache if it's a permanent URL (Cloudinary or Supabase)
-            # This prevents caching of expiring RunPod URLs or fallback URLs
-            is_cloudinary = "res.cloudinary.com" in image_url
-            is_supabase = "supabase" in image_url and "/storage/" in image_url
-            
-            if is_cloudinary or is_supabase:
-                # Store in image library for future semantic matching
-                await self._store_in_library(
-                    image_url=image_url,
-                    prompt_text=prompt,
-                    prompt_embedding=prompt_embedding,
-                    category=category,
-                    variant_type=variant_type,
-                    user_id=user_id,
-                    generation_time_ms=generation_time_ms,
-                    db=db
-                )
-                
-                elapsed = time.time() - start_time
-                storage_type = "Cloudinary" if is_cloudinary else "Supabase"
-                logger.info(f"🎨 New image generated & cached ({storage_type}). Time: {elapsed:.2f}s, Cost: ${self.COST_PER_IMAGE}")
-            else:
-                # Non-permanent URL - return but DON'T cache
-                logger.warning(f"⚠️ Image URL is not permanent storage, returning without caching: {image_url[:50]}...")
-            
-            return (image_url, False, self.COST_PER_IMAGE)
-            
+            generation_time_ms = int((time.time() - start_time) * 1000)
+            await self._store_in_library(
+                image_url=image_url,
+                prompt_text=prompt,
+                prompt_embedding=prompt_embedding,
+                category=category,
+                variant_type=variant_type,
+                user_id=user_id,
+                generation_time_ms=generation_time_ms,
+                db=db
+            )
+
+            elapsed = time.time() - start_time
+            logger.info(f"🎨 New image generated & cached (Cloudinary). Time: {elapsed:.2f}s, Cost: $0.00")
+            return (image_url, False, 0.0)
+
         except Exception as e:
             logger.error(f"Error generating and storing image: {e}, using fallback for {category}")
             fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
             return (fallback_url, False, 0.0)
-    
-    async def _call_runpod_flux(self, prompt: str, category: str = "food", variant_type: Optional[str] = None) -> Tuple[Optional[Any], int]:
-        """
-        Call RunPod FLUX.1 Schnell serverless endpoint using /runsync (synchronous).
-        
-        OPTIMIZED for speed:
-        - Uses /runsync instead of /run + polling (eliminates polling overhead)
-        - 2-step inference (vs 4) - 2x faster generation
-        - guidance=3.5 (vs 7) - faster processing with good quality
-        - 512x512 resolution for action cards
-        - $0.005 per image, standard RunPod pricing
-        """
-        if not self.runpod_api_key or self._runpod_disabled:
-            logger.warning("RunPod not available, using placeholder")
-            return await self._generate_placeholder_image(prompt)
-        
-        start_time = time.time()
-        
+
+    async def _call_gemini_image(
+        self,
+        prompt: str,
+        category: str = "food",
+        variant_type: Optional[str] = None
+    ) -> Optional[bytes]:
+        """Generate an image using Gemini 2.5 Flash Image (free tier, 500 RPD)."""
+        if not self.gemini_api_key:
+            return await self._generate_pil_placeholder(prompt)
+
         try:
-            # Enhanced prompt with category-specific styling (hero vs variant)
-            enhanced_prompt = self._enhance_prompt(prompt, category, variant_type)
-            
-            # FLUX.1 Schnell payload - OPTIMIZED for speed
-            payload = {
-                "input": {
-                    "prompt": enhanced_prompt,
-                    "seed": -1,  # Random seed
-                    "num_inference_steps": 2,  # OPTIMIZED: 2 steps (was 4) - 2x faster
-                    "guidance": 3.5,  # OPTIMIZED: 3.5 (was 7) - faster processing
-                    "negative_prompt": "",
-                    "image_format": "png",
-                    "width": 512,  # 512x512 resolution
-                    "height": 512
-                }
-            }
-            
-            headers = {
-                "Authorization": f"Bearer {self.runpod_api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            # Use /runsync for synchronous execution - no polling needed!
-            runsync_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/runsync"
-            
-            logger.info(f"🎨 [FLUX] runsync: {prompt[:50]}...")
-            
-            response = await self.client.post(
-                runsync_url,
-                json=payload,
-                headers=headers,
-                timeout=60.0  # 60s timeout for runsync (includes generation time)
+            import google.generativeai as genai
+
+            enhanced = self._enhance_prompt(prompt, category, variant_type)
+            genai.configure(api_key=self.gemini_api_key)
+            model = genai.GenerativeModel(self.gemini_model_name)
+
+            logger.info(f"🎨 [GEMINI] generating: {prompt[:50]}...")
+
+            response = model.generate_content(
+                f"Generate a high-quality 512x512 image: {enhanced}"
             )
-            
-            elapsed_ms = int((time.time() - start_time) * 1000)
 
-            if response.status_code == 402:
-                self._runpod_disabled = True
-                logger.warning(
-                    "RunPod account has insufficient balance. "
-                    "Disabling FLUX for the remainder of this process lifetime."
-                )
-                return await self._generate_placeholder_image(prompt)
+            if response.candidates:
+                for candidate in response.candidates:
+                    if candidate.content and candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'inline_data') and part.inline_data:
+                                return part.inline_data.data
+                            if hasattr(part, 'image') and part.image:
+                                return part.image.data
 
-            if response.status_code != 200:
-                logger.error(f"❌ [FLUX] runsync failed: {response.status_code} - {response.text[:200]}")
-                return await self._generate_placeholder_image(prompt)
+            if hasattr(response, 'parts'):
+                for part in response.parts:
+                    if hasattr(part, 'inline_data') and part.inline_data:
+                        return part.inline_data.data
+                    if hasattr(part, 'image') and part.image:
+                        return part.image.data
 
-            result = response.json()
-            status = result.get("status")
+            logger.warning("[GEMINI] No image data in response")
+            return await self._generate_pil_placeholder(prompt)
 
-            if status == "COMPLETED":
-                output = result.get("output", {})
-                logger.info(f"✅ [FLUX] Completed in {elapsed_ms}ms")
-                
-                # FLUX.1 Schnell returns image in various formats
-                if isinstance(output, dict):
-                    # Check for base64 encoded image (FLUX standard)
-                    if "image" in output:
-                        return (output, elapsed_ms)
-                    
-                    # Check for direct image URL
-                    image_url = output.get("image_url")
-                    if image_url and image_url.startswith("http"):
-                        return (image_url, elapsed_ms)
-                    
-                    # Check 'result' key (some RunPod formats)
-                    image_url = output.get("result")
-                    if image_url and isinstance(image_url, str) and image_url.startswith("http"):
-                        return (image_url, elapsed_ms)
-                    
-                    # Check images array (some FLUX versions)
-                    images = output.get("images")
-                    if images and isinstance(images, list) and len(images) > 0:
-                        return ({"image": images[0]}, elapsed_ms)
-                
-                # If output is a string (base64 or URL)
-                if isinstance(output, str):
-                    if output.startswith("http"):
-                        return (output, elapsed_ms)
-                    else:
-                        return ({"image": output}, elapsed_ms)
-                
-                logger.error(f"❌ [FLUX] Unexpected output format: {type(output)} - {str(output)[:200]}")
-                return await self._generate_placeholder_image(prompt)
-            
-            elif status == "FAILED":
-                error = result.get("error", "Unknown error")
-                logger.error(f"❌ [FLUX] Job failed: {error}")
-                return await self._generate_placeholder_image(prompt)
-            
-            elif status == "IN_QUEUE":
-                # Job queued but not started within timeout - fall back to async pattern
-                job_id = result.get("id")
-                logger.warning(f"⚠️ [FLUX] Job queued (runsync timeout), falling back to polling: {job_id}")
-                return await self._poll_job_status(job_id, headers, start_time, prompt)
-            
+        except ImportError:
+            logger.error("google-generativeai package not installed")
+            return await self._generate_pil_placeholder(prompt)
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str:
+                logger.warning("Gemini rate limited (429), using placeholder")
             else:
-                logger.warning(f"⚠️ [FLUX] Unknown status: {status}")
-                return (None, 0)
-            
-        except httpx.TimeoutException:
-            elapsed = time.time() - start_time
-            logger.warning(f"⚠️ [FLUX] runsync timeout after {elapsed:.1f}s - will retry")
-            return (None, 0)
-            
-        except Exception as e:
-            logger.warning(f"⚠️ [FLUX] Error: {type(e).__name__}: {e} - will retry")
-            return (None, 0)
-    
-    async def _poll_job_status(self, job_id: str, headers: dict, start_time: float, prompt: str) -> Tuple[Optional[Any], int]:
-        """Poll job status as fallback when runsync times out (job queued)."""
-        if not job_id:
-            return await self._generate_placeholder_image(prompt)
-        
-        status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
-        max_polls = 60  # 30 seconds max (60 × 0.5s)
-        poll_interval = 0.5
-        
-        for poll_num in range(max_polls):
-            await asyncio.sleep(poll_interval)
-            
-            try:
-                status_response = await self.client.get(
-                    status_url,
-                    headers=headers,
-                    timeout=5.0
-                )
-                
-                if status_response.status_code != 200:
-                    continue
-                
-                status_result = status_response.json()
-                status = status_result.get("status")
-                
-                if status == "COMPLETED":
-                    output = status_result.get("output", {})
-                    elapsed_ms = int((time.time() - start_time) * 1000)
-                    logger.info(f"✅ [FLUX] Completed in {elapsed_ms}ms (via polling)")
-                    
-                    if isinstance(output, dict) and "image" in output:
-                        return (output, elapsed_ms)
-                    if isinstance(output, dict):
-                        images = output.get("images")
-                        if images and len(images) > 0:
-                            return ({"image": images[0]}, elapsed_ms)
-                    if isinstance(output, str):
-                        return ({"image": output}, elapsed_ms) if not output.startswith("http") else (output, elapsed_ms)
-                    return await self._generate_placeholder_image(prompt)
-                
-                elif status == "FAILED":
-                    return await self._generate_placeholder_image(prompt)
-                
-            except Exception:
-                continue
-        
-        return (None, 0)
+                logger.error(f"Gemini image generation failed: {e}")
+            return await self._generate_pil_placeholder(prompt)
 
-    async def _call_runpod_flux_legacy(self, prompt: str, category: str = "food", variant_type: Optional[str] = None) -> Tuple[Optional[Any], int]:
-        """
-        Legacy polling logic for RunPod (used as fallback).
-        """
-        start_time = time.time()
+    async def _generate_pil_placeholder(self, prompt: str) -> Optional[bytes]:
+        """Generate a placeholder image using PIL."""
         try:
-            endpoint_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/run"
-            enhanced_prompt = self._enhance_prompt(prompt, category, variant_type)
-            
-            payload = {
-                "input": {
-                    "prompt": enhanced_prompt,
-                    "width": 512,
-                    "height": 512,
-                    "num_inference_steps": 2,  # OPTIMIZED: 2 steps (was 4)
-                    "guidance": 3.5,
-                    "seed": -1,
-                    "image_format": "png"
-                }
-            }
-            
-            headers = {
-                "Authorization": f"Bearer {self.runpod_api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            response = await self.client.post(endpoint_url, json=payload, headers=headers, timeout=30.0)
-            if response.status_code != 200:
-                return await self._generate_placeholder_image(prompt)
-            
-            job_id = response.json().get("id")
-            if not job_id:
-                return await self._generate_placeholder_image(prompt)
-            
-            status_url = f"https://api.runpod.ai/v2/{self.runpod_endpoint}/status/{job_id}"
-            poll_interval = self.RUNPOD_POLL_INTERVAL
-            max_polls = int(self.RUNPOD_POLL_TIMEOUT / poll_interval)
-            
-            for poll_num in range(max_polls):
-                await asyncio.sleep(poll_interval)
-                status_response = await self.client.get(status_url, headers=headers)
-                if status_response.status_code != 200:
-                    continue
-                
-                status_result = status_response.json()
-                status = status_result.get("status")
-                
-                if status == "COMPLETED":
-                    output = status_result.get("output", {})
-                    elapsed_ms = int((time.time() - start_time) * 1000)
-                    
-                    if isinstance(output, dict):
-                        if output.get("image_url"):
-                            return (output["image_url"], elapsed_ms)
-                        image_base64 = output.get("image") or output.get("image_base64")
-                        if image_base64:
-                            if image_base64.startswith("data:"):
-                                image_base64 = image_base64.split(",")[1]
-                            return (base64.b64decode(image_base64), elapsed_ms)
-                    elif isinstance(output, str):
-                        if output.startswith("data:"):
-                            output = output.split(",")[1]
-                        return (base64.b64decode(output), elapsed_ms)
-                    return await self._generate_placeholder_image(prompt)
-                
-                elif status == "FAILED":
-                    return await self._generate_placeholder_image(prompt)
-                
-                elif status in ["IN_QUEUE", "IN_PROGRESS"]:
-                    continue
-            
-            return (None, int((time.time() - start_time) * 1000))
-            
-        except Exception as e:
-            logger.error(f"Error in legacy polling: {e}")
-            return await self._generate_placeholder_image(prompt)
-    
-    async def _call_runpod_flux_with_retry(self, prompt: str, category: str = "food", variant_type: Optional[str] = None) -> Tuple[Optional[Any], int]:
-        """
-        Call RunPod FLUX.1 Schnell with retry logic.
-        
-        FLUX.1 Schnell is fast (4-step inference) so retries should be rare,
-        but we keep retry logic for robustness against transient network issues.
-        """
-        total_start = time.time()
-        
-        for attempt in range(self.MAX_IMAGE_RETRIES):
-            try:
-                logger.info(f"🎨 FLUX attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES} for: {prompt[:50]}...")
-                result, gen_time = await self._call_runpod_flux(prompt, category, variant_type)
-                
-                if result:
-                    total_time = time.time() - total_start
-                    if attempt > 0:
-                        logger.info(f"✅ FLUX succeeded on retry {attempt + 1} (total time: {total_time:.1f}s)")
-                    return (result, gen_time)
-                
-                # Returned None - timeout or transient error, retry
-                if attempt < self.MAX_IMAGE_RETRIES - 1:
-                    delay = self.RETRY_DELAYS[attempt]
-                    logger.warning(f"⚠️ Image generation timed out. "
-                                 f"Retrying in {delay}s (attempt {attempt + 1}/{self.MAX_IMAGE_RETRIES})")
-                    await asyncio.sleep(delay)
-            except Exception as e:
-                if attempt < self.MAX_IMAGE_RETRIES - 1:
-                    delay = self.RETRY_DELAYS[attempt]
-                    logger.warning(f"⚠️ Image generation error: {e}, retrying in {delay}s")
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error(f"❌ Image generation failed after {self.MAX_IMAGE_RETRIES} retries: {e}")
-                    return await self._generate_placeholder_image(prompt)
-        
-        logger.error(f"❌ All {self.MAX_IMAGE_RETRIES} retry attempts exhausted, using placeholder")
-        return await self._generate_placeholder_image(prompt)
+            from PIL import Image, ImageDraw
+            import io
+
+            img = Image.new('RGB', (512, 512), color=(245, 240, 235))
+            draw = ImageDraw.Draw(img)
+            text = prompt[:50] + "..." if len(prompt) > 50 else prompt
+            draw.text((50, 230), text, fill=(120, 100, 80))
+            draw.text((150, 260), "🍃 AUVRA", fill=(100, 150, 100))
+
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+            return buffer.getvalue()
+
+        except ImportError:
+            logger.warning("PIL not available for placeholder images")
+            return None
+
     
     def _enhance_prompt(self, prompt: str, category: str, variant_type: Optional[str] = None) -> str:
         """
@@ -992,35 +716,7 @@ class ImageLibraryService:
         logger.info(f"[PROMPT] Enhanced: '{enhanced[:80]}...'")
         return enhanced
     
-    async def _generate_placeholder_image(self, prompt: str) -> Tuple[bytes, int]:
-        """
-        Generate a placeholder image when RunPod is not configured.
-        Uses a simple colored rectangle with text.
-        """
-        # Create a simple placeholder using PIL if available
-        try:
-            from PIL import Image, ImageDraw, ImageFont
-            import io
-            
-            # Create image
-            img = Image.new('RGB', (512, 512), color=(240, 240, 240))
-            draw = ImageDraw.Draw(img)
-            
-            # Add text
-            text = prompt[:50] + "..." if len(prompt) > 50 else prompt
-            draw.text((50, 230), text, fill=(100, 100, 100))
-            draw.text((150, 260), "🍃 AUVRA", fill=(100, 150, 100))
-            
-            # Convert to bytes
-            buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
-            buffer.seek(0)
-            
-            return (buffer.getvalue(), 100)
-            
-        except ImportError:
-            logger.warning("PIL not available for placeholder images")
-            return (None, 0)
+
     
     async def _upload_to_cloudinary(
         self,
@@ -1183,7 +879,7 @@ class ImageLibraryService:
                 prompt_embedding=prompt_embedding,
                 category=category,
                 variant_type=variant_type,
-                generation_model="pruna-p-image",
+                generation_model="gemini-2.5-flash-image",
                 generation_cost=str(self.COST_PER_IMAGE),
                 generation_time_ms=generation_time_ms,
                 image_width=512,
