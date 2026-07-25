@@ -32,10 +32,9 @@ def normalize_postgres_tls_url(database_url: str) -> str:
     except Exception as exc:
         raise RuntimeError("Invalid PostgreSQL database URL") from exc
 
-    if parsed.get_backend_name() != "postgresql":
-        raise RuntimeError("Production database URLs must use PostgreSQL")
-
-    query.pop("sslmode", None)
+    query = dict(parsed.query)
+    sslmode = str(query.get("sslmode", "")).strip().lower()
+    query["sslmode"] = sslmode or "require"
     return parsed.set(query=query).render_as_string(hide_password=False)
 
 
