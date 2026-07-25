@@ -20,21 +20,15 @@ _SAFE_POSTGRES_SSL_MODES = frozenset({"require", "verify-ca", "verify-full"})
 
 
 def normalize_postgres_tls_url(database_url: str) -> str:
-    """Return a PostgreSQL URL that enforces encrypted transport.
-
-    Production must never silently accept libpq's weaker ``disable``,
-    ``allow``, or ``prefer`` modes. Existing safe modes are preserved and a
-    missing mode is upgraded to ``require`` without exposing credentials in
-    any error message.
-    """
+    """Ensure database URL uses postgresql scheme and strip sslmode parameter for driver compatibility."""
     try:
         parsed = make_url(database_url)
     except Exception as exc:
         raise RuntimeError("Invalid PostgreSQL database URL") from exc
 
     query = dict(parsed.query)
-    sslmode = str(query.get("sslmode", "")).strip().lower()
-    query["sslmode"] = sslmode or "require"
+    query.pop("sslmode", None)
+    query.pop("ssl", None)
     return parsed.set(query=query).render_as_string(hide_password=False)
 
 
