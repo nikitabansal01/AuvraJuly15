@@ -1525,15 +1525,10 @@ class ActionPlanGenerator:
                     has_missing_images = await self._check_missing_images(existing_plan, db)
                     
                     if has_missing_images:
-                        # BLOCKING IMAGE GENERATION - wait for images before returning response
-                        # This fixes the blank/fallback image issue on frontend
-                        logger.info(f" [IMAGE-WAIT] Generating missing images for existing plan {existing_plan.id} (blocking)")
-                        try:
-                            await self._ensure_plan_has_images(existing_plan, user_id, db, image_mode)
-                            logger.info(f" [IMAGE-WAIT] Completed image generation for plan {existing_plan.id}")
-                        except Exception as e:
-                            logger.error(f" [IMAGE-WAIT] Failed to generate images: {e}")
-                            # Continue anyway - plan will load with fallback icons
+                        logger.info(f" [IMAGE-BG] Launching background image generation for plan {existing_plan.id}")
+                        asyncio.create_task(
+                            self._background_ensure_images(existing_plan.id, user_id, image_mode)
+                        )
                 
                 resp = await self._format_plan_response(existing_plan, db)
                 if isinstance(resp, dict) and resp.get("success"):
