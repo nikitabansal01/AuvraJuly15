@@ -1481,21 +1481,39 @@ class ActionPlanGenerator:
                 item_count = 0
 
             if item_count == 0:
-                logger.info(
-                    f"Found placeholder plan for user {user_id} on {today} (plan_id={existing_plan.id}) - generation still in progress"
-                )
-                return {
-                    "success": True,
-                    "generating": True,
-                    "plan_exists": True,
-                    "plan_id": existing_plan.id,
-                    "plan_date": str(existing_plan.plan_date),
-                    "progress": 0,
-                    "phase": "Generating",
-                    "estimated_remaining_seconds": 180,
-                    "message": "Your personalized plan is being generated. Please wait...",
-                    "plan_source": "existing_placeholder_generating",
-                }
+                # Check if this placeholder plan is failed or stale (created > 2 mins ago)
+                plan_status = getattr(existing_plan, "status", "processing")
+                plan_created = getattr(existing_plan, "created_at", None)
+                is_stale = False
+                if plan_created:
+                    now_utc = datetime.now(timezone.utc) if plan_created.tzinfo else datetime.utcnow()
+                    is_stale = (now_utc - plan_created).total_seconds() > 120
+
+                if plan_status == "failed" or is_stale:
+                    logger.warning(f"Placeholder plan {existing_plan.id} is {plan_status} (stale={is_stale}). Removing placeholder to regenerate fresh plan.")
+                    try:
+                        await db.delete(existing_plan)
+                        await db.commit()
+                    except Exception as del_err:
+                        logger.error(f"Failed to delete stale placeholder plan {existing_plan.id}: {del_err}")
+                        await db.rollback()
+                    existing_plan = None
+                else:
+                    logger.info(
+                        f"Found active placeholder plan for user {user_id} on {today} (plan_id={existing_plan.id}) - generation in progress"
+                    )
+                    return {
+                        "success": True,
+                        "generating": True,
+                        "plan_exists": True,
+                        "plan_id": existing_plan.id,
+                        "plan_date": str(existing_plan.plan_date),
+                        "progress": 0,
+                        "phase": "Generating",
+                        "estimated_remaining_seconds": 180,
+                        "message": "Your personalized plan is being generated. Please wait...",
+                        "plan_source": "existing_placeholder_generating",
+                    }
 
             logger.info(f"Found existing plan for user {user_id} on {today}")
             
