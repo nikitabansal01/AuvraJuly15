@@ -75,6 +75,9 @@ class ImageLibraryService:
         self.runpod_api_key = os.getenv("RUNPOD_API_KEY")
         # FLUX.1 Schnell endpoint - fast inference, 512x512 resolution
         self.runpod_endpoint = "black-forest-labs-flux-1-schnell"
+
+        # Short-circuit: if RunPod returns 402 (insufficient balance), skip all future calls
+        self._runpod_disabled = False
         
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -614,8 +617,8 @@ class ImageLibraryService:
         - 512x512 resolution for action cards
         - $0.005 per image, standard RunPod pricing
         """
-        if not self.runpod_api_key:
-            logger.warning("RunPod API key not configured, using placeholder")
+        if not self.runpod_api_key or self._runpod_disabled:
+            logger.warning("RunPod not available, using placeholder")
             return await self._generate_placeholder_image(prompt)
         
         start_time = time.time()
@@ -656,14 +659,22 @@ class ImageLibraryService:
             )
             
             elapsed_ms = int((time.time() - start_time) * 1000)
-            
+
+            if response.status_code == 402:
+                self._runpod_disabled = True
+                logger.warning(
+                    "RunPod account has insufficient balance. "
+                    "Disabling FLUX for the remainder of this process lifetime."
+                )
+                return await self._generate_placeholder_image(prompt)
+
             if response.status_code != 200:
                 logger.error(f"❌ [FLUX] runsync failed: {response.status_code} - {response.text[:200]}")
                 return await self._generate_placeholder_image(prompt)
-            
+
             result = response.json()
             status = result.get("status")
-            
+
             if status == "COMPLETED":
                 output = result.get("output", {})
                 logger.info(f"✅ [FLUX] Completed in {elapsed_ms}ms")

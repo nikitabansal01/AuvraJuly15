@@ -1371,19 +1371,11 @@ class ActionPlanGenerator:
         from sqlalchemy.orm import sessionmaker
         from sqlalchemy.pool import NullPool
         
-        db_url = os.getenv("DATABASE_URL", "")
-        if db_url.startswith("postgres://"):
-            db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif db_url.startswith("postgresql://"):
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        from app.core.database import sanitize_db_url_for_asyncpg
         
-        # Strip sslmode param — asyncpg doesn't support it (uses 'ssl' instead)
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-        parsed = urlparse(db_url)
-        query_dict = parse_qs(parsed.query)
-        query_dict.pop("sslmode", None)
-        query_dict.pop("ssl", None)
-        db_url = urlunparse(parsed._replace(query=urlencode(query_dict, doseq=True)))
+        db_url = sanitize_db_url_for_asyncpg(os.getenv("DATABASE_URL", ""))
+        if not db_url.startswith("postgresql+asyncpg://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
             
         self.engine = create_async_engine(
             db_url, 

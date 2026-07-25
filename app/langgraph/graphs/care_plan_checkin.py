@@ -2690,6 +2690,8 @@ async def _create_async_checkpointer():
     """Create an async-compatible checkpointer for ainvoke/astream flows."""
     postgres_dsn = settings.LANGGRAPH_CHECKPOINT_POSTGRES_DSN.strip()
     if postgres_dsn:
+        from app.core.database import sanitize_db_url_for_asyncpg
+        postgres_dsn = sanitize_db_url_for_asyncpg(postgres_dsn)
         if AsyncPostgresSaver is not None:
             saver_cm = AsyncPostgresSaver.from_conn_string(postgres_dsn)
             saver = await saver_cm.__aenter__()

@@ -43,6 +43,26 @@ def _asyncpg_url(database_url: str) -> str:
         query=query,
     ).render_as_string(hide_password=False)
 
+
+def sanitize_db_url_for_asyncpg(url: str) -> str:
+    """Strip sslmode/ssl params from a raw PostgreSQL URL for asyncpg compatibility.
+
+    asyncpg does not understand ``sslmode`` (a psycopg2 parameter).  Use this
+    helper whenever you open an asyncpg connection directly from the raw
+    ``DATABASE_URL`` or ``LANGGRAPH_CHECKPOINT_POSTGRES_DSN`` environment
+    variable instead of going through the main engine factory in this module.
+    """
+    if not url:
+        return url
+    parsed = make_url(url)
+    query = dict(parsed.query)
+    query.pop("sslmode", None)
+    query.pop("ssl", None)
+    clean = parsed.set(query=query).render_as_string(hide_password=False)
+    if clean.startswith("postgres://"):
+        clean = clean.replace("postgres://", "postgresql://", 1)
+    return clean
+
 # Database engine creation
 # For Supabase Session Pooler, use NullPool (no local pooling)
 # Supabase Session Pooler already manages connection pooling on their side
