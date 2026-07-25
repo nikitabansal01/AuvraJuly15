@@ -8450,7 +8450,7 @@ PMID: {paper.get('pmid', '')}
         Each replacement targets the SAME hormone as the original.
         Generates new actions and images for all items in batch.
         """
-        from app.core.database import ActionPlanItem, ActionPlanItemVariant
+        from app.core.database import ActionPlan, ActionPlanItem, ActionPlanItemVariant
         
         if not item_ids:
             return {"success": False, "error": "No items to replace"}
@@ -8460,12 +8460,23 @@ PMID: {paper.get('pmid', '')}
         replacements = []
         
         try:
+            # The plan is the authorization boundary. Older guest-plan transfers
+            # can contain items whose denormalized uid was not updated even though
+            # the parent plan is now owned by the user.
+            plan_owner_result = await db.execute(
+                select(ActionPlan.id).where(
+                    ActionPlan.id == plan_id,
+                    ActionPlan.uid == user_id,
+                )
+            )
+            if plan_owner_result.scalar_one_or_none() is None:
+                return {"success": False, "error": "Plan not found or unauthorized"}
+
             # Get all original items
             result = await db.execute(
                 select(ActionPlanItem).where(
                     ActionPlanItem.id.in_(item_ids),
                     ActionPlanItem.plan_id == plan_id,
-                    ActionPlanItem.uid == user_id
                 )
             )
             original_items = result.scalars().all()
@@ -8477,7 +8488,6 @@ PMID: {paper.get('pmid', '')}
             all_items_result = await db.execute(
                 select(ActionPlanItem).where(
                     ActionPlanItem.plan_id == plan_id,
-                    ActionPlanItem.uid == user_id
                 )
             )
             all_plan_items = all_items_result.scalars().all()
