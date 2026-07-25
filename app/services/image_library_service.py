@@ -2,7 +2,7 @@
 AUVRA Image Library Service
 
 Semantic image caching and generation using:
-- Google Gemini 2.5 Flash Image for free image generation (500 RPD)
+- Google Gemini image generation
 - OpenAI ada-002 for embeddings ($0.0001/call)
 - Cloudinary for image hosting
 - PostgreSQL for semantic matching
@@ -36,7 +36,7 @@ class ImageLibraryService:
     """
     Image generation and semantic caching service.
     
-    Uses Gemini 2.5 Flash Image for free image generation with 512x512 resolution.
+    Uses Gemini image generation and stores the resulting asset in Cloudinary.
     Stores all images with embeddings for semantic reuse.
     """
     
@@ -62,9 +62,12 @@ class ImageLibraryService:
     
     def __init__(self):
         """Initialize the image library service."""
-        # Google Gemini for free image generation (500 RPD)
+        # Google Gemini image generation. Keep the model configurable so a model
+        # retirement does not require another code deployment.
         self.gemini_api_key = os.getenv("IMAGE_API")
-        self.gemini_model_name = "gemini-2.5-flash-image-preview"
+        self.gemini_model_name = os.getenv(
+            "GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image"
+        )
 
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -81,6 +84,7 @@ class ImageLibraryService:
         
         # HTTP clients
         self.client = httpx.AsyncClient(timeout=120.0)
+        self._cloudinary_upload_semaphore = asyncio.Semaphore(1)
         
         # In-memory cache for embeddings (avoid repeated API calls)
         self._embedding_cache: Dict[str, List[float]] = {}
@@ -552,44 +556,37 @@ class ImageLibraryService:
         category: str = "food",
         variant_type: Optional[str] = None
     ) -> Optional[bytes]:
-        """Generate an image using Gemini 2.5 Flash Image (free tier, 500 RPD)."""
+        """Generate an image using the current Google GenAI SDK."""
         if not self.gemini_api_key:
             return await self._generate_pil_placeholder(prompt)
 
+        client = None
         try:
-            import google.generativeai as genai
+            from google import genai
+            from google.genai import types
 
             enhanced = self._enhance_prompt(prompt, category, variant_type)
-            genai.configure(api_key=self.gemini_api_key)
-            model = genai.GenerativeModel(self.gemini_model_name)
+            client = genai.Client(api_key=self.gemini_api_key)
 
             logger.info(f"🎨 [GEMINI] generating: {prompt[:50]}...")
 
-            response = model.generate_content(
-                f"Generate a high-quality 512x512 image: {enhanced}"
+            response = await client.aio.models.generate_content(
+                model=self.gemini_model_name,
+                contents=f"Generate a high-quality square image: {enhanced}",
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"],
+                ),
             )
 
-            if response.candidates:
-                for candidate in response.candidates:
-                    if candidate.content and candidate.content.parts:
-                        for part in candidate.content.parts:
-                            if hasattr(part, 'inline_data') and part.inline_data:
-                                return part.inline_data.data
-                            if hasattr(part, 'image') and part.image:
-                                return part.image.data
-
-            if hasattr(response, 'parts'):
-                for part in response.parts:
-                    if hasattr(part, 'inline_data') and part.inline_data:
-                        return part.inline_data.data
-                    if hasattr(part, 'image') and part.image:
-                        return part.image.data
+            for part in response.parts or []:
+                if part.inline_data and part.inline_data.data:
+                    return part.inline_data.data
 
             logger.warning("[GEMINI] No image data in response")
             return await self._generate_pil_placeholder(prompt)
 
         except ImportError:
-            logger.error("google-generativeai package not installed")
+            logger.error("google-genai package not installed")
             return await self._generate_pil_placeholder(prompt)
         except Exception as e:
             error_str = str(e)
@@ -598,6 +595,12 @@ class ImageLibraryService:
             else:
                 logger.error(f"Gemini image generation failed: {e}")
             return await self._generate_pil_placeholder(prompt)
+        finally:
+            if client is not None:
+                try:
+                    await client.aio.aclose()
+                except Exception:
+                    pass
 
     async def _generate_pil_placeholder(self, prompt: str) -> Optional[bytes]:
         """Generate a placeholder image using PIL."""
@@ -743,13 +746,14 @@ class ImageLibraryService:
             public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
             
             # Upload image bytes in a separate thread to avoid blocking the event loop
-            result = await asyncio.to_thread(
-                cloudinary.uploader.upload,
-                image_data,
-                public_id=public_id,
-                folder="action-plan-images",
-                resource_type="image"
-            )
+            async with self._cloudinary_upload_semaphore:
+                result = await asyncio.to_thread(
+                    cloudinary.uploader.upload,
+                    image_data,
+                    public_id=public_id,
+                    folder="action-plan-images",
+                    resource_type="image"
+                )
             
             image_url = result.get("secure_url")
             if image_url:
@@ -790,13 +794,14 @@ class ImageLibraryService:
             public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
             
             # Upload from URL in a separate thread to avoid blocking the event loop
-            result = await asyncio.to_thread(
-                cloudinary.uploader.upload,
-                image_url,
-                public_id=public_id,
-                folder="action-plan-images",
-                resource_type="image"
-            )
+            async with self._cloudinary_upload_semaphore:
+                result = await asyncio.to_thread(
+                    cloudinary.uploader.upload,
+                    image_url,
+                    public_id=public_id,
+                    folder="action-plan-images",
+                    resource_type="image"
+                )
             
             cloudinary_url = result.get("secure_url")
             if cloudinary_url:
@@ -879,7 +884,7 @@ class ImageLibraryService:
                 prompt_embedding=prompt_embedding,
                 category=category,
                 variant_type=variant_type,
-                generation_model="gemini-2.5-flash-image",
+                generation_model=self.gemini_model_name,
                 generation_cost=str(self.COST_PER_IMAGE),
                 generation_time_ms=generation_time_ms,
                 image_width=512,

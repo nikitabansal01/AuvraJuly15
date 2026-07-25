@@ -1388,8 +1388,10 @@ class ActionPlanGenerator:
             expire_on_commit=False
         )
         
-        # Semaphore to limit concurrent DB writes/ops to 32 at a time (allows all images in parallel)
-        self.db_semaphore = asyncio.Semaphore(32)
+        # The Supabase session pool allows 15 server connections on this plan.
+        # Image generation also runs beside API polling and background workers, so
+        # keep enough headroom instead of opening all 16 image sessions at once.
+        self.db_semaphore = asyncio.Semaphore(4)
         
         logger.info(f"ActionPlanGenerator initialized with shared engine")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
@@ -6060,16 +6062,16 @@ JSON ONLY:
                     "Authorization": f"Bearer {self.openai_api_key}",
                     "Content-Type": "application/json"
                 },
-                json={
-                    "model": self.GPT_MODEL,  # Use same model for consistency
-                    "messages": [
+                json=self.build_openai_payload(
+                    model=self.GPT_MODEL,
+                    messages=[
                         {"role": "system", "content": "You are a health plan quality evaluator. Output ONLY JSON, no explanation."},
                         {"role": "user", "content": prompt}
                     ],
-                    "temperature": 0.1,
-                    "max_completion_tokens": 150,  # Enough for 5 scores
-                    "reasoning_effort": "minimal",  # Disable reasoning for speed
-                },
+                    max_tokens=300,
+                    response_format={"type": "json_object"},
+                    reasoning_effort="minimal",
+                ),
                 timeout=15.0  # Slightly longer for 5 factors
             )
             
