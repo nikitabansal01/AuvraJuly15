@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Depends
+import logging
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from app.api.v1.endpoints.auth import get_current_active_user
 from app.core.database import get_db, UserResponse as DBUserResponse
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class UserResponse(BaseModel):
@@ -178,4 +180,3 @@ async def delete_user_account(user_id: str, current_user: dict = Depends(get_cur
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to delete user: {str(e)}"
         )
- 
