@@ -24,6 +24,34 @@ from app.services.chat.langgraph_agent import run_chat_agent
 logger = logging.getLogger(__name__)
 
 
+def _non_empty_chat_content(content: Any, context: ConversationContext) -> str:
+    """Guarantee every successful chat response has useful visible text."""
+    normalized = str(content or "").strip()
+    if normalized:
+        return normalized
+
+    fallbacks = {
+        ConversationContext.KNOW_BODY: (
+            "Hormones naturally rise and fall across your cycle, and those shifts can affect "
+            "energy, mood, skin, sleep, and symptoms. Choose a topic below and I’ll explain it "
+            "in simple terms. For anything specific to you, your doctor is your best resource 💜"
+        ),
+        ConversationContext.PERSONALISE: (
+            "Tell me which part of your routine you want to personalize, and I’ll help make your "
+            "plan fit you better."
+        ),
+        ConversationContext.SYMPTOM_CHECKIN: (
+            "Tell me which symptom you want to track, and we’ll record how it feels today."
+        ),
+        ConversationContext.CARE_PLAN_MODAL: (
+            "Tell me what you want to adjust in today’s plan, and I’ll guide you through the options."
+        ),
+        ConversationContext.GENERAL: "What would you like help with today?",
+    }
+    logger.warning("Chat agent returned empty content for context=%s; using safe fallback", context.value)
+    return fallbacks[context]
+
+
 class ChatService:
     """
     Main chat service - the central coordinator for all chatbot functionality.
@@ -128,7 +156,7 @@ class ChatService:
             # 5. Build response
             response = ChatMessageResponse(
                 session_id=str(session.id),
-                content=agent_response["content"],
+                content=_non_empty_chat_content(agent_response.get("content"), request.conversation_context),
                 response_type=ResponseType(agent_response.get("response_type", "text")),
                 choices=agent_response.get("choices"),
                 slider_config=SliderConfig(**agent_response["slider_config"]) if agent_response.get("slider_config") else None,
