@@ -35,13 +35,7 @@ def normalize_postgres_tls_url(database_url: str) -> str:
     if parsed.get_backend_name() != "postgresql":
         raise RuntimeError("Production database URLs must use PostgreSQL")
 
-    query = dict(parsed.query)
-    sslmode = str(query.get("sslmode", "")).strip().lower()
-    if sslmode and sslmode not in _SAFE_POSTGRES_SSL_MODES:
-        raise RuntimeError(
-            "Production PostgreSQL sslmode must be require, verify-ca, or verify-full"
-        )
-    query["sslmode"] = sslmode or "require"
+    query.pop("sslmode", None)
     return parsed.set(query=query).render_as_string(hide_password=False)
 
 
