@@ -466,6 +466,36 @@ async def get_today_plan_status(
 
             is_ready = item_count > 0
 
+            # ═══════════════════════════════════════════════════════════════
+            # STALE PLACEHOLDER DETECTION: If a plan has 0 items and was
+            # created more than 5 minutes ago, the generation failed and
+            # left an orphan placeholder. Auto-delete it so the frontend
+            # can trigger a fresh generation instead of polling forever.
+            # ═══════════════════════════════════════════════════════════════
+            if not is_ready and plan.created_at:
+                from datetime import timedelta
+                age = datetime.utcnow() - plan.created_at
+                if age > timedelta(minutes=5):
+                    logger.warning(
+                        f"Stale placeholder plan {plan.id} detected for user {uid} "
+                        f"(age={age}, items=0). Auto-deleting to allow regeneration."
+                    )
+                    try:
+                        db.delete(plan)
+                        db.commit()
+                    except Exception as del_err:
+                        db.rollback()
+                        logger.error(f"Failed to delete stale placeholder {plan.id}: {del_err}")
+                    # Return as if no plan exists so frontend can retry
+                    return {
+                        "plan_exists": False,
+                        "generating": False,
+                        "ready": False,
+                        "total_assignments": 0,
+                        "progress": 0,
+                        "phase": "Not Started",
+                    }
+
             return {
                 "plan_exists": True,
                 "generating": not is_ready,

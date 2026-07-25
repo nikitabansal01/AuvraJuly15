@@ -79,7 +79,7 @@ else:
     )
 
     # Async Engine
-    async_database_url = _asyncpg_url(settings.DATABASE_URL)
+    async_database_url = _asyncpg_url(database_url)
     async_engine = create_async_engine(
         async_database_url,
         pool_size=2,

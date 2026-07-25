@@ -1,0 +1,759 @@
+2025-07-16 10:19:07 -0500 | = | initial commit
+2025-07-16 10:55:33 -0500 | = | fix: BuildKif Problem solving
+2025-07-16 11:29:26 -0500 | = | fix : convert Korean to English
+2025-07-16 17:55:17 -0500 | = | fix : Comments
+2025-07-16 18:27:53 -0500 | = | fix: Docker Change
+2025-07-17 11:36:01 -0500 | = | fix : Docker Change
+2025-07-17 11:40:32 -0500 | = | add : redner page
+2025-07-17 11:52:45 -0500 | = | fix : Alembic
+2025-07-17 15:29:34 -0500 | = | fix : Delete Redis Connection & Refactoring Logging
+2025-07-17 15:48:28 -0500 | = | fix : Rednder Setting to Supabase
+2025-07-17 17:06:07 -0500 | = | fix: Add I'm not sure to Question Answer Validiater
+2025-07-17 17:21:06 -0500 | = | fix : Validators Update
+2025-07-31 19:59:11 -0500 | = | Push to RAG-Aug20205 repository
+2025-08-04 14:13:27 -0500 | = | Fix intervention_type field unification and improve RAG system consistency
+2025-08-04 17:40:11 -0500 | = | git commit -m "Fix indentation issues and implement study_arms_text in Pinecone"
+2025-08-15 17:17:13 +0900 | = | feat: Complete QuestionScreen API integration with backend schema
+2025-08-18 09:43:16 +0900 | = | fix : questions scheme
+2025-08-18 15:29:58 +0900 | Hyuntaek Oh | fix : remove users scheme & exclude age validation
+2025-08-18 15:50:43 +0900 | Hyuntaek Oh | fix : type error fix
+2025-08-26 02:21:22 +0900 | Hyuntaek Oh | Remove large files and update gitignore
+2025-08-26 06:18:08 +0900 | Hyuntaek Oh | fix : ai model bug
+2025-08-26 06:46:00 +0900 | Hyuntaek Oh | fix : default model
+2025-08-26 08:30:56 +0900 | Hyuntaek Oh | fix : Prompt json f-string error & Bug fix of scheduling and link session with account.
+2025-08-28 09:01:55 +0900 | Hyuntaek Oh | refactor : status api
+2025-08-28 18:31:52 +0900 | Hyuntaek Oh | fix : today api for actiondetail screen
+2025-08-30 02:24:46 +0900 | Hyuntaek Oh | add : Rexical Search + Comparison Script fix : minor bugs about app interaction
+2025-08-30 04:09:12 +0900 | Hyuntaek Oh | refactor : logging cleanup step 1
+2025-08-30 04:21:50 +0900 | Hyuntaek Oh | refactor : loggin cleanup step2
+2025-08-30 06:37:17 +0900 | Hyuntaek Oh | refactor : logging cleanup final
+2025-08-30 09:57:14 +0900 | Hyuntaek Oh | fix : rag model bug
+2025-09-26 14:04:10 -0500 | Hyuntaek Oh | fix : cors error
+2025-11-18 06:41:44 +0530 | Mohan Ganesh | Add LLM hormone analysis with backward compatibility
+2025-11-18 06:43:12 +0530 | Mohan Ganesh | Add LLM config variables to Settings class
+2025-12-09 01:37:42 +0530 | Mohan Ganesh | Update backend: validators and root cause engine improvements
+2025-12-09 02:26:56 +0530 | Mohan Ganesh | fix: support dynamic top_concern and Others: prefix
+2025-12-09 03:05:33 +0530 | Mohan Ganesh | fix: auto-enable LLM if GEMINI_API_KEY exists
+2025-12-09 18:38:09 +0530 | Mohan Ganesh | feat: Add RAG v2 with batch indexing and medical safety
+2025-12-09 18:42:31 +0530 | Mohan Ganesh | chore: Remove spacy from requirements (not used)
+2025-12-09 18:52:14 +0530 | Mohan Ganesh | fix: Pin exact versions to speed up Render build
+2025-12-09 18:57:11 +0530 | Mohan Ganesh | fix: Downgrade firebase-admin to 6.5.0 for compatibility
+2025-12-09 21:34:44 +0530 | Mohan Ganesh | fix: Use pinecone-client 3.2.2 and firebase-admin 6.2.0 for faster build
+2025-12-09 21:57:47 +0530 | Mohan Ganesh | fix: Remove clock_skew_seconds param incompatible with firebase-admin 6.2.0
+2025-12-09 21:59:19 +0530 | Mohan Ganesh | fix: Add namespace parameter to Pinecone query for RAG retrieval
+2025-12-09 22:52:20 +0530 | Mohan Ganesh | fix: Simplify RAG retrieval - use Pinecone top matches directly, adapt for actual metadata
+2025-12-09 23:05:09 +0530 | Mohan Ganesh | debug: Add detailed RAG logging to trace why RAG isn't being called
+2025-12-09 23:13:19 +0530 | Mohan Ganesh | fix: Add safe imports to RAG module and detailed error logging
+2025-12-09 23:32:45 +0530 | Mohan Ganesh | fix: Complete RAG cleanup - pure semantic search + startup diagnostics for debugging Render
+2025-12-09 23:38:11 +0530 | Mohan Ganesh | feat: Add comprehensive logging throughout RAG pipeline - every step visible in Render
+2025-12-09 23:58:34 +0530 | Mohan Ganesh | Fix: Enable INFO level logging in production + Add print statements for RAG flow debugging
+2025-12-10 10:15:31 +0530 | Mohan Ganesh | Simplify RAG: use all 20 chunks, remove unused evidence threshold
+2025-12-10 17:47:02 +0530 | Mohan Ganesh | 🚀 V3 Recommendation Engine - Production Ready
+2025-12-10 17:57:44 +0530 | Mohan Ganesh | Fix critical bug: V3RecommendationResponse attribute mismatch - Use category-specific attributes (nutrition_recommendations, movement_recommendations, mindfulness_recommendations) instead of non-existent 'recommendations' attribute
+2025-12-10 18:03:18 +0530 | Mohan Ganesh | Fix: Export expert classes from experts/__init__.py (NutritionExpert, MovementExpert, MindfulnessExpert)
+2025-12-10 18:11:48 +0530 | Mohan Ganesh | Fix: BaseExpert import error - use correct class name BaseDomainExpert
+2025-12-10 18:39:10 +0530 | Mohan Ganesh | 🚀 Production Optimizations: Gemini→OpenAI, Caching, Singletons
+2025-12-10 19:10:50 +0530 | Mohan Ganesh | 📚 Add V3 Architecture Documentation
+2025-12-10 19:19:34 +0530 | Mohan Ganesh | 📚 V3 Architecture - 100% Code-Verified
+2025-12-10 21:24:43 +0530 | Mohan Ganesh | Fix Evidence Grader pipeline integration - PRODUCTION READY
+2025-12-10 21:47:35 +0530 | Mohan Ganesh | feat: Production-ready caching with TTL, size limits, and thread safety
+2025-12-10 21:56:52 +0530 | Mohan Ganesh | feat: Add comprehensive logging to cache system for Render monitoring
+2025-12-10 22:12:39 +0530 | Mohan Ganesh | Fix: Move cache clear to END of background task to prevent duplicate LLM calls
+2025-12-11 16:36:25 +0530 | Mohan Ganesh | fix: Add missing hormone mappings for root causes
+2025-12-11 16:39:23 +0530 | Mohan Ganesh | fix: Complete hormone mapping - ensures hormones is NEVER empty
+2025-12-11 16:54:19 +0530 | Mohan Ganesh | fix: Add fallback hormone derivation in _calculate_hormone_stats
+2025-12-11 17:20:04 +0530 | Mohan Ganesh | fix: Convert all hormone names to lowercase for consistency
+2025-12-11 17:40:04 +0530 | Mohan Ganesh | fix: Add optimal_times to all nutrition recommendations
+2025-12-11 19:04:36 +0530 | Mohan Ganesh | feat: Intelligent time slot assignment and improved hormone stats
+2025-12-11 19:09:07 +0530 | Mohan Ganesh | fix: Remove orphaned except block from _determine_time_group
+2025-12-11 20:51:50 +0530 | Mohan Ganesh | fix: Support first-time users in hormone stats calculation
+2025-12-11 23:26:34 +0530 | Mohan Ganesh | Fix: Use NullPool to prevent MaxClientsInSessionMode error
+2025-12-12 02:16:50 +0530 | Mohan Ganesh | feat: Implement scientifically accurate cycle phase calculation
+2025-12-12 02:24:15 +0530 | Mohan Ganesh | fix: Disable period regularity check - show phase for all users
+2025-12-12 19:57:49 +0530 | Mohan Ganesh | feat: Implement Eat/Move/Pause personalization and fix hormone explosion
+2025-12-12 20:16:40 +0530 | Mohan Ganesh | fix: each recommendation gets exactly ONE hormone, not all user hormones
+2025-12-12 20:35:16 +0530 | Mohan Ganesh | fix: V3 engine now uses user's actual hormones from Root Cause Engine
+2025-12-12 21:10:56 +0530 | Mohan Ganesh | fix: Add missing _distribute_hormones_across_recommendations method to RecommendationService
+2025-12-12 21:35:58 +0530 | Mohan Ganesh | fix: Create initial daily assignments immediately when schedule is created
+2025-12-12 22:01:24 +0530 | Mohan Ganesh | fix: Filter out generic 'general_wellness' from conditions display
+2025-12-12 22:06:24 +0530 | Mohan Ganesh | Revert: Remove general_wellness filter - keep original behavior
+2025-12-15 00:34:34 +0530 | Mohan Ganesh | feat: Add complete chatbot implementation with LangGraph
+2025-12-15 00:38:13 +0530 | Mohan Ganesh | fix: Add missing critical environment variables for chatbot
+2025-12-15 01:03:05 +0530 | Mohan Ganesh | docs: add chatbot deployment ready status
+2025-12-15 01:08:12 +0530 | Mohan Ganesh | fix: update render.yaml for production deployment - fix startCommand, add healthCheckPath, change env to runtime
+2025-12-15 01:17:40 +0530 | Mohan Ganesh | fix: remove duplicate /chat prefix from router - was causing 404 on /api/v1/chat/message
+2025-12-15 01:48:24 +0530 | Mohan Ganesh | fix(chat): align ORM + memory service with chatbot schema (created_at/metadata/summary)
+2025-12-15 01:59:14 +0530 | Mohan Ganesh | fix(chat): allow slider endpoint without session_id
+2025-12-15 02:09:33 +0530 | Mohan Ganesh | Improve chat error handling and fix tests
+2025-12-15 02:16:30 +0530 | Mohan Ganesh | Add chat compatibility endpoints and deploy metadata
+2025-12-15 12:53:35 +0530 | Mohan Ganesh | Fix chatbot tables: add migration to ensure all columns exist
+2025-12-15 13:50:45 +0530 | Mohan Ganesh | chore: add version to chat health endpoint for deploy verification
+2025-12-15 13:52:17 +0530 | Mohan Ganesh | fix: make slider session_id explicitly optional with Field default
+2025-12-15 13:57:16 +0530 | Mohan Ganesh | fix: remove duplicate migration causing multiple alembic heads
+2025-12-15 14:06:02 +0530 | Mohan Ganesh | fix: correct CycleService method name and handle missing attributes
+2025-12-15 14:08:15 +0530 | Mohan Ganesh | fix: correct CycleService method name get_cycle_info -> get_cycle_phase_info
+2025-12-15 14:29:37 +0530 | Mohan Ganesh | fix(chat): avoid calling StructuredTool directly in safety check
+2025-12-15 14:51:19 +0530 | Mohan Ganesh | fix(chat): avoid msgpack serialization of SQLAlchemy Session
+2025-12-15 14:55:50 +0530 | Mohan Ganesh | fix(chat): complete rewrite of chat agent - simplified & robust
+2025-12-15 15:44:56 +0530 | Mohan Ganesh | 🧠 Implement doctor-like intelligence architecture
+2025-12-15 19:24:55 +0530 | Mohan Ganesh | 🚀 Major UX improvements: Fix SymptomLog.phase error, add personalized greetings, engaging choices with emojis, friendly slider labels, improved prompts for empathetic responses
+2025-12-15 22:14:16 +0530 | Mohan Ganesh | fix: comprehensive chatbot audit - 15 bug fixes & 4 new intelligence modules
+2025-12-15 23:28:51 +0530 | Mohan Ganesh | feat: Add tool execution and personalization to chatbot backend
+2025-12-15 23:48:13 +0530 | Mohan Ganesh | chore: Remove outdated documentation files
+2025-12-16 01:21:29 +0530 | Mohan Ganesh | feat: Replace RAG with pure prompt engineering for recommendations
+2025-12-16 01:43:09 +0530 | Mohan Ganesh | feat: Add Eat/Move/Pause lifestyle personalization to recommendations
+2025-12-16 15:12:04 +0530 | Mohan Ganesh | chore: trigger redeploy for database migration
+2025-12-16 15:20:25 +0530 | Mohan Ganesh | fix: Add safe migration for lifestyle_focus column
+2025-12-16 15:22:31 +0530 | Mohan Ganesh | fix: Safe migration for lifestyle_focus - skips broken index operations
+2025-12-16 15:42:57 +0530 | Mohan Ganesh | perf: MAJOR optimization - parallel category & recommendation processing
+2025-12-16 15:47:45 +0530 | Mohan Ganesh | feat: Smart lifestyle preference distribution - More of what user prefers
+2025-12-16 15:48:30 +0530 | Mohan Ganesh | docs: Add distribution table to module docstring
+2025-12-16 15:52:39 +0530 | Mohan Ganesh | feat: Emphasize TOP 2 hormones in recommendations
+2025-12-16 15:55:22 +0530 | Mohan Ganesh | feat: STRICT 2-hormone-only - AI sees ONLY user hormones
+2025-12-16 17:08:02 +0530 | Mohan Ganesh | Fix proactive greeting StructuredTool root cause
+2025-12-18 21:54:36 +0530 | Mohan Ganesh | Add Action Plan System - 4 daily personalized actions with AI images
+2025-12-18 21:56:24 +0530 | Mohan Ganesh | Add RunPod and Supabase env vars for Action Plan image generation
+2025-12-18 22:01:50 +0530 | Mohan Ganesh | Use actual hormone names instead of persona names (Progesterone not Luna, etc.)
+2025-12-18 22:06:20 +0530 | Mohan Ganesh | Update hormone persona intros to match app format: 'I'm [Hormone] — in your [phase], [behavior]. [Action] helps boost me and keep you [benefit].'
+2025-12-18 22:09:00 +0530 | Mohan Ganesh | Use examples instead of rigid format for hormone intros - GPT-4o-mini adapts naturally
+2025-12-18 22:20:09 +0530 | Mohan Ganesh | Comprehensive personalization: add all health profile fields, enhanced feedback memory, 30s satisfaction prompt, real research citations
+2025-12-18 22:26:00 +0530 | Mohan Ganesh | Implement full 30-second feedback flow: works_for_me marks all as liked, want_to_change triggers batch replacement
+2025-12-18 22:37:00 +0530 | Mohan Ganesh | Add asyncpg dependency for async database connections
+2025-12-18 22:58:47 +0530 | Mohan Ganesh | Fix datetime timezone mismatch - use timezone-naive datetimes for PostgreSQL columns
+2025-12-18 23:15:54 +0530 | Mohan Ganesh | Add show_feedback_prompt_after_seconds, Pillow and supabase deps
+2025-12-18 23:27:22 +0530 | Mohan Ganesh | Fix: Change image URL columns from VARCHAR(500) to TEXT for base64 support
+2025-12-18 23:27:57 +0530 | Mohan Ganesh | Fix: Chain migration properly to add_action_plan_tables
+2025-12-18 23:56:43 +0530 | Mohan Ganesh | debug: Add logging for research_studies in GPT response
+2025-12-19 00:13:24 +0530 | Mohan Ganesh | fix: Handle race condition when generating action plans concurrently
+2025-12-19 00:24:14 +0530 | Mohan Ganesh | fix: Add validation for variants to handle malformed GPT responses
+2025-12-19 17:10:45 +0530 | Mohan Ganesh | feat: backend cleanup and action plan flow verification
+2025-12-19 18:10:34 +0530 | Mohan Ganesh | fix: ActionPlanFeedback uses feedback_type not is_completed
+2025-12-19 18:49:40 +0530 | Mohan Ganesh | feat: integrate Cloudinary for image storage
+2025-12-19 19:01:25 +0530 | Mohan Ganesh | fix: add conditions and symptoms to API response for Why/How screen tags
+2025-12-19 19:11:02 +0530 | Mohan Ganesh | fix: store and return conditions/symptoms in all action plan creation paths
+2025-12-20 16:12:47 +0530 | Mohan Ganesh | fix: GPT prompt - proper variant format with variant_type/title + FLUX-optimized image prompts
+2025-12-20 18:57:56 +0530 | Mohan Ganesh | fix: add default context fallback for new users to prevent 500 error
+2025-12-20 20:44:50 +0530 | Mohan Ganesh | fix: Bug 3 & 5 - type safety for diagnosed_conditions, remove item_id from ActionCompletionRequest
+2025-12-20 23:06:34 +0530 | Mohan Ganesh | fix: variant type safety in batch_replace + enhanced FLUX.1 image prompts
+2025-12-20 23:28:35 +0530 | Mohan Ganesh | fix: remove non-existent generation_metadata + add category-specific fields to GPT prompt for amounts display
+2025-12-21 00:06:04 +0530 | Mohan Ganesh | debug: add comprehensive logging for food_amounts data flow tracing
+2025-12-21 23:12:51 +0530 | Mohan Ganesh | feat: enhance action plan generation with symptoms and conditions display alignment
+2025-12-21 23:33:52 +0530 | Mohan Ganesh | feat: refine action plan generator prompts for better content separation
+2025-12-22 01:59:34 +0530 | Mohan Ganesh | Fix action replacement persistence using SQL-direct updates and strict is_replaced filtering
+2025-12-22 16:51:29 +0530 | Mohan Ganesh | Fix: Research studies to exactly 1 female-specific, add variant images & category fields to replacements
+2025-12-22 16:58:56 +0530 | Mohan Ganesh | Fix: Add category-specific fields to batch replacement response
+2025-12-22 17:05:06 +0530 | Mohan Ganesh | Add comprehensive logging to batch replacement to debug GPT response
+2025-12-22 17:08:08 +0530 | Mohan Ganesh | Add complete data flow logging for category-specific fields
+2025-12-22 17:12:32 +0530 | Mohan Ganesh | Fix: Add research_studies and variants to batch replacement response
+2025-12-22 17:22:35 +0530 | Mohan Ganesh | Add explicit JSON example to prompt showing category-specific fields
+2025-12-22 17:45:33 +0530 | Mohan Ganesh | MAJOR: Unify replacement prompt with normal action plan generation
+2025-12-22 17:55:36 +0530 | Mohan Ganesh | Add bulletproof logging to trace GPT response parsing
+2025-12-22 18:10:47 +0530 | Mohan Ganesh | CRITICAL: Move category fields to position #3 in prompt requirements
+2025-12-22 18:16:13 +0530 | Mohan Ganesh | MAJOR: Implement OpenAI Structured Outputs with JSON Schema
+2025-12-22 18:22:13 +0530 | Mohan Ganesh | Fix: Remove unsupported allOf/if/then from JSON schema
+2025-12-22 18:24:25 +0530 | Mohan Ganesh | Fix: Python syntax - false to False in JSON schema
+2025-12-22 18:28:23 +0530 | Mohan Ganesh | Revert JSON schema - back to simple text prompting
+2025-12-22 19:47:19 +0530 | Mohan Ganesh | feat: Add feedback summarization system
+2025-12-22 20:33:06 +0530 | Mohan Ganesh | feat: Add feedback deduplication to prevent duplicate records
+2025-12-22 21:24:38 +0530 | Mohan Ganesh | fix: Improve feedback deduplication to prevent like/dislike conflicts
+2025-12-23 01:26:19 +0530 | Mohan Ganesh | PRODUCTION FIX: Prevent KeyError for new users
+2025-12-23 01:48:32 +0530 | Mohan Ganesh | CRITICAL FIX: Add missing feedback_summary to prompt format()
+2025-12-23 02:02:56 +0530 | Mohan Ganesh | fix: definitively resolve KeyError 'feedback_summary' by unifying context generation
+2025-12-23 13:39:09 +0530 | Mohan Ganesh | feat: Improve GPT output completeness and image generation quality
+2025-12-23 13:49:29 +0530 | Mohan Ganesh | hotfix: Remove strict JSON schema causing action generation failure
+2025-12-23 14:04:08 +0530 | Mohan Ganesh | feat: Add validation + retry logic to batch_replace_actions
+2025-12-23 14:11:08 +0530 | Mohan Ganesh | feat: Apply same optimizations to batch_replace_actions
+2025-12-23 14:15:25 +0530 | Mohan Ganesh | feat: Add validation + retry logic to batch_replace_actions
+2025-12-23 14:20:12 +0530 | Mohan Ganesh | fix: Add category normalization to batch_replace_actions
+2025-12-23 14:37:25 +0530 | Mohan Ganesh | feat: Add real PubMed research integration
+2025-12-23 14:52:51 +0530 | Mohan Ganesh | fix: Improve PubMed rate limiting for production reliability
+2025-12-23 14:58:47 +0530 | Mohan Ganesh | hotfix: Accept 'replacements' key from GPT response
+2025-12-23 15:08:29 +0530 | Mohan Ganesh | feat: Add symptoms and conditions to batch replacement response
+2025-12-23 15:10:00 +0530 | Mohan Ganesh | fix: Add symptoms/conditions to ALL response locations
+2025-12-23 15:12:32 +0530 | Mohan Ganesh | feat: Add null safety and remove unused pubmed service
+2025-12-23 15:19:22 +0530 | Mohan Ganesh | debug: Add symptoms/conditions logging to batch replacements
+2025-12-23 15:27:50 +0530 | Mohan Ganesh | fix: Use user profile symptoms instead of GPT-generated
+2025-12-23 15:34:16 +0530 | Mohan Ganesh | fix: GPT generates action-specific symptoms (same as generate_new_plan)
+2025-12-23 15:35:43 +0530 | Mohan Ganesh | fix: Make symptoms REQUIRED - GPT must always generate it
+2025-12-23 15:36:48 +0530 | Mohan Ganesh | fix: GPT picks symptoms from USER'S HEALTH CONCERNS
+2025-12-23 16:04:26 +0530 | Mohan Ganesh | feat: Add PubMed integration for real research citations
+2025-12-23 19:03:12 +0530 | Mohan Ganesh | feat: Implement real research citations with GPT tool calling
+2025-12-23 19:06:53 +0530 | Mohan Ganesh | fix: Fix alembic multi-head migration issue
+2025-12-23 19:27:33 +0530 | Mohan Ganesh | fix: Fix KeyError 'title' in action plan generation
+2025-12-23 19:35:00 +0530 | Mohan Ganesh | feat: Add GPT tool calling to batch_replace_actions for real citations
+2025-12-23 19:42:20 +0530 | Mohan Ganesh | fix: Fix remaining KeyError issues in single replacement method
+2025-12-23 19:52:12 +0530 | Mohan Ganesh | fix: CRITICAL - Fix KeyError by using .get() in paper logging
+2025-12-23 20:11:12 +0530 | Mohan Ganesh | fix: COMPREHENSIVE - Fix ALL bracket accesses + add traceback logging
+2025-12-23 20:18:32 +0530 | Mohan Ganesh | fix: FINAL ROOT CAUSE - Escape curly braces in prompt template
+2025-12-23 20:43:58 +0530 | Mohan Ganesh | feat: Improve research citation relevance
+2025-12-23 21:16:39 +0530 | Mohan Ganesh | fix: Filter out irrelevant papers from PubMed results
+2025-12-23 21:33:31 +0530 | Mohan Ganesh | fix: Fix replacement action failures
+2025-12-23 21:38:59 +0530 | Mohan Ganesh | fix: Replace remaining bracket access with safe .get() in pubmed_service
+2025-12-23 22:18:02 +0530 | Mohan Ganesh | feat: Rename PubMedCache to ResearchPaperLibrary
+2025-12-23 22:25:12 +0530 | Mohan Ganesh | feat: Implement Research Paper Library with organic curation
+2025-12-23 23:00:34 +0530 | Mohan Ganesh | Increase image similarity threshold from 0.85 to 0.95
+2025-12-24 00:33:47 +0530 | Mohan Ganesh | Fix research study citations to include pmid and verification_link in all places
+2025-12-24 01:07:14 +0530 | Mohan Ganesh | Update replacement action prompt to require pmid/verification_link and relevance to user condition
+2025-12-24 01:38:24 +0530 | Mohan Ganesh | Add current actions context to replacement prompt to prevent duplicates
+2025-12-24 12:58:58 +0530 | Mohan Ganesh | Major action plan generator fixes and improvements
+2025-12-24 13:12:23 +0530 | Mohan Ganesh | Fix Alembic multiple heads: merge add_pubmed_cache and b1ce18fdc4f2
+2025-12-24 13:20:22 +0530 | Mohan Ganesh | Fix: add IF NOT EXISTS check to pubmed_cache migration
+2025-12-24 13:36:33 +0530 | Mohan Ganesh | Fix: restore smart fallbacks for non-critical fields to prevent total generation failure
+2025-12-24 13:39:31 +0530 | Mohan Ganesh | Fix: simplify validation to critical fields only
+2025-12-24 15:16:29 +0530 | Mohan Ganesh | Fix NameError: MAX_RETRIES not defined at line 592
+2025-12-24 15:52:01 +0530 | Mohan Ganesh | Fix: use naive datetime for TIMESTAMP WITHOUT TIME ZONE columns
+2025-12-24 16:05:35 +0530 | Mohan Ganesh | Fix: use isolated DB session per concurrent image task
+2025-12-24 16:11:02 +0530 | Mohan Ganesh | Add detailed logging to diagnose empty image URLs
+2025-12-24 16:35:21 +0530 | Mohan Ganesh | Fix database session concurrency, datetime offset errors, and add timezone-aware plan generation
+2025-12-24 16:40:00 +0530 | Mohan Ganesh | Use NullPool for async engine to fix Supabase MaxClientsInSessionMode
+2025-12-24 16:52:12 +0530 | Mohan Ganesh | Fix image generation to use single call with valid session inside semaphore
+2025-12-24 17:06:25 +0530 | Mohan Ganesh | Enterprise-grade overhaul: Pydantic validation, PostgreSQL advisory locks, no fallbacks
+2025-12-24 17:10:07 +0530 | Mohan Ganesh | Add enhanced production logging for easier debugging
+2025-12-24 17:24:29 +0530 | Mohan Ganesh | Fix GPT output parsing: sanitize participants, auto-fill category fields
+2025-12-24 17:28:55 +0530 | Mohan Ganesh | Root cause fix: Add complete JSON examples in prompt, restore validation with retry, remove auto-fill hack
+2025-12-24 17:31:40 +0530 | Mohan Ganesh | Implement OpenAI Structured Outputs: GPT now FORCED to return all required fields
+2025-12-24 17:37:59 +0530 | Mohan Ganesh | Proper Pydantic + OpenAI Structured Outputs: remove Optional, use model_json_schema(), add empty array instructions
+2025-12-25 00:05:09 +0530 | Mohan Ganesh | Add debug logging to hormone_stats calculation
+2025-12-25 21:56:52 +0530 | Mohan Ganesh | Refactor: Extract magic numbers to ActionPlanConfig class
+2025-12-25 22:04:46 +0530 | Mohan Ganesh | chore: remove orphan/unused code
+2025-12-25 22:17:03 +0530 | Mohan Ganesh | fix: remove new_scheduling_service import from question_service
+2025-12-25 23:53:08 +0530 | Mohan Ganesh | feat: improve action plan prompts for better personalization and variety
+2025-12-25 23:56:03 +0530 | Mohan Ganesh | fix: make array sizes flexible in prompts - GPT decides count based on action
+2025-12-26 00:03:06 +0530 | Mohan Ganesh | Update action plan generator
+2025-12-26 00:25:58 +0530 | Mohan Ganesh | Fix: Auto-correct GPT target_hormone mismatch - ensures mascot matches hormone
+2025-12-26 00:29:45 +0530 | Mohan Ganesh | Root fix: Explicit target_hormone enforcement in GPT prompt
+2025-12-26 00:54:54 +0530 | Mohan Ganesh | Fix: Always calculate cycle phase, remove unclear logic
+2025-12-26 01:09:53 +0530 | Mohan Ganesh | Improve personalization: Remove hardcoded conditions, use dynamic user context
+2025-12-26 01:12:44 +0530 | Mohan Ganesh | Enhance prompt: Remove limiting lists, add mechanism-based personalization, improve examples
+2025-12-26 01:13:57 +0530 | Mohan Ganesh | Add RESEARCH-FIRST approach: Recommendations must be grounded in actual research
+2025-12-26 01:30:42 +0530 | Mohan Ganesh | Improve citation relevance: Require user conditions in search queries
+2025-12-26 01:33:53 +0530 | Mohan Ganesh | Improve citation search: Better query guidance with condition, mechanism, and category-specific terms
+2025-12-26 01:47:50 +0530 | Mohan Ganesh | Implement research-first flow: Search interventions BEFORE recommending
+2025-12-26 02:31:26 +0530 | Mohan Ganesh | Add text feedback support for ActionDetailScreen
+2025-12-26 02:45:26 +0530 | Mohan Ganesh | Fix alembic migration: set correct down_revision
+2025-12-26 09:02:36 +0530 | Mohan Ganesh | Fix: normalize research_studies to list in replacement actions
+2025-12-26 09:15:36 +0530 | Mohan Ganesh | Fix: async session issues in image library service
+2025-12-26 09:16:26 +0530 | Mohan Ganesh | Fix: generate variant images sequentially to avoid session conflicts
+2025-12-26 09:23:21 +0530 | Mohan Ganesh | Add detailed traceback logging for replace action errors
+2025-12-26 09:36:10 +0530 | Mohan Ganesh | Improve replacement prompt to reduce validation failures
+2025-12-26 09:54:59 +0530 | Mohan Ganesh | Refactor replacement to research-first approach
+2025-12-26 10:00:41 +0530 | Mohan Ganesh | Add back feedback memory, stress level, top concern to replacement prompt
+2025-12-26 10:03:04 +0530 | Mohan Ganesh | Add full feedback context to replacement prompt
+2025-12-26 10:07:34 +0530 | Mohan Ganesh | Add complete user context to all replacement prompts
+2025-12-26 10:10:31 +0530 | Mohan Ganesh | Add complete user context to evaluation service
+2025-12-26 10:22:20 +0530 | Mohan Ganesh | Always return 2nd highest hormone as secondary
+2025-12-26 11:49:53 +0530 | Mohan Ganesh | feat: Implement streak-based rewards system
+2025-12-26 12:08:05 +0530 | Mohan Ganesh | feat: Complete reward effects integration with preferences system
+2025-12-26 12:29:31 +0530 | Mohan Ganesh | feat: Complete remaining reward effects (2x Refresh, Symptom Patterns, Insights)
+2025-12-26 12:40:51 +0530 | Mohan Ganesh | fix: Remove unsupported clock_skew_seconds from Firebase auth
+2025-12-26 12:45:06 +0530 | Mohan Ganesh | fix: Add root path handler for Render health checks
+2025-12-26 14:49:13 +0530 | Mohan Ganesh | feat: Complete streak_freeze and first_improvement rewards
+2025-12-26 15:19:05 +0530 | Mohan Ganesh | feat: Add /refresh-all-incomplete endpoint for refreshing all incomplete actions
+2025-12-26 15:23:28 +0530 | Mohan Ganesh | fix: 30-sec feedback replace also uses daily refresh count
+2025-12-26 15:33:23 +0530 | Mohan Ganesh | fix: Use get_current_user instead of verify_firebase_token in /claimed endpoint
+2025-12-26 15:38:24 +0530 | Mohan Ganesh | fix: Use plan_date instead of is_active in refresh-all-incomplete
+2025-12-26 15:48:14 +0530 | Mohan Ganesh | fix: Pass reasons as Dict instead of list to batch_replace_actions
+2025-12-26 16:02:05 +0530 | Mohan Ganesh | fix: Increase max_tokens to 8000 for batch replacement to prevent JSON truncation
+2025-12-26 16:23:57 +0530 | Mohan Ganesh | fix: Refresh All - filter is_replaced items + add loading spinner UX
+2025-12-26 16:37:20 +0530 | Mohan Ganesh | feat: Add test mode for 30+ day streak (uses stored value instead of calculating)
+2025-12-26 16:44:43 +0530 | Mohan Ganesh | fix: Test mode now only affects specific test user UID, not all users
+2025-12-26 16:55:52 +0530 | Mohan Ganesh | fix: Apply test mode to claim_reward - was bypassing get_streak_status fix
+2025-12-26 17:18:04 +0530 | Mohan Ganesh | feat: Cultural background uses food emojis instead of country flags
+2025-12-26 18:16:08 +0530 | Mohan Ganesh | feat: Add /users/profile/me endpoint for concerns and diagnosis
+2025-12-26 18:29:12 +0530 | Mohan Ganesh | feat: Add preference_compliance_score to action plan evaluator
+2025-12-26 18:34:43 +0530 | Mohan Ganesh | fix: Test mode now bypasses streak check entirely for rewards
+2025-12-26 19:15:29 +0530 | Mohan Ganesh | feat: Complete streak freeze implementation with multi-day support
+2025-12-26 19:29:44 +0530 | Mohan Ganesh | fix: Add Alembic migration for freeze_used_dates column
+2025-12-26 19:31:58 +0530 | Mohan Ganesh | fix: Correct Alembic migration chain for freeze_used_dates
+2025-12-26 19:40:33 +0530 | Mohan Ganesh | fix: Add missing format params for action plan prompt
+2025-12-26 19:49:33 +0530 | Mohan Ganesh | fix: Add preference_compliance_score column to action_plan_evaluations
+2025-12-26 23:01:36 +0530 | Mohan Ganesh | fix: Prevent FK violation in streak service for users without profiles
+2025-12-26 23:49:06 +0530 | Mohan Ganesh | fix: Force streak=30 for test user AMu7Bum6Kfbc3xIYdmpDVAyHQUF2
+2025-12-27 00:24:13 +0530 | Mohan Ganesh | fix: Update test user UID for streak=30 override
+2025-12-27 00:55:55 +0530 | Mohan Ganesh | fix: Force streak=30 for test user without checking DB value
+2025-12-27 01:01:33 +0530 | Mohan Ganesh | fix: Update test user UID for streak=30
+2025-12-27 01:06:39 +0530 | Mohan Ganesh | fix: Sync test user UID in reward_service with streak_service
+2025-12-27 02:17:14 +0530 | Mohan Ganesh | feat: Implement plan carryforward when streak freeze is used
+2025-12-27 02:25:51 +0530 | Mohan Ganesh | feat: Carryforward now generates remaining items to reach full 4-action plan
+2025-12-27 02:30:58 +0530 | Mohan Ganesh | fix: Streak only counts when ALL 4 actions are completed
+2025-12-27 22:49:51 +0530 | Mohan Ganesh | fix: Remove test override - use real streak calculation
+2025-12-27 23:08:52 +0530 | Mohan Ganesh | debug: Add logging to trace freeze_count retrieval
+2025-12-28 22:44:45 +0530 | Mohan Ganesh | fix: Plan generation flow - one plan per day, carryforward only on first generation
+2025-12-28 23:07:44 +0530 | Mohan Ganesh | fix: Handle race condition in carryforward with proper rollback
+2025-12-28 23:18:50 +0530 | Mohan Ganesh | fix: Add advisory lock to prevent race condition in carryforward
+2025-12-28 23:35:44 +0530 | Mohan Ganesh | fix: Streak calculation starts from yesterday, not today
+2025-12-28 23:41:05 +0530 | Mohan Ganesh | fix: Complete redesign of streak freeze logic
+2025-12-29 00:42:23 +0530 | Mohan Ganesh | fix: Complete timezone-aware streak calculation redesign
+2025-12-29 13:38:55 +0530 | Mohan Ganesh | Finalize timezone deep audit fixes and docs
+2025-12-29 14:44:32 +0530 | Mohan Ganesh | Fix critical streak freeze bugs and implement accurate time restrictions
+2025-12-29 14:47:49 +0530 | Mohan Ganesh | Enable multi-day freeze support - users can freeze any number of missed days if they have enough tokens
+2025-12-29 14:50:57 +0530 | Mohan Ganesh | Fix 3 critical bugs found in deep audit of streak freeze
+2025-12-29 15:19:32 +0530 | Mohan Ganesh | Fix: Stop counting missed days at frozen day boundary
+2025-12-29 15:25:40 +0530 | Mohan Ganesh | Fix all edge cases in streak freeze system
+2025-12-29 16:22:24 +0530 | Mohan Ganesh | fix: Add timezone support to proactive freeze and rewards status
+2025-12-29 16:33:46 +0530 | Mohan Ganesh | fix: CRITICAL - Fix JSONB mutation detection for freeze_used_dates
+2025-12-29 17:15:22 +0530 | Mohan Ganesh | perf: Optimize streak calculation - batch load all data in 1 query
+2025-12-29 17:23:19 +0530 | Mohan Ganesh | fix: insights endpoint - join ActionPlan for plan_date filter
+2025-12-29 18:36:43 +0530 | Mohan Ganesh | feat: Add Weekly Check-in feature
+2025-12-29 18:54:51 +0530 | Mohan Ganesh | fix: use is_reward_unlocked instead of has_reward in weekly_checkin_service
+2025-12-29 19:00:25 +0530 | Mohan Ganesh | fix: correct CycleService method call and attribute access in weekly_checkin_service
+2025-12-29 19:14:03 +0530 | Mohan Ganesh | fix: update checkin flow to start with bloating slider
+2025-12-29 19:20:23 +0530 | Mohan Ganesh | feat: add AI-powered weekly check-in engine with dynamic questions
+2025-12-29 19:24:52 +0530 | Mohan Ganesh | fix: handle list type for default_tap_options in weekly_checkin_service
+2025-12-29 19:39:23 +0530 | Mohan Ganesh | fix: improve weekly checkin robustness and add reset script
+2025-12-29 19:47:18 +0530 | Mohan Ganesh | feat: persist chat history in weekly checkin
+2025-12-29 19:54:08 +0530 | Mohan Ganesh | fix: UserResponse attribute error in weekly checkin ai
+2025-12-29 20:18:36 +0530 | Mohan Ganesh | feat: implement dynamic AI doctor check-in with GPT-4o
+2025-12-29 20:30:24 +0530 | Mohan Ganesh | Fix AI prompt to generate user answers instead of questions in tap options
+2025-12-29 20:38:32 +0530 | Mohan Ganesh | Fix AttributeError in AI service and include chat history in resumed sessions
+2025-12-29 21:02:54 +0530 | Mohan Ganesh | Fix AttributeError: implement missing _generate_closing_question method
+2025-12-29 21:31:26 +0530 | Mohan Ganesh | Remove 14-day streak requirement for weekly check-in
+2025-12-29 21:37:51 +0530 | Mohan Ganesh | Fix AttributeError: Implement _get_slider_labels_for_symptom
+2025-12-31 16:00:56 +0530 | Mohan Ganesh | fix: Add missing alembic migrations and daily review system
+2026-01-02 13:52:49 +0530 | Mohan Ganesh | feat: AI model switching with quality-based routing + admin tracking
+2026-01-02 14:12:45 +0530 | Mohan Ganesh | fix: clarify Groq model selection (Llama 3.3 70B) for deep research fallback
+2026-01-02 14:19:43 +0530 | Mohan Ganesh | feat: add Chain of Thought (CoT) reasoning instructions for Llama 3.3 fallback
+2026-01-02 14:24:31 +0530 | Mohan Ganesh | feat: switch fallback to OpenAI GPT-OSS 120B (Reasoning Model) with high reasoning effort
+2026-01-02 14:36:41 +0530 | Mohan Ganesh | Fix Groq fallback: Use Llama 3.3 and enforce strict schema
+2026-01-02 14:53:32 +0530 | Mohan Ganesh | Make Groq fallback model configurable via env var
+2026-01-02 15:23:16 +0530 | Mohan Ganesh | Fix all tests: add Tuple import, update test assertions, create comprehensive test suite
+2026-01-02 15:48:00 +0530 | Mohan Ganesh | Add flow verification scripts and report
+2026-01-02 16:21:39 +0530 | Mohan Ganesh | Add debug script to force pending review state
+2026-01-02 16:50:01 +0530 | Mohan Ganesh | Optimize streak service: add request-level caching to reduce redundant DB queries
+2026-01-02 17:12:34 +0530 | Mohan Ganesh | Fix: Block new plan generation if daily review is pending (return 428)
+2026-01-02 17:25:26 +0530 | Mohan Ganesh | Fix: Remove 3-day limit on pending review - find LAST unreviewed plan regardless of age
+2026-01-02 19:27:44 +0530 | Mohan Ganesh | Fix: Return all items (including replaced) in pending review API
+2026-01-02 20:02:17 +0530 | Mohan Ganesh | Fix: Count all items in pending review totals
+2026-01-02 22:58:38 +0530 | Mohan Ganesh | Enhanced weekly check-in system with medical knowledge and dynamic responses
+2026-01-02 23:07:27 +0530 | Mohan Ganesh | Fix: AI now includes summary naturally in completion message
+2026-01-02 23:19:19 +0530 | Mohan Ganesh | Add logging for weekly_checkin_due_date updates
+2026-01-02 23:21:54 +0530 | Mohan Ganesh | Implement fixed weekly check-in schedule with proper edge case handling
+2026-01-02 23:31:37 +0530 | Mohan Ganesh | Fix weekly check-in completion: Add hard limit and forced completion message
+2026-01-03 15:26:56 +0530 | Mohan Ganesh | Implement multi-bubble messages and actionable insights for weekly check-in
+2026-01-03 15:43:02 +0530 | Mohan Ganesh | Add exponential backoff for OpenAI API retries to handle 429 errors
+2026-01-03 15:52:42 +0530 | Mohan Ganesh | Add Groq fallback when OpenAI returns 429 rate limit errors
+2026-01-03 15:55:20 +0530 | Mohan Ganesh | Add detailed rate limit logging to diagnose OpenAI 429 errors
+2026-01-03 16:25:09 +0530 | Mohan Ganesh | fix: Switch to Groq as primary AI provider (OpenAI has no credits)
+2026-01-03 16:30:51 +0530 | Mohan Ganesh | fix: OpenAI primary with automatic Groq fallback on ANY error
+2026-01-03 16:37:06 +0530 | Mohan Ganesh | fix: Use openai/gpt-oss-120b as fallback model for better quality
+2026-01-03 17:03:03 +0530 | Mohan Ganesh | feat: Add comprehensive Groq fallback to ALL LLM calls across the app
+2026-01-03 21:58:39 +0530 | Mohan Ganesh | feat: simplify action titles - just food/activity/technique names
+2026-01-03 22:13:45 +0530 | Mohan Ganesh | feat: improve image prompts to be highly illustrative
+2026-01-04 00:54:56 +0530 | Mohan Ganesh | Fix: Silence embedding 429 errors - embeddings are optional
+2026-01-04 12:01:19 +0530 | Mohan Ganesh | Fix: Switch Groq model from gpt-oss-120b to llama-3.3-70b-versatile
+2026-01-04 12:15:44 +0530 | Mohan Ganesh | Add debug logging to analyze_hormone_imbalance
+2026-01-04 12:40:59 +0530 | Mohan Ganesh | Improve action plan: 3 consumption methods in specific_action + more illustrative images
+2026-01-04 13:00:14 +0530 | Mohan Ganesh | Fix TITLE RULES: use RAW INGREDIENT name only, not preparation method
+2026-01-04 13:02:54 +0530 | Mohan Ganesh | Add CORE PRINCIPLE section: TITLE=WHAT, SPECIFIC_ACTION=HOW
+2026-01-04 14:51:56 +0530 | Mohan Ganesh | Backend optimization: AIService Groq fallback, session hormone caching, action plan lock improvement
+2026-01-04 16:05:13 +0530 | Mohan Ganesh | fix: wait for lifestyle_focus before generating recommendations
+2026-01-04 16:09:16 +0530 | Mohan Ganesh | Simplify background task: hormone analysis already cached from ResultScreen
+2026-01-04 16:12:15 +0530 | Mohan Ganesh | Remove 10s wait - frontend now saves lifestyle_focus before calling this API
+2026-01-04 16:21:10 +0530 | Mohan Ganesh | Fix: Generate only 4 recommendations in ONE API call
+2026-01-04 16:25:04 +0530 | Mohan Ganesh | Fix: Proper JSON format for session recommendations
+2026-01-04 16:35:30 +0530 | Mohan Ganesh | feat: Add PubMed-backed session recommendations (4 total with real citations)
+2026-01-04 16:51:38 +0530 | Mohan Ganesh | feat: add strict pydantic validation and full logging to session recommendations
+2026-01-04 17:09:21 +0530 | Mohan Ganesh | feat: add strict pydantic validation and logging to action plan, check-in, and root cause engines
+2026-01-04 17:18:16 +0530 | Mohan Ganesh | fix: allow session linking even if no recommendations generated (e.g. api failure)
+2026-01-04 17:21:53 +0530 | Mohan Ganesh | feat: add groq fallback to session recommendation engine
+2026-01-04 17:28:02 +0530 | Mohan Ganesh | feat: enforce strict 4 actions limit in recommendation engine
+2026-01-04 17:30:36 +0530 | Mohan Ganesh | feat: simplify recommendation engine to let LLM decide distribution
+2026-01-04 17:32:14 +0530 | Mohan Ganesh | docs: update comments to reflect simplified 4-action logic
+2026-01-04 17:41:16 +0530 | Mohan Ganesh | fix: handle groq json key mismatch (recommendations vs actions)
+2026-01-04 17:55:49 +0530 | Mohan Ganesh | fix: improve image quality (1024px) and recommendation diversity
+2026-01-04 17:58:19 +0530 | Mohan Ganesh | fix: revert image size to 512x512 and improve image prompt detail
+2026-01-04 18:03:16 +0530 | Mohan Ganesh | fix: make action images more illustrative and crop-safe
+2026-01-04 20:30:26 +0530 | Mohan Ganesh | feat: Add anti-repetition system and detailed logging
+2026-01-04 20:52:05 +0530 | Mohan Ganesh | fix: Change action logging to use dict keys instead of attributes
+2026-01-04 21:02:32 +0530 | Mohan Ganesh | fix: Handle Groq LLM variant format mismatch and missing research fields
+2026-01-04 21:24:24 +0530 | Mohan Ganesh | fix: Handle Groq LLM variant format mismatch in prompt_recommendation_engine
+2026-01-04 22:10:18 +0530 | Mohan Ganesh | fix: Exclude studies done on pregnant women, children, men, elderly - only show studies matching our users
+2026-01-04 23:49:10 +0530 | Mohan Ganesh | Fix RunPod cold start timeout - increase to 120s with retry
+2026-01-04 23:50:38 +0530 | Mohan Ganesh | Revert poll interval to 1s for faster response detection
+2026-01-04 23:55:01 +0530 | Mohan Ganesh | Fix OpenAI strict mode schema - add all fields to required
+2026-01-05 00:16:09 +0530 | Mohan Ganesh | Implement STRICT category distribution based on lifestyle_focus
+2026-01-05 00:24:07 +0530 | Mohan Ganesh | Fix OpenAI strict mode: add additionalProperties: false to schema
+2026-01-05 00:37:51 +0530 | Mohan Ganesh | CRITICAL FIX: Include lifestyle_focus in get_session_data for session recommendations
+2026-01-05 00:57:39 +0530 | Mohan Ganesh | Fix AttributeError: WeeklyCheckIn object has no attribute symptoms_this_week
+2026-01-05 01:05:47 +0530 | Mohan Ganesh | Fix slider_labels type mismatch (List vs Dict)
+2026-01-05 01:18:26 +0530 | Mohan Ganesh | Flush DB before streak calc to ensure updates are seen
+2026-01-05 01:34:53 +0530 | Mohan Ganesh | Fix streak calculation race condition and prevent duplicate carry-forward items
+2026-01-05 01:40:18 +0530 | Mohan Ganesh | Implement simplified streak calculation logic (Prior + 1)
+2026-01-05 02:06:38 +0530 | Mohan Ganesh | Weekly check-in: add Yap transcription endpoint
+2026-01-05 02:26:14 +0530 | Mohan Ganesh | test(weekly-checkin): add unit tests for Yap transcription service
+2026-01-05 10:53:33 +0530 | Mohan Ganesh | fix(weekly-checkin): include history on start
+2026-01-05 14:50:30 +0530 | Mohan Ganesh | Integrate symptom check-in across plans and chats
+2026-01-05 14:58:28 +0530 | Mohan Ganesh | Fix Alembic multiple heads
+2026-01-05 15:06:43 +0530 | Mohan Ganesh | Make checkin thread migrations idempotent
+2026-01-05 15:11:35 +0530 | Mohan Ganesh | Shorten merge revision id to fit alembic_version
+2026-01-06 02:29:18 +0530 | Mohan Ganesh | Personalise chat: show locked factors with days remaining
+2026-01-06 02:52:45 +0530 | Mohan Ganesh | fix: care plan replace confirm + ui blocks
+2026-01-06 03:04:31 +0530 | Mohan Ganesh | ux: remove skip actions tap option
+2026-01-06 03:17:30 +0530 | Mohan Ganesh | ux: align symptom checkin LLM + stable taps
+2026-01-06 03:30:35 +0530 | Mohan Ganesh | fix(chat): show user UI selections in history
+2026-01-06 03:43:13 +0530 | Mohan Ganesh | ux(symptom checkin): keep chat-first (no default UI blocks)
+2026-01-06 03:46:24 +0530 | Mohan Ganesh | ux(symptom checkin): doctor-like tone + better LLM memory
+2026-01-06 03:48:46 +0530 | Mohan Ganesh | feat(symptom checkin): longitudinal memory + better deltas
+2026-01-06 03:57:57 +0530 | Mohan Ganesh | revert: undo symptom checkin over-engineering
+2026-01-06 04:05:25 +0530 | Mohan Ganesh | feat(symptom checkin): Dr. Auvra persona + multi-bubble + 3-turn limit
+2026-01-06 04:13:28 +0530 | Mohan Ganesh | feat(symptom checkin): Dr. Auvra daily pulse check
+2026-01-06 04:28:43 +0530 | Mohan Ganesh | fix(symptom checkin): fix turn counting and simpler prompt
+2026-01-06 04:40:21 +0530 | Mohan Ganesh | feat(symptom checkin): personalized doctor-like conversation
+2026-01-06 04:52:06 +0530 | Mohan Ganesh | fix(symptom checkin): ask questions first, give advice second
+2026-01-06 04:54:35 +0530 | Mohan Ganesh | feat(symptom checkin): consistent conversational flow throughout
+2026-01-06 05:03:58 +0530 | Mohan Ganesh | fix(symptom checkin): tap options match question across flow
+2026-01-06 05:23:26 +0530 | Mohan Ganesh | Symptom check-in: use choose_symptom events and ignore UI-only turns
+2026-01-06 05:36:06 +0530 | Mohan Ganesh | Symptom check-in: remove hard turn limit, let LLM flow naturally, always provide conversational tap options
+2026-01-06 22:53:11 +0530 | Mohan Ganesh | Care plan alternates flow + weekly tap option enforcement
+2026-01-06 23:08:23 +0530 | Mohan Ganesh | Trigger alternates flow from natural language
+2026-01-06 23:11:42 +0530 | Mohan Ganesh | Use AI intent for alternates flow
+2026-01-07 15:48:01 +0530 | Mohan Ganesh | perf: cut action plan latency
+2026-01-07 18:04:44 +0530 | Mohan Ganesh | fix: Make variants optional and auto-generate if missing
+2026-01-07 18:30:08 +0530 | Mohan Ganesh | fix: Finalize variants field definition in prompt engine
+2026-01-07 19:18:34 +0530 | Mohan Ganesh | Fix critical latency and race conditions for Action Plan generation
+2026-01-07 19:39:26 +0530 | Mohan Ganesh | Fix: Convert session recommendations to ActionPlan for new users
+2026-01-07 19:59:38 +0530 | Mohan Ganesh | Critical fix: Create ActionPlan during session linking (eliminates 100s+ wait)
+2026-01-07 20:24:55 +0530 | Mohan Ganesh | Fix: Trigger ActionPlanGenerator directly when session recommendations fail
+2026-01-07 20:50:39 +0530 | Mohan Ganesh | Fix: Use naive datetime for session rec conversion (timezone bug fix)
+2026-01-07 22:11:44 +0530 | Mohan Ganesh | Fix: Generate missing images for plans created via session linking
+2026-01-07 22:33:11 +0530 | Mohan Ganesh | Fix: Pass user symptoms to GPT + Create variant images
+2026-01-07 22:38:10 +0530 | Mohan Ganesh | Fix: Use full-featured ActionPlanGenerator for session conversion
+2026-01-07 23:13:23 +0530 | Mohan Ganesh | Fix: Daily-focused food amounts and language in action plans
+2026-01-07 23:16:23 +0530 | Mohan Ganesh | Restore: Create ActionPlan immediately after signup (2-day-old behavior)
+2026-01-07 23:26:20 +0530 | Mohan Ganesh | Critical: Use FULL-FEATURED ActionPlanGenerator before signup (Y not X)
+2026-01-08 00:00:10 +0530 | Mohan Ganesh | Perf: Fix image generation - 4 steps + hero_only mode
+2026-01-08 00:05:38 +0530 | Mohan Ganesh | Fix: Generate all 16 images in parallel for subsequent plans
+2026-01-08 00:06:43 +0530 | Mohan Ganesh | Perf: Generate all 16 images in parallel for ALL plans
+2026-01-08 00:27:43 +0530 | Mohan Ganesh | Critical: Generate ALL 16 images in session conversion (hero + variants)
+2026-01-08 00:30:52 +0530 | Mohan Ganesh | Critical: Use FULL generate_new_plan() before signup (Y not conversion)
+2026-01-08 00:32:49 +0530 | Mohan Ganesh | Critical: Remove hero_only override - generate ALL 16 images immediately
+2026-01-08 00:56:47 +0530 | Mohan Ganesh | CRITICAL FIX: Force full 16-image generation for ALL users
+2026-01-08 04:14:29 +0530 | Mohan Ganesh | DB Schema: Add image columns to RecommendationRecord (Pre-signup generation support)
+2026-01-08 04:51:46 +0530 | Mohan Ganesh | Fix async session import and event loop conflict in signup flow
+2026-01-08 12:59:46 +0530 | Mohan Ganesh | fix: stop regenerating action plan after signup - use existing session recommendations
+2026-01-08 13:20:56 +0530 | Mohan Ganesh | fix: generate images in background to speed up HomeScreen load
+2026-01-08 13:26:33 +0530 | Mohan Ganesh | fix: restore image caching parameters for faster generation
+2026-01-08 13:32:38 +0530 | Mohan Ganesh | fix: restore original image prompts and parameters for cache hits
+2026-01-08 13:38:41 +0530 | Mohan Ganesh | perf: optimize image caching with title-based embedding
+2026-01-08 13:52:56 +0530 | Mohan Ganesh | feat: complete title-based image caching with illustrative prompts
+2026-01-08 16:46:41 +0530 | Mohan Ganesh | fix: RESTORE original generate_new_plan() flow after signup
+2026-01-08 19:17:12 +0530 | Mohan Ganesh | Implement guest user action plan generation and linking
+2026-01-08 19:28:44 +0530 | Mohan Ganesh | Fix ActionPlanGenerator instantiation - remove invalid db argument
+2026-01-08 19:36:51 +0530 | Mohan Ganesh | Fix asyncpg SSL compatibility - use ssl= instead of sslmode=
+2026-01-08 19:47:52 +0530 | Mohan Ganesh | Fix ActionPlanEvaluation for guest users - handle null user_id
+2026-01-08 19:58:50 +0530 | Mohan Ganesh | Fix batch replacement prompt to include user context and items
+2026-01-08 20:00:24 +0530 | Mohan Ganesh | Fix syntax error in batch_replace_actions loop and enhance prompt with schema
+2026-01-08 20:22:59 +0530 | Mohan Ganesh | Fix JSON parsing in batch_replace_actions to handle generic wrapper keys
+2026-01-08 20:49:48 +0530 | Mohan Ganesh | Optimize FLUX Schnell prompts: remove unused negative prompts, add photorealistic techniques
+2026-01-08 21:11:27 +0530 | Mohan Ganesh | Parallelize batch_replace_actions hero image generation with asyncio.gather
+2026-01-08 21:13:27 +0530 | Mohan Ganesh | Increase RunPod timeout to 120s and add 3 retries for shared endpoint reliability
+2026-01-08 21:28:53 +0530 | Mohan Ganesh | Fix NameError: Add missing ActionPlan import in lock polling section
+2026-01-08 22:21:58 +0530 | Mohan Ganesh | Upgrade speech-to-text to gpt-4o-transcribe for better accuracy
+2026-01-08 22:24:40 +0530 | Mohan Ganesh | AI-powered item selection: extract selected_item_title from user message to auto-trigger alternates
+2026-01-08 22:28:06 +0530 | Mohan Ganesh | Simplified AI-first replacement flow: AI directly suggests alternatives in tap_options, no pickers
+2026-01-08 22:30:57 +0530 | Mohan Ganesh | AI improvements: same-category replacements, add 'Something else' to tap options
+2026-01-08 22:49:22 +0530 | Mohan Ganesh | Add logging to debug variant image storage
+2026-01-08 22:50:35 +0530 | Mohan Ganesh | Fix: Generate variant images in session conversion path - was only generating hero images
+2026-01-08 22:56:49 +0530 | Mohan Ganesh | Revert care plan AI changes - restore previous working version
+2026-01-08 22:58:39 +0530 | Mohan Ganesh | Add same-category instruction for care plan alternatives
+2026-01-08 23:11:04 +0530 | Mohan Ganesh | Fix: Generate variant images when replacing actions - add 3 default variants if none provided
+2026-01-08 23:23:31 +0530 | Mohan Ganesh | Fix: Direct text-to-item matching for care plan chat - don't show picker twice
+2026-01-08 23:26:44 +0530 | Mohan Ganesh | Fix: Enforce same category + same hormone for alternate suggestions - tailored with research
+2026-01-09 04:08:37 +0530 | Mohan Ganesh | Fix: 'I want to change it' now shows replace picker, not alternate picker
+2026-01-09 04:18:49 +0530 | Mohan Ganesh | Feat: Added 'Want to Personalize' intent handling with streak reward gating
+2026-01-09 12:17:58 +0530 | Mohan Ganesh | Perf: Optimized research fetching with parallel execution and smart rate limiting
+2026-01-09 17:58:31 +0530 | Mohan Ganesh | feat(intelligence): Deep Profiling implementation
+2026-01-09 18:20:03 +0530 | Mohan Ganesh | feat(personalization): 2026 Vision backend implementation
+2026-01-09 19:09:10 +0530 | Mohan Ganesh | feat(progam-ai): add LLM-generated tap options
+2026-01-09 22:45:05 +0530 | Mohan Ganesh | Fix prompt_architect import SyntaxError
+2026-01-09 23:23:05 +0530 | Mohan Ganesh | Fix personalization streak + symptom phase
+2026-01-09 23:32:22 +0530 | Mohan Ganesh | Fix profile-summary NULL chatbot_memory
+2026-01-09 23:44:17 +0530 | Mohan Ganesh | Fix Chat Agent JSON serialization error by using copy for tool args
+2026-01-09 23:52:54 +0530 | Mohan Ganesh | Fix personalization chat choices to be topic-specific and first-person answers
+2026-01-09 23:58:20 +0530 | Mohan Ganesh | Fix StreakService.get_streak error in chat tools
+2026-01-10 00:15:27 +0530 | Mohan Ganesh | feat: Optimized image generation pipeline - Parallelized 16-image generation, batch embeddings, and non-blocking Cloudinary uploads
+2026-01-10 00:22:45 +0530 | Mohan Ganesh | fix: Resolve UnboundLocalError in GPT generation by strictly checking error state and initializing response
+2026-01-10 00:32:00 +0530 | Mohan Ganesh | Fix New User Review bug by auto-reviewing past guest plans during migration
+2026-01-10 00:42:29 +0530 | Mohan Ganesh | Fix New User Review bug - skip review for users with only 1 plan (new signup)
+2026-01-10 00:50:54 +0530 | Mohan Ganesh | Fix guest plan migration: Update plan_date to user's local timezone date to prevent regeneration
+2026-01-12 14:26:36 +0530 | Mohan Ganesh | fix: enhance weekly check-in completion message with specific action plan updates
+2026-01-12 17:45:43 +0530 | Mohan Ganesh | chore: update voice service, weekly checkin AI and service
+2026-01-12 17:51:29 +0530 | Mohan Ganesh | fix: add new user protection to /assignments/today endpoint
+2026-01-12 18:12:07 +0530 | Mohan Ganesh | fix: Wait for images before returning response for existing plans
+2026-01-12 19:24:46 +0530 | Mohan Ganesh | fix: backend - detect completed weekly check-ins and return chat history
+2026-01-12 19:53:33 +0530 | Mohan Ganesh | fix: increase image similarity threshold to prevent false matches
+2026-01-12 20:01:42 +0530 | Mohan Ganesh | remove: personalize tap option from care plan check-in
+2026-01-12 20:31:10 +0530 | Mohan Ganesh | feat: improve care plan check-in typed input handling
+2026-01-12 20:40:42 +0530 | Mohan Ganesh | feat: replace hardcoded patterns with LLM-based semantic matching
+2026-01-12 20:49:02 +0530 | Mohan Ganesh | fix: filter out replaced items from pickers and AI context
+2026-01-12 20:50:35 +0530 | Mohan Ganesh | fix: filter replaced items from pending-review modal
+2026-01-12 20:53:18 +0530 | Mohan Ganesh | fix: add fallback text matching when LLM fails
+2026-01-12 20:56:52 +0530 | Mohan Ganesh | feat: implement proper OpenAI function calling for intent detection
+2026-01-12 20:59:47 +0530 | Mohan Ganesh | feat: production-hardened LLM tool calling
+2026-01-12 21:12:25 +0530 | Mohan Ganesh | debug: add logging to trace pending_alternate item matching flow
+2026-01-12 21:14:54 +0530 | Mohan Ganesh | fix: preserve selected_index for all intents, not just select_item
+2026-01-12 21:20:13 +0530 | Mohan Ganesh | fix: text input now returns proper UI instead of falling through
+2026-01-12 21:22:00 +0530 | Mohan Ganesh | fix: use candidate_id key in candidates_ui for block renderer
+2026-01-12 21:25:27 +0530 | Mohan Ganesh | feat: dynamic LLM-generated tap options based on context
+2026-01-12 21:29:10 +0530 | Mohan Ganesh | feat: LLM-generated dynamic tap options for Know My Body chat
+2026-01-12 21:33:44 +0530 | Mohan Ganesh | fix: prioritize simple text matching effectively repairing type input
+2026-01-12 21:35:49 +0530 | Mohan Ganesh | fix: unify text matching logic in endpoint to use robust matcher
+2026-01-12 21:39:55 +0530 | Mohan Ganesh | fix: improve semantic matching for vague inputs like 'food'
+2026-01-12 21:47:41 +0530 | Mohan Ganesh | feat: replace template responses with natural conversational AI
+2026-01-12 21:51:15 +0530 | Mohan Ganesh | fix: know my body chat formatting and brevity
+2026-01-12 22:09:26 +0530 | Mohan Ganesh | fix: clear chatbot UI blocks on text send & improve know_body prompt
+2026-01-12 22:15:08 +0530 | Mohan Ganesh | fix: extend session timeout for persistent chat & enable resume logic
+2026-01-13 00:02:10 +0530 | Mohan Ganesh | fix: add fallback image URLs when generation fails during replace
+2026-01-13 01:56:33 +0530 | Mohan Ganesh | fix: add selected_index to required array in OpenAI function schema
+2026-01-13 02:15:45 +0530 | Mohan Ganesh | fix: comprehensive image generation performance fixes
+2026-01-13 02:22:59 +0530 | Mohan Ganesh | Revert "fix: comprehensive image generation performance fixes"
+2026-01-13 02:26:01 +0530 | Mohan Ganesh | fix: proper RunPod async pattern + 0.95 similarity threshold
+2026-01-13 02:33:28 +0530 | Mohan Ganesh | perf: optimize for warm endpoint + parallel batch generation
+2026-01-13 12:45:29 +0530 | Mohan Ganesh | fix: eliminate Cloudinary connection pool warnings + add profile logging
+2026-01-13 13:22:18 +0530 | Mohan Ganesh | feat: personalize hormone descriptions based on user symptoms
+2026-01-13 13:59:11 +0530 | Mohan Ganesh | fix(ai): prevent LLM from generating 'Something else' option to avoid duplication
+2026-01-13 15:41:43 +0530 | Mohan Ganesh | fix(ai): robust deduplication of 'Something else' variants in weekly check-in
+2026-01-13 15:44:47 +0530 | Mohan Ganesh | fix(ai): remove all 'Something else' from backend - frontend has fixed button
+2026-01-13 15:46:09 +0530 | Mohan Ganesh | fix(ai): restore single backend 'Something else...' button
+2026-01-13 16:21:43 +0530 | Mohan Ganesh | fix(ai): ensure 'Something else...' is ALWAYS added to tap options
+2026-01-13 16:43:48 +0530 | Mohan Ganesh | feat(dedup): implement action plan deduplication system
+2026-01-13 20:28:58 +0530 | Mohan Ganesh | feat(dedup): add deduplication to ALL action generation entry points
+2026-01-13 20:32:33 +0530 | Mohan Ganesh | feat(dedup): add deduplication to MAIN action generation
+2026-01-13 20:40:52 +0530 | Mohan Ganesh | fix(ai): add anti-duplication instruction to care plan check-in AI
+2026-01-13 21:07:21 +0530 | Mohan Ganesh | fix(images): increase RunPod timeout from 30s to 60s
+2026-01-13 21:21:40 +0530 | Mohan Ganesh | feat(images): switch from Flux Schnell to Pruna P-Image
+2026-01-13 21:25:39 +0530 | Mohan Ganesh | feat(images): add detailed cache diagnostic logging
+2026-01-13 21:38:27 +0530 | Mohan Ganesh | fix(images): use correct Pruna endpoint p-image-t2i
+2026-01-13 22:01:02 +0530 | Mohan Ganesh | fix(hormones): prevent same hormone with conflicting levels
+2026-01-13 22:03:11 +0530 | Mohan Ganesh | fix(images): parse Pruna 'result' key for image URL
+2026-01-13 22:23:52 +0530 | Mohan Ganesh | feat(images): significantly improved prompts with Pruna best practices
+2026-01-13 22:53:31 +0530 | Mohan Ganesh | fix: add debug logging to trace hormone stats item counts
+2026-01-13 22:59:05 +0530 | Mohan Ganesh | fix: normalize hormone names to lowercase in hormone_stats to prevent duplicates
+2026-01-14 14:42:19 +0530 | Mohan Ganesh | fix: add retry logic for all 16 images (hero + variants) with fallbacks
+2026-01-14 14:57:30 +0530 | Mohan Ganesh | fix: daily review now required for day 2+ users
+2026-01-14 15:00:30 +0530 | Mohan Ganesh | fix: simplify pending review check to use total_plan_count > 0
+2026-01-14 15:55:45 +0530 | Mohan Ganesh | fix: image timeouts now properly trigger retries
+2026-01-15 22:01:28 +0530 | Mohan Ganesh | fix: Cloudinary connection pool + actionable image prompts
+2026-01-17 17:41:16 +0530 | Mohan Ganesh | Add complete LangGraph implementation - 5 conversation flows
+2026-01-17 18:23:23 +0530 | Mohan Ganesh | Fix alternatives mismatch: bot text now matches UI buttons
+2026-01-17 18:40:06 +0530 | Mohan Ganesh | Add unified LangGraph API router for all 5 conversation flows
+2026-01-17 18:51:58 +0530 | Mohan Ganesh | Fix: Allow user to change different item while viewing alternatives
+2026-01-17 18:54:41 +0530 | Mohan Ganesh | Use LLM-based intent detection for 'change different item'
+2026-01-17 19:17:29 +0530 | Mohan Ganesh | Add thread history endpoints for per-flow chat history
+2026-01-17 19:51:16 +0530 | Mohan Ganesh | Implement ChatGPT-like new chat: Multiple threads per day
+2026-01-17 19:59:36 +0530 | Mohan Ganesh | Backend: Complete New Chat support for Symptom Check-in
+2026-01-17 20:06:02 +0530 | Mohan Ganesh | Fix: Remove duplicated code block causing SyntaxError in symptom_checkin_service
+2026-01-17 20:31:37 +0530 | Mohan Ganesh | Fix: Make Care Plan alternatives context-aware
+2026-01-17 20:37:46 +0530 | Mohan Ganesh | Strengthen LLM prompt: ALL alternatives must match user's specific request
+2026-01-17 21:10:01 +0530 | Mohan Ganesh | Refactor Care Plan Check-in to usage LangGraph Engine
+2026-01-17 21:18:59 +0530 | Mohan Ganesh | CRITICAL FIX: Make OpenAI client initialization lazy to prevent server crash on startup if OPENAI_API_KEY is delayed or missing in env. Fixes deployment crash loop.
+2026-01-17 21:20:44 +0530 | Mohan Ganesh | Fix Logic: Allow Hormone Override for Specific Requests
+2026-01-17 21:23:35 +0530 | Mohan Ganesh | Enhancement: Inject Full Chat Context into Generator Prompt
+2026-01-17 22:41:10 +0530 | Mohan Ganesh | fix: Use actual activity titles in alternative selection buttons
+2026-01-17 22:51:08 +0530 | Mohan Ganesh | fix: Support flow aliases (care_plan_checkin, symptom_checkin) in threads endpoint
+2026-01-17 22:54:49 +0530 | Mohan Ganesh | fix: Preserve targeted action context in classifier and inject chat history
+2026-01-17 23:00:54 +0530 | Mohan Ganesh | fix: Restore actions_list definition (resolves 500 error)
+2026-01-18 02:14:00 +0530 | Mohan Ganesh | fix: Generalize strict prompt override to include food/ingredients
+2026-01-18 02:17:40 +0530 | Mohan Ganesh | feat: Implement direct replacement flow (single option confirmation)
+2026-01-18 02:21:06 +0530 | Mohan Ganesh | feat: Add cancellation intent handling ('Never mind', 'Cancel')
+2026-01-18 02:24:52 +0530 | Mohan Ganesh | fix(ux): Explicitly clear UI blocks (CTAs) on flow completion/cancellation
+2026-01-18 02:27:42 +0530 | Mohan Ganesh | feat: Implement 'Ask Why' intent handler for context-aware explanations
+2026-01-18 02:37:09 +0530 | Mohan Ganesh | fix: Restore missing 'return' statement causing IndentationError
+2026-01-18 02:47:13 +0530 | Mohan Ganesh | fix: Move all handler functions before graph compilation to prevent NameError
+2026-01-18 03:20:49 +0530 | Mohan Ganesh | fix: JSON serialization error for Pydantic models in DB storage
+2026-01-18 03:28:30 +0530 | Mohan Ganesh | fix: JSON serializer error with jsonable_encoder
+2026-01-18 03:30:58 +0530 | Mohan Ganesh | fix(critical): Serialize Pydantic models to dicts in graph nodes + Strict prompt override
+2026-01-18 03:32:55 +0530 | Mohan Ganesh | fix(logic): Generalize strict override to support ANY user request (AI understanding mode)
+2026-01-18 03:37:10 +0530 | Mohan Ganesh | fix(api): Ensure JSON serialization for persisted actionable_insights
+2026-01-18 04:43:27 +0530 | Mohan Ganesh | feat: Add intelligent UI blocks helper for dynamic CTA generation
+2026-01-18 04:48:50 +0530 | Mohan Ganesh | feat: Add critical missing database models for data persistence
+2026-01-18 04:51:45 +0530 | Mohan Ganesh | feat: Integrate SymptomLog persistence into symptom_checkin.py
+2026-01-18 04:56:02 +0530 | Mohan Ganesh | feat: Complete all data persistence and CTA helper integrations
+2026-01-18 05:05:01 +0530 | Mohan Ganesh | fix: Remove heuristics from intent classification - fully LLM-powered
+2026-01-18 05:11:08 +0530 | Mohan Ganesh | fix: Remove duplicate SymptomLog class - use original schema
+2026-01-18 15:25:54 +0530 | Mohan Ganesh | feat: Add /event endpoint for care plan UI block actions
+2026-01-18 15:38:11 +0530 | Mohan Ganesh | fix: Use correct get_thread_by_id in care plan event endpoint
+2026-01-18 15:49:47 +0530 | Mohan Ganesh | fix(api): Unify Care Plan state reconstruction and fix langgraph_state crash
+2026-01-18 15:50:38 +0530 | Mohan Ganesh | fix(api): Add missing CarePlanCheckInThread import and remove Redundant state variables
+2026-01-18 16:03:00 +0530 | Mohan Ganesh | debug: Add V2 version tags and diagnostic logs to Care Plan endpoints
+2026-01-18 16:14:44 +0530 | Mohan Ganesh | fix: Add comprehensive logging and fix database session leak in graph node
+2026-01-18 16:22:06 +0530 | Mohan Ganesh | fix: Persist and restore targeted_action_id for button click handling
+2026-01-18 16:30:02 +0530 | Mohan Ganesh | fix: Use correct field name 'item_id' instead of 'id' for action items
+2026-01-18 16:36:39 +0530 | Mohan Ganesh | fix: Remove invalid fields from ActionPlanItem creation
+2026-01-18 16:44:28 +0530 | Mohan Ganesh | fix: Use original.plan_id instead of state['plan_id'] for new action
+2026-01-18 16:55:29 +0530 | Mohan Ganesh | fix: Create ActionPlanItem with COMPLETE format matching action_plan_generator
+2026-01-18 17:02:55 +0530 | Mohan Ganesh | fix: Use exact same image prompts from action_plan_generator.py
+2026-01-18 17:10:00 +0530 | Mohan Ganesh | fix: Actually consume refresh token using RewardService.use_refresh()
+2026-01-18 17:23:21 +0530 | Mohan Ganesh | fix: Ensure replacements have RICH DATA matching original plan quality
+2026-01-18 17:34:32 +0530 | Mohan Ganesh | fix: Prevent action replacement when 0 refresh tokens available
+2026-01-18 17:40:11 +0530 | Mohan Ganesh | fix: Add PRE-EMPTIVE zero-token check to block replacement flow early
+2026-01-18 18:45:59 +0530 | Mohan Ganesh | Fix care plan interrupts and replacements
+2026-01-18 18:53:26 +0530 | Mohan Ganesh | Fix CarePlanCheckInState type hint NameError
+2026-01-18 18:58:02 +0530 | Mohan Ganesh | Fix LangGraph compilation with checkpointer
+2026-01-18 20:42:47 +0530 | Mohan Ganesh | fix: defensive None checks for variant image generation + Cloudinary pool size
+2026-01-18 21:40:15 +0530 | Mohan Ganesh | fix: handle mark_done, swap_action, ask_why UI events in care plan
+2026-01-18 21:46:16 +0530 | Mohan Ganesh | fix: remove confusing UI blocks when user asks informational questions
+2026-01-18 22:43:54 +0530 | Mohan Ganesh | Restore intent routing helpers in care plan graph
+2026-01-18 23:45:38 +0530 | Mohan Ganesh | Fix tap option handling in /event endpoint and add null byte sanitization
+2026-01-18 23:53:30 +0530 | Mohan Ganesh | Add logging for tap option and sanitization debugging
+2026-01-19 00:33:41 +0530 | Mohan Ganesh | Remove 'Try' prefix from default specific_action and use descriptive variant titles instead of 'Variation N'
+2026-01-19 00:59:14 +0530 | Mohan Ganesh | Fix: Store user tap actions as visible messages in chat history
+2026-01-19 01:23:18 +0530 | Mohan Ganesh | Feature: Carry forward skipped actions to next day's plan
+2026-01-19 01:46:49 +0530 | Mohan Ganesh | Fix: Handle all-4-skipped edge case in carryforward
+2026-01-19 02:00:13 +0530 | Mohan Ganesh | Optimize: Daily review carry-forward now skips wasteful GPT generation
+2026-01-19 02:27:19 +0530 | Mohan Ganesh | Fix: show real action names for change selection
+2026-01-19 02:43:07 +0530 | Mohan Ganesh | Fix: alternates flow shows action list
+2026-01-19 05:53:28 +0530 | Mohan Ganesh | image: use LLM hero prompts + stable cache key; enhance RunPod prompts and stricter image style
+2026-01-19 06:07:28 +0530 | Mohan Ganesh | images: never return missing URLs; apply fallback in ensure-images and responses
+2026-01-19 06:25:15 +0530 | Mohan Ganesh | fix: Add default variant generation in batch_replace_actions when GPT returns empty variants
+2026-01-19 06:35:53 +0530 | Mohan Ganesh | fix: Properly configure urllib3 connection pool size for Cloudinary uploads
+2026-01-19 06:40:40 +0530 | Mohan Ganesh | fix: Monkey-patch HTTPAdapter for larger connection pool sizes
+2026-01-19 06:53:24 +0530 | Mohan Ganesh | Add detailed traceback logging to diagnose refresh save issue
+2026-01-20 15:42:40 +0530 | Mohan Ganesh | FIX: Critical carry-forward bug - extract data from source_item ORM object
+2026-01-20 16:58:01 +0530 | Mohan Ganesh | fix: wait for guest plan completion before session link returns
+2026-01-20 17:17:03 +0530 | Mohan Ganesh | fix: increase session link API timeout from 30s to 120s
+2026-01-20 17:39:32 +0530 | Mohan Ganesh | feat: event-driven session transfer (no more blocking waits)
+2026-01-20 18:11:05 +0530 | Mohan Ganesh | fix: wrap raw SQL in text() for SQLAlchemy async session
+2026-01-20 19:58:34 +0530 | Mohan Ganesh | fix: use session hormones from root cause analysis in guest flow
+2026-01-20 22:19:36 +0530 | Mohan Ganesh | fix: enforce same category and hormone when replacing actions
+2026-01-20 23:23:31 +0530 | Mohan Ganesh | feat: upgrade to GPT-5-nano, add LLM docs, fix image cache
+2026-01-21 00:08:12 +0530 | Mohan Ganesh | fix: GPT-5-nano compatibility for max_tokens and temperature
+2026-01-21 00:33:34 +0530 | Mohan Ganesh | fix: allow linked session retrieval and delay session deletion for grace period
+2026-01-21 02:03:16 +0530 | Mohan Ganesh | fix: plan_id extraction and GPT-5-nano max_tokens compatibility
+2026-01-21 02:26:19 +0530 | Mohan Ganesh | feat: switch to FLUX1 Schnell for image generation
+2026-01-21 02:33:59 +0530 | Mohan Ganesh | feat: optimize prompt engineering for FLUX.1 Schnell
+2026-01-21 02:44:26 +0530 | Mohan Ganesh | chore: add detailed debug logging to session service for diagnosis
+2026-01-21 03:12:07 +0530 | Mohan Ganesh | fix: allow accessing linked sessions in get_session to prevent 404s for logged-in users
+2026-01-21 03:14:44 +0530 | Mohan Ganesh | fix: allow updates to linked sessions (write-through to UserResponse)
+2026-01-21 04:09:07 +0530 | Mohan Ganesh | fix: prevent session deletion during auto-transfer & rename status import to avoid shadowing
+2026-01-21 04:43:05 +0530 | Mohan Ganesh | Fix: Handle empty GPT responses and switch from gpt-5-nano to gpt-4o-mini
+2026-01-21 05:34:18 +0530 | Mohan Ganesh | Fix: New user review bug, DB lock timeouts, and RunPod endpoint
+2026-01-21 05:40:35 +0530 | Mohan Ganesh | Fix: Indentation error in action_plan_generator.py
+2026-01-21 19:03:58 +0530 | Mohan Ganesh | fix(production): Add idempotency, atomicity, and timeout fixes to signup linking
+2026-01-21 19:10:32 +0530 | Mohan Ganesh | hotfix: Remove extra closing parenthesis causing SyntaxError on line 520
+2026-01-21 19:57:53 +0530 | Mohan Ganesh | Fix action plan assignments crash and AsyncSession status updates
+2026-01-21 22:26:29 +0530 | Mohan Ganesh | Fix duplicate generation: wait for session plan transfer on signup
+2026-01-22 02:34:11 +0530 | Mohan Ganesh | Fix stale DB reads: add expire_all() before pending review checks
+2026-01-22 02:51:33 +0530 | Mohan Ganesh | CRITICAL: Fix stale DB reads with raw SQL verification
+2026-01-22 05:31:36 +0530 | Mohan Ganesh | Fix 10 critical bugs: race conditions, duplicates, performance
+2026-01-22 06:08:19 +0530 | Mohan Ganesh | CRITICAL: Fix duplicate action plan race condition - add unique constraint and status endpoint
+2026-01-22 06:27:09 +0530 | Mohan Ganesh | Add merge migration for unique constraint heads
+2026-01-22 07:04:54 +0530 | Mohan Ganesh | Perf: lower cache threshold to 0.85 and extend session wait to 200s
+2026-01-22 07:26:15 +0530 | Mohan Ganesh | Fix: Option 3+4 - Eliminate duplicate plan generation by returning 202 status
+2026-01-22 09:02:37 +0530 | Mohan Ganesh | CRITICAL FIX: Handle race condition in /today/status endpoint
+2026-01-22 16:40:14 +0530 | Mohan Ganesh | FIX: Eliminate 130s delay - background task no longer blocks on its own in_progress status
+2026-01-22 17:17:14 +0530 | Mohan Ganesh | Fix token caching and remaining time formula
+2026-01-22 18:39:06 +0530 | Mohan Ganesh | Fix category distribution: 1 selected=4 items, 2 selected=2 each, 3/0=random 2+1+1
+2026-01-22 20:16:11 +0530 | Mohan Ganesh | feat: add AI security guardrails module (standalone, non-breaking)
+2026-01-22 22:20:07 +0530 | Mohan Ganesh | CRITICAL FIX: Category guidance now enforces 4+0+0 for single selection
+2026-01-22 23:08:37 +0530 | Mohan Ganesh | CRITICAL FIX: Never store RunPod URLs in image cache
+2026-01-23 18:36:46 +0530 | Mohan Ganesh | Update action plan generator, image library, symptom and weekly checkin services
+2026-01-25 04:00:36 +0530 | Mohan Ganesh | feat: Upgrade from gpt-4o-mini to gpt-5-mini across all services
+2026-01-25 04:33:48 +0530 | Mohan Ganesh | Fix critical chatbot bug: Add plan_feedback, challenge_science, explain_plan intents
+2026-01-25 04:36:38 +0530 | Mohan Ganesh | Fix generic action plan issue: Add variety enforcement and banned defaults
+2026-01-25 05:11:22 +0530 | Mohan Ganesh | CRITICAL FIX: Unified cross-chatbot memory system - All 5 chatbots now share context
+2026-01-25 05:34:24 +0530 | Mohan Ganesh | Deep prompt engineering fix for action plan variety and chatbot personalization - removed hardcoded examples, added semantic deduplication, all 5 chatbots now use unified context
+2026-01-25 05:48:08 +0530 | Mohan Ganesh | Fix ImportError: remove unused get_async_db import from memory.py
+2026-01-25 06:12:36 +0530 | Mohan Ganesh | Switch image generation from Pruna P-Image to FLUX.1 Schnell
+2026-01-25 06:34:33 +0530 | Mohan Ganesh | Fix critical carryforward + memory.py bugs - convert ORM to dict, fix attribute errors
+2026-01-25 06:44:37 +0530 | Mohan Ganesh | fix: Use max_completion_tokens for OpenAI gpt-5-mini model
+2026-01-25 06:57:37 +0530 | Mohan Ganesh | 🚀 Optimize image generation for 2-3x faster performance
+2026-01-25 07:07:48 +0530 | Mohan Ganesh | Fix carryforward regeneration bug - skip GPT and reuse images when all 4 items skipped
+2026-01-25 07:08:39 +0530 | Mohan Ganesh | Fix SymptomLog attribute error - use user_id and logged_date
+2026-01-25 07:17:16 +0530 | Mohan Ganesh | Optimize partial carryforward: generate only N needed actions, not all 4
+2026-01-25 07:25:20 +0530 | Mohan Ganesh | Fix carryforward image regeneration: skip actions with existing images
+2026-01-25 07:48:26 +0530 | Mohan Ganesh | Add logging when all carryforward images are skipped
+2026-01-25 07:53:53 +0530 | Mohan Ganesh | Add debug logging to pending-review endpoint
+2026-01-25 08:14:47 +0530 | Mohan Ganesh | Fix CarePlanCheckInThread attribute: plan_date -> local_date
+2026-01-26 11:46:44 +0530 | Mohan Ganesh | fix: improve LLM prompt personalization for action plans and chatbot
+2026-01-26 12:16:09 +0530 | Mohan Ganesh | feat: deep personalization for action plans
+2026-01-26 12:36:05 +0530 | Mohan Ganesh | MAJOR: Deep personalization overhaul for all 4 chatbot systems - fixes 2/10 rating
+2026-01-26 13:25:22 +0530 | Mohan Ganesh | Add historical memory to chatbot prompts for deep personalization
+2026-01-26 17:42:59 +0530 | Mohan Ganesh | Fix syntax error: remove orphaned f-string content in symptom_checkin_ai.py
+2026-01-27 10:42:54 +0530 | Mohan Ganesh | Fix KeyError in action_plan_generator: escape JSON braces in SYSTEM_PROMPT
+2026-01-27 11:17:56 +0530 | Mohan Ganesh | Fix: Shorten hormone_persona_intro to 2 sentences, add chatbot complaint handling
+2026-01-27 17:37:51 +0530 | Mohan Ganesh | Systematic fix: Give chatbot full access to action plan scientific reasoning - enriched _build_todays_action_plan_context to include purpose, conditions, symptoms, research studies - updated care_plan_checkin_ai prompt to cite actual data when users question personalization
+2026-01-27 17:47:46 +0530 | Mohan Ganesh | Major chatbot overhaul: data-driven personalization instead of hardcoded rules
+2026-01-27 17:54:16 +0530 | Mohan Ganesh | Simplify all chatbot AI prompts - data-driven instead of hardcoded
+2026-01-27 22:05:51 +0530 | Mohan Ganesh | Make chatbot data-driven - use actual user data instead of hardcoded content
+2026-01-27 22:30:42 +0530 | Mohan Ganesh | Critical audit fixes: Ensure tap_options/choices are NEVER empty - fixed weekly_checkin_ai fallback, langgraph_agent compose handling, response_composer defaults
+2026-01-28 12:29:46 +0530 | Mohan Ganesh | Fix race condition and remove hardcoded responses
+2026-01-28 19:57:56 +0530 | Mohan Ganesh | Fix: Correct pending review check to look at plans before today, not total count
+2026-01-28 20:28:25 +0530 | Mohan Ganesh | Fix: Carryforward primary_hormone KeyError and temperature compatibility
+2026-01-28 20:50:29 +0530 | Mohan Ganesh | Fix partial generation temperature error and improve Groq JSON parsing
+2026-01-28 22:46:18 +0530 | Mohan Ganesh | Fix pending review to check only LAST plan, not all old unreviewed plans
+2026-01-28 22:58:18 +0530 | Mohan Ganesh | Fix partial generation: add short title rules, variants, and research studies
+2026-01-28 23:22:17 +0530 | Mohan Ganesh | Fix partial generation prompt with comprehensive field requirements
+2026-01-28 23:26:41 +0530 | Mohan Ganesh | Add PubMed research-first approach to partial generation
+2026-01-28 23:40:19 +0530 | Mohan Ganesh | Upgrade research citations: multiple sources with study type prioritization
+2026-01-28 23:47:04 +0530 | Mohan Ganesh | Add more free API fallbacks for scaling: Europe PMC + CORE
+2026-01-29 00:21:59 +0530 | Mohan Ganesh | feat: GPT-native deduplication - tell GPT what NOT to generate at all 4 generation points
+2026-01-29 00:58:51 +0530 | Mohan Ganesh | refactor: Remove dead code, enforce citations & personalization
+2026-01-29 21:00:36 +0530 | Mohan Ganesh | fix: improve PubMed rate limiting and partial generation acceptance
+2026-01-29 21:13:54 +0530 | Mohan Ganesh | fix: remove all post-generation deduplication - rely on prompts
+2026-01-29 21:24:10 +0530 | Mohan Ganesh | debug: add comprehensive logging to see actual GPT response in partial generation
+2026-01-29 21:25:34 +0530 | Mohan Ganesh | fix: return None instead of empty list from partial generation to signal failure correctly
+2026-01-29 21:32:32 +0530 | Mohan Ganesh | refactor: add request builder helpers to pubmed_service like action_plan_generator
+2026-01-29 21:40:57 +0530 | Mohan Ganesh | debug: add more verbose logging to partial generation to see GPT response details
+2026-01-29 21:58:06 +0530 | Mohan Ganesh | fix: increase max_completion_tokens from 6000 to 16000
+2026-01-29 22:40:05 +0530 | Mohan Ganesh | fix: enforce strict 2-hormone limit by filtering carryforward items
+2026-01-29 22:47:14 +0530 | Mohan Ganesh | fix: use stored signup hormones in fast-path context loading instead of recalculating
+2026-01-29 23:06:11 +0530 | Mohan Ganesh | fix: allow extra fields in ResearchStudyModel for Groq compatibility
+2026-01-31 12:35:44 +0530 | Mohan Ganesh | Fix: Healthy user detection threshold and lifestyle distribution
+2026-01-31 16:16:37 +0530 | Mohan Ganesh | Add debug logging for all scoring fields to diagnose healthy user issue
+2026-01-31 16:54:52 +0530 | Mohan Ganesh | Remove hormone analysis caching - was causing stale results
+2026-01-31 17:08:47 +0530 | Mohan Ganesh | Improve OpenAI exception logging to capture full exception type and details
+2026-01-31 17:10:53 +0530 | Mohan Ganesh | Increase max_completion_tokens from 4000 to 8000 for action plan generation
+2026-01-31 17:11:59 +0530 | Mohan Ganesh | Increase max_completion_tokens to 16000 for action plan generation
+2026-01-31 17:12:48 +0530 | Mohan Ganesh | Increase replacement generation max_completion_tokens to 16000
+2026-01-31 17:18:10 +0530 | Mohan Ganesh | Add is_background_task parameter to generate_new_plan()
+2026-01-31 17:45:52 +0530 | Mohan Ganesh | fix: Prevent duplicate plan generation when guest session is still processing
+2026-01-31 18:22:13 +0530 | Mohan Ganesh | perf: Parallelize PubMed paper fetching for 10x faster research phase
+2026-01-31 18:35:57 +0530 | Mohan Ganesh | fix: Increase OpenAI timeout and add retry mechanism
+2026-02-02 03:39:08 +0530 | Mohan Ganesh | Fix: Replace action failures, chatbot stuck loop, LLM fallback
+2026-02-02 04:08:27 +0530 | Mohan Ganesh | Stabilize memory + research caching
+2026-02-02 04:19:49 +0530 | Mohan Ganesh | Fix care plan change loop after UI selection
+2026-02-02 04:40:05 +0530 | Mohan Ganesh | Fix care-plan alternates: robust candidate generation with fallbacks
+2026-02-02 23:39:48 +0530 | Mohan Ganesh | Fix unified memory: use correct CarePlanCheckInThread attributes
+2026-02-02 23:48:26 +0530 | Mohan Ganesh | Fix DB connection death during long plan generation
+2026-02-02 23:53:54 +0530 | Mohan Ganesh | CRITICAL FIX: Replace non-existent gpt-5-mini/nano with gpt-4o-mini
+2026-02-03 00:24:28 +0530 | Mohan Ganesh | Stabilize action plan generation
+2026-02-03 08:36:44 +0530 | Mohan Ganesh | Optimize GPT prompt size to reduce latency
+2026-02-03 08:43:55 +0530 | Mohan Ganesh | Switch from gpt-4o-mini to gpt-5-mini for faster plan generation
+2026-02-03 08:55:50 +0530 | Mohan Ganesh | Fix: Add gpt-5-mini to NO_TEMPERATURE_MODELS list
+2026-02-03 09:08:04 +0530 | Mohan Ganesh | fix: Food images now show finished dishes, not raw ingredients
+2026-02-03 09:15:08 +0530 | Mohan Ganesh | perf: Set reasoning_effort='none' for GPT-5-mini to reduce latency 112s→10s
+2026-02-03 09:29:55 +0530 | Mohan Ganesh | fix: Change reasoning_effort from 'none' to 'minimal' for GPT-5-mini compatibility
+2026-02-03 09:30:53 +0530 | Mohan Ganesh | feat: Upgrade hero image prompts for premium aesthetic
+2026-02-03 09:35:33 +0530 | Mohan Ganesh | fix: Hero image prompts show ingredient aesthetically, variants show prepared dish
+2026-02-03 09:37:29 +0530 | Mohan Ganesh | fix: Correct build_openai_payload syntax for reasoning_effort parameter
+2026-02-03 09:54:01 +0530 | Mohan Ganesh | fix: Guest users now get allowed_symptoms from their session data
+2026-02-03 10:29:08 +0530 | Mohan Ganesh | fix: Replacement actions now MUST keep same category (food→food, not food→movement)
+2026-02-03 10:45:24 +0530 | Mohan Ganesh | fix: Replacement action variants now get proper titles and descriptions
+2026-02-08 15:51:16 +0530 | Mohan Ganesh | fix: maintain streak when at least one action is completed
+2026-02-08 16:25:36 +0530 | Mohan Ganesh | Align chat streak engines with unified 1+ completion rule
+2026-02-08 17:11:44 +0530 | Mohan Ganesh | Fix: Update streak logic documentation and debug scripts - Change from 'all actions completed' to 'at least 1 action completed' for streak maintenance
+2026-02-08 20:14:16 +0530 | Mohan Ganesh | fix: upgrade replacement system to exact replica of action plan generation - multi-citation research, personalized system prompt, title rules, full health context
+2026-02-11 17:24:46 +0530 | Mohan Ganesh | Fix: Enforce structured outputs for action replacement to match generation quality
+2026-02-16 18:43:02 +0530 | Mohan Ganesh | fix: replace keyword intent classification with OpenAI function calling - fixes cinnamon timing bug
+2026-02-16 19:08:28 +0530 | Mohan Ganesh | chore: Production fixes - persistent state + circuit breaker + session management
+2026-02-16 19:41:48 +0530 | Mohan Ganesh | Phase 2: Performance optimization - config externalization + Redis caching + memory management
+2026-02-16 19:58:00 +0530 | Mohan Ganesh | Phase 3: Production rate limiting with slowapi
+2026-02-16 21:54:04 +0530 | Mohan Ganesh | fix: 12 production bugs found in re-review (2 P0, 7 P1, 3 P2)
+2026-02-16 22:02:20 +0530 | Mohan Ganesh | fix: remove dead code, wire circuit breaker config, add auth rate limiting
+2026-02-17 12:26:23 +0530 | Mohan Ganesh | Fix aiobreaker version requirement to 1.2.0
+2026-02-17 12:42:00 +0530 | Mohan Ganesh | Fix LangGraph checkpointer initialization - use AsyncPostgresSaver properly
+2026-02-17 12:49:35 +0530 | Mohan Ganesh | Simplify checkpointer to InMemorySaver - fix deployment import error
+2026-02-17 19:56:40 +0530 | Mohan Ganesh | CRITICAL FIX: Backend validation for UI blocks - prevent empty blocks from reaching frontend
+2026-02-17 20:20:18 +0530 | Mohan Ganesh | fix: resolve 3 critical LangGraph issues - intent classification, context loss, generic responses
+2026-02-17 20:40:01 +0530 | Mohan Ganesh | fix: critical bugs across all 5 LangGraph graphs
+2026-02-19 02:00:55 +0530 | Mohan Ganesh | chore: production hardening updates for chatbot backend
+2026-02-19 02:10:55 +0530 | Mohan Ganesh | fix: prevent startup crash when sqlite checkpointer module is missing
+2026-02-19 02:24:57 +0530 | Mohan Ganesh | fix: pass db session to CycleService in langgraph cycle helper
+2026-02-19 02:28:03 +0530 | Mohan Ganesh | fix: unify cycle service sync/async interfaces for chatbot flows
+2026-02-19 02:36:47 +0530 | Mohan Ganesh | fix: root async checkpointer runtime for care plan langgraph
+2026-02-19 02:47:38 +0530 | Mohan Ganesh | fix: harden care-plan structured output and redis cache fallback
+2026-02-19 03:14:27 +0530 | Mohan Ganesh | Fix care plan checkin: bot responses lost, broken UI blocks, duplicate messages
+2026-02-19 03:35:23 +0530 | Mohan Ganesh | Fix stale UI blocks persisting in chat history after user action
+2026-02-19 03:55:16 +0530 | Mohan Ganesh | Clear workflow_stage and alternate_candidates on cancel/rejection
+2026-02-19 04:04:07 +0530 | Mohan Ganesh | Fix health guardrail false positives on routine cancellation messages

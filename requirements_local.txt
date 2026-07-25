@@ -1,0 +1,51 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+firebase-admin==6.2.0
+python-dotenv==1.0.0
+pydantic>=2.7.4
+pydantic-settings==2.1.0
+sqlalchemy>=2.0.35
+alembic==1.13.1
+
+celery==5.3.4
+httpx==0.28.1
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+mypy==1.7.1
+pinecone-client==3.2.2
+requests==2.31.0
+tiktoken>=0.7.0
+openai>=1.104.2
+python-dateutil==2.8.2
+pytz==2023.3
+google-generativeai==0.3.2
+rank-bm25==0.2.2
+nltk==3.8.1
+
+# LangChain & LangGraph for Chatbot
+langchain>=0.3.0
+langchain-openai>=0.3.30
+langchain-core>=0.3.0
+langgraph>=0.3.0
+langgraph-checkpoint-postgres>=2.0.0,<3.0.0
+langgraph-checkpoint-sqlite>=2.0.0,<3.0.0
+aiosqlite>=0.20.0
+
+# Production reliability & performance
+aiobreaker==1.2.0  # Circuit breaker pattern for LLM calls
+redis[hiredis]>=5.0.0  # Response caching layer
+slowapi>=0.1.9  # Rate limiting (Redis-backed, production-grade)
+
+# Image processing
+Pillow>=10.0.0
+
+# Supabase storage
+supabase>=2.0.0
+
+# Cloudinary image storage
+cloudinary>=1.36.0
+groq>=1.0.0

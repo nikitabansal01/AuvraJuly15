@@ -1,0 +1,759 @@
+6f62cbf888bed612950373662b9014b1cf25b770|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 04:04:07 +0530|Fix health guardrail false positives on routine cancellation messages
+d9e7dd48fbd886080f8e7043f46ce77c1de1d4f4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 03:55:16 +0530|Clear workflow_stage and alternate_candidates on cancel/rejection
+18915dc8da4686d44b89dcc7e5f158294c96619d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 03:35:23 +0530|Fix stale UI blocks persisting in chat history after user action
+c4f00049343469dab06a9cf679f7b16fb5283606|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 03:14:27 +0530|Fix care plan checkin: bot responses lost, broken UI blocks, duplicate messages
+d13266c544c9a9c9f883ac6ab39a6bbfd25d5fb9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 02:47:38 +0530|fix: harden care-plan structured output and redis cache fallback
+758bdd0c2983b3db39a7f5891e21180a59c44c09|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 02:36:47 +0530|fix: root async checkpointer runtime for care plan langgraph
+83b824364ed476eb498b1d9ab64a8278868e5c2f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 02:28:03 +0530|fix: unify cycle service sync/async interfaces for chatbot flows
+5817c30020cb6a3f7ebc5d6954605fdd03bbe611|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 02:24:57 +0530|fix: pass db session to CycleService in langgraph cycle helper
+143c75e869a4a9493a5791b6801519c0dca2603b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 02:10:55 +0530|fix: prevent startup crash when sqlite checkpointer module is missing
+eb6f6b0185e66cdbf03c6b114f253f05491c4206|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-19 02:00:55 +0530|chore: production hardening updates for chatbot backend
+09b0f45f0e4ad0d4320c0044001f31193d19e66d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-17 20:40:01 +0530|fix: critical bugs across all 5 LangGraph graphs
+9442fe9a2153e653fb040b86c1c1a9d498e658a1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-17 20:20:18 +0530|fix: resolve 3 critical LangGraph issues - intent classification, context loss, generic responses
+6abe537c4b6e9a096fd2756c979b41577eb623b1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-17 19:56:40 +0530|CRITICAL FIX: Backend validation for UI blocks - prevent empty blocks from reaching frontend
+2930a9fd35815b2f0d7cd94002f035093b3d59ae|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-17 12:49:35 +0530|Simplify checkpointer to InMemorySaver - fix deployment import error
+b122affa436e62d0ca7afa3fde2a56da7264fa81|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-17 12:42:00 +0530|Fix LangGraph checkpointer initialization - use AsyncPostgresSaver properly
+fa217380976e6ca422c4033f2e520088fe86e8ee|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-17 12:26:23 +0530|Fix aiobreaker version requirement to 1.2.0
+051ed6dfe8b6a59195ca99cacd53917c8451f59e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-16 22:02:20 +0530|fix: remove dead code, wire circuit breaker config, add auth rate limiting
+0fcde60ed5586a4ea0aec0df590c2d8efdd8f4ae|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-16 21:54:04 +0530|fix: 12 production bugs found in re-review (2 P0, 7 P1, 3 P2)
+f2e15037386de391f2c6629ababae137c6b35547|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-16 19:58:00 +0530|Phase 3: Production rate limiting with slowapi
+89287a9d3d3cab16d347ded5a464436f81db1330|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-16 19:41:48 +0530|Phase 2: Performance optimization - config externalization + Redis caching + memory management
+88052e1b76e145962ce2c617b127aee99a445125|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-16 19:08:28 +0530|chore: Production fixes - persistent state + circuit breaker + session management
+e3b75b98b40ea558876f7867c95bfcd2787501f9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-16 18:43:02 +0530|fix: replace keyword intent classification with OpenAI function calling - fixes cinnamon timing bug
+2e0a6d27d69fca5155e14649d59f0f69ffae82fe|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-11 17:24:46 +0530|Fix: Enforce structured outputs for action replacement to match generation quality
+77141c5ad0755648abdfe509d642fd9694495b08|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-08 20:14:16 +0530|fix: upgrade replacement system to exact replica of action plan generation - multi-citation research, personalized system prompt, title rules, full health context
+2a326917efc5920d45828901f38b551bdc5ac929|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-08 17:11:44 +0530|Fix: Update streak logic documentation and debug scripts - Change from 'all actions completed' to 'at least 1 action completed' for streak maintenance
+8aebf3b2816eccd8bdb1fe87b914e497c7af4d17|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-08 16:25:36 +0530|Align chat streak engines with unified 1+ completion rule
+7896415c969951b9a3adc1150db86dfb272615ad|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-08 15:51:16 +0530|fix: maintain streak when at least one action is completed
+b9291523439831eb3cb1502d2a562811263b8d11|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 10:45:24 +0530|fix: Replacement action variants now get proper titles and descriptions
+5089d7f0b8f13d865f4968b9791368fc524d7fab|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 10:29:08 +0530|fix: Replacement actions now MUST keep same category (food→food, not food→movement)
+2761110d617de7ba7a239742f5212fa2aa79c1fa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 09:54:01 +0530|fix: Guest users now get allowed_symptoms from their session data
+de4c621e2083b9b4dfac53dfeee3b7a33a05a956|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 09:37:29 +0530|fix: Correct build_openai_payload syntax for reasoning_effort parameter
+9cf2a26638f62f1d0667bf05b6e90c4406cb25f9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 09:35:33 +0530|fix: Hero image prompts show ingredient aesthetically, variants show prepared dish
+9d6d2d58f813044e0bd26ad86ed86d134bf834b0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 09:30:53 +0530|feat: Upgrade hero image prompts for premium aesthetic
+3b6ff64b9ef7310523cf1784ee07f83557c5e7f4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 09:29:55 +0530|fix: Change reasoning_effort from 'none' to 'minimal' for GPT-5-mini compatibility
+c9cfa9d770b1ff402cca6a4a52381bad59ec98bf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 09:15:08 +0530|perf: Set reasoning_effort='none' for GPT-5-mini to reduce latency 112s→10s
+fa45ada44ae06e8aa3bbe69b4bbb58ad5d3a0e55|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 09:08:04 +0530|fix: Food images now show finished dishes, not raw ingredients
+fe82d1e49183da7451f6704494efb5fc9319b1fa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 08:55:50 +0530|Fix: Add gpt-5-mini to NO_TEMPERATURE_MODELS list
+51a53f7659a6efbecf9292ecbc2ce4748edf5337|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 08:43:55 +0530|Switch from gpt-4o-mini to gpt-5-mini for faster plan generation
+15e32b7955ef1766f01c2d7c4ed1da0e6f38f461|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 08:36:44 +0530|Optimize GPT prompt size to reduce latency
+f4a6b7a4391468b359640d5e6e49a63c878193c9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-03 00:24:28 +0530|Stabilize action plan generation
+8f4928d33f52b803bae2506298e65e25d0800346|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-02 23:53:54 +0530|CRITICAL FIX: Replace non-existent gpt-5-mini/nano with gpt-4o-mini
+fbb18fb288d925680976c0450b22715c7db11ac6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-02 23:48:26 +0530|Fix DB connection death during long plan generation
+f8b3ede5818e50393b2155d1d8039c8b5faa0b97|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-02 23:39:48 +0530|Fix unified memory: use correct CarePlanCheckInThread attributes
+648a64fe1505ac222ec160378e84705b2f292c97|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-02 04:40:05 +0530|Fix care-plan alternates: robust candidate generation with fallbacks
+da625bdf3d0fb0205da4e1ca3dfada87a670bf04|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-02 04:19:49 +0530|Fix care plan change loop after UI selection
+30da0a2f9616fae1be3dfb303829c5848a83f874|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-02 04:08:27 +0530|Stabilize memory + research caching
+e8c99b19aa38a1874841001d1eacd3a7bf24d54a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-02-02 03:39:08 +0530|Fix: Replace action failures, chatbot stuck loop, LLM fallback
+7b9263e3d36505e1286acdaa5a1eb33208cbfa4d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 18:35:57 +0530|fix: Increase OpenAI timeout and add retry mechanism
+0ac25dc04e888f8f15bfe190b456bd2c8b07b6a6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 18:22:13 +0530|perf: Parallelize PubMed paper fetching for 10x faster research phase
+f799ba195dbad436353344a5e9e4af9c85eb7f16|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 17:45:52 +0530|fix: Prevent duplicate plan generation when guest session is still processing
+4003e0ea16dbe02f45bdf5c5b547d5ffbe13c09a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 17:18:10 +0530|Add is_background_task parameter to generate_new_plan()
+3d55eb37617010085e9d6788d23ab297b697904b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 17:12:48 +0530|Increase replacement generation max_completion_tokens to 16000
+b0311683694d679192cde378c07ce8f7266cdb3f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 17:11:59 +0530|Increase max_completion_tokens to 16000 for action plan generation
+b73ac530b9543914f18e79c3e9d28fd1d0559671|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 17:10:53 +0530|Increase max_completion_tokens from 4000 to 8000 for action plan generation
+0a7ef2939a9fcf15199cc40854ae975a128139e9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 17:08:47 +0530|Improve OpenAI exception logging to capture full exception type and details
+79d0abad25fb2a777962c505741fe54f1b86a75e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 16:54:52 +0530|Remove hormone analysis caching - was causing stale results
+39a1fd23b5a0fac848a2151ea525f3b57faf903a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 16:16:37 +0530|Add debug logging for all scoring fields to diagnose healthy user issue
+bd4047f8ef97862287ace90f8584fc253e1dedd0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-31 12:35:44 +0530|Fix: Healthy user detection threshold and lifestyle distribution
+cc91eef6c78a71a8b7cc2dd82eae28676449f35f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 23:06:11 +0530|fix: allow extra fields in ResearchStudyModel for Groq compatibility
+1d5d83b336838889afd58386e72997380c5718ea|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 22:47:14 +0530|fix: use stored signup hormones in fast-path context loading instead of recalculating
+bee60b019426f0bc1355cee7cfc59d1b126cc049|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 22:40:05 +0530|fix: enforce strict 2-hormone limit by filtering carryforward items
+afebea8cb72f6f13aa2cf519ab23ccae6cb515ef|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 21:58:06 +0530|fix: increase max_completion_tokens from 6000 to 16000
+c1b7f98c8866a924b2863ae4fd7f846e460307ac|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 21:40:57 +0530|debug: add more verbose logging to partial generation to see GPT response details
+2dc3adc802c08881ce1392180d1da061e399432c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 21:32:32 +0530|refactor: add request builder helpers to pubmed_service like action_plan_generator
+bce1d2761749d349390d2fa8aa47f88fbbb3666d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 21:25:34 +0530|fix: return None instead of empty list from partial generation to signal failure correctly
+3869c263fc371411fc0f6386e78c89fa67344766|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 21:24:10 +0530|debug: add comprehensive logging to see actual GPT response in partial generation
+9207427800859618e2971bc683a99a50e35f79d2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 21:13:54 +0530|fix: remove all post-generation deduplication - rely on prompts
+4b0ab3d7860c4289bd306e9f6c9ce6a86fe8d437|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 21:00:36 +0530|fix: improve PubMed rate limiting and partial generation acceptance
+f3b7e10bbc9f8bbde2560847ea5492f434552f7c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 00:58:51 +0530|refactor: Remove dead code, enforce citations & personalization
+636566e2155acc9a4ef4e06e7582dc1bcd3bccb5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-29 00:21:59 +0530|feat: GPT-native deduplication - tell GPT what NOT to generate at all 4 generation points
+cf65b908605435988ebaea04b92c69fad9d39451|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 23:47:04 +0530|Add more free API fallbacks for scaling: Europe PMC + CORE
+ebd8ef8fb3ccc5f17b26f34fba27002f2310fa44|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 23:40:19 +0530|Upgrade research citations: multiple sources with study type prioritization
+b33520a93b95e390db00df997e604ad987fcb0d9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 23:26:41 +0530|Add PubMed research-first approach to partial generation
+4b4ad330267a8013116561bbeb8228746d95581c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 23:22:17 +0530|Fix partial generation prompt with comprehensive field requirements
+a563dcf0e1bb11b5e79c5a9526580901d564fe83|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 22:58:18 +0530|Fix partial generation: add short title rules, variants, and research studies
+3e32d1c9a9c4cdd66689baae7ddf596a7727023f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 22:46:18 +0530|Fix pending review to check only LAST plan, not all old unreviewed plans
+b67519f4de53a74d1ecb8717349a7d396f3746a6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 20:50:29 +0530|Fix partial generation temperature error and improve Groq JSON parsing
+84b8ffecc87494a729b66a30e44e1b036b19c12c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 20:28:25 +0530|Fix: Carryforward primary_hormone KeyError and temperature compatibility
+7fa5153a1c1170172af79426671983945259b51a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 19:57:56 +0530|Fix: Correct pending review check to look at plans before today, not total count
+23b0f429d1c31751d093320e2f5ad44332bb4e87|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-28 12:29:46 +0530|Fix race condition and remove hardcoded responses
+30fc4ede3a1de3a5f3aaae4805a59b18b4386a4a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-27 22:30:42 +0530|Critical audit fixes: Ensure tap_options/choices are NEVER empty - fixed weekly_checkin_ai fallback, langgraph_agent compose handling, response_composer defaults
+541197208bbda5f7e2f006aad76a35d8e8f37e25|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-27 22:05:51 +0530|Make chatbot data-driven - use actual user data instead of hardcoded content
+ad810da1d845d48605643742077b651656d95b99|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-27 17:54:16 +0530|Simplify all chatbot AI prompts - data-driven instead of hardcoded
+f3dde3c225c654f6178c59f231bffd5ca9608fe5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-27 17:47:46 +0530|Major chatbot overhaul: data-driven personalization instead of hardcoded rules
+eb54229fdf51afde32de66feaee573ccde457a9d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-27 17:37:51 +0530|Systematic fix: Give chatbot full access to action plan scientific reasoning - enriched _build_todays_action_plan_context to include purpose, conditions, symptoms, research studies - updated care_plan_checkin_ai prompt to cite actual data when users question personalization
+dcb2101ebbaa2373d1035752fc27061c39be6d33|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-27 11:17:56 +0530|Fix: Shorten hormone_persona_intro to 2 sentences, add chatbot complaint handling
+a55bbab50f9dcc32d27afa1c59defcafbf48e0d1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-27 10:42:54 +0530|Fix KeyError in action_plan_generator: escape JSON braces in SYSTEM_PROMPT
+8ef0bab979644d03b0c39de08b7f110cb4f7e034|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-26 17:42:59 +0530|Fix syntax error: remove orphaned f-string content in symptom_checkin_ai.py
+5e1ff78582cb17c151f560aae8dcf704f6d8d741|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-26 13:25:22 +0530|Add historical memory to chatbot prompts for deep personalization
+7075da66eeda459c6f5d868b72e88dd2160869ee|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-26 12:36:05 +0530|MAJOR: Deep personalization overhaul for all 4 chatbot systems - fixes 2/10 rating
+75dbf435f56bc394a65aeef1bb9a9d6b5e52dfef|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-26 12:16:09 +0530|feat: deep personalization for action plans
+fbd6df69c8ecbae9091641aa3b49d10fc1e20613|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-26 11:46:44 +0530|fix: improve LLM prompt personalization for action plans and chatbot
+c447ebfe357651bcdfc359072be1c2697af8f2fe|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 08:14:47 +0530|Fix CarePlanCheckInThread attribute: plan_date -> local_date
+f0836c4c9c8b3fbe54fa177a665439569378a067|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 07:53:53 +0530|Add debug logging to pending-review endpoint
+b22550b634ecd9803b980efb7ce47bb8f52ebb6f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 07:48:26 +0530|Add logging when all carryforward images are skipped
+7c519836c04d7f0e7fb97689db0dd3c18780ce96|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 07:25:20 +0530|Fix carryforward image regeneration: skip actions with existing images
+22c907549273f45c64cecb722ea31735a0d5c454|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 07:17:16 +0530|Optimize partial carryforward: generate only N needed actions, not all 4
+1b58e035c55177e1c083fbdeea43c02eabc02a2e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 07:08:39 +0530|Fix SymptomLog attribute error - use user_id and logged_date
+5e0d0eac59de5bf78941e71344d072a3d2eaeb09|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 07:07:48 +0530|Fix carryforward regeneration bug - skip GPT and reuse images when all 4 items skipped
+4c86164c4ae2133435a633679c70b3a6e7d59702|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 06:57:37 +0530|🚀 Optimize image generation for 2-3x faster performance
+8593b99f4923ac3d3ae02991025cf6c8cdbe51df|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 06:44:37 +0530|fix: Use max_completion_tokens for OpenAI gpt-5-mini model
+100110c92bc962a4a7162a074d8cf1133a86a81b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 06:34:33 +0530|Fix critical carryforward + memory.py bugs - convert ORM to dict, fix attribute errors
+c006536ce3d675743e52137378b4d57f79c3208a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 06:12:36 +0530|Switch image generation from Pruna P-Image to FLUX.1 Schnell
+8ec599c6861ee92deaf6d41911374d649fe42c0e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 05:48:08 +0530|Fix ImportError: remove unused get_async_db import from memory.py
+7845dece0181dc223c887ef9cc30d626e594a5ba|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 05:34:24 +0530|Deep prompt engineering fix for action plan variety and chatbot personalization - removed hardcoded examples, added semantic deduplication, all 5 chatbots now use unified context
+287dd5bd1781a6218fbef9281f892e75dea03469|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 05:11:22 +0530|CRITICAL FIX: Unified cross-chatbot memory system - All 5 chatbots now share context
+b9d697c30263f1978455a1eb33f526759a2a3d5a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 04:36:38 +0530|Fix generic action plan issue: Add variety enforcement and banned defaults
+fe2294116c66c867e7f184a812b71bc6b7c3b34f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 04:33:48 +0530|Fix critical chatbot bug: Add plan_feedback, challenge_science, explain_plan intents
+ec6a5febbaada613b9a0834a0c59579109d19846|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-25 04:00:36 +0530|feat: Upgrade from gpt-4o-mini to gpt-5-mini across all services
+2a42b7d6f30cfda74133e9ad9c51bd54b9eb8a98|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-23 18:36:46 +0530|Update action plan generator, image library, symptom and weekly checkin services
+971472c9e29a64ed8a69b027eaa54d2a1261bda5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 23:08:37 +0530|CRITICAL FIX: Never store RunPod URLs in image cache
+3da94296cd4067773fa36b1590d056644355d16d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 22:20:07 +0530|CRITICAL FIX: Category guidance now enforces 4+0+0 for single selection
+5b5b2c670066b21349a1454f159015160e7e7f28|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 20:16:11 +0530|feat: add AI security guardrails module (standalone, non-breaking)
+e384b6ffb85b28c304eb47851af823e5921c5b4b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 18:39:06 +0530|Fix category distribution: 1 selected=4 items, 2 selected=2 each, 3/0=random 2+1+1
+beb8d7268695b0ffc38c065a6b2cd34b4ae420dd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 17:17:14 +0530|Fix token caching and remaining time formula
+09b63c0e758a5f3b767b4e994b80443961a02887|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 16:40:14 +0530|FIX: Eliminate 130s delay - background task no longer blocks on its own in_progress status
+1df2efec3ec0df6fa5f3e725ffec91edc794e94c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 09:02:37 +0530|CRITICAL FIX: Handle race condition in /today/status endpoint
+7335fe19da5caa33230ce6bcdfacd0ac42b84af5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 07:26:15 +0530|Fix: Option 3+4 - Eliminate duplicate plan generation by returning 202 status
+65cceb9d7801fa82c606169a5ff65959bf221326|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 07:04:54 +0530|Perf: lower cache threshold to 0.85 and extend session wait to 200s
+995199c5b2c27e90a32e13c58b56e3e62e0c1e87|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 06:27:09 +0530|Add merge migration for unique constraint heads
+cae77c3e649bea5825137e13cfa0d741160b03cd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 06:08:19 +0530|CRITICAL: Fix duplicate action plan race condition - add unique constraint and status endpoint
+1bd367b54c780e8be9e8d7aa8ee2011186ccfe70|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 05:31:36 +0530|Fix 10 critical bugs: race conditions, duplicates, performance
+3c6dc5b7abe36049675d02f13a1e02f65902d1a2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 02:51:33 +0530|CRITICAL: Fix stale DB reads with raw SQL verification
+28843ab865683503b74d4c0d497eb0bd55d90ccb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-22 02:34:11 +0530|Fix stale DB reads: add expire_all() before pending review checks
+471e959cbe8f76d4319bfdebd67730089f211858|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 22:26:29 +0530|Fix duplicate generation: wait for session plan transfer on signup
+230e03330ebd30de1968677d5158398afc8692ef|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 19:57:53 +0530|Fix action plan assignments crash and AsyncSession status updates
+2cef5919eadba59dd7223cb8db9d758eeae34f43|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 19:10:32 +0530|hotfix: Remove extra closing parenthesis causing SyntaxError on line 520
+9ca01da12ef68492be806a2772efaa54ea47042a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 19:03:58 +0530|fix(production): Add idempotency, atomicity, and timeout fixes to signup linking
+268b1da35721b97ee339e4f09b8c13879f6ab68b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 05:40:35 +0530|Fix: Indentation error in action_plan_generator.py
+f704c7c0e23a3972f0d5374d62f0d35d4ec000e3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 05:34:18 +0530|Fix: New user review bug, DB lock timeouts, and RunPod endpoint
+94ae269c9c35538c874761e39b46c534a9467d53|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 04:43:05 +0530|Fix: Handle empty GPT responses and switch from gpt-5-nano to gpt-4o-mini
+568558c4267da429002efef0338dbfa34ca1b79c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 04:09:07 +0530|fix: prevent session deletion during auto-transfer & rename status import to avoid shadowing
+7d853f12709f44ddc2db994f696d51c210864884|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 03:14:44 +0530|fix: allow updates to linked sessions (write-through to UserResponse)
+3becebb1f00e34266bc384f5e900a919c2eb2784|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 03:12:07 +0530|fix: allow accessing linked sessions in get_session to prevent 404s for logged-in users
+975319c42ae2c58971a49838fd41cf2b3c752b7d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 02:44:26 +0530|chore: add detailed debug logging to session service for diagnosis
+163520f62665b946b2481ad85e5aaf642766ec72|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 02:33:59 +0530|feat: optimize prompt engineering for FLUX.1 Schnell
+3805f344f2addab51e9bec4ac817abe4b01574e6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 02:26:19 +0530|feat: switch to FLUX1 Schnell for image generation
+bbf1d90f420803b26d0546c13215b6c8b1ba7b35|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 02:03:16 +0530|fix: plan_id extraction and GPT-5-nano max_tokens compatibility
+c8a0bd235af374fc60ec4d454e99209a19807aa7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 00:33:34 +0530|fix: allow linked session retrieval and delay session deletion for grace period
+8b8d04b7aa520da70d4f0fd6ca0db06beec4ac0d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-21 00:08:12 +0530|fix: GPT-5-nano compatibility for max_tokens and temperature
+ec8a1599174368bfcec9cc6de87a77971de2cedf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 23:23:31 +0530|feat: upgrade to GPT-5-nano, add LLM docs, fix image cache
+ee72427db19d4e5dad08af6b0769fc6f9b3445b0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 22:19:36 +0530|fix: enforce same category and hormone when replacing actions
+dea6591ad5ea4cd4b005f69e3dece237c2b9f55b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 19:58:34 +0530|fix: use session hormones from root cause analysis in guest flow
+91842c4b955fa4a12cd88bbe30d146ac28c5aa55|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 18:11:05 +0530|fix: wrap raw SQL in text() for SQLAlchemy async session
+05eb9dbf0edf3289033aca4c781d39025d601d73|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 17:39:32 +0530|feat: event-driven session transfer (no more blocking waits)
+fa834c248e178f886287e1943359ca06d6e5a232|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 17:17:03 +0530|fix: increase session link API timeout from 30s to 120s
+6e5762bfe7c13f5a93ae4dbe333c1d68d2bd7451|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 16:58:01 +0530|fix: wait for guest plan completion before session link returns
+1538f8f74e709c7ba57de7ddad55fddd44e2a60e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-20 15:42:40 +0530|FIX: Critical carry-forward bug - extract data from source_item ORM object
+dafe114a6b6b07fd51f201b4079db9c64c9ae157|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 06:53:24 +0530|Add detailed traceback logging to diagnose refresh save issue
+35df1f6d9ffdf2e68a55df5a9515f8b261958c64|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 06:40:40 +0530|fix: Monkey-patch HTTPAdapter for larger connection pool sizes
+1becc337cb525f2d157f38e58a35beb7925e3eda|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 06:35:53 +0530|fix: Properly configure urllib3 connection pool size for Cloudinary uploads
+cace3561d266b45b931ca5c6199b07ccfc0b60ac|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 06:25:15 +0530|fix: Add default variant generation in batch_replace_actions when GPT returns empty variants
+a9781f2603092c917137008ec157c76c9ac5d807|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 06:07:28 +0530|images: never return missing URLs; apply fallback in ensure-images and responses
+0a13d01d9ce35435f796e31348fd9b1ba1f76a3f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 05:53:28 +0530|image: use LLM hero prompts + stable cache key; enhance RunPod prompts and stricter image style
+cbfaddeb4dc97b8cd5a89213f9d97919f25a7ed7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 02:43:07 +0530|Fix: alternates flow shows action list
+bf1a503031792515e704798dff45dca3b9e7da47|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 02:27:19 +0530|Fix: show real action names for change selection
+7756627264b49bc5a4bc7953b4adb29d09a259cc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 02:00:13 +0530|Optimize: Daily review carry-forward now skips wasteful GPT generation
+973b4938a2325afa71a49b2707127b90701d8b21|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 01:46:49 +0530|Fix: Handle all-4-skipped edge case in carryforward
+db9650877d337ee41124b4ab02278c1ba7c03131|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 01:23:18 +0530|Feature: Carry forward skipped actions to next day's plan
+cf07726936f2367c404a868334750ec63aedcce6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 00:59:14 +0530|Fix: Store user tap actions as visible messages in chat history
+2a5d51d892e339592d8a5a42b509ae97d5624aa3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-19 00:33:41 +0530|Remove 'Try' prefix from default specific_action and use descriptive variant titles instead of 'Variation N'
+cc370996b9ad902e487c597f0c8976032b3eba04|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 23:53:30 +0530|Add logging for tap option and sanitization debugging
+7225260d439412622ea536d23d968a460ed8fb2e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 23:45:38 +0530|Fix tap option handling in /event endpoint and add null byte sanitization
+6ef81ba86f717e4628bea48045f757dad5ad2699|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 22:43:54 +0530|Restore intent routing helpers in care plan graph
+d3e84dcd85f34f0f8eddfe9f62016e560fbe0b58|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 21:46:16 +0530|fix: remove confusing UI blocks when user asks informational questions
+258c7c16d71ee53a90f60945aacac755ec9a7880|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 21:40:15 +0530|fix: handle mark_done, swap_action, ask_why UI events in care plan
+8fab4255ce07d67c2baa5a92452f7a7dab67276f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 20:42:47 +0530|fix: defensive None checks for variant image generation + Cloudinary pool size
+a83b1d7c1047c7e0c0090c878ff9666de82c28c1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 18:58:02 +0530|Fix LangGraph compilation with checkpointer
+27a7f910478ac08140d5d4106ce5c9e2ec3fbd86|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 18:53:26 +0530|Fix CarePlanCheckInState type hint NameError
+e150905bb1db1dedb39021b5ee5b9ca06c50b884|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 18:45:59 +0530|Fix care plan interrupts and replacements
+30530930d4383d6c41cc0d8f2d3cbdcc5b85f4b9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 17:40:11 +0530|fix: Add PRE-EMPTIVE zero-token check to block replacement flow early
+ed62738802cec6f8421199b1a65f5cae3c6a3685|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 17:34:32 +0530|fix: Prevent action replacement when 0 refresh tokens available
+62793555c1269689b04cb67f2d1433fad521f1d7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 17:23:21 +0530|fix: Ensure replacements have RICH DATA matching original plan quality
+a08e83f6b2703dc94e7b34f636cf71def8b2b294|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 17:10:00 +0530|fix: Actually consume refresh token using RewardService.use_refresh()
+7d8753849e4f1dce0daeb573b21d37fc9822f4e1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 17:02:55 +0530|fix: Use exact same image prompts from action_plan_generator.py
+19a92136d8059b6301e5ac55e9502ad7130e1ab4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 16:55:29 +0530|fix: Create ActionPlanItem with COMPLETE format matching action_plan_generator
+08b591df3974320b078525db4110fe3846d85f52|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 16:44:28 +0530|fix: Use original.plan_id instead of state['plan_id'] for new action
+e6d57b2cb246911b2ef1caa963439ec062d68e4a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 16:36:39 +0530|fix: Remove invalid fields from ActionPlanItem creation
+4d435a19b7bfa4ec852668c99275dbd6a3e226da|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 16:30:02 +0530|fix: Use correct field name 'item_id' instead of 'id' for action items
+8013b50a6d6031e69375ef9361825db6155b9e44|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 16:22:06 +0530|fix: Persist and restore targeted_action_id for button click handling
+b9c1239c323cca09ef5b4045812733c744cba376|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 16:14:44 +0530|fix: Add comprehensive logging and fix database session leak in graph node
+b7bca230a0ede29c8ef96a967ecc9479874ef13f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 16:03:00 +0530|debug: Add V2 version tags and diagnostic logs to Care Plan endpoints
+5807acc6fe81ec431b55a32a391ba6514b91e907|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 15:50:38 +0530|fix(api): Add missing CarePlanCheckInThread import and remove Redundant state variables
+f331ec8a6ee2992cafb7f57c815071a203299eb9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 15:49:47 +0530|fix(api): Unify Care Plan state reconstruction and fix langgraph_state crash
+ae6a392314622353b7e8e085f009353c1516e2d7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 15:38:11 +0530|fix: Use correct get_thread_by_id in care plan event endpoint
+2bbdc8b22e5ffda4bad06b9a867fb8e4448b25b8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 15:25:54 +0530|feat: Add /event endpoint for care plan UI block actions
+d4f36fadd92241a824870f5819d3d09260e6a9d5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 05:11:08 +0530|fix: Remove duplicate SymptomLog class - use original schema
+47a2b104fd6e841e44b2ca0eac40534ea44ead1d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 05:05:01 +0530|fix: Remove heuristics from intent classification - fully LLM-powered
+599725bb387f29e8de0b10cbffbf04e15989a6e7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 04:56:02 +0530|feat: Complete all data persistence and CTA helper integrations
+4df8243c5f89b9387f049d1d60cd3517f63aebab|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 04:51:45 +0530|feat: Integrate SymptomLog persistence into symptom_checkin.py
+83c679baa924e69bbef81c82fe376420076c4205|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 04:48:50 +0530|feat: Add critical missing database models for data persistence
+e87bdb881cf614773cf26ab7864b2dc68c30e048|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 04:43:27 +0530|feat: Add intelligent UI blocks helper for dynamic CTA generation
+1f4fe9bd82c599bb4ebb7ecba7c7104a85e3306b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 03:37:10 +0530|fix(api): Ensure JSON serialization for persisted actionable_insights
+1debf5efbdb713f7d519d533fe09597abc9f7b36|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 03:32:55 +0530|fix(logic): Generalize strict override to support ANY user request (AI understanding mode)
+53d1ff8523f4c1a7439127c7a390c7aa5f01b362|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 03:30:58 +0530|fix(critical): Serialize Pydantic models to dicts in graph nodes + Strict prompt override
+c2b00c4f6a8fb7dbe341c90c9b31f670dfa2a474|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 03:28:30 +0530|fix: JSON serializer error with jsonable_encoder
+dd8256aa1724f0a72d02660f98dc6914e194f7f3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 03:20:49 +0530|fix: JSON serialization error for Pydantic models in DB storage
+ded2d7056cdcb522fc36293871a1a7de61d127f9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 02:47:13 +0530|fix: Move all handler functions before graph compilation to prevent NameError
+63c8892eeb35f5a04517f380ecd1efee5698815c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 02:37:09 +0530|fix: Restore missing 'return' statement causing IndentationError
+280ea79716278cc253d2d1df9e54f809458437c1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 02:27:42 +0530|feat: Implement 'Ask Why' intent handler for context-aware explanations
+cd99d022e52828256e472be259cacd2b9ac41b8f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 02:24:52 +0530|fix(ux): Explicitly clear UI blocks (CTAs) on flow completion/cancellation
+d795159c0540e4f6ece6312475b3bad13e3f90e1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 02:21:06 +0530|feat: Add cancellation intent handling ('Never mind', 'Cancel')
+eb6a19cbc7aab5250bc040d6284ffbb34afebaaa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 02:17:40 +0530|feat: Implement direct replacement flow (single option confirmation)
+5ed17331677e20172844e8eca86d9cc637be93a6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-18 02:14:00 +0530|fix: Generalize strict prompt override to include food/ingredients
+0ec5cf0430971d1d6b2d9ac596ee0346f1d486a6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 23:00:54 +0530|fix: Restore actions_list definition (resolves 500 error)
+7415511e79ba3f89748a784661196ead104270aa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 22:54:49 +0530|fix: Preserve targeted action context in classifier and inject chat history
+4a5fc949563e75df05af59ff6fd9160aae59dd10|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 22:51:08 +0530|fix: Support flow aliases (care_plan_checkin, symptom_checkin) in threads endpoint
+7e5019e0f43e61d5d5cf85526aadb98cf1e0a0fa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 22:41:10 +0530|fix: Use actual activity titles in alternative selection buttons
+86ccfe3e98b3e3fad6abee37876a15016a9b069a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 21:23:35 +0530|Enhancement: Inject Full Chat Context into Generator Prompt
+9580f08b2f4977c10298f9a5a6cdd6030d193c52|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 21:20:44 +0530|Fix Logic: Allow Hormone Override for Specific Requests
+80aecf09a76176540de50d9bc2c87f03f7090485|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 21:18:59 +0530|CRITICAL FIX: Make OpenAI client initialization lazy to prevent server crash on startup if OPENAI_API_KEY is delayed or missing in env. Fixes deployment crash loop.
+983f29634d03474613c5a76c5ad5d987b1cdd096|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 21:10:01 +0530|Refactor Care Plan Check-in to usage LangGraph Engine
+b6f9077b97161fe39f9b5e780b67740eefeda4c1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 20:37:46 +0530|Strengthen LLM prompt: ALL alternatives must match user's specific request
+a5ecb81f75fc71589b5015e5f97f23e08f7672d8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 20:31:37 +0530|Fix: Make Care Plan alternatives context-aware
+312fc8768d271814d81a14f89715c4e8a7762353|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 20:06:02 +0530|Fix: Remove duplicated code block causing SyntaxError in symptom_checkin_service
+e9580090645f563ff021be52ea222ae85ca30e69|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 19:59:36 +0530|Backend: Complete New Chat support for Symptom Check-in
+07edbe2aee057f85ddbcdfcea46b33b66e784dd3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 19:51:16 +0530|Implement ChatGPT-like new chat: Multiple threads per day
+f73eddfeecd9902bb12c0e48d74bac8ac1993809|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 19:17:29 +0530|Add thread history endpoints for per-flow chat history
+2753cae9243ada46bcdf310e35cf1ce0eeb337df|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 18:54:41 +0530|Use LLM-based intent detection for 'change different item'
+34f88f89787330dba7a8e26ca5f05cb88a4ab408|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 18:51:58 +0530|Fix: Allow user to change different item while viewing alternatives
+2a7c2215eaaad4274cc61b63b65255711e830e1a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 18:40:06 +0530|Add unified LangGraph API router for all 5 conversation flows
+3ed5227d40f2fe70131d4ff6f3f859b6ab6e30a8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 18:23:23 +0530|Fix alternatives mismatch: bot text now matches UI buttons
+487824e416456ce7c7905d2c703f93fbd6e1cab4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-17 17:41:16 +0530|Add complete LangGraph implementation - 5 conversation flows
+700d2cc005b44fe281f7fdfab97bb6f367a0362c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-15 22:01:28 +0530|fix: Cloudinary connection pool + actionable image prompts
+3a80ac29a732cbbf55d2f053d1debe79618b3ae6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-14 15:55:45 +0530|fix: image timeouts now properly trigger retries
+1e5937fd85052e359f01fb5a1c3fb3d90d09aa45|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-14 15:00:30 +0530|fix: simplify pending review check to use total_plan_count > 0
+b47d72cb7218c9154a597de3d9a5fff3e3c79268|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-14 14:57:30 +0530|fix: daily review now required for day 2+ users
+6864e024244d99fe32b89868a22772a154b7b6f0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-14 14:42:19 +0530|fix: add retry logic for all 16 images (hero + variants) with fallbacks
+ee658c684ab39da7a8098836a882c006dab39de5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 22:59:05 +0530|fix: normalize hormone names to lowercase in hormone_stats to prevent duplicates
+e84729648f07acb024d3649a7dbc618cca619001|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 22:53:31 +0530|fix: add debug logging to trace hormone stats item counts
+0518ea4c1187d675eeda52e86a3ca9ac18c77f3f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 22:23:52 +0530|feat(images): significantly improved prompts with Pruna best practices
+89c4440092401838f2250e426f7cb6afc54942f6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 22:03:11 +0530|fix(images): parse Pruna 'result' key for image URL
+542066b26629edd9716f7aad2ea9c0da92893c63|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 22:01:02 +0530|fix(hormones): prevent same hormone with conflicting levels
+e56af0db17063a73b77fd6d2b6ba8492421c31e3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 21:38:27 +0530|fix(images): use correct Pruna endpoint p-image-t2i
+b7be135414070f90b7d87b8ecf5e60d86d142233|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 21:25:39 +0530|feat(images): add detailed cache diagnostic logging
+b4c0da4471ba4aa138367bee79065657c2f1aae5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 21:21:40 +0530|feat(images): switch from Flux Schnell to Pruna P-Image
+1c97890e659ab877fe90e3a396ce1c2d6c82ab36|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 21:07:21 +0530|fix(images): increase RunPod timeout from 30s to 60s
+881a7e8f8f262b0585523e099eeb61197fc4638a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 20:40:52 +0530|fix(ai): add anti-duplication instruction to care plan check-in AI
+5410bd3cccced083a583ce0aa8e411eb4b7cf6fa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 20:32:33 +0530|feat(dedup): add deduplication to MAIN action generation
+29f8283d538ff600b353a0560904b36fc0266034|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 20:28:58 +0530|feat(dedup): add deduplication to ALL action generation entry points
+fae4a841971fd9fd57117217f7ff624b392d9717|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 16:43:48 +0530|feat(dedup): implement action plan deduplication system
+916e25741c9ae61e727eb9eb55e3d435da8c26d6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 16:21:43 +0530|fix(ai): ensure 'Something else...' is ALWAYS added to tap options
+546c3ccae031cd032a7e70698fa977cee3e661e0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 15:46:09 +0530|fix(ai): restore single backend 'Something else...' button
+e55712040cec48df678d6d3715bdb548eff9105f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 15:44:47 +0530|fix(ai): remove all 'Something else' from backend - frontend has fixed button
+96046cfbccec5741bd9a6864886f8fa0f1d64f39|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 15:41:43 +0530|fix(ai): robust deduplication of 'Something else' variants in weekly check-in
+12855bad916bd39f7ba577b462a3943c9838c42d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 13:59:11 +0530|fix(ai): prevent LLM from generating 'Something else' option to avoid duplication
+0ca5af8d5bd204e8e8fbc970b98ffdf97bdfe04e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 13:22:18 +0530|feat: personalize hormone descriptions based on user symptoms
+9b0eafba0470b60466858bc3e939f2500dbb2411|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 12:45:29 +0530|fix: eliminate Cloudinary connection pool warnings + add profile logging
+8fc6f419d0e83b9c5a22689b34d55d2e1957288b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 02:33:28 +0530|perf: optimize for warm endpoint + parallel batch generation
+2078c599dac50d88bafebcd1896680068be1fefa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 02:26:01 +0530|fix: proper RunPod async pattern + 0.95 similarity threshold
+810e1df465b7ec61799ec45cdb8f49be654a0703|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 02:22:59 +0530|Revert "fix: comprehensive image generation performance fixes"
+20486762fa7873a359ef718e226d1a56aa7c4d1d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 02:15:45 +0530|fix: comprehensive image generation performance fixes
+86a1feb5400b5d9a5f56c6d94c345d9f2cbe173b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 01:56:33 +0530|fix: add selected_index to required array in OpenAI function schema
+e5eda6eb07c542c3fdc4925ab79622731ba7a0c8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-13 00:02:10 +0530|fix: add fallback image URLs when generation fails during replace
+15cc61294c825c03e36bc585155f5436b71374f4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 22:15:08 +0530|fix: extend session timeout for persistent chat & enable resume logic
+27b0840da5d173e1a08fbf9701ef0faef74bfa04|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 22:09:26 +0530|fix: clear chatbot UI blocks on text send & improve know_body prompt
+5bfa9bd6fe5f41a96588b1f9a68e3869d06906f5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:51:15 +0530|fix: know my body chat formatting and brevity
+6f735efd031d7616f567c4a21bd6036e2dce379d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:47:41 +0530|feat: replace template responses with natural conversational AI
+6be9b7ca8fb4485a35992947b92e07aaad2d4c22|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:39:55 +0530|fix: improve semantic matching for vague inputs like 'food'
+96ebee4456a2d0f406f3bcf691788fd65d0586d9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:35:49 +0530|fix: unify text matching logic in endpoint to use robust matcher
+701b6e8f61d145e59e5dfaf841e52a9553243f3d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:33:44 +0530|fix: prioritize simple text matching effectively repairing type input
+9da91db42c6e59b1ff9a9ffefbdbf03666b3ad05|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:29:10 +0530|feat: LLM-generated dynamic tap options for Know My Body chat
+fe6b0fdddbb7d523740026f4bbef3454c090299e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:25:27 +0530|feat: dynamic LLM-generated tap options based on context
+dbd932fc56b638665b84691df23691af8bc88742|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:22:00 +0530|fix: use candidate_id key in candidates_ui for block renderer
+ef0bb598f1e36c287471c0a1c7462f7bc015d733|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:20:13 +0530|fix: text input now returns proper UI instead of falling through
+2f2f29ba2bb2e2509a79a9a0cc574a0ef7622eab|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:14:54 +0530|fix: preserve selected_index for all intents, not just select_item
+6f22fb5f75964a7a451bdaa571f19787a40495ab|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 21:12:25 +0530|debug: add logging to trace pending_alternate item matching flow
+f4dc0aeb321881ce47438f4a1c6775ed3ee884f2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:59:47 +0530|feat: production-hardened LLM tool calling
+d557b7fc12f1987954a42144e7afda99ed8f52ab|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:56:52 +0530|feat: implement proper OpenAI function calling for intent detection
+ff87e9aec2037e37f69d28956980b5ce585ef0e0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:53:18 +0530|fix: add fallback text matching when LLM fails
+80936ae491a66f64324b3f418ffd20b3f42b593c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:50:35 +0530|fix: filter replaced items from pending-review modal
+71fa01290b2516ce379e0feee0c06c1e5b8ed49c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:49:02 +0530|fix: filter out replaced items from pickers and AI context
+36bac24e08bb4593852d8b59d6f075ff2d6135b4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:40:42 +0530|feat: replace hardcoded patterns with LLM-based semantic matching
+5aab37fb73f3abd8bd529cf53cfe450b9a778179|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:31:10 +0530|feat: improve care plan check-in typed input handling
+feb256edc6eef87a74f3d45bf385abea15fb477b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 20:01:42 +0530|remove: personalize tap option from care plan check-in
+c62d0717e3eb966fd83688d219ac09e35f01f723|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 19:53:33 +0530|fix: increase image similarity threshold to prevent false matches
+a95f791dd3f2786d9f480cc192c1afe88f32096a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 19:24:46 +0530|fix: backend - detect completed weekly check-ins and return chat history
+7cb647e9083822faadd35440a3510abdbf35d81c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 18:12:07 +0530|fix: Wait for images before returning response for existing plans
+ac3298581542fd08ae0e262070d234270819d975|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 17:51:29 +0530|fix: add new user protection to /assignments/today endpoint
+b7e4aa65eb32040ae200a0d2110375b7987e0524|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 17:45:43 +0530|chore: update voice service, weekly checkin AI and service
+0296124ede55c4b59038314f9e59059a727bac4b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-12 14:26:36 +0530|fix: enhance weekly check-in completion message with specific action plan updates
+2c24310582d2696e6b295151073034ad9dacf639|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-10 00:50:54 +0530|Fix guest plan migration: Update plan_date to user's local timezone date to prevent regeneration
+f7699fa00b5a6aadffe8a1785e24ac9351220661|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-10 00:42:29 +0530|Fix New User Review bug - skip review for users with only 1 plan (new signup)
+9d9356fc46f9f214dd078f1171aa9b76bcb0ddac|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-10 00:32:00 +0530|Fix New User Review bug by auto-reviewing past guest plans during migration
+99d56a44d374d5cee0fe5aacf03ba41f06cc626a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-10 00:22:45 +0530|fix: Resolve UnboundLocalError in GPT generation by strictly checking error state and initializing response
+5a5ae5bcf8f62b01b58b95f8167cfc9587b36818|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-10 00:15:27 +0530|feat: Optimized image generation pipeline - Parallelized 16-image generation, batch embeddings, and non-blocking Cloudinary uploads
+8b277b3af6626c6b4e678f74169c81112377e6ba|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 23:58:20 +0530|Fix StreakService.get_streak error in chat tools
+6437a87d6230382bc3ee61c8889901a84d6444ce|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 23:52:54 +0530|Fix personalization chat choices to be topic-specific and first-person answers
+eba3b44351dfb162f008966b70e95b5b58537390|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 23:44:17 +0530|Fix Chat Agent JSON serialization error by using copy for tool args
+d4372ef6c388d1864c550ed4ee91e03be67c3f49|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 23:32:22 +0530|Fix profile-summary NULL chatbot_memory
+a749d3077208e5b3194167548a567ccf383f88f8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 23:23:05 +0530|Fix personalization streak + symptom phase
+a60753d6ce1d22410725ff975c51f108e025f73b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 22:45:05 +0530|Fix prompt_architect import SyntaxError
+57accb977cb812c5c46a078ead5a2118bc7f69d1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 19:09:10 +0530|feat(progam-ai): add LLM-generated tap options
+cd6493774e853f6cba8bbf24a66f0a01a11b296a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 18:20:03 +0530|feat(personalization): 2026 Vision backend implementation
+1d05bfa3811a81ac53c6287228b890322dc50cad|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 17:58:31 +0530|feat(intelligence): Deep Profiling implementation
+50b8677a3599e684594568f008a6c83f7f3e7426|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 12:17:58 +0530|Perf: Optimized research fetching with parallel execution and smart rate limiting
+19c93178c4ebf0e1b70974b02947fc16b0d67d94|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 04:18:49 +0530|Feat: Added 'Want to Personalize' intent handling with streak reward gating
+b909f5bbda0e99ffeeb7c73a8fcd99c59d850754|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-09 04:08:37 +0530|Fix: 'I want to change it' now shows replace picker, not alternate picker
+adbb147a308d88cc4053ee470ff134fbad316600|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 23:26:44 +0530|Fix: Enforce same category + same hormone for alternate suggestions - tailored with research
+1f6038346b2b8da63341b9a208a32550edca0edb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 23:23:31 +0530|Fix: Direct text-to-item matching for care plan chat - don't show picker twice
+4eb33436934a572ab4015ccdb2aa55faa9977f70|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 23:11:04 +0530|Fix: Generate variant images when replacing actions - add 3 default variants if none provided
+ca88bb41edc7adf4ed52f1eaf10e74b5a8504248|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:58:39 +0530|Add same-category instruction for care plan alternatives
+cef5d2d50a948da3b0a32347927daec6a4ebaf8c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:56:49 +0530|Revert care plan AI changes - restore previous working version
+b541255ce7ca8182ab288eeeb5d1266943923cc3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:50:35 +0530|Fix: Generate variant images in session conversion path - was only generating hero images
+880c9ff4f98e8b99d1c1632c97884d5ebbd5dc1a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:49:22 +0530|Add logging to debug variant image storage
+9cc64b398dd2184e4eaa0101e866289c49afed79|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:30:57 +0530|AI improvements: same-category replacements, add 'Something else' to tap options
+64c8d4fb9841eb7b99176aed5ed1f8c0b6427d08|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:28:06 +0530|Simplified AI-first replacement flow: AI directly suggests alternatives in tap_options, no pickers
+bf28c65c98f2b702dc9249ba79aec419e98c4de8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:24:40 +0530|AI-powered item selection: extract selected_item_title from user message to auto-trigger alternates
+d31618b82e150a666b215f63110d4a66f866eb51|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 22:21:58 +0530|Upgrade speech-to-text to gpt-4o-transcribe for better accuracy
+ef4ec1654d21620c05516a658b366483383cf71f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 21:28:53 +0530|Fix NameError: Add missing ActionPlan import in lock polling section
+d905f9b2cd6a85f334492945888177b253b950b3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 21:13:27 +0530|Increase RunPod timeout to 120s and add 3 retries for shared endpoint reliability
+2add3e0ef3c9487735557cd2de95e108e54e7729|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 21:11:27 +0530|Parallelize batch_replace_actions hero image generation with asyncio.gather
+77666f136b2d82eaeaea46272537b0b74322f2b4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 20:49:48 +0530|Optimize FLUX Schnell prompts: remove unused negative prompts, add photorealistic techniques
+9fae9bc4b85ecefccf5da3ede9268e40d4815687|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 20:22:59 +0530|Fix JSON parsing in batch_replace_actions to handle generic wrapper keys
+f81e66c4ca923b7284b951744b2ec3f0556c12c4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 20:00:24 +0530|Fix syntax error in batch_replace_actions loop and enhance prompt with schema
+4299da5da03c51a4df3997acc867ad2c1d5c752e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 19:58:50 +0530|Fix batch replacement prompt to include user context and items
+e8e11f37d9558eadf7a82c3646c389c6de058ce2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 19:47:52 +0530|Fix ActionPlanEvaluation for guest users - handle null user_id
+07ebc271f25b1630153aacc38889c2e6b4a01a67|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 19:36:51 +0530|Fix asyncpg SSL compatibility - use ssl= instead of sslmode=
+27a462dfe74627409d0ad0f827cef79ed1c84a40|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 19:28:44 +0530|Fix ActionPlanGenerator instantiation - remove invalid db argument
+350d079e6fb7ceb20459db433c28c8387afee1ed|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 19:17:12 +0530|Implement guest user action plan generation and linking
+5773b84d9a39953674c4f34093c89da76121faf1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 16:46:41 +0530|fix: RESTORE original generate_new_plan() flow after signup
+4013f545792414260982635183d00c85e1e1101d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 13:52:56 +0530|feat: complete title-based image caching with illustrative prompts
+9f33097edf7aa30b6756e17935331da72b6c3cce|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 13:38:41 +0530|perf: optimize image caching with title-based embedding
+2afae20dad028483531eb4a82b013629155910f9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 13:32:38 +0530|fix: restore original image prompts and parameters for cache hits
+8122ff63ba99a812d296dd703e8056fbf1ed31df|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 13:26:33 +0530|fix: restore image caching parameters for faster generation
+3f7963b28c3c45a1094b168a5e652e3bafce10ab|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 13:20:56 +0530|fix: generate images in background to speed up HomeScreen load
+11ec718f926c1a7b2a3768c007547aa99a0e50f5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 12:59:46 +0530|fix: stop regenerating action plan after signup - use existing session recommendations
+9d99cb191a95f99721c8368181418c796581946a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 04:51:46 +0530|Fix async session import and event loop conflict in signup flow
+d9967018fa4f105601aaffc604d0092c14417995|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 04:14:29 +0530|DB Schema: Add image columns to RecommendationRecord (Pre-signup generation support)
+04e0d4f14633d0d1bf1d526f200ec2feb096d0e3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 00:56:47 +0530|CRITICAL FIX: Force full 16-image generation for ALL users
+7c426e1ebd1b70293d7ca58e1d1e9b94d48874aa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 00:32:49 +0530|Critical: Remove hero_only override - generate ALL 16 images immediately
+4e93582d4395fef999ab30bab3e120b36824f215|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 00:30:52 +0530|Critical: Use FULL generate_new_plan() before signup (Y not conversion)
+c9e20adfc8b710e3420869bdb5bc2c125eef77e1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 00:27:43 +0530|Critical: Generate ALL 16 images in session conversion (hero + variants)
+5fd9f936060b102cf451a1b09be3fb350288b947|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 00:06:43 +0530|Perf: Generate all 16 images in parallel for ALL plans
+ebc5edc0a3d0fd38676cb3520e3fceb6d4ee8302|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 00:05:38 +0530|Fix: Generate all 16 images in parallel for subsequent plans
+8f63596c996215f8e22ce3daf675bad249e827a7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-08 00:00:10 +0530|Perf: Fix image generation - 4 steps + hero_only mode
+bd40af1f04eb5fe980d2662059ef8ac50a067c66|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 23:26:20 +0530|Critical: Use FULL-FEATURED ActionPlanGenerator before signup (Y not X)
+bad24fb31c9323a96156da004777c1493c156cfb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 23:16:23 +0530|Restore: Create ActionPlan immediately after signup (2-day-old behavior)
+3d7c5bc3bd5e0673f648b635860ea411a5a596c3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 23:13:23 +0530|Fix: Daily-focused food amounts and language in action plans
+6a1aa27a220a95ac391b45f39e165bd0f2ab5516|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 22:38:10 +0530|Fix: Use full-featured ActionPlanGenerator for session conversion
+9d033a7b45e3acc35981baa034a09e4843242805|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 22:33:11 +0530|Fix: Pass user symptoms to GPT + Create variant images
+6285eb40976ab84b563eb164f9b7226805ed6753|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 22:11:44 +0530|Fix: Generate missing images for plans created via session linking
+f1474468f3bf13807c927c439b2dab99b8cdc4d0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 20:50:39 +0530|Fix: Use naive datetime for session rec conversion (timezone bug fix)
+c61e5eeaa8a3d86ac8e84ede673af13270a0575a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 20:24:55 +0530|Fix: Trigger ActionPlanGenerator directly when session recommendations fail
+a3be72af80da3dd6d3c0b1c1af5011efe766edc7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 19:59:38 +0530|Critical fix: Create ActionPlan during session linking (eliminates 100s+ wait)
+71ef5cd4c158266e919c451c9632c3776d428498|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 19:39:26 +0530|Fix: Convert session recommendations to ActionPlan for new users
+b25457b26409ccb085e80b56a13bcb160daeac5a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 19:18:34 +0530|Fix critical latency and race conditions for Action Plan generation
+a9f2c31bb8dbaadf25f610920600120a282e6d29|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 18:30:08 +0530|fix: Finalize variants field definition in prompt engine
+44678f3f5662d07e5897261dd751dbf27d25593f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 18:04:44 +0530|fix: Make variants optional and auto-generate if missing
+a4e95b1a28b59330ccd3f3215dd257cf0bffdcc5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-07 15:48:01 +0530|perf: cut action plan latency
+ba46f7d9332e1bd2779ed7d03e2be5c5055ca416|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 23:11:42 +0530|Use AI intent for alternates flow
+5e144b2caf5b2c9b2db1e52a590119b6b838f3d5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 23:08:23 +0530|Trigger alternates flow from natural language
+ac0f78b57a31df8f0a73cf46c2c7ef41616e0a66|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 22:53:11 +0530|Care plan alternates flow + weekly tap option enforcement
+4b0da127d2e1001258ddc96c7d55bfbc552c4a7d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 05:36:06 +0530|Symptom check-in: remove hard turn limit, let LLM flow naturally, always provide conversational tap options
+0972926c2941afd32ecde661ec554c5bfd1d2d21|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 05:23:26 +0530|Symptom check-in: use choose_symptom events and ignore UI-only turns
+f128d15f340beaa6c05bb2b9afef571e38fa2fcc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 05:03:58 +0530|fix(symptom checkin): tap options match question across flow
+fb2005aedcbbced9790aba44c4ed01ee97aa759e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 04:54:35 +0530|feat(symptom checkin): consistent conversational flow throughout
+1adf9233f9fee8a74f7d8fb7e00bc6c38c0c2227|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 04:52:06 +0530|fix(symptom checkin): ask questions first, give advice second
+5f56c977e4d06a91a7aab3712e1bc1de6d5541aa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 04:40:21 +0530|feat(symptom checkin): personalized doctor-like conversation
+aca2f98f73c1181fe2ba9b805d0ae89b5b113616|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 04:28:43 +0530|fix(symptom checkin): fix turn counting and simpler prompt
+3a0f7201fbbb079a32c8ae25393dc09db47d19b3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 04:13:28 +0530|feat(symptom checkin): Dr. Auvra daily pulse check
+6f2c0810d59c256c875d8e73903606c8aa18c9ef|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 04:05:25 +0530|feat(symptom checkin): Dr. Auvra persona + multi-bubble + 3-turn limit
+47ceaf2d0c6221f5e87bd2f70a2e18db95741722|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 03:57:57 +0530|revert: undo symptom checkin over-engineering
+9879f6399e08614cb0dd537856eaf7bb6378215a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 03:48:46 +0530|feat(symptom checkin): longitudinal memory + better deltas
+1ee17ab84d8e45fdaac120ccc44231274b9713a3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 03:46:24 +0530|ux(symptom checkin): doctor-like tone + better LLM memory
+5811af76b8886047db04847e02ae2dc433da66a7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 03:43:13 +0530|ux(symptom checkin): keep chat-first (no default UI blocks)
+99e79d69f9fe50aa735768262fd2a7399624b3e0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 03:30:35 +0530|fix(chat): show user UI selections in history
+c08e02ea84ce47b3441fea2f279f91bb1a858878|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 03:17:30 +0530|ux: align symptom checkin LLM + stable taps
+ff8d6dd6d45785c81bd626034054546fb4bd68f7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 03:04:31 +0530|ux: remove skip actions tap option
+d1b250a1488da31f88a3155a8d08dd92c51cecd8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 02:52:45 +0530|fix: care plan replace confirm + ui blocks
+491ae26593d3974cd73ff73cdff4a41e697f9359|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-06 02:29:18 +0530|Personalise chat: show locked factors with days remaining
+d894926b8184364c0a87d0f7307b461561a49303|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 15:11:35 +0530|Shorten merge revision id to fit alembic_version
+4a933f6e2f468cf990de8f9756649a38f888f210|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 15:06:43 +0530|Make checkin thread migrations idempotent
+7519f4a396d6830297df35b5a8ec01e972c15dec|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 14:58:28 +0530|Fix Alembic multiple heads
+85064425a225c0967cc40b4a53b61557267bdd3e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 14:50:30 +0530|Integrate symptom check-in across plans and chats
+d686266c1b2fe355213f0ca30487aaa86a5f5972|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 10:53:33 +0530|fix(weekly-checkin): include history on start
+acdd599a9f9b4368001a3c19e525276885bc1519|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 02:26:14 +0530|test(weekly-checkin): add unit tests for Yap transcription service
+4aa2af65e5264fe5e4dcee2f9d4fc1744d78a40c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 02:06:38 +0530|Weekly check-in: add Yap transcription endpoint
+baf468d7c2c357673af1c4f9ec5df49a3a2251b6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 01:40:18 +0530|Implement simplified streak calculation logic (Prior + 1)
+08e62ba400834d13a26c8cbf2feea50b7504bebf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 01:34:53 +0530|Fix streak calculation race condition and prevent duplicate carry-forward items
+35362c8da5348010430b8e24962fb568e5d2717e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 01:18:26 +0530|Flush DB before streak calc to ensure updates are seen
+ff5934129cbeeb4d0801879ecb851d5016165b2a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 01:05:47 +0530|Fix slider_labels type mismatch (List vs Dict)
+1b6d9abe0d08a36e16cf4b172b9a2209ca8c5881|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 00:57:39 +0530|Fix AttributeError: WeeklyCheckIn object has no attribute symptoms_this_week
+879cfa334131a6db0a1b75986e90318993e320eb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 00:37:51 +0530|CRITICAL FIX: Include lifestyle_focus in get_session_data for session recommendations
+ca6627c67e8d010c8382499e954f326dbc727b95|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 00:24:07 +0530|Fix OpenAI strict mode: add additionalProperties: false to schema
+539f79195e83f73aa41f2a0263e4fe4031cad7cf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-05 00:16:09 +0530|Implement STRICT category distribution based on lifestyle_focus
+dab7a886339c4579b432127e82a3257b587dad19|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 23:55:01 +0530|Fix OpenAI strict mode schema - add all fields to required
+d71ab3a359a732a895eea9eb06366e1566011cfb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 23:50:38 +0530|Revert poll interval to 1s for faster response detection
+7e9f926de2589014fbc554de889b3efa8e33c7b1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 23:49:10 +0530|Fix RunPod cold start timeout - increase to 120s with retry
+2d012c5282ddd7656f0909a8f689fa48ee4f1844|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 22:10:18 +0530|fix: Exclude studies done on pregnant women, children, men, elderly - only show studies matching our users
+56d249ab677b52d5f13fdd9a77785ac1ea209adb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 21:24:24 +0530|fix: Handle Groq LLM variant format mismatch in prompt_recommendation_engine
+e67c460c4604df7ed53f1a5fa1a3eb674ffaa63d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 21:02:32 +0530|fix: Handle Groq LLM variant format mismatch and missing research fields
+4c78c1829803dad7f7f635e70a9940ece10ec572|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 20:52:05 +0530|fix: Change action logging to use dict keys instead of attributes
+fa134a6cdca11675cef6bc1cef4e9984d838dfd3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 20:30:26 +0530|feat: Add anti-repetition system and detailed logging
+35e92ef6e249b4b638714396c2f8db6099d2f7fc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 18:03:16 +0530|fix: make action images more illustrative and crop-safe
+f260f4863940775d27784a647006dd8be6b45658|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:58:19 +0530|fix: revert image size to 512x512 and improve image prompt detail
+2cfe27053ee3734a177e650db39cd985f82b1384|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:55:49 +0530|fix: improve image quality (1024px) and recommendation diversity
+40f4391d42adc6131e33cd37525b11dc931795f1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:41:16 +0530|fix: handle groq json key mismatch (recommendations vs actions)
+bb566b2b0a3e6e47765e0ff26bb78f0e38297936|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:32:14 +0530|docs: update comments to reflect simplified 4-action logic
+ce7b5c61be349733d123e0db8ef38064b1af3544|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:30:36 +0530|feat: simplify recommendation engine to let LLM decide distribution
+170b0e03ebc3759d74a28c8dadfe75b563024777|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:28:02 +0530|feat: enforce strict 4 actions limit in recommendation engine
+c1c12e12f14e978a3a40ed3b8e35a9e7f02e8c52|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:21:53 +0530|feat: add groq fallback to session recommendation engine
+f022b1d9e05c50231dc29366f32f7f5ced564d50|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:18:16 +0530|fix: allow session linking even if no recommendations generated (e.g. api failure)
+3eb8a13e215fdf11d5f4dd5c8847729dfce9305c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 17:09:21 +0530|feat: add strict pydantic validation and logging to action plan, check-in, and root cause engines
+4b5e4dbe431950c52532c5ad1a3319941b13157b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 16:51:38 +0530|feat: add strict pydantic validation and full logging to session recommendations
+f54ce422277947bf18b2b1b47a6a1ab9a42c3686|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 16:35:30 +0530|feat: Add PubMed-backed session recommendations (4 total with real citations)
+fcbd1333ba302a54fd53ca23efee31890916246e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 16:25:04 +0530|Fix: Proper JSON format for session recommendations
+d10326e086a9faab1ae4d092d8af766932edba66|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 16:21:10 +0530|Fix: Generate only 4 recommendations in ONE API call
+a92f335c9bfdb960fcd23a4077a61b1418056303|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 16:12:15 +0530|Remove 10s wait - frontend now saves lifestyle_focus before calling this API
+57eeb38f2c2aa18bca3765e1eb9e6c6f914427b7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 16:09:16 +0530|Simplify background task: hormone analysis already cached from ResultScreen
+d6adc9a424c05ed0531d8f83451d05d7af876e42|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 16:05:13 +0530|fix: wait for lifestyle_focus before generating recommendations
+bfcd2f6f041793dda802b1b7b74daad735453f93|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 14:51:56 +0530|Backend optimization: AIService Groq fallback, session hormone caching, action plan lock improvement
+485374e7c5dc86877499616f854eec99a39d0808|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 13:02:54 +0530|Add CORE PRINCIPLE section: TITLE=WHAT, SPECIFIC_ACTION=HOW
+646aadf142c2de4e7447563c392e1c766507dc33|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 13:00:14 +0530|Fix TITLE RULES: use RAW INGREDIENT name only, not preparation method
+d02854f675a1c24fe6ba9eb89ea3093f36845e3f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 12:40:59 +0530|Improve action plan: 3 consumption methods in specific_action + more illustrative images
+ef31071893544b298bc7592fafdb34abd946ce3f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 12:15:44 +0530|Add debug logging to analyze_hormone_imbalance
+b36d23ad2d8ba271ec0945699f912fca354ae345|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 12:01:19 +0530|Fix: Switch Groq model from gpt-oss-120b to llama-3.3-70b-versatile
+a15013963a08091ccdbca9b9519300d1e2c1dc17|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-04 00:54:56 +0530|Fix: Silence embedding 429 errors - embeddings are optional
+e321b489e0eee7eeafc1fb7ae0d4172afa90d1d5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 22:13:45 +0530|feat: improve image prompts to be highly illustrative
+52abf987d3d4ee33bd76198835deaa4be6ef623f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 21:58:39 +0530|feat: simplify action titles - just food/activity/technique names
+a4417cac8bf307b375ffb443572618d9160ae923|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 17:03:03 +0530|feat: Add comprehensive Groq fallback to ALL LLM calls across the app
+25ffa8b33414eec576616d7a40ec1e989e4c0547|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 16:37:06 +0530|fix: Use openai/gpt-oss-120b as fallback model for better quality
+6b05668e60ca07e55fd4065fbed2b64996426f5c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 16:30:51 +0530|fix: OpenAI primary with automatic Groq fallback on ANY error
+1e9bc0c0b5ac5f04d88c7b3856997acc1e2110e7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 16:25:09 +0530|fix: Switch to Groq as primary AI provider (OpenAI has no credits)
+393aaa7e416c1a12ee1306eb30f09eb6b901844c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 15:55:20 +0530|Add detailed rate limit logging to diagnose OpenAI 429 errors
+d011b9698a2528d7f68dacbd6471f95f0b2cd817|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 15:52:42 +0530|Add Groq fallback when OpenAI returns 429 rate limit errors
+15b7241ff62f614d3237433afa38d16aff3f8eb6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 15:43:02 +0530|Add exponential backoff for OpenAI API retries to handle 429 errors
+0614f5c5a5b65c7e5c7e2ec39bb554e25599de5a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-03 15:26:56 +0530|Implement multi-bubble messages and actionable insights for weekly check-in
+e470e71c8878cc8a577420c3f457659fb7e75f44|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 23:31:37 +0530|Fix weekly check-in completion: Add hard limit and forced completion message
+d6ad70de842427446f40082726f6e1ac84c27168|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 23:21:54 +0530|Implement fixed weekly check-in schedule with proper edge case handling
+4a6d6667a1c4d895f3de09228f14979a4d7c5557|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 23:19:19 +0530|Add logging for weekly_checkin_due_date updates
+b6f07d1adc7db0b7208e9d99ce0ce938478039ac|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 23:07:27 +0530|Fix: AI now includes summary naturally in completion message
+1c3f98e2fa54c19835c363c451ab9d44b4c2ea7c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 22:58:38 +0530|Enhanced weekly check-in system with medical knowledge and dynamic responses
+77ce75b609efda9d897789efc9b22a0d6dab646b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 20:02:17 +0530|Fix: Count all items in pending review totals
+b19b196b31d7669c6b3c722e0a73f495fa7343c6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 19:27:44 +0530|Fix: Return all items (including replaced) in pending review API
+0d62757587b67d9d4e3318a51db8c403b2131940|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 17:25:26 +0530|Fix: Remove 3-day limit on pending review - find LAST unreviewed plan regardless of age
+080919df87d569465e5fd52f8f0b86f94167bb40|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 17:12:34 +0530|Fix: Block new plan generation if daily review is pending (return 428)
+8bc729975cf221ad0f6b63bf0360976081e0c3b9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 16:50:01 +0530|Optimize streak service: add request-level caching to reduce redundant DB queries
+75dbc7565aeb2ff946b6dbfb4eefdaa4f557eb5f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 16:21:39 +0530|Add debug script to force pending review state
+715e7f6aa40694cc4eb45a68ef80b3deb06c68ef|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 15:48:00 +0530|Add flow verification scripts and report
+42116869624f662b2c9377f8434d1ef08ce6cf35|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 15:23:16 +0530|Fix all tests: add Tuple import, update test assertions, create comprehensive test suite
+820a75299ff311cf612ec8d678eb2de93532b814|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 14:53:32 +0530|Make Groq fallback model configurable via env var
+8d47411fcb157d70c7bdbdeca5278e50020afeeb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 14:36:41 +0530|Fix Groq fallback: Use Llama 3.3 and enforce strict schema
+a7d3adfadc5048412b08aad66b89820dfca01751|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 14:24:31 +0530|feat: switch fallback to OpenAI GPT-OSS 120B (Reasoning Model) with high reasoning effort
+2d01586ea7ad1875fefafef320211b96488533ba|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 14:19:43 +0530|feat: add Chain of Thought (CoT) reasoning instructions for Llama 3.3 fallback
+137b95e1a900d8365e06ec914f489508eb4862aa|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 14:12:45 +0530|fix: clarify Groq model selection (Llama 3.3 70B) for deep research fallback
+21bbee4d8c569073b08f6f7b596aa6dbfd46bbe3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2026-01-02 13:52:49 +0530|feat: AI model switching with quality-based routing + admin tracking
+837d469a365b2e422f5a8a351dc0e28e9abcecc1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-31 16:00:56 +0530|fix: Add missing alembic migrations and daily review system
+48ee8ff78d9fa20017076e86922ce9cc4f3b12f4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 21:37:51 +0530|Fix AttributeError: Implement _get_slider_labels_for_symptom
+f622f0c14383d005dbd05a73e7ab40928c892c1b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 21:31:26 +0530|Remove 14-day streak requirement for weekly check-in
+b9c4e4045ea42251c6b376da6caa80b09c571c87|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 21:02:54 +0530|Fix AttributeError: implement missing _generate_closing_question method
+8266bb02a92d22b2c42c3fe4710f212762d945c4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 20:38:32 +0530|Fix AttributeError in AI service and include chat history in resumed sessions
+76351a5f49b1166e5e4d2d60650f62e324671993|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 20:30:24 +0530|Fix AI prompt to generate user answers instead of questions in tap options
+6967788f7f7dfe87ff85874e571313969fd2491f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 20:18:36 +0530|feat: implement dynamic AI doctor check-in with GPT-4o
+ff5849f7c752edd630854cf966e9d1e69ebabc3c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 19:54:08 +0530|fix: UserResponse attribute error in weekly checkin ai
+76c15afbc7a63a8b67f9e3b46f7cbddc1d27393f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 19:47:18 +0530|feat: persist chat history in weekly checkin
+234859471c54dd23b660335b086d06f262b91ee5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 19:39:23 +0530|fix: improve weekly checkin robustness and add reset script
+e7265885e3953f956a4c12ba5bd897854d94c785|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 19:24:52 +0530|fix: handle list type for default_tap_options in weekly_checkin_service
+393467b2e30b568785dfd4eda0ea2ba9a4c67b8e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 19:20:23 +0530|feat: add AI-powered weekly check-in engine with dynamic questions
+6c663ff69f4d086f061ea3ac1bd981547fe5ac46|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 19:14:03 +0530|fix: update checkin flow to start with bloating slider
+4c8537de1992b19bc6d5ff7a81fe9e0411c4d47d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 19:00:25 +0530|fix: correct CycleService method call and attribute access in weekly_checkin_service
+66cae1ed90bacdba218ad1527475193983cf9ffc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 18:54:51 +0530|fix: use is_reward_unlocked instead of has_reward in weekly_checkin_service
+43f3490729c82a7c2c0fb858a4c1286e11f8e09b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 18:36:43 +0530|feat: Add Weekly Check-in feature
+e7300e1350167478bbb7bbcc3330823726b927f6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 17:23:19 +0530|fix: insights endpoint - join ActionPlan for plan_date filter
+67098221560a90e5c3adaa4f07b1ff2caa7f0f4e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 17:15:22 +0530|perf: Optimize streak calculation - batch load all data in 1 query
+a7ffa037812a05013ddd1e38cce37b0bbb65ee80|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 16:33:46 +0530|fix: CRITICAL - Fix JSONB mutation detection for freeze_used_dates
+d66f3d2893a49cc01e7943526c4f7b1654e5d09c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 16:22:24 +0530|fix: Add timezone support to proactive freeze and rewards status
+38055f5451d2d07fb6994af4b2030f876b34e948|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 15:25:40 +0530|Fix all edge cases in streak freeze system
+108d9f6c078d3ab2d7de3a00eb818e0a99a74f4e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 15:19:32 +0530|Fix: Stop counting missed days at frozen day boundary
+931faed185c5ee46f9764dffa2b850f07c4395c5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 14:50:57 +0530|Fix 3 critical bugs found in deep audit of streak freeze
+902173a8f07692dbad8f0d81be11ec4ced51291f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 14:47:49 +0530|Enable multi-day freeze support - users can freeze any number of missed days if they have enough tokens
+aecfd943cfd29796e0a06d975276f17822c108cd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 14:44:32 +0530|Fix critical streak freeze bugs and implement accurate time restrictions
+9d413e0e608f35ff59f7330cfcaf12d542b0cd62|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 13:38:55 +0530|Finalize timezone deep audit fixes and docs
+93a5fc5059a108a0adf084d33608ff1c34dd153e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-29 00:42:23 +0530|fix: Complete timezone-aware streak calculation redesign
+1bbc32d6ee742bfbbbd65b45394f3055098a712d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-28 23:41:05 +0530|fix: Complete redesign of streak freeze logic
+8be66be30415d093ff957527bba2fccdd701f253|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-28 23:35:44 +0530|fix: Streak calculation starts from yesterday, not today
+87426373a470ea4f7c22d64a84d9ccc074079604|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-28 23:18:50 +0530|fix: Add advisory lock to prevent race condition in carryforward
+3e8a5e57ac4a2393439afbeabed928635768d164|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-28 23:07:44 +0530|fix: Handle race condition in carryforward with proper rollback
+512045871ade2f16ba00017b45bb29b4bdb8860d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-28 22:44:45 +0530|fix: Plan generation flow - one plan per day, carryforward only on first generation
+de92c8c8b600a526cf3bee4c75be5f6c985e2568|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 23:08:52 +0530|debug: Add logging to trace freeze_count retrieval
+9ecf1f44e1fbbee00ebaeaef80e1aff3a912434f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 22:49:51 +0530|fix: Remove test override - use real streak calculation
+2584a6b7af1f10fd0ebc3638b2bf751f860e8363|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 02:30:58 +0530|fix: Streak only counts when ALL 4 actions are completed
+fd11166e43dd7141c7bce7b41a1d5e979d9bb380|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 02:25:51 +0530|feat: Carryforward now generates remaining items to reach full 4-action plan
+51620d8503a00d357bf1b374ea44a97efc6445d1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 02:17:14 +0530|feat: Implement plan carryforward when streak freeze is used
+972bdfdea937052976a1407ffd865e8bc00848ae|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 01:06:39 +0530|fix: Sync test user UID in reward_service with streak_service
+bf52f541c2e925e43d72348224c91866d0038962|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 01:01:33 +0530|fix: Update test user UID for streak=30
+c8f041a5206aa65ad273eadc31ce1526c274d93e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 00:55:55 +0530|fix: Force streak=30 for test user without checking DB value
+fe85ecc2833e87616aeb33ba0ac9c36ad2ee6981|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-27 00:24:13 +0530|fix: Update test user UID for streak=30 override
+8974a0d23853c802a226bb0983bfff554c02c17a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 23:49:06 +0530|fix: Force streak=30 for test user AMu7Bum6Kfbc3xIYdmpDVAyHQUF2
+06e38e80f48912ef19ec3c2c7c7a152e5cc900e3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 23:01:36 +0530|fix: Prevent FK violation in streak service for users without profiles
+03615ed6abf4603feba6ffaf41793a6443ed1e30|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 19:49:33 +0530|fix: Add preference_compliance_score column to action_plan_evaluations
+e4a2617b9053619b96cb5031fb3118277b62002a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 19:40:33 +0530|fix: Add missing format params for action plan prompt
+916f416e213ae655118b16f8c1b55093df2cb946|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 19:31:58 +0530|fix: Correct Alembic migration chain for freeze_used_dates
+88be6137cec5ac815e1cd361cf0491303d57aae8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 19:29:44 +0530|fix: Add Alembic migration for freeze_used_dates column
+458a5fc741c6606f8fad10d36de85494ac67d9b7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 19:15:29 +0530|feat: Complete streak freeze implementation with multi-day support
+ffa5e6d2cf5144dbba46b1250995483c1b8b1d2f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 18:34:43 +0530|fix: Test mode now bypasses streak check entirely for rewards
+6624066b2347c20211d4bfaa7d75886cc65a8c9f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 18:29:12 +0530|feat: Add preference_compliance_score to action plan evaluator
+2ca12656fb085a9512ddcb3fe8755c15480bc3fc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 18:16:08 +0530|feat: Add /users/profile/me endpoint for concerns and diagnosis
+93de8c55e0ad6ecbd0856439a5cbf500275e5034|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 17:18:04 +0530|feat: Cultural background uses food emojis instead of country flags
+6a2b044db3e8e93f6a3726dcafb67c74b4c06bd7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 16:55:52 +0530|fix: Apply test mode to claim_reward - was bypassing get_streak_status fix
+03e0bd9c1f6f2fa8bd3bf50945daff6ab1533831|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 16:44:43 +0530|fix: Test mode now only affects specific test user UID, not all users
+7316fa2d3eb25314000cd2217b83cea4df5ceacc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 16:37:20 +0530|feat: Add test mode for 30+ day streak (uses stored value instead of calculating)
+6e937291b6b3622dfa93f16ff4f8fd63b4e7b6c6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 16:23:57 +0530|fix: Refresh All - filter is_replaced items + add loading spinner UX
+3f0e2acdddff19e35eb85d6f0b373f884d8215f4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 16:02:05 +0530|fix: Increase max_tokens to 8000 for batch replacement to prevent JSON truncation
+ff8b832e8fb50489367c824d60800aa8376993f7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 15:48:14 +0530|fix: Pass reasons as Dict instead of list to batch_replace_actions
+356524c8de938ea57f01ac7ecd645ed05c6758d5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 15:38:24 +0530|fix: Use plan_date instead of is_active in refresh-all-incomplete
+a98203ca547e104446e68a40b3fe05713f0b89c1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 15:33:23 +0530|fix: Use get_current_user instead of verify_firebase_token in /claimed endpoint
+0c615f970898e0b44e27597070f5f24de2ddfe3c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 15:23:28 +0530|fix: 30-sec feedback replace also uses daily refresh count
+a991017e3cdf3ccb879c53315bdc00c71e48541a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 15:19:05 +0530|feat: Add /refresh-all-incomplete endpoint for refreshing all incomplete actions
+e3e090d31c13b2abe05b12d151919262903e4368|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 14:49:13 +0530|feat: Complete streak_freeze and first_improvement rewards
+8e89c01f952a31be4c60bc5587d0d5c7444f132b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 12:45:06 +0530|fix: Add root path handler for Render health checks
+2e730fa60b776b065e6779a02b65a84e94a932f8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 12:40:51 +0530|fix: Remove unsupported clock_skew_seconds from Firebase auth
+54a7654ca4973d7b813a6b7c201c0291f7713028|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 12:29:31 +0530|feat: Complete remaining reward effects (2x Refresh, Symptom Patterns, Insights)
+7697908ea71e221e5e2ea2bf7a6b9db67323b469|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 12:08:05 +0530|feat: Complete reward effects integration with preferences system
+6a33f66dbab676bef9b0bd25f952eab14d615eda|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 11:49:53 +0530|feat: Implement streak-based rewards system
+c00f1b5af82a8abc602b0a9f7f62a27c4dce2731|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 10:22:20 +0530|Always return 2nd highest hormone as secondary
+b824e26487760a85e20fee74e6079c04e20882f3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 10:10:31 +0530|Add complete user context to evaluation service
+c317eeba2f2517c1ec6f5e80bf5b8e0435f42553|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 10:07:34 +0530|Add complete user context to all replacement prompts
+cbb3715ab25695ca399c3b3e0b1198c461144be6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 10:03:04 +0530|Add full feedback context to replacement prompt
+bfeac82802288676cf4d3a58fb282a4935dc9d81|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 10:00:41 +0530|Add back feedback memory, stress level, top concern to replacement prompt
+39aefcb87fa28bf890edab3d77868c91618669ad|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 09:54:59 +0530|Refactor replacement to research-first approach
+02eee5508b7276cd8744c76f19ec1244b27b9c08|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 09:36:10 +0530|Improve replacement prompt to reduce validation failures
+0f0a716c15c30305be143dd0c150fd58c02961bb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 09:23:21 +0530|Add detailed traceback logging for replace action errors
+33677e1c393fd7a49379634400be63f87673d6b4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 09:16:26 +0530|Fix: generate variant images sequentially to avoid session conflicts
+bc4e4ad20c0595d0c32ed871e1612ce8beb0b8f0|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 09:15:36 +0530|Fix: async session issues in image library service
+b33837162db62439c23b59ffecb3e999d047f50f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 09:02:36 +0530|Fix: normalize research_studies to list in replacement actions
+9d4aa51d4ed6581eaea64c9c2f6535305b1cc9f8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 02:45:26 +0530|Fix alembic migration: set correct down_revision
+4241d87c882c143cb3ddc1563c2129ce82a3db3a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 02:31:26 +0530|Add text feedback support for ActionDetailScreen
+b7fb39fa7e49d3e274f2eef1034b18c04d54b86e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 01:47:50 +0530|Implement research-first flow: Search interventions BEFORE recommending
+11111c3f359386dca9425659ec33a355e288c329|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 01:33:53 +0530|Improve citation search: Better query guidance with condition, mechanism, and category-specific terms
+c0b17c009b6c17ce64290084677a84469d2dab54|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 01:30:42 +0530|Improve citation relevance: Require user conditions in search queries
+930c002cc634d319eb0b31ef769b0f18f67548da|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 01:13:57 +0530|Add RESEARCH-FIRST approach: Recommendations must be grounded in actual research
+b83c992c7b3913c37ddf019969e35cece509b089|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 01:12:44 +0530|Enhance prompt: Remove limiting lists, add mechanism-based personalization, improve examples
+f38593faad89b0f9368772611d40615fa769e4d7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 01:09:53 +0530|Improve personalization: Remove hardcoded conditions, use dynamic user context
+bda1dd21e48f4b706b04d31838463198e5a5047c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 00:54:54 +0530|Fix: Always calculate cycle phase, remove unclear logic
+42deff464bcebd140c79752b207f31230377657b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 00:29:45 +0530|Root fix: Explicit target_hormone enforcement in GPT prompt
+0093e158db9c2bf2c5f080b398eac8bc0920e622|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 00:25:58 +0530|Fix: Auto-correct GPT target_hormone mismatch - ensures mascot matches hormone
+4040b922655bbe960dc551395f0523382401c775|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-26 00:03:06 +0530|Update action plan generator
+eab798ac3dc21eac8b1fa3dab8b14617838545fc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-25 23:56:03 +0530|fix: make array sizes flexible in prompts - GPT decides count based on action
+8b30133d78862e3647f8090e4be4fc1714a7eef9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-25 23:53:08 +0530|feat: improve action plan prompts for better personalization and variety
+47e961187a8770e9e8dfc4a80d0aa07689e2796a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-25 22:17:03 +0530|fix: remove new_scheduling_service import from question_service
+bd8c68e6fdbabcd2ec7b0bb9b232b63bf81db8bf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-25 22:04:46 +0530|chore: remove orphan/unused code
+266f6823aa0078b19bf6dc281ad6241a00b8289c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-25 21:56:52 +0530|Refactor: Extract magic numbers to ActionPlanConfig class
+1890dfc8fb377bd6927b965675e8e7e48d6b0ea3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-25 00:05:09 +0530|Add debug logging to hormone_stats calculation
+6c10580a619d2c1e4609bf9fa3923429cc573f08|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 17:37:59 +0530|Proper Pydantic + OpenAI Structured Outputs: remove Optional, use model_json_schema(), add empty array instructions
+a411751bdee8b43e4da98e72145e7d26ea7ec314|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 17:31:40 +0530|Implement OpenAI Structured Outputs: GPT now FORCED to return all required fields
+ce281c051a00b38666b5ef874c85618ad9cffdf9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 17:28:55 +0530|Root cause fix: Add complete JSON examples in prompt, restore validation with retry, remove auto-fill hack
+79baf8550ed5523db9c2185e46763a3f9e3a5bea|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 17:24:29 +0530|Fix GPT output parsing: sanitize participants, auto-fill category fields
+e88bf111903c7a66ae83a6499b4309e3c23b1178|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 17:10:07 +0530|Add enhanced production logging for easier debugging
+91c0824dc47b36ae5052cd7b462b4ac9fd798edc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 17:06:25 +0530|Enterprise-grade overhaul: Pydantic validation, PostgreSQL advisory locks, no fallbacks
+1034a138241cd632391d8d70ab35c443954c7e3d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 16:52:12 +0530|Fix image generation to use single call with valid session inside semaphore
+7590dc06ce46d058c4e0da9924406662cd4a3f56|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 16:40:00 +0530|Use NullPool for async engine to fix Supabase MaxClientsInSessionMode
+498a3b6aac59e4c89bc91f59e68b25e77fbbb706|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 16:35:21 +0530|Fix database session concurrency, datetime offset errors, and add timezone-aware plan generation
+1ecc45c7e301c37e6881eaf8bac55d62febc6309|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 16:11:02 +0530|Add detailed logging to diagnose empty image URLs
+a47579173ad3487c6e5227b0ed877adffe3b940e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 16:05:35 +0530|Fix: use isolated DB session per concurrent image task
+10868a9530e4c950c733ea40885e01da6d20bd5f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 15:52:01 +0530|Fix: use naive datetime for TIMESTAMP WITHOUT TIME ZONE columns
+c2f46b3a5da45f5ff0a097a157dbfe740f3dbb0f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 15:16:29 +0530|Fix NameError: MAX_RETRIES not defined at line 592
+4194ca9416b7b33dcf94e32fe9d89616675c2a0b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 13:39:31 +0530|Fix: simplify validation to critical fields only
+20528bdd3ef7a5bfe83300ec7771da872d2c3e77|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 13:36:33 +0530|Fix: restore smart fallbacks for non-critical fields to prevent total generation failure
+5306db3f6a91ea5bcb3f772c0af4d58a9e8fd29f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 13:20:22 +0530|Fix: add IF NOT EXISTS check to pubmed_cache migration
+75b4fafa7a61fb654204bf627346be7b6c56e356|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 13:12:23 +0530|Fix Alembic multiple heads: merge add_pubmed_cache and b1ce18fdc4f2
+4c4fe074b8220282e2cc9347b71188e615320a1e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 12:58:58 +0530|Major action plan generator fixes and improvements
+9292068e002722f6215b2b98ac0baab1fd69c8ff|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 01:38:24 +0530|Add current actions context to replacement prompt to prevent duplicates
+781731e6b45d59ff9b4ac109f52507bb4b0eb6e8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 01:07:14 +0530|Update replacement action prompt to require pmid/verification_link and relevance to user condition
+93de4e5ec995a09551d999cb38658abc9594dc9a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-24 00:33:47 +0530|Fix research study citations to include pmid and verification_link in all places
+3f2e93dd7e3cf1f5af74278d48ffb29dd8220244|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 23:00:34 +0530|Increase image similarity threshold from 0.85 to 0.95
+fbf0c0c6e48ec4e7430507e339fbe6b05ce83bb2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 22:25:12 +0530|feat: Implement Research Paper Library with organic curation
+4377dd87dd0d49196e92fa8945ddac9322684c9a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 22:18:02 +0530|feat: Rename PubMedCache to ResearchPaperLibrary
+59821ee84af994c412af33e3dcae230927027786|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 21:38:59 +0530|fix: Replace remaining bracket access with safe .get() in pubmed_service
+180d83445b9dfcddca17e56d17d1994d88caf0b2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 21:33:31 +0530|fix: Fix replacement action failures
+de1f1a2b4f76f6d49441846c105f6bece24c03e7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 21:16:39 +0530|fix: Filter out irrelevant papers from PubMed results
+2b971014e829915675d3e6a389c2b0c99dabf252|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 20:43:58 +0530|feat: Improve research citation relevance
+f72dbad41ff7bfbcff87ce91e46989a3c0dbdd88|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 20:18:32 +0530|fix: FINAL ROOT CAUSE - Escape curly braces in prompt template
+20d36b80d9817352c717a2f21ed09495f3336096|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 20:11:12 +0530|fix: COMPREHENSIVE - Fix ALL bracket accesses + add traceback logging
+7ccdc9e52081895ee30d72cca6cedaff3dc84675|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 19:52:12 +0530|fix: CRITICAL - Fix KeyError by using .get() in paper logging
+1a36ec87bffe93a2cfe2aa24a4cbf39b5a588d3a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 19:42:20 +0530|fix: Fix remaining KeyError issues in single replacement method
+3cb77df933ffc61de7a2f8963454db4996c92bcb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 19:35:00 +0530|feat: Add GPT tool calling to batch_replace_actions for real citations
+1015f4ab97e054041b45a751369506d4f8aadbc8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 19:27:33 +0530|fix: Fix KeyError 'title' in action plan generation
+f3fb3d21abd37dd1b7181813753c6302ac47a5ed|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 19:06:53 +0530|fix: Fix alembic multi-head migration issue
+e3b94246b421c2facc54c43a7b56064e1d6ee87c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 19:03:12 +0530|feat: Implement real research citations with GPT tool calling
+23e2a2d9502e947e0116217fa2c7142fb568eece|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 16:04:26 +0530|feat: Add PubMed integration for real research citations
+e558a74f7a6a6b44799d945c3bb04dffe91b9d11|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:36:48 +0530|fix: GPT picks symptoms from USER'S HEALTH CONCERNS
+4c519fbe95e4c824dba1a84cfc7b853b84e21a0d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:35:43 +0530|fix: Make symptoms REQUIRED - GPT must always generate it
+bc0b40a0f35fc44e22b989451bb975a7a49437a4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:34:16 +0530|fix: GPT generates action-specific symptoms (same as generate_new_plan)
+2fa0402a2dff1313c13bf6382d3bb8dbd3205a2c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:27:50 +0530|fix: Use user profile symptoms instead of GPT-generated
+4669aba10795d370fe1c6c5b2d733b50e44cd9c4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:19:22 +0530|debug: Add symptoms/conditions logging to batch replacements
+5da1228bdc80a7880db4c02e8cb73ee84f8cdc17|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:12:32 +0530|feat: Add null safety and remove unused pubmed service
+e4ecbaef79210f208d7a588170466167442f51e9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:10:00 +0530|fix: Add symptoms/conditions to ALL response locations
+050ed5df2972517ac1c03e52c6ee7c470bc29101|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 15:08:29 +0530|feat: Add symptoms and conditions to batch replacement response
+9771ae0915ea656e3b551ec57bf0a5f4f04a2a61|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 14:58:47 +0530|hotfix: Accept 'replacements' key from GPT response
+838360d7fc246b20e5500a0ef54dbb519e6373af|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 14:52:51 +0530|fix: Improve PubMed rate limiting for production reliability
+489f0b5627801f5c593ca83200ad1775cfc6d8ba|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 14:37:25 +0530|feat: Add real PubMed research integration
+283dca6e5f515f8409a35c983e8c79426ae832ec|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 14:20:12 +0530|fix: Add category normalization to batch_replace_actions
+01eb303780e8e84879ed91214f237bff99be6075|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 14:15:25 +0530|feat: Add validation + retry logic to batch_replace_actions
+37cc02b36473807ef4a3bbf0ae871ab29542f34b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 14:11:08 +0530|feat: Apply same optimizations to batch_replace_actions
+19a1ea7ac7191273e33db2f247b7cc7310e82c8d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 14:04:08 +0530|feat: Add validation + retry logic to batch_replace_actions
+1a559a3fd7399cb108d309b1b0c172f9662f40ff|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 13:49:29 +0530|hotfix: Remove strict JSON schema causing action generation failure
+45dc363a4c518b8eba36d2b6c8974155088df234|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 13:39:09 +0530|feat: Improve GPT output completeness and image generation quality
+cebe3b1f4293633741a12d3715b4c9f299bfedd2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 02:02:56 +0530|fix: definitively resolve KeyError 'feedback_summary' by unifying context generation
+683a2045390e3cefa138033da5b9cf9265791ad7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 01:48:32 +0530|CRITICAL FIX: Add missing feedback_summary to prompt format()
+ceec9ba03ce79604dd7e7d56119ed93e7c6c381b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-23 01:26:19 +0530|PRODUCTION FIX: Prevent KeyError for new users
+47becc161d6f02a76227f0a5acb1ed9e43e9518e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 21:24:38 +0530|fix: Improve feedback deduplication to prevent like/dislike conflicts
+11b6dfbacb919a56e8242b78b6819f5c97a5f7cf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 20:33:06 +0530|feat: Add feedback deduplication to prevent duplicate records
+39255e87b811baa55817bf63c9ab8427ddf47f2d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 19:47:19 +0530|feat: Add feedback summarization system
+0b546b36ea26ea3c4c971c6bf7529b5784c5c94b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 18:28:23 +0530|Revert JSON schema - back to simple text prompting
+e05370eae4e54817a0e2715063dd5e1eafb73c6e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 18:24:25 +0530|Fix: Python syntax - false to False in JSON schema
+d7421005ef9c980c694f5baa6039e6ffb235387f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 18:22:13 +0530|Fix: Remove unsupported allOf/if/then from JSON schema
+10091fcc77a2215334885852f2c246460370cede|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 18:16:13 +0530|MAJOR: Implement OpenAI Structured Outputs with JSON Schema
+b225c743cfa91082329f5dc2146d4593200a8dcd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 18:10:47 +0530|CRITICAL: Move category fields to position #3 in prompt requirements
+f49490419face7bf9954de45d68457539059b019|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 17:55:36 +0530|Add bulletproof logging to trace GPT response parsing
+54c70869e16f08465374142e6097ecacc44367e6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 17:45:33 +0530|MAJOR: Unify replacement prompt with normal action plan generation
+42c32335f81bf68faa4dc9b48a25b0e1586a2683|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 17:22:35 +0530|Add explicit JSON example to prompt showing category-specific fields
+5d9537022247f485f935a13d16b1e425fd2d6145|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 17:12:32 +0530|Fix: Add research_studies and variants to batch replacement response
+bfa3a1739d5e89f5915b3dbb7b0008677fa24271|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 17:08:08 +0530|Add complete data flow logging for category-specific fields
+6e8321845e39541824519886462f3ef92854e000|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 17:05:06 +0530|Add comprehensive logging to batch replacement to debug GPT response
+c4167250cc24b1b84709a764d9cd5676f289e915|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 16:58:56 +0530|Fix: Add category-specific fields to batch replacement response
+61486532d0b388c64d6b16ad2a36ee82b52c7e99|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 16:51:29 +0530|Fix: Research studies to exactly 1 female-specific, add variant images & category fields to replacements
+ab875b3424a3f186a9938dbaca337775ad172d9d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-22 01:59:34 +0530|Fix action replacement persistence using SQL-direct updates and strict is_replaced filtering
+643afde01c5eb12b31446f04516fb32f23b9cacc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-21 23:33:52 +0530|feat: refine action plan generator prompts for better content separation
+af5f442393a7cbfb723db84d86c73262d9b96f4c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-21 23:12:51 +0530|feat: enhance action plan generation with symptoms and conditions display alignment
+73f24961683ffd6a92d5a8848c0da4bfd3ea9827|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-21 00:06:04 +0530|debug: add comprehensive logging for food_amounts data flow tracing
+0f838b75558b963b5337be658f29e2880f4a3c7f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-20 23:28:35 +0530|fix: remove non-existent generation_metadata + add category-specific fields to GPT prompt for amounts display
+76afe8fc8421d8dea87ee9b79f975711211a6d3b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-20 23:06:34 +0530|fix: variant type safety in batch_replace + enhanced FLUX.1 image prompts
+4fad40b454ed4279273240d9c3d1057a7d93bb87|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-20 20:44:50 +0530|fix: Bug 3 & 5 - type safety for diagnosed_conditions, remove item_id from ActionCompletionRequest
+8b2276b5eac6667f6952cbaf58efe56321c90bca|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-20 18:57:56 +0530|fix: add default context fallback for new users to prevent 500 error
+917abee77d85d7f55e1094f22a637bbfde45f6fc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-20 16:12:47 +0530|fix: GPT prompt - proper variant format with variant_type/title + FLUX-optimized image prompts
+141a89966fa738c2a7c666f155a43aa2224b3bb3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-19 19:11:02 +0530|fix: store and return conditions/symptoms in all action plan creation paths
+a1736ae2e8152bdc02160511affc57f2fad05830|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-19 19:01:25 +0530|fix: add conditions and symptoms to API response for Why/How screen tags
+4f1bf7d1152f2bd3ca4d15b40283796be60b1616|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-19 18:49:40 +0530|feat: integrate Cloudinary for image storage
+429eed4918c23d8eb7314875aa75c0973b75051f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-19 18:10:34 +0530|fix: ActionPlanFeedback uses feedback_type not is_completed
+53f61ab025022b8c490899deedc66012110f6785|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-19 17:10:45 +0530|feat: backend cleanup and action plan flow verification
+28431b098a306ad71db19fb2db9e1fad2184832b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-19 00:24:14 +0530|fix: Add validation for variants to handle malformed GPT responses
+1aa6bde6d6cda7ac9958f5d7252655b91fe88d42|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-19 00:13:24 +0530|fix: Handle race condition when generating action plans concurrently
+0fc92f279868fd683b6f570107073919a220b6a3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 23:56:43 +0530|debug: Add logging for research_studies in GPT response
+ba062b61230b667febf7163d1cfe8f45d02808c7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 23:27:57 +0530|Fix: Chain migration properly to add_action_plan_tables
+dd161f5138821edc96f186d74803dfd2c1fa43cc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 23:27:22 +0530|Fix: Change image URL columns from VARCHAR(500) to TEXT for base64 support
+e44530e542846dca8ec23c60bf91172948f8fc7b|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 23:15:54 +0530|Add show_feedback_prompt_after_seconds, Pillow and supabase deps
+bda664a8e3219ea228306c9432644b212a2ffafb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 22:58:47 +0530|Fix datetime timezone mismatch - use timezone-naive datetimes for PostgreSQL columns
+d739617ee61bc89770013701b87b3d03cb90f790|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 22:37:00 +0530|Add asyncpg dependency for async database connections
+ec3e8b4026dcd6ce3fa2ae7b7929f20b1bbc9fd8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 22:26:00 +0530|Implement full 30-second feedback flow: works_for_me marks all as liked, want_to_change triggers batch replacement
+2c2c80582d6ac157abb6a30d4bf98de262c35f93|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 22:20:09 +0530|Comprehensive personalization: add all health profile fields, enhanced feedback memory, 30s satisfaction prompt, real research citations
+4aad1ccd652789c99fb94b4ef267501dfdd2454e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 22:09:00 +0530|Use examples instead of rigid format for hormone intros - GPT-4o-mini adapts naturally
+3fe9fd7f7761c33d120a9acaa6a19c904546adaf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 22:06:20 +0530|Update hormone persona intros to match app format: 'I'm [Hormone] — in your [phase], [behavior]. [Action] helps boost me and keep you [benefit].'
+fdc08978666b45d2b25d9ae6b7d330ebcd0c0e08|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 22:01:50 +0530|Use actual hormone names instead of persona names (Progesterone not Luna, etc.)
+d201f107924a23710336b28c81ca662789658446|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 21:56:24 +0530|Add RunPod and Supabase env vars for Action Plan image generation
+35072641888f583c947fbc55e9a7741c43fc3661|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-18 21:54:36 +0530|Add Action Plan System - 4 daily personalized actions with AI images
+81f092a5e3352609ac77292686ba03488ff35ecd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 17:08:02 +0530|Fix proactive greeting StructuredTool root cause
+2eddf9e414762a338342de801ac2b13a83abbf9e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:55:22 +0530|feat: STRICT 2-hormone-only - AI sees ONLY user hormones
+82fc9a75baabf8ddd640141fd37ce4800db16314|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:52:39 +0530|feat: Emphasize TOP 2 hormones in recommendations
+e4b46a3156a7053d247e85c75b89650bdae39892|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:48:30 +0530|docs: Add distribution table to module docstring
+8c4e8d413c6f121899debf63872ef2a1fc8d6c63|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:47:45 +0530|feat: Smart lifestyle preference distribution - More of what user prefers
+eaaedcbd95f01ac87cf09b86493bdbd0f20d8cd5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:42:57 +0530|perf: MAJOR optimization - parallel category & recommendation processing
+4ac9c6625bfbc6fe293fe7b4d47b813e54ed85b8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:22:31 +0530|fix: Safe migration for lifestyle_focus - skips broken index operations
+6e0b22a42a51b82f4dba295c7664d96b9b6c3140|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:20:25 +0530|fix: Add safe migration for lifestyle_focus column
+b93d35eadfd2c610995e0f4013e1bfa7a44ee3e8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 15:12:04 +0530|chore: trigger redeploy for database migration
+95390403f24d11a5e656cfe798ab6536951cdc5a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 01:43:09 +0530|feat: Add Eat/Move/Pause lifestyle personalization to recommendations
+98eddd3ce9902708d4a12b17a1b216daff46669d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-16 01:21:29 +0530|feat: Replace RAG with pure prompt engineering for recommendations
+f521a0bf7fdc516b6d01844d31b1a9a4fccc3d42|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 23:48:13 +0530|chore: Remove outdated documentation files
+e49d3bdf0dc6b47b5efe9e12d460b315e06f13e2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 23:28:51 +0530|feat: Add tool execution and personalization to chatbot backend
+caaa29db5fa36fd0411dc94f82adc8b16c04f367|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 22:14:16 +0530|fix: comprehensive chatbot audit - 15 bug fixes & 4 new intelligence modules
+59f39dab970fb7020dda69745d3301025e6aa762|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 19:24:55 +0530|🚀 Major UX improvements: Fix SymptomLog.phase error, add personalized greetings, engaging choices with emojis, friendly slider labels, improved prompts for empathetic responses
+42644fa7f2a23508231a16bcdecffb629012a7ad|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 15:44:56 +0530|🧠 Implement doctor-like intelligence architecture
+221a30d2b9de4124f0ccc4c316314a18de121c59|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 14:55:50 +0530|fix(chat): complete rewrite of chat agent - simplified & robust
+bf6e9001c5d76903909d7f1caa48836cd38b9661|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 14:51:19 +0530|fix(chat): avoid msgpack serialization of SQLAlchemy Session
+a46a2bee472afb5b44ee18f44190b22cffbf5e9f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 14:29:37 +0530|fix(chat): avoid calling StructuredTool directly in safety check
+e574c83e3447d459a20961e3b9b63674a3b20fa3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 14:08:15 +0530|fix: correct CycleService method name get_cycle_info -> get_cycle_phase_info
+55c18b0532b9d6eb7aa52bfffd4a8f73a232c705|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 14:06:02 +0530|fix: correct CycleService method name and handle missing attributes
+fd1f5999eba5bc4b954ddd2b08207291a855fceb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 13:57:16 +0530|fix: remove duplicate migration causing multiple alembic heads
+7735565972eded9e4797e039f5eba1da1b61c25a|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 13:52:17 +0530|fix: make slider session_id explicitly optional with Field default
+74622e9ed9eb4e3ebf1a6a3e307a1e2f35d6c995|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 13:50:45 +0530|chore: add version to chat health endpoint for deploy verification
+24cc4c161b9479b5366b479d326f3f91b159c1a6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 12:53:35 +0530|Fix chatbot tables: add migration to ensure all columns exist
+89da3c06d70d8fe7599fe74460a7f00d3cff1237|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 02:16:30 +0530|Add chat compatibility endpoints and deploy metadata
+d03c2ca1f2824dc2eecc0f482cf9d97682fa8bd2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 02:09:33 +0530|Improve chat error handling and fix tests
+fed60b26cb65a9a7cea8694131d2c78e09dc47a8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 01:59:14 +0530|fix(chat): allow slider endpoint without session_id
+8434276cbd3965d855a7a6a8fd8efcd5bd2616bf|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 01:48:24 +0530|fix(chat): align ORM + memory service with chatbot schema (created_at/metadata/summary)
+e4b30d2b188d0153f4bad6b9bb445f792c6cdcb2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 01:17:40 +0530|fix: remove duplicate /chat prefix from router - was causing 404 on /api/v1/chat/message
+b3a9416f313b501d6673aa3e7eb329d10170c350|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 01:08:12 +0530|fix: update render.yaml for production deployment - fix startCommand, add healthCheckPath, change env to runtime
+1e491b33fa0cdbfce72b053e1065967c02f60698|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 01:03:05 +0530|docs: add chatbot deployment ready status
+e284dd56d03f05c88edb18012997c1874fda88be|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 00:38:13 +0530|fix: Add missing critical environment variables for chatbot
+c7464cfc150f5794d6069e51bd4f5adaa7570179|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-15 00:34:34 +0530|feat: Add complete chatbot implementation with LangGraph
+9efb4c6570ccf2a5726d4e660f925e724759398d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 22:06:24 +0530|Revert: Remove general_wellness filter - keep original behavior
+46b135130963f8dcd20eac53e43f396a11aa50a1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 22:01:24 +0530|fix: Filter out generic 'general_wellness' from conditions display
+204c686577e05c2064ac19c012078ba3c8b4b066|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 21:35:58 +0530|fix: Create initial daily assignments immediately when schedule is created
+365893672ca859e640c6fa81d66562ac3c0686b5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 21:10:56 +0530|fix: Add missing _distribute_hormones_across_recommendations method to RecommendationService
+e5bb939a2d19fcccd1c876b456403e6d9655d43e|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 20:35:16 +0530|fix: V3 engine now uses user's actual hormones from Root Cause Engine
+2775365f4d27b52a05ae62abde54a6b158417ed4|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 20:16:40 +0530|fix: each recommendation gets exactly ONE hormone, not all user hormones
+1108ce9dfb2665e107ab76ed72d5fb39aae88118|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 19:57:49 +0530|feat: Implement Eat/Move/Pause personalization and fix hormone explosion
+5515e61f7e63344878a10cc24bdf3fbf289f2039|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 02:24:15 +0530|fix: Disable period regularity check - show phase for all users
+459c035cf81e7da1aef961938f6e518114f15d74|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-12 02:16:50 +0530|feat: Implement scientifically accurate cycle phase calculation
+c6fee91fa3c46d622d894af0d9037e673e7f1525|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 23:26:34 +0530|Fix: Use NullPool to prevent MaxClientsInSessionMode error
+97f20fc82457c261dd4fe6d1b0d11152ebe3f48c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 20:51:50 +0530|fix: Support first-time users in hormone stats calculation
+62f9e5def8e67be621ad2ce5edc162ecad9030e3|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 19:09:07 +0530|fix: Remove orphaned except block from _determine_time_group
+c9a199bd3070f4777d4b0b189190257a527323b1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 19:04:36 +0530|feat: Intelligent time slot assignment and improved hormone stats
+3ff84a9fdb4e50b3ec6d37792770bc4cd0d24137|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 17:40:04 +0530|fix: Add optimal_times to all nutrition recommendations
+c85d2ffbfceb062815304ee1d4dc149beec3ba94|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 17:20:04 +0530|fix: Convert all hormone names to lowercase for consistency
+7eca79a0fd58912a1135d86bc86c4ebea28886bd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 16:54:19 +0530|fix: Add fallback hormone derivation in _calculate_hormone_stats
+45592dd5e921851711471de64c1465e7f29cf010|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 16:39:23 +0530|fix: Complete hormone mapping - ensures hormones is NEVER empty
+5cff943ce1b91b3947f10afaca5a8d2ef36510b5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-11 16:36:25 +0530|fix: Add missing hormone mappings for root causes
+f7d657b33e3276a62d4fdf15f15282468392f1fd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 22:12:39 +0530|Fix: Move cache clear to END of background task to prevent duplicate LLM calls
+47fc229493b806ab591bc0d2c430a53b68110016|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 21:56:52 +0530|feat: Add comprehensive logging to cache system for Render monitoring
+37a66385882737b81497f7f0dcb82b0bc991e24c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 21:47:35 +0530|feat: Production-ready caching with TTL, size limits, and thread safety
+4b87b1446324d5d7e4b721644d2b66d90f776bd5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 21:24:43 +0530|Fix Evidence Grader pipeline integration - PRODUCTION READY
+6784943dbbe41bcb513b897313fcb6d3ac7412de|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 19:19:34 +0530|📚 V3 Architecture - 100% Code-Verified
+43bd8421d2a92d79f13361466f6deec22d0dc6c6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 19:10:50 +0530|📚 Add V3 Architecture Documentation
+eea49e1ad9ed15775cd56f797d2beeb3e2334b44|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 18:39:10 +0530|🚀 Production Optimizations: Gemini→OpenAI, Caching, Singletons
+80d12b161c930a518410438dcc9b2ffc50b1838d|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 18:11:48 +0530|Fix: BaseExpert import error - use correct class name BaseDomainExpert
+87b46e866bfb9f2f940fa71b0c17f977b7e71357|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 18:03:18 +0530|Fix: Export expert classes from experts/__init__.py (NutritionExpert, MovementExpert, MindfulnessExpert)
+c6bd41e60c5d89be31292e20b1a33cd2b84cddcc|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 17:57:44 +0530|Fix critical bug: V3RecommendationResponse attribute mismatch - Use category-specific attributes (nutrition_recommendations, movement_recommendations, mindfulness_recommendations) instead of non-existent 'recommendations' attribute
+ccaaf0e5e61174b7f40a76300b4dd2dd115d25f7|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 17:47:02 +0530|🚀 V3 Recommendation Engine - Production Ready
+89c25b12b3cca7ad86fac59279f9876970b64abd|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-10 10:15:31 +0530|Simplify RAG: use all 20 chunks, remove unused evidence threshold
+4394a123a67ceb9b64152def200e0ddb18f4fb9f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 23:58:34 +0530|Fix: Enable INFO level logging in production + Add print statements for RAG flow debugging
+9282cfa0605cbb86a10fcc3da85c4d734cd1e86c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 23:38:11 +0530|feat: Add comprehensive logging throughout RAG pipeline - every step visible in Render
+597ef37fd938e888d796a496f07771f4b96f0ca1|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 23:32:45 +0530|fix: Complete RAG cleanup - pure semantic search + startup diagnostics for debugging Render
+4f9b0a84f032cb7f3c76c0e2a342914761e8f3c5|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 23:13:19 +0530|fix: Add safe imports to RAG module and detailed error logging
+de8334f3971e195f0ab356c750562f188aa743cb|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 23:05:09 +0530|debug: Add detailed RAG logging to trace why RAG isn't being called
+adc5016d1b10834cb0559b2ecac08bf4bbd56425|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 22:52:20 +0530|fix: Simplify RAG retrieval - use Pinecone top matches directly, adapt for actual metadata
+ae1a2b2826614645ff80e1ee977045e3d9b08a51|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 21:59:19 +0530|fix: Add namespace parameter to Pinecone query for RAG retrieval
+a741d5c90a41df2c38472811c179d47c4e699726|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 21:57:47 +0530|fix: Remove clock_skew_seconds param incompatible with firebase-admin 6.2.0
+7a92239f29318845404cbefbfd85f33874871f1f|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 21:34:44 +0530|fix: Use pinecone-client 3.2.2 and firebase-admin 6.2.0 for faster build
+f5db455aea1c0dbb46e04160b61aece5ad2dab59|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 18:57:11 +0530|fix: Downgrade firebase-admin to 6.5.0 for compatibility
+5b9df22ea78d0255a37207d5ff6212b5108aecd9|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 18:52:14 +0530|fix: Pin exact versions to speed up Render build
+0c42b3a237017bab0026584a37946089d4fd06f6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 18:42:31 +0530|chore: Remove spacy from requirements (not used)
+4b908cdcd6a710d8a0356d2d1474174b4b8d0725|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 18:38:09 +0530|feat: Add RAG v2 with batch indexing and medical safety
+35b6c82adb7420aed0069cd01b1188ac32f62fa2|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 03:05:33 +0530|fix: auto-enable LLM if GEMINI_API_KEY exists
+3bd48c37b1e69dec15235bc829ccc93d61dbee3c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 02:26:56 +0530|fix: support dynamic top_concern and Others: prefix
+37d2ad2af2d4e07d1f85993d4654e91091e571f8|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-12-09 01:37:42 +0530|Update backend: validators and root cause engine improvements
+5fb61552107d06efdc84c2a6bda7f84ca577d11c|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-11-18 06:43:12 +0530|Add LLM config variables to Settings class
+3665b31cb979762a3ed0c86b1618d0b7562c36d6|Mohan Ganesh|mohanganesh3@users.noreply.github.com|2025-11-18 06:41:44 +0530|Add LLM hormone analysis with backward compatibility
+8524a3a5d19b99eb043abec5d7916a2f9b28471d|Hyuntaek Oh|raphy0316@naver.com|2025-09-26 14:04:10 -0500|fix : cors error
+6006dc6d750bd29fcd5e1f25806f03ad9e971364|Hyuntaek Oh|raphy0316@naver.com|2025-08-30 09:57:14 +0900|fix : rag model bug
+09926faf3bd3d2789e88fb2673d4e448e6dcc8ec|Hyuntaek Oh|raphy0316@naver.com|2025-08-30 06:37:17 +0900|refactor : logging cleanup final
+37741709fc0925fb091680ee73c56fd6c07a7f78|Hyuntaek Oh|raphy0316@naver.com|2025-08-30 04:21:50 +0900|refactor : loggin cleanup step2
+d7495abbec9c03eefd95d0a242f44e16a87d7d7e|Hyuntaek Oh|raphy0316@naver.com|2025-08-30 04:09:12 +0900|refactor : logging cleanup step 1
+da3f4225ba77483432186fc9c963e049f6e81a93|Hyuntaek Oh|raphy0316@naver.com|2025-08-30 02:24:46 +0900|add : Rexical Search + Comparison Script fix : minor bugs about app interaction
+0106db24f89d703571e77584f9be0c2cc1aeaea5|Hyuntaek Oh|raphy0316@naver.com|2025-08-28 18:31:52 +0900|fix : today api for actiondetail screen
+40ae308c54bf380a7c07a852eb9e2a2eba7b22da|Hyuntaek Oh|raphy0316@naver.com|2025-08-28 09:01:55 +0900|refactor : status api
+a034cfce2a22b0c82e7681b61dd35202b77ea696|Hyuntaek Oh|raphy0316@naver.com|2025-08-26 08:30:56 +0900|fix : Prompt json f-string error & Bug fix of scheduling and link session with account.
+82142ede5d6f4ff85b33abd97189d6343d045fbf|Hyuntaek Oh|raphy0316@naver.com|2025-08-26 06:46:00 +0900|fix : default model
+d481530f9eabf74fb3f12cc95f6ad385e334bc4b|Hyuntaek Oh|raphy0316@naver.com|2025-08-26 06:18:08 +0900|fix : ai model bug
+f2910bab1dc29c1e60adf9aa063a89572a598494|Hyuntaek Oh|raphy0316@naver.com|2025-08-26 02:21:22 +0900|Remove large files and update gitignore
+67430383515ee3444bfaa015ea89e0850efa7292|Hyuntaek Oh|raphy0316@naver.com|2025-08-18 15:50:43 +0900|fix : type error fix
+269fa81f5e1bb61bc1ba52cfd4564fce549b02f0|Hyuntaek Oh|raphy0316@naver.com|2025-08-18 15:29:58 +0900|fix : remove users scheme & exclude age validation
+e8b540d665df9a0723f168b12e189e04bd3151dd|=|raphy0316@naver.com|2025-08-18 09:43:16 +0900|fix : questions scheme
+47dd5dfbcde60ca182f024a67f684458776566f5|=|raphy0316@naver.com|2025-08-15 17:17:13 +0900|feat: Complete QuestionScreen API integration with backend schema
+4ceb51fccaaa1987f13cd421e6cc9f9e76caa6c7|=|raphy0316@naver.com|2025-08-04 17:40:11 -0500|git commit -m "Fix indentation issues and implement study_arms_text in Pinecone"
+6b8d2b052a7c4fb47bea6e67d91960dbf585ef02|=|raphy0316@naver.com|2025-08-04 14:13:27 -0500|Fix intervention_type field unification and improve RAG system consistency
+4ec7c6a047f301c12b371296dfe41d39a4baa20f|=|raphy0316@naver.com|2025-07-31 19:59:11 -0500|Push to RAG-Aug20205 repository
+ce7b02e2861d63ce8dd6b2049f15d80117af5b8e|=|raphy0316@naver.com|2025-07-17 17:21:06 -0500|fix : Validators Update
+d2b0283c48300dec8c5a680192431c5b1c28f313|=|raphy0316@naver.com|2025-07-17 17:06:07 -0500|fix: Add I'm not sure to Question Answer Validiater
+bf09459c74d8f91e0e626178bce12049f50a592b|=|raphy0316@naver.com|2025-07-17 15:48:28 -0500|fix : Rednder Setting to Supabase
+318782094d34fc5378b2569a6bb77906037678fe|=|raphy0316@naver.com|2025-07-17 15:29:34 -0500|fix : Delete Redis Connection & Refactoring Logging
+ceed7ce0a7ff87a61627a5592a1e44b22234d9c6|=|raphy0316@naver.com|2025-07-17 11:52:45 -0500|fix : Alembic
+00213284972ee9d3fd25b5cf9130d25431699722|=|raphy0316@naver.com|2025-07-17 11:40:32 -0500|add : redner page
+33c4bb3f2f3d9f1625d4c7e97c9b00da11140bbb|=|raphy0316@naver.com|2025-07-17 11:36:01 -0500|fix : Docker Change
+5bed7dd7107e56854ffc08ab20de20f321302768|=|raphy0316@naver.com|2025-07-16 18:27:53 -0500|fix: Docker Change
+324f63996308b52c41a54ffa5855caa05703b9f7|=|raphy0316@naver.com|2025-07-16 17:55:17 -0500|fix : Comments
+8f4cc9cd028ec911682bdb5b9e69818e30c2836f|=|raphy0316@naver.com|2025-07-16 11:29:26 -0500|fix : convert Korean to English
+e99a7d663bb4142ecb01116ac01c23fd66a5b413|=|raphy0316@naver.com|2025-07-16 10:55:33 -0500|fix: BuildKif Problem solving
+3bb1acddf8f081c19951cebcf2a157c08926d673|=|raphy0316@naver.com|2025-07-16 10:19:07 -0500|initial commit
