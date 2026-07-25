@@ -5,7 +5,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.core.firebase import get_user_by_uid, list_users, update_user, delete_user
-from app.api.v1.endpoints.auth import get_current_active_user
+from app.api.v1.endpoints.auth import get_current_active_user, get_current_user
 from app.core.database import get_db, UserResponse as DBUserResponse
 
 router = APIRouter()
@@ -36,7 +36,7 @@ class UserProfileResponse(BaseModel):
 
 @router.get("/profile/me", response_model=UserProfileResponse)
 async def get_my_profile(
-    current_user: dict = Depends(get_current_active_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get current user's profile with concerns and diagnosis from onboarding survey."""
