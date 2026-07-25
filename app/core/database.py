@@ -79,7 +79,7 @@ else:
     )
 
     # Async Engine
-    async_database_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    async_database_url = _asyncpg_url(database_url)
     async_engine = create_async_engine(
         async_database_url,
         pool_size=2,
@@ -87,7 +87,8 @@ else:
         pool_pre_ping=True,
         pool_recycle=1800,
         pool_timeout=30,
-        echo=False
+        echo=False,
+        connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
