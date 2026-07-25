@@ -1374,19 +1374,30 @@ class ActionPlanGenerator:
         from app.core.database import sanitize_db_url_for_asyncpg
         
         db_url = sanitize_db_url_for_asyncpg(os.getenv("DATABASE_URL", ""))
-        if not db_url.startswith("postgresql+asyncpg://"):
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            
-        self.engine = create_async_engine(
-            db_url, 
-            echo=False,
-            poolclass=NullPool  # No local pooling - Supabase Session Pooler handles it
-        )
-        self.async_session_maker = sessionmaker(
-            self.engine, 
-            class_=AsyncSession, 
-            expire_on_commit=False
-        )
+        if db_url:
+            if not db_url.startswith("postgresql+asyncpg://"):
+                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+            self.engine = create_async_engine(
+                db_url,
+                echo=False,
+                poolclass=NullPool,
+                connect_args={
+                    "ssl": "require",
+                    "statement_cache_size": 0,
+                    "prepared_statement_cache_size": 0,
+                },
+            )
+            self.async_session_maker = sessionmaker(
+                self.engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+        else:
+            # Pure helpers (prompt/category/cycle calculations) do not need a
+            # database. Defer the configuration error until a DB-backed flow.
+            self.engine = None
+            self.async_session_maker = None
         
         # The Supabase session pool allows 15 server connections on this plan.
         # Image generation also runs beside API polling and background workers, so

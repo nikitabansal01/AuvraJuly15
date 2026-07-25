@@ -20,15 +20,15 @@ _SAFE_POSTGRES_SSL_MODES = frozenset({"require", "verify-ca", "verify-full"})
 
 
 def normalize_postgres_tls_url(database_url: str) -> str:
-    """Ensure database URL uses postgresql scheme and strip sslmode parameter for driver compatibility."""
+    """Return a PostgreSQL URL that requires encrypted transport by default."""
     try:
         parsed = make_url(database_url)
     except Exception as exc:
         raise RuntimeError("Invalid PostgreSQL database URL") from exc
 
     query = dict(parsed.query)
-    query.pop("sslmode", None)
     query.pop("ssl", None)
+    query.setdefault("sslmode", "require")
     return parsed.set(query=query).render_as_string(hide_password=False)
 
 
@@ -84,7 +84,12 @@ if settings.ENVIRONMENT == "production":
     async_engine = create_async_engine(
         async_database_url,
         poolclass=NullPool,
-        echo=False
+        echo=False,
+        connect_args={
+            "ssl": "require",
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+        },
     )
 else:
     # Development environment - use minimal pooling
@@ -1537,6 +1542,19 @@ def validate_database_configuration() -> None:
         raise RuntimeError(
             f"Missing or placeholder production database configuration: {joined_keys}"
         )
+
+    for key, value in (
+        ("DATABASE_URL", settings.DATABASE_URL),
+        ("LANGGRAPH_CHECKPOINT_POSTGRES_DSN", settings.LANGGRAPH_CHECKPOINT_POSTGRES_DSN),
+    ):
+        try:
+            sslmode = make_url(value).query.get("sslmode")
+        except Exception as exc:
+            raise RuntimeError(f"Invalid PostgreSQL configuration: {key}") from exc
+        if sslmode and sslmode.lower() not in _SAFE_POSTGRES_SSL_MODES:
+            raise RuntimeError(
+                f"Unsafe sslmode in production database configuration: {key}"
+            )
 
     # Validate both DSNs even when they point to the same database. This is a
     # configuration check only and does not open a connection.

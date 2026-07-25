@@ -98,7 +98,10 @@ def test_prompt_templates():
         "symptom_checkin_insights": "No symptom check-in data yet",
         "allowed_symptoms": "[]",
         "allowed_conditions": "[]",
-        "recently_recommended": "(none)"
+        "recently_recommended": "(none)",
+        "health_situation_summary": "No additional health context",
+        "unified_memory_context": "No saved memory",
+        "chat_history": "No prior chat"
     }
     
     try:
@@ -193,8 +196,8 @@ def test_image_library_service_init():
     service = get_image_library_service()
     
     assert service is not None
-    assert service.SIMILARITY_THRESHOLD == 0.85
-    assert service.COST_PER_IMAGE == 0.0006
+    assert service.SIMILARITY_THRESHOLD == 0.88
+    assert service.COST_PER_IMAGE == 0.0
     print(f"  ✅ Service initialized")
     print(f"  ✅ Similarity threshold: {service.SIMILARITY_THRESHOLD}")
     print(f"  ✅ Cost per image: ${service.COST_PER_IMAGE}")
@@ -253,12 +256,11 @@ def test_prompt_enhancement():
     test_prompt = "bowl of oatmeal with berries"
     enhanced = service._enhance_prompt(test_prompt)
     
-    # enhanced is a tuple (positive_prompt, negative_prompt)
-    assert "oatmeal" in enhanced[0]
-    assert "professional" in enhanced[0].lower()
-    assert "tones" in enhanced[0].lower()
+    assert "oatmeal" in enhanced.lower()
+    assert "professional" in enhanced.lower()
+    assert "wellness" in enhanced.lower()
     print(f"  Original: {test_prompt}")
-    print(f"  Enhanced: {enhanced[0][:100]}...")
+    print(f"  Enhanced: {enhanced[:100]}...")
     
     print("✅ Prompt enhancement test passed!")
 

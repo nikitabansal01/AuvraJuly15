@@ -16,8 +16,15 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-client = AsyncOpenAI()
+_client: Optional[AsyncOpenAI] = None
+
+
+def _get_openai_client() -> AsyncOpenAI:
+    """Create the SDK client only when an LLM call is actually made."""
+    global _client
+    if _client is None:
+        _client = AsyncOpenAI()
+    return _client
 
 # Groq fallback configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -88,7 +95,7 @@ async def call_llm(
     openai_error = None
     
     try:
-        response = await client.chat.completions.create(
+        response = await _get_openai_client().chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
@@ -139,7 +146,7 @@ async def call_llm_structured(
     
     for attempt in range(max_retries + 1):
         try:
-            response = await client.chat.completions.create(
+            response = await _get_openai_client().chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,

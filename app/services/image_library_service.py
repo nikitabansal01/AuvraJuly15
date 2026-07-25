@@ -84,9 +84,8 @@ class ImageLibraryService:
         
         # HTTP clients
         self.client = httpx.AsyncClient(timeout=120.0)
-        self._gemini_request_semaphore = asyncio.Semaphore(1)
+        self._async_semaphores = {}
         self._gemini_retry_after = 0.0
-        self._cloudinary_upload_semaphore = asyncio.Semaphore(1)
         
         # In-memory cache for embeddings (avoid repeated API calls)
         self._embedding_cache: Dict[str, List[float]] = {}
@@ -120,6 +119,15 @@ class ImageLibraryService:
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
         logger.info(f"  Cloudinary configured: {self._cloudinary_configured}")
         logger.info(f"  Supabase configured: {bool(self.supabase_url and self.supabase_key)}")
+
+    def _async_semaphore(self, name: str, capacity: int) -> asyncio.Semaphore:
+        """Return a limiter bound to the currently running event loop."""
+        loop = asyncio.get_running_loop()
+        current = self._async_semaphores.get(name)
+        if current is None or current[0] is not loop:
+            current = (loop, asyncio.Semaphore(capacity))
+            self._async_semaphores[name] = current
+        return current[1]
     
     async def get_or_generate_image(
         self,
@@ -566,7 +574,7 @@ class ImageLibraryService:
             return None
 
         try:
-            async with self._gemini_request_semaphore:
+            async with self._async_semaphore("gemini", 1):
                 if time.monotonic() < self._gemini_retry_after:
                     return None
 
@@ -644,7 +652,7 @@ class ImageLibraryService:
             return None
 
     
-    def _enhance_prompt(self, prompt: str, category: str, variant_type: Optional[str] = None) -> str:
+    def _enhance_prompt(self, prompt: str, category: str = "food", variant_type: Optional[str] = None) -> str:
         """
         Create prompts that show users EXACTLY what to eat or do.
         
@@ -766,7 +774,7 @@ class ImageLibraryService:
             public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
             
             # Upload image bytes in a separate thread to avoid blocking the event loop
-            async with self._cloudinary_upload_semaphore:
+            async with self._async_semaphore("cloudinary", 1):
                 result = await asyncio.to_thread(
                     cloudinary.uploader.upload,
                     image_data,
@@ -814,7 +822,7 @@ class ImageLibraryService:
             public_id = f"auvra/{category}{variant_str}_{timestamp}_{file_hash}"
             
             # Upload from URL in a separate thread to avoid blocking the event loop
-            async with self._cloudinary_upload_semaphore:
+            async with self._async_semaphore("cloudinary", 1):
                 result = await asyncio.to_thread(
                     cloudinary.uploader.upload,
                     image_url,

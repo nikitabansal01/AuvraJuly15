@@ -161,16 +161,6 @@ class PubMedService:
     Combined: Can handle 100+ users easily with cascading fallback.
     """
     
-    # Class-level semaphores for rate limiting per provider
-    # PubMed: 3 req/s without key, 10 req/s with key. Using 2 for balance.
-    _pubmed_semaphore = asyncio.Semaphore(2)  # Allow 2 concurrent calls - balance speed vs 429 
-    
-    # OpenAlex: 10 req/s (polite pool).
-    _openalex_semaphore = asyncio.Semaphore(8)
-    
-    # Semantic Scholar: 1 req/s (unauthenticated).
-    _semantic_semaphore = asyncio.Semaphore(1)
-
     _MAX_RETRIES = 2 
     _RETRY_DELAYS = [0.5, 1.0]
     
@@ -181,16 +171,23 @@ class PubMedService:
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=15.0)  # Increased timeout for slower connections
         self._rate_limit_delay = 0.25  # Balance between speed and avoiding 429
+        # asyncio primitives must be created inside the event loop that uses
+        # them (not at module import time, which breaks CLI/tests on Python 3.9).
+        self._semaphores: Dict[str, Tuple[asyncio.AbstractEventLoop, asyncio.Semaphore]] = {}
         
         # Check for PubMed API Key (increases rate limit to 10/s)
         # We can dynamically adjust the semaphore capacity if needed, 
         # but for now we'll just check it to add to requests.
         from app.core.config import settings
         self.pubmed_api_key = getattr(settings, "PUBMED_API_KEY", None)
-        
-        # If API Key exists, we could theoretically bump the semaphore,
-        # but changing a class-level asyncio.Semaphore is tricky safely.
-        # We'll rely on the API key to reduce 429s.
+
+    def _provider_semaphore(self, provider: str, capacity: int) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        current = self._semaphores.get(provider)
+        if current is None or current[0] is not loop:
+            current = (loop, asyncio.Semaphore(capacity))
+            self._semaphores[provider] = current
+        return current[1]
     
     def build_pubmed_search_params(
         self,
@@ -582,7 +579,7 @@ class PubMedService:
     
     async def _search_pubmed_multiple(self, query: str, max_results: int = 5) -> List[Dict]:
         """Search PubMed and return multiple papers."""
-        async with self._pubmed_semaphore:
+        async with self._provider_semaphore("pubmed", 2):
             # Population/topic exclusions
             population_exclusions = "pregnant[ti] OR pregnancy[ti] OR prenatal[ti] OR children[ti] OR pediatric[ti] OR men[ti] OR male[ti] OR postmenopausal[ti]"
             topic_exclusions = "guideline[ti] OR guidelines[ti] OR cancer[ti] OR oncology[ti]"
@@ -636,7 +633,7 @@ class PubMedService:
     
     async def _search_openalex_multiple(self, query: str, max_results: int = 3) -> List[Dict]:
         """Search OpenAlex and return multiple papers."""
-        async with self._openalex_semaphore:
+        async with self._provider_semaphore("openalex", 8):
             try:
                 # Use helper to build params
                 params = self.build_openalex_search_params(
@@ -753,7 +750,7 @@ class PubMedService:
     async def _search_pubmed(self, query: str, max_results: int = 5) -> Optional[Dict]:
         """Search PubMed for papers, with relevance filtering and rate limiting."""
         # Use semaphore to serialize API calls (Fix #1 - prevents 429)
-        async with self._pubmed_semaphore:
+        async with self._provider_semaphore("pubmed", 2):
             for attempt in range(self._MAX_RETRIES):
                 try:
                     # Exclude clinical guidelines, non-original research, and non-matching populations
@@ -1080,7 +1077,7 @@ class PubMedService:
     
     async def _search_openalex(self, query: str) -> Optional[Dict]:
         """Search OpenAlex for papers (100k/day free)."""
-        async with self._openalex_semaphore:
+        async with self._provider_semaphore("openalex", 8):
             try:
                 # Remove boolean operators for OpenAlex
                 clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)
@@ -1152,7 +1149,7 @@ class PubMedService:
     
     async def _search_semantic_scholar(self, query: str) -> Optional[Dict]:
         """Search Semantic Scholar for papers."""
-        async with self._semantic_semaphore:
+        async with self._provider_semaphore("semantic", 1):
             try:
                 # Clean query
                 clean_query = re.sub(r'\b(AND|OR)\b', ' ', query)

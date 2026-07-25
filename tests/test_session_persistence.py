@@ -1,6 +1,8 @@
 import sys
 import os
 from datetime import datetime, timedelta
+import pytest
+from sqlalchemy.exc import OperationalError
 
 # Add the project root to sys.path
 sys.path.append(os.getcwd())
@@ -11,6 +13,7 @@ from app.services.question_service import QuestionService
 def test_session_lifecycle():
     db = SessionLocal()
     service = QuestionService(db)
+    session_id = None
     
     device_id = "test_device_123"
     uid = "test_user_789"
@@ -20,7 +23,12 @@ def test_session_lifecycle():
     try:
         # 1. Create session
         print("Creating session...")
-        session_id = service.create_session(device_id)
+        try:
+            session_id = service.create_session(device_id)
+        except Exception as exc:
+            if isinstance(exc.__cause__, OperationalError) or "OperationalError" in str(exc):
+                pytest.skip("Integration database is not available")
+            raise
         print(f"Session created: {session_id}")
         
         # 2. Verify session is active
@@ -72,8 +80,9 @@ def test_session_lifecycle():
             
     finally:
         # Cleanup
-        db.query(QuestionSession).filter(QuestionSession.session_id == session_id).delete()
-        db.commit()
+        if session_id is not None:
+            db.query(QuestionSession).filter(QuestionSession.session_id == session_id).delete()
+            db.commit()
         db.close()
 
 if __name__ == "__main__":

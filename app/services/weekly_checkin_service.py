@@ -117,13 +117,24 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
         
         try:
             # Use whisper-1 for reliable transcription
-            transcript = await client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio,
-                language="en",
-                prompt=health_context,
-                response_format="verbose_json"
-            )
+            try:
+                transcript = await client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio,
+                    language="en",
+                    prompt=health_context,
+                    response_format="verbose_json"
+                )
+            except TypeError as exc:
+                # Keep compatibility with OpenAI-compatible clients that only
+                # implement the model/file subset of the transcription API.
+                if "unexpected keyword argument" not in str(exc):
+                    raise
+                audio.seek(0)
+                transcript = await client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio,
+                )
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
             raise ValueError(f"Transcription failed: {str(e)}")
