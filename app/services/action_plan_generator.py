@@ -28,7 +28,7 @@ from datetime import datetime, timezone, date, timedelta
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, update, text, or_, exists
+from sqlalchemy import select, and_, update, text, or_, exists, func
 
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool, execute_pubmed_tool_multiple
@@ -1403,6 +1403,7 @@ class ActionPlanGenerator:
         # Image generation also runs beside API polling and background workers, so
         # keep enough headroom instead of opening all 16 image sessions at once.
         self.db_semaphore = asyncio.Semaphore(4)
+        self._image_repair_plan_ids: set[int] = set()
         
         logger.info(f"ActionPlanGenerator initialized with shared engine")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
@@ -1535,13 +1536,29 @@ class ActionPlanGenerator:
                 # This ensures frontend always receives valid image URLs
                 has_missing_images = False
                 if image_mode != "none":
-                    has_missing_images = await self._check_missing_images(existing_plan, db)
+                    has_missing_images = await self._check_missing_images(
+                        existing_plan, db, image_mode
+                    )
                     
                     if has_missing_images:
-                        logger.info(f" [IMAGE-BG] Launching background image generation for plan {existing_plan.id}")
-                        asyncio.create_task(
-                            self._background_ensure_images(existing_plan.id, user_id, image_mode)
-                        )
+                        if existing_plan.id not in self._image_repair_plan_ids:
+                            self._image_repair_plan_ids.add(existing_plan.id)
+                            logger.info(f" [IMAGE-BG] Repairing images before exposing plan {existing_plan.id}")
+                            asyncio.create_task(
+                                self._background_ensure_images(existing_plan.id, user_id, image_mode)
+                            )
+                        return {
+                            "success": True,
+                            "generating": True,
+                            "plan_exists": True,
+                            "plan_id": existing_plan.id,
+                            "plan_date": str(existing_plan.plan_date),
+                            "progress": 95,
+                            "phase": "Creating images",
+                            "estimated_remaining_seconds": 45,
+                            "message": "Finishing your personalized plan images...",
+                            "plan_source": "existing_plan_image_repair",
+                        }
                 
                 resp = await self._format_plan_response(existing_plan, db)
                 if isinstance(resp, dict) and resp.get("success"):
@@ -2072,6 +2089,25 @@ class ActionPlanGenerator:
                 )
                 total_cost += image_cost
                 logger.info(f"[GENERATE]  Images generated. Cost: ${image_cost:.4f}")
+
+                missing_heroes = sum(
+                    1 for action in actions_with_images
+                    if not action.get("hero_image_url")
+                )
+                missing_variants = sum(
+                    1
+                    for action in actions_with_images
+                    for variant in action.get("variants", [])
+                    if not isinstance(variant, dict) or not variant.get("image_url")
+                ) if image_mode == "full" else 0
+                incomplete_variant_sets = sum(
+                    1 for action in actions_with_images
+                    if len(action.get("variants", [])) < 3
+                ) if image_mode == "full" else 0
+                if missing_heroes or missing_variants or incomplete_variant_sets:
+                    raise RuntimeError(
+                        "Image generation did not complete; refusing to publish an incomplete plan"
+                    )
             
             # Step 4: Store plan in database
             # Use a fresh, short-lived session to avoid "connection closed" errors after long external calls.
@@ -6198,6 +6234,31 @@ JSON ONLY:
         for action_idx, action in enumerate(actions):
             action_title = action.get("title", "Wellness Action")
             action_category = action.get("category", "food")
+
+            # Every published action has exactly three usable alternatives. Some
+            # fallback language models omit them, so create deterministic variant
+            # shells before generating images rather than publishing empty detail
+            # screens.
+            raw_variants = action.get("variants")
+            variants = [v for v in raw_variants if isinstance(v, dict)] if isinstance(raw_variants, list) else []
+            defaults = {
+                "food": ["healthy", "easy", "tasty"],
+                "movement": ["gentle", "quick", "energizing"],
+                "mindfulness": ["brief", "guided", "solo"],
+            }.get(action_category, ["alternative", "simpler", "quick"])
+            existing_types = {v.get("variant_type") for v in variants}
+            for variant_type in defaults:
+                if len(variants) >= 3:
+                    break
+                if variant_type in existing_types:
+                    continue
+                variants.append({
+                    "variant_type": variant_type,
+                    "title": f"{variant_type.title()} {action_title}",
+                    "description": f"A {variant_type} way to try {action_title}",
+                })
+                existing_types.add(variant_type)
+            action["variants"] = variants[:3]
             
             # Check if this action already has images (carryforward item)
             has_hero = bool(action.get("hero_image_url"))
@@ -6635,13 +6696,22 @@ JSON ONLY:
             logger.error(f"Error storing plan: {e}")
             raise
     
-    async def _check_missing_images(self, plan: Any, db: AsyncSession) -> bool:
+    async def _check_missing_images(
+        self,
+        plan: Any,
+        db: AsyncSession,
+        image_mode: str = "full",
+    ) -> bool:
         """
         Quick check if any items are missing images (without generating them).
         
         Returns True if any hero images are missing.
         """
-        from app.core.database import ActionPlanItem, ImageLibrary
+        from app.core.database import (
+            ActionPlanItem,
+            ActionPlanItemVariant,
+            ImageLibrary,
+        )
         
         try:
             result = await db.execute(
@@ -6662,7 +6732,35 @@ JSON ONLY:
                     )
                 ).limit(1)  # We only need to know if ANY are missing
             )
-            return bool(result.scalars().first())
+            if result.scalars().first():
+                return True
+
+            if image_mode != "full":
+                return False
+
+            active_item_ids = select(ActionPlanItem.id).where(
+                ActionPlanItem.plan_id == plan.id,
+                ActionPlanItem.is_replaced.isnot(True),
+            )
+            active_count = int(
+                await db.scalar(
+                    select(func.count()).select_from(active_item_ids.subquery())
+                )
+                or 0
+            )
+            valid_variant_count = int(
+                await db.scalar(
+                    select(func.count(ActionPlanItemVariant.id)).where(
+                        ActionPlanItemVariant.item_id.in_(active_item_ids),
+                        exists().where(
+                            ImageLibrary.image_url
+                            == ActionPlanItemVariant.image_url
+                        ),
+                    )
+                )
+                or 0
+            )
+            return valid_variant_count < active_count * 3
         except Exception as e:
             logger.warning(f"Error checking missing images: {e}")
             return False
@@ -6701,6 +6799,7 @@ JSON ONLY:
         except Exception as e:
             logger.error(f" [BG-IMAGE] Error in background image generation: {e}")
         finally:
+            self._image_repair_plan_ids.discard(plan_id)
             if session:
                 await session.close()
     
@@ -6771,9 +6870,38 @@ JSON ONLY:
                             )
                         )
                     )
-                    variants = variants_result.scalars().all()
+                    variants = list(variants_result.scalars().all())
+                    defaults = {
+                        "food": ["healthy", "easy", "tasty"],
+                        "movement": ["gentle", "quick", "energizing"],
+                        "mindfulness": ["brief", "guided", "solo"],
+                    }.get(item.category, ["alternative", "simpler", "quick"])
+                    existing_types = {variant.variant_type for variant in variants}
+                    for variant_type in defaults:
+                        if len(variants) >= 3:
+                            break
+                        if variant_type in existing_types:
+                            continue
+                        variant = ActionPlanItemVariant(
+                            item_id=item.id,
+                            variant_type=variant_type,
+                            title=f"{variant_type.title()} {item.title}",
+                            description=f"A {variant_type} way to try {item.title}",
+                            image_url="",
+                            image_prompt=f"{variant_type.title()} {item.title}",
+                            created_at=datetime.utcnow(),
+                        )
+                        db.add(variant)
+                        variants.append(variant)
+                        existing_types.add(variant_type)
+                    await db.flush()
                     for v in variants:
-                        variants_missing_images.append((item, v))
+                        if not v.image_url or not await db.scalar(
+                            select(
+                                exists().where(ImageLibrary.image_url == v.image_url)
+                            )
+                        ):
+                            variants_missing_images.append((item, v))
             
             total_missing = len(items_missing_images) + len(variants_missing_images)
             

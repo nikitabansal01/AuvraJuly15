@@ -293,8 +293,9 @@ async def get_today_assignments(
         # Get async session for generator
         async_db = await get_async_db_session()
 
-        # Decide image generation mode (default hero_only for fast initial response)
-        effective_image_mode = image_mode if image_mode in {"full", "hero_only", "none"} else "hero_only" 
+        # A plan is not ready until all hero and variant images exist. "auto"
+        # therefore means the complete 16-image plan, not a partial fast path.
+        effective_image_mode = image_mode if image_mode in {"full", "hero_only", "none"} else "full"
 
         if effective_image_mode not in {"full", "hero_only", "none"}:
             raise HTTPException(status_code=400, detail="Invalid image_mode. Use auto, full, hero_only, or none.")
@@ -437,7 +438,7 @@ async def get_today_plan_status(
             raise HTTPException(status_code=400, detail="User ID not found")
         
         # Get user profile for timezone
-        from app.core.database import UserProfile, ActionPlan, ActionPlanItem, QuestionSession, SessionProcessingStatus
+        from app.core.database import UserProfile, ActionPlan, ActionPlanItem, ActionPlanItemVariant, ImageLibrary, QuestionSession, SessionProcessingStatus
         from app.utils.timezone_utils import get_user_current_date
         
         user_profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
@@ -464,7 +465,26 @@ async def get_today_plan_status(
                 ActionPlanItem.plan_id == plan.id
             ).count()
 
-            is_ready = item_count > 0
+            active_items = db.query(ActionPlanItem).filter(
+                ActionPlanItem.plan_id == plan.id,
+                ActionPlanItem.is_replaced.isnot(True),
+            ).all()
+            item_count = len(active_items)
+            valid_image_urls = {
+                row[0] for row in db.query(ImageLibrary.image_url).all()
+            }
+            heroes_ready = bool(active_items) and all(
+                item.hero_image_url in valid_image_urls for item in active_items
+            )
+            item_ids = [item.id for item in active_items]
+            variants = db.query(ActionPlanItemVariant).filter(
+                ActionPlanItemVariant.item_id.in_(item_ids)
+            ).all() if item_ids else []
+            variants_ready = (
+                len(variants) >= len(active_items) * 3
+                and all(variant.image_url in valid_image_urls for variant in variants)
+            )
+            is_ready = heroes_ready and variants_ready
 
             return {
                 "plan_exists": True,
