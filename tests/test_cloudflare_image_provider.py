@@ -70,3 +70,27 @@ async def test_cloudflare_provider_handles_rate_limit(monkeypatch):
 
     assert result is None
     assert service._cloudflare_retry_after > 0
+
+
+@pytest.mark.asyncio
+async def test_cloudflare_provider_caps_enhanced_prompt(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "account-id")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "secret-token")
+    service = ImageLibraryService()
+    await service.client.aclose()
+    service.client = _Client(
+        _Response(
+            200,
+            {
+                "success": True,
+                "result": {"image": base64.b64encode(b"image").decode()},
+                "errors": [],
+            },
+        )
+    )
+    monkeypatch.setattr(service, "_enhance_prompt", lambda *args: "x" * 3000)
+
+    await service._call_cloudflare_image("Long prompt")
+
+    _, request = service.client.calls[0]
+    assert len(request["json"]["prompt"]) == 2000

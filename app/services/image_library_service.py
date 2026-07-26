@@ -623,7 +623,10 @@ class ImageLibraryService:
                 if time.monotonic() < self._cloudflare_retry_after:
                     return None
 
-                enhanced = self._enhance_prompt(prompt, category, variant_type)
+                # FLUX accepts at most 2,048 prompt characters. Some action
+                # variants already contain a detailed image prompt before our
+                # style guidance is appended, so leave a small safety margin.
+                enhanced = self._enhance_prompt(prompt, category, variant_type)[:2000]
                 model_path = self.cloudflare_model_name.lstrip("/")
                 logger.info("🎨 [CLOUDFLARE] generating: %s...", prompt[:50])
                 response = await self.client.post(
@@ -647,7 +650,17 @@ class ImageLibraryService:
                     logger.warning("Cloudflare Workers AI daily/rate limit reached")
                     return None
 
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    try:
+                        errors = response.json().get("errors", [])
+                    except Exception:
+                        errors = []
+                    logger.error(
+                        "Cloudflare Workers AI rejected image request (HTTP %s): %s",
+                        response.status_code,
+                        errors,
+                    )
+                    return None
                 payload = response.json()
                 if not payload.get("success"):
                     logger.error(

@@ -6204,6 +6204,10 @@ JSON ONLY:
                         db=task_session,
                         title_embedding=title_embedding
                     )
+                    # This task owns an isolated session. Persist the image
+                    # library row before closing it; otherwise SQLAlchemy rolls
+                    # it back and the completed plan looks unfinished later.
+                    await task_session.commit()
                 
                 if not url:
                     logger.warning(f"[ImageTask] Empty URL for {category}/{variant_type}")
@@ -6932,6 +6936,7 @@ JSON ONLY:
                             user_id=user_id,
                             db=task_session
                         )
+                        await task_session.commit()
                     
                     if url:
                         item.hero_image_url = url
@@ -6964,6 +6969,7 @@ JSON ONLY:
                             user_id=user_id,
                             db=task_session
                         )
+                        await task_session.commit()
                     
                     if url:
                         variant.image_url = url
