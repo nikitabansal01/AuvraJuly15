@@ -28,7 +28,7 @@ from datetime import datetime, timezone, date, timedelta
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, update, text, or_
+from sqlalchemy import select, and_, update, text, or_, exists
 
 from app.services.image_library_service import get_image_library_service
 from app.services.pubmed_service import PUBMED_SEARCH_TOOL, execute_pubmed_tool, execute_pubmed_tool_multiple
@@ -6312,9 +6312,9 @@ JSON ONLY:
         # ============================================================================
         MAX_IMAGE_RETRIES = 3
         FALLBACK_IMAGE_URLS = {
-            "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
-            "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
-            "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+            "food": "",
+            "movement": "",
+            "mindfulness": "",
         }
         
         for retry_attempt in range(MAX_IMAGE_RETRIES):
@@ -6641,7 +6641,7 @@ JSON ONLY:
         
         Returns True if any hero images are missing.
         """
-        from app.core.database import ActionPlanItem
+        from app.core.database import ActionPlanItem, ImageLibrary
         
         try:
             result = await db.execute(
@@ -6651,7 +6651,13 @@ JSON ONLY:
                         ActionPlanItem.is_replaced.isnot(True),
                         or_(
                             ActionPlanItem.hero_image_url.is_(None),
-                            ActionPlanItem.hero_image_url == ""
+                            ActionPlanItem.hero_image_url == "",
+                            ~exists(
+                                select(ImageLibrary.id).where(
+                                    ImageLibrary.image_url
+                                    == ActionPlanItem.hero_image_url
+                                )
+                            ),
                         )
                     )
                 ).limit(1)  # We only need to know if ANY are missing
@@ -6706,7 +6712,11 @@ JSON ONLY:
         image_mode: str = "hero_only"
     ) -> None:
         """Check if plan items have missing hero images and generate them."""
-        from app.core.database import ActionPlanItem, ActionPlanItemVariant
+        from app.core.database import (
+            ActionPlanItem,
+            ActionPlanItemVariant,
+            ImageLibrary,
+        )
         
         try:
             # Get items with missing hero images
@@ -6717,7 +6727,13 @@ JSON ONLY:
                         ActionPlanItem.is_replaced.isnot(True),
                         or_(
                             ActionPlanItem.hero_image_url.is_(None),
-                            ActionPlanItem.hero_image_url == ""
+                            ActionPlanItem.hero_image_url == "",
+                            ~exists(
+                                select(ImageLibrary.id).where(
+                                    ImageLibrary.image_url
+                                    == ActionPlanItem.hero_image_url
+                                )
+                            ),
                         )
                     )
                 )
@@ -6744,7 +6760,13 @@ JSON ONLY:
                                 ActionPlanItemVariant.item_id == item.id,
                                 or_(
                                     ActionPlanItemVariant.image_url.is_(None),
-                                    ActionPlanItemVariant.image_url == ""
+                                    ActionPlanItemVariant.image_url == "",
+                                    ~exists(
+                                        select(ImageLibrary.id).where(
+                                            ImageLibrary.image_url
+                                            == ActionPlanItemVariant.image_url
+                                        )
+                                    ),
                                 )
                             )
                         )
@@ -7565,9 +7587,9 @@ Include these papers in the research_studies field of your response.
             # SQLAlchemy async sessions can't be shared across concurrent tasks
             variant_results = []
             FALLBACK_IMAGE_URLS = {
-                "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
-                "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
-                "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+                "food": "",
+                "movement": "",
+                "mindfulness": "",
             }
             
             for vd in variant_data:
@@ -8960,9 +8982,9 @@ Respond with valid JSON only."""
             
             # Fallback URLs
             FALLBACK_IMAGE_URLS = {
-                "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
-                "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
-                "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+                "food": "",
+                "movement": "",
+                "mindfulness": "",
             }
             
             async def generate_hero_image(replacement_action, index):

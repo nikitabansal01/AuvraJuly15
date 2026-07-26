@@ -4,10 +4,12 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.pool import NullPool
+from sqlalchemy.exc import OperationalError
 from datetime import datetime, date
 import uuid
 import hashlib
 import logging
+import time
 from app.core.config import settings
 from typing import List
 
@@ -1499,11 +1501,25 @@ def create_tables():
 
 
 def check_database_connection() -> None:
-    """Raise when the primary application database cannot answer a query."""
-    with engine.connect() as connection:
-        result = connection.execute(text("SELECT 1")).scalar_one()
-        if result != 1:
-            raise RuntimeError("Database readiness query returned an unexpected result")
+    """Raise when the primary application database cannot answer a query.
+
+    Supabase's pooler can briefly terminate a connection while it performs an
+    administrative restart. Retry only that connection-level failure so a
+    momentary pooler recycle does not incorrectly mark the whole app unready.
+    """
+    for attempt in range(3):
+        try:
+            with engine.connect() as connection:
+                result = connection.execute(text("SELECT 1")).scalar_one()
+                if result != 1:
+                    raise RuntimeError(
+                        "Database readiness query returned an unexpected result"
+                    )
+                return
+        except OperationalError:
+            if attempt == 2:
+                raise
+            time.sleep(0.15 * (attempt + 1))
 
 
 def _is_missing_or_placeholder_database_url(value: str) -> bool:

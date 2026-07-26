@@ -52,12 +52,12 @@ class ImageLibraryService:
     EMBEDDING_DIMENSION = 1536
     
 
-    # Fallback images when generation fails - prevents empty image URLs in database
-    # These are hosted on Cloudinary and match the app's visual style
+    # Image generation is a required part of this pipeline. Never return a
+    # generic/broken URL as though Gemini produced a real action image.
     FALLBACK_IMAGE_URLS = {
-        "food": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_food_fzjqkl.jpg",
-        "movement": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_movement_k8zq3n.jpg",
-        "mindfulness": "https://res.cloudinary.com/dxr2gmqjl/image/upload/v1736711935/action-plan-images/fallback_mindfulness_pqwz9m.jpg",
+        "food": "",
+        "movement": "",
+        "mindfulness": "",
     }
     
     def __init__(self):
@@ -159,9 +159,8 @@ class ImageLibraryService:
         
         # Defensive: ensure prompt is never None
         if prompt is None:
-            logger.warning(f"[IMAGE] ⚠️ Received None prompt, using fallback for {category}/{variant_type}")
-            fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS.get("food", ""))
-            return (fallback_url, False, 0.0)
+            logger.warning(f"[IMAGE] Received empty prompt for {category}/{variant_type}")
+            return ("", False, 0.0)
         
         # Log what we're processing
         logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
@@ -528,16 +527,15 @@ class ImageLibraryService:
             image_bytes = await self._call_gemini_image(prompt, category, variant_type)
 
             if not image_bytes:
-                fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-                return (fallback_url, False, 0.0)
+                return ("", False, 0.0)
 
             image_url = await self._upload_to_cloudinary(image_bytes, category, variant_type)
             if not image_url:
                 image_url = await self._upload_to_supabase(image_bytes, category, variant_type)
 
             if not image_url:
-                fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-                return (fallback_url, False, 0.0)
+                logger.error("Gemini returned image bytes, but both Cloudinary and Supabase uploads failed")
+                return ("", False, 0.0)
 
             generation_time_ms = int((time.time() - start_time) * 1000)
             await self._store_in_library(
@@ -556,9 +554,8 @@ class ImageLibraryService:
             return (image_url, False, 0.0)
 
         except Exception as e:
-            logger.error(f"Error generating and storing image: {e}, using fallback for {category}")
-            fallback_url = self.FALLBACK_IMAGE_URLS.get(category, self.FALLBACK_IMAGE_URLS["food"])
-            return (fallback_url, False, 0.0)
+            logger.error(f"Error generating and storing image: {e}")
+            return ("", False, 0.0)
 
     async def _call_gemini_image(
         self,
@@ -597,17 +594,26 @@ class ImageLibraryService:
                             }]
                         }],
                         "generationConfig": {
-                            "responseModalities": ["IMAGE"]
+                            "responseModalities": ["IMAGE"],
+                            "responseFormat": {
+                                "image": {
+                                    "aspectRatio": "1:1",
+                                    "imageSize": "512"
+                                }
+                            }
                         },
                     },
                     timeout=120.0,
                 )
 
                 if response.status_code == 429:
-                    self._gemini_retry_after = time.monotonic() + 60.0
-                    logger.warning(
-                        "Gemini image quota unavailable (429); using hosted fallback images for 60 seconds"
-                    )
+                    error_payload = response.json().get("error", {})
+                    error_message = error_payload.get("message", "")
+                    quota_is_disabled = "limit: 0" in error_message
+                    cooldown_seconds = 900.0 if quota_is_disabled else 60.0
+                    self._gemini_retry_after = time.monotonic() + cooldown_seconds
+                    reason = "billing/quota is disabled" if quota_is_disabled else "rate limit exceeded"
+                    logger.warning(f"Gemini image generation unavailable: {reason}")
                     return None
 
                 response.raise_for_status()

@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from app.api.v1.endpoints import health
 from app.core import database
@@ -39,6 +40,18 @@ class _Engine:
         return _Connection(self.value)
 
 
+class _FlakyEngine:
+    def __init__(self, failures):
+        self.failures = failures
+        self.attempts = 0
+
+    def connect(self):
+        self.attempts += 1
+        if self.attempts <= self.failures:
+            raise OperationalError("SELECT 1", {}, Exception("pooler restart"))
+        return _Connection()
+
+
 def test_database_connection_executes_real_readiness_query(monkeypatch):
     monkeypatch.setattr(database, "engine", _Engine())
 
@@ -50,6 +63,18 @@ def test_database_connection_rejects_unexpected_result(monkeypatch):
 
     with pytest.raises(RuntimeError, match="unexpected result"):
         database.check_database_connection()
+
+
+def test_database_connection_retries_transient_operational_errors(monkeypatch):
+    flaky_engine = _FlakyEngine(failures=2)
+    sleeps = []
+    monkeypatch.setattr(database, "engine", flaky_engine)
+    monkeypatch.setattr(database.time, "sleep", sleeps.append)
+
+    database.check_database_connection()
+
+    assert flaky_engine.attempts == 3
+    assert sleeps == [0.15, 0.3]
 
 
 async def test_liveness_does_not_touch_database(monkeypatch):
