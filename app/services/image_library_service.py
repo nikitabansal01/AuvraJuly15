@@ -69,6 +69,26 @@ class ImageLibraryService:
             "GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image"
         )
 
+        # Cloudflare Workers AI is the primary image provider on production's
+        # free tier. Its FLUX response is base64 image data, so the existing
+        # Cloudinary persistence and semantic cache remain unchanged.
+        self.cloudflare_account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+        self.cloudflare_api_token = os.getenv("CLOUDFLARE_API_TOKEN")
+        self.cloudflare_model_name = os.getenv(
+            "CLOUDFLARE_IMAGE_MODEL",
+            "@cf/black-forest-labs/flux-1-schnell",
+        )
+        try:
+            configured_steps = int(os.getenv("CLOUDFLARE_IMAGE_STEPS", "4"))
+        except ValueError:
+            configured_steps = 4
+        self.cloudflare_image_steps = max(1, min(configured_steps, 8))
+        self.image_provider = os.getenv("IMAGE_PROVIDER", "").strip().lower() or (
+            "cloudflare"
+            if self.cloudflare_account_id and self.cloudflare_api_token
+            else "gemini"
+        )
+
         # OpenAI for embeddings
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         
@@ -86,6 +106,7 @@ class ImageLibraryService:
         self.client = httpx.AsyncClient(timeout=120.0)
         self._async_semaphores = {}
         self._gemini_retry_after = 0.0
+        self._cloudflare_retry_after = 0.0
         
         # In-memory cache for embeddings (avoid repeated API calls)
         self._embedding_cache: Dict[str, List[float]] = {}
@@ -115,6 +136,13 @@ class ImageLibraryService:
                 logger.warning(f"Failed to configure Cloudinary: {e}")
         
         logger.info(f"ImageLibraryService initialized")
+        logger.info(
+            "  Image provider: %s (Cloudflare configured: %s, model: %s, steps: %s)",
+            self.image_provider,
+            bool(self.cloudflare_account_id and self.cloudflare_api_token),
+            self.cloudflare_model_name,
+            self.cloudflare_image_steps,
+        )
         logger.info(f"  Gemini Image: {bool(self.gemini_api_key)} (model: {self.gemini_model_name})")
         logger.info(f"  OpenAI configured: {bool(self.openai_api_key)}")
         logger.info(f"  Cloudinary configured: {self._cloudinary_configured}")
@@ -520,11 +548,13 @@ class ImageLibraryService:
         prompt_embedding: Optional[List[float]],
         db: AsyncSession
     ) -> Tuple[str, bool, float]:
-        """Generate a new Gemini image and store it."""
+        """Generate a provider image, persist it, and cache its metadata."""
         start_time = time.time()
 
         try:
-            image_bytes = await self._call_gemini_image(prompt, category, variant_type)
+            image_bytes, generation_model = await self._call_image_provider(
+                prompt, category, variant_type
+            )
 
             if not image_bytes:
                 return ("", False, 0.0)
@@ -534,7 +564,7 @@ class ImageLibraryService:
                 image_url = await self._upload_to_supabase(image_bytes, category, variant_type)
 
             if not image_url:
-                logger.error("Gemini returned image bytes, but both Cloudinary and Supabase uploads failed")
+                logger.error("The image provider returned bytes, but both Cloudinary and Supabase uploads failed")
                 return ("", False, 0.0)
 
             generation_time_ms = int((time.time() - start_time) * 1000)
@@ -546,6 +576,7 @@ class ImageLibraryService:
                 variant_type=variant_type,
                 user_id=user_id,
                 generation_time_ms=generation_time_ms,
+                generation_model=generation_model,
                 db=db
             )
 
@@ -556,6 +587,84 @@ class ImageLibraryService:
         except Exception as e:
             logger.error(f"Error generating and storing image: {e}")
             return ("", False, 0.0)
+
+    async def _call_image_provider(
+        self,
+        prompt: str,
+        category: str,
+        variant_type: Optional[str],
+    ) -> Tuple[Optional[bytes], str]:
+        """Call the configured provider without disguising provider failures."""
+        if self.image_provider == "cloudflare":
+            image_bytes = await self._call_cloudflare_image(
+                prompt, category, variant_type
+            )
+            return image_bytes, self.cloudflare_model_name
+
+        image_bytes = await self._call_gemini_image(prompt, category, variant_type)
+        return image_bytes, self.gemini_model_name
+
+    async def _call_cloudflare_image(
+        self,
+        prompt: str,
+        category: str = "food",
+        variant_type: Optional[str] = None,
+    ) -> Optional[bytes]:
+        """Generate a square image using Cloudflare Workers AI FLUX."""
+        if not self.cloudflare_account_id or not self.cloudflare_api_token:
+            logger.warning("Cloudflare Workers AI credentials are not configured")
+            return None
+
+        if time.monotonic() < self._cloudflare_retry_after:
+            return None
+
+        try:
+            async with self._async_semaphore("cloudflare", 4):
+                if time.monotonic() < self._cloudflare_retry_after:
+                    return None
+
+                enhanced = self._enhance_prompt(prompt, category, variant_type)
+                model_path = self.cloudflare_model_name.lstrip("/")
+                logger.info("🎨 [CLOUDFLARE] generating: %s...", prompt[:50])
+                response = await self.client.post(
+                    (
+                        "https://api.cloudflare.com/client/v4/accounts/"
+                        f"{self.cloudflare_account_id}/ai/run/{model_path}"
+                    ),
+                    headers={
+                        "Authorization": f"Bearer {self.cloudflare_api_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "prompt": enhanced,
+                        "steps": self.cloudflare_image_steps,
+                    },
+                    timeout=120.0,
+                )
+
+                if response.status_code == 429:
+                    self._cloudflare_retry_after = time.monotonic() + 60.0
+                    logger.warning("Cloudflare Workers AI daily/rate limit reached")
+                    return None
+
+                response.raise_for_status()
+                payload = response.json()
+                if not payload.get("success"):
+                    logger.error(
+                        "Cloudflare Workers AI rejected image request: %s",
+                        payload.get("errors", []),
+                    )
+                    return None
+
+                encoded_image = (payload.get("result") or {}).get("image")
+                if not encoded_image:
+                    logger.warning("[CLOUDFLARE] No image data in response")
+                    return None
+                return base64.b64decode(encoded_image, validate=True)
+
+        except Exception as exc:
+            logger.error("Cloudflare Workers AI image generation failed: %s", exc)
+            return None
 
     async def _call_gemini_image(
         self,
@@ -902,6 +1011,7 @@ class ImageLibraryService:
         variant_type: Optional[str],
         user_id: str,
         generation_time_ms: int,
+        generation_model: Optional[str],
         db: AsyncSession
     ) -> None:
         """Store generated image in the library for future semantic matching.
@@ -918,7 +1028,7 @@ class ImageLibraryService:
                 prompt_embedding=prompt_embedding,
                 category=category,
                 variant_type=variant_type,
-                generation_model=self.gemini_model_name,
+                generation_model=generation_model or self.image_provider,
                 generation_cost=str(self.COST_PER_IMAGE),
                 generation_time_ms=generation_time_ms,
                 image_width=512,
