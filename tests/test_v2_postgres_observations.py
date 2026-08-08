@@ -389,3 +389,108 @@ async def test_an_invalid_value_is_rejected_before_it_reaches_the_database() -> 
                 key=f"k-{uuid.uuid4()}",
             )
     assert problem.value.code == "observation_invalid"
+
+
+@pytest.mark.anyio
+async def test_a_period_observation_drives_the_cycle_endpoint() -> None:
+    """Cycle state is derived from observations, with no cycle write path."""
+    from sqlalchemy import text
+
+    from app.v2.application.contracts import ObservationValue, ObservationWriteRequest
+    from app.v2.application.cycle import cycle_state
+    from app.v2.application.observations import record_observation
+    from app.v2.domain.identity import VerifiedPrincipal
+    from app.v2.persistence.uow import SqlAlchemyUnitOfWork
+
+    with _engine().begin() as connection:
+        user_id = _insert_user(connection)
+        subject = connection.execute(
+            text("SELECT auth_subject FROM app.users WHERE id = :id"),
+            {"id": user_id},
+        ).scalar_one()
+
+    principal = VerifiedPrincipal(
+        auth_provider="firebase",
+        subject=subject,
+        email=None,
+        email_verified=True,
+        display_name=None,
+    )
+
+    async with SqlAlchemyUnitOfWork() as uow:
+        before = await cycle_state(uow, principal=principal)
+    assert before.phase is None
+    assert before.cycle_length_source == "unknown"
+
+    started = datetime.now(UTC) - timedelta(days=6)
+    async with SqlAlchemyUnitOfWork() as uow:
+        await record_observation(
+            uow,
+            principal=principal,
+            request=ObservationWriteRequest(
+                client_observation_id=uuid.uuid4(),
+                observation_type="cycle_event",
+                code="period_start",
+                observed_at=started,
+                value=ObservationValue(codes=["period_start"]),
+            ),
+            key=f"k-{uuid.uuid4()}",
+        )
+
+    async with SqlAlchemyUnitOfWork() as uow:
+        after = await cycle_state(uow, principal=principal)
+    assert after.cycle_day == 7
+    assert after.phase == "follicular"
+    assert after.last_period_start == started.date()
+
+
+@pytest.mark.anyio
+async def test_a_superseded_period_start_stops_driving_the_cycle() -> None:
+    from sqlalchemy import text
+
+    from app.v2.application.contracts import ObservationValue, ObservationWriteRequest
+    from app.v2.application.cycle import cycle_state
+    from app.v2.application.observations import record_observation
+    from app.v2.domain.identity import VerifiedPrincipal
+    from app.v2.persistence.uow import SqlAlchemyUnitOfWork
+
+    with _engine().begin() as connection:
+        user_id = _insert_user(connection)
+        subject = connection.execute(
+            text("SELECT auth_subject FROM app.users WHERE id = :id"),
+            {"id": user_id},
+        ).scalar_one()
+
+    principal = VerifiedPrincipal(
+        auth_provider="firebase",
+        subject=subject,
+        email=None,
+        email_verified=True,
+        display_name=None,
+    )
+
+    async def record(observed_at, supersedes=None):
+        async with SqlAlchemyUnitOfWork() as uow:
+            return await record_observation(
+                uow,
+                principal=principal,
+                request=ObservationWriteRequest(
+                    client_observation_id=uuid.uuid4(),
+                    observation_type="cycle_event",
+                    code="period_start",
+                    observed_at=observed_at,
+                    value=ObservationValue(codes=["period_start"]),
+                    supersedes_observation_id=supersedes,
+                ),
+                key=f"k-{uuid.uuid4()}",
+            )
+
+    wrong = await record(datetime.now(UTC) - timedelta(days=20))
+    async with SqlAlchemyUnitOfWork() as uow:
+        assert (await cycle_state(uow, principal=principal)).cycle_day == 21
+
+    await record(datetime.now(UTC) - timedelta(days=3), supersedes=wrong.observation_id)
+    async with SqlAlchemyUnitOfWork() as uow:
+        corrected = await cycle_state(uow, principal=principal)
+    assert corrected.cycle_day == 4
+    assert corrected.phase == "menstrual"

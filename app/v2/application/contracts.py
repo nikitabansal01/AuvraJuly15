@@ -672,3 +672,19 @@ class ObservationCatalogEntry(ContractModel):
 class ObservationCatalogResponse(ContractModel):
     catalog_version: str
     entries: list[ObservationCatalogEntry]
+
+
+class CycleStateResponse(ContractModel):
+    """Derived on read from observed period starts; nothing here is stored."""
+
+    as_of_local_date: date
+    timezone: str
+    policy_version: str
+    cycle_day: int | None
+    phase: str | None
+    phase_confidence: str
+    cycle_length_days: int | None
+    #: Whether cycle length came from the user's own history or her report.
+    cycle_length_source: str
+    last_period_start: date | None
+    next_period_estimate: date | None

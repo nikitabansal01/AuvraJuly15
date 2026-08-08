@@ -6,6 +6,7 @@ from app.v2.api.problem_details import ProblemDetailsRoute
 from app.v2.api.routes import (
     account,
     conversations,
+    cycle,
     engagement,
     health,
     identity,
@@ -26,5 +27,6 @@ router.include_router(plans.router)
 router.include_router(engagement.router)
 router.include_router(rewards.router)
 router.include_router(observations.router)
+router.include_router(cycle.router)
 router.include_router(conversations.router)
 router.include_router(jobs.router)

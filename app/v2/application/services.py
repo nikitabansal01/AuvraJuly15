@@ -35,6 +35,7 @@ from app.v2.application.errors import (
     service_unavailable,
     unprocessable_content,
 )
+from app.v2.application.cycle import evaluate_for_user as evaluate_cycle_for_user
 from app.v2.domain.enums import (
     IdempotencyState,
     JobState,
@@ -532,11 +533,23 @@ async def request_plan_generation(
         )
 
     local_date = request.local_date or now.astimezone(ZoneInfo(profile.timezone)).date()
+    # Derive the cycle now, at request time, and carry it in the job payload.
+    # The materializer stores it verbatim on the published plan, so the plan
+    # records what it was actually generated against. Before this the payload
+    # never carried a snapshot and every published plan stored {}, leaving the
+    # generator cycle-blind.
+    cycle = await evaluate_cycle_for_user(
+        uow,
+        user_id=user.id,
+        timezone=profile.timezone,
+        as_of_local_date=local_date,
+    )
     request_payload = {
         "local_date": local_date.isoformat(),
         "timezone": profile.timezone,
         "assessment_id": str(assessment.id),
         "assessment_version": assessment.version,
+        "cycle_snapshot": cycle.as_snapshot(),
     }
     decision = await _begin_idempotent(
         uow,
