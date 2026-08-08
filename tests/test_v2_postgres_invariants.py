@@ -671,3 +671,199 @@ def test_engagement_migration_downgrade_restores_prior_review_trigger() -> None:
             assert "active plan items" not in definition
     finally:
         command.upgrade(config, "head")
+
+
+# ---------------------------------------------------------------------------
+# Migration 0012: reward assets, balance integrity and freeze evidence.
+#
+# Before 0012, app.assert_streak_day_scope returned early for every freeze row,
+# so a `frozen` streak day could cite any evidence_id at all. These tests are
+# the executable proof that the bypass is closed.
+# ---------------------------------------------------------------------------
+
+
+def _insert_user(connection) -> uuid.UUID:
+    from sqlalchemy import text
+
+    user_id = uuid.uuid4()
+    connection.execute(
+        text("INSERT INTO app.users (id, auth_subject) VALUES (:id, :subject)"),
+        {"id": user_id, "subject": f"test-{user_id}"},
+    )
+    return user_id
+
+
+def _grant_freeze(connection, user_id: uuid.UUID) -> uuid.UUID:
+    """Grant one freeze token so a later redeem does not overdraw."""
+    from sqlalchemy import text
+
+    ledger_id = uuid.uuid4()
+    connection.execute(
+        text(
+            "INSERT INTO app.reward_ledger "
+            "(id, user_id, source_type, source_id, event_type, asset_type, "
+            " asset_key, quantity) "
+            "VALUES (:id, :user_id, 'reward_claim', :source_id, 'grant', "
+            "'freeze', 'streak_freeze', 1)"
+        ),
+        {"id": ledger_id, "user_id": user_id, "source_id": uuid.uuid4()},
+    )
+    return ledger_id
+
+
+def _redeem_freeze(connection, user_id: uuid.UUID, streak_id: uuid.UUID) -> uuid.UUID:
+    from sqlalchemy import text
+
+    ledger_id = uuid.uuid4()
+    connection.execute(
+        text(
+            "INSERT INTO app.reward_ledger "
+            "(id, user_id, source_type, source_id, event_type, asset_type, "
+            " asset_key, quantity) "
+            "VALUES (:id, :user_id, 'streak_freeze', :streak_id, 'redeem', "
+            "'freeze', 'streak_freeze', -1)"
+        ),
+        {"id": ledger_id, "user_id": user_id, "streak_id": streak_id},
+    )
+    return ledger_id
+
+
+def _insert_frozen_day(connection, user_id, streak_id, evidence_id, day) -> None:
+    from sqlalchemy import text
+
+    connection.execute(
+        text(
+            "INSERT INTO app.streak_days "
+            "(id, user_id, local_date, kind, timezone, evidence_type, "
+            " evidence_id, adjudication_state) "
+            "VALUES (:id, :user_id, :day, 'daily', 'UTC', 'freeze', "
+            ":evidence_id, 'frozen')"
+        ),
+        {
+            "id": streak_id,
+            "user_id": user_id,
+            "day": day,
+            "evidence_id": evidence_id,
+        },
+    )
+
+
+def test_frozen_day_citing_no_ledger_row_is_rejected() -> None:
+    """The exploit: a frozen day with a dangling evidence_id extended a streak."""
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises(DBAPIError, match="own redeemed freeze token"):
+        with _engine().begin() as connection:
+            user_id = _insert_user(connection)
+            _insert_frozen_day(
+                connection, user_id, uuid.uuid4(), uuid.uuid4(), date(2026, 8, 1)
+            )
+
+
+def test_frozen_day_citing_another_users_freeze_is_rejected() -> None:
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises(DBAPIError, match="own redeemed freeze token"):
+        with _engine().begin() as connection:
+            owner_id = _insert_user(connection)
+            other_id = _insert_user(connection)
+            _grant_freeze(connection, other_id)
+            streak_id = uuid.uuid4()
+            stolen = _redeem_freeze(connection, other_id, streak_id)
+            _insert_frozen_day(
+                connection, owner_id, streak_id, stolen, date(2026, 8, 2)
+            )
+
+
+def test_frozen_day_citing_a_grant_rather_than_a_redeem_is_rejected() -> None:
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises(DBAPIError, match="own redeemed freeze token"):
+        with _engine().begin() as connection:
+            user_id = _insert_user(connection)
+            grant_id = _grant_freeze(connection, user_id)
+            _insert_frozen_day(
+                connection, user_id, uuid.uuid4(), grant_id, date(2026, 8, 3)
+            )
+
+
+def test_frozen_day_with_its_own_redeemed_token_is_accepted() -> None:
+    from sqlalchemy import text
+
+    with _engine().begin() as connection:
+        user_id = _insert_user(connection)
+        _grant_freeze(connection, user_id)
+        streak_id = uuid.uuid4()
+        ledger_id = _redeem_freeze(connection, user_id, streak_id)
+        _insert_frozen_day(connection, user_id, streak_id, ledger_id, date(2026, 8, 4))
+        state = connection.execute(
+            text(
+                "SELECT adjudication_state FROM app.streak_days WHERE id = :id"
+            ),
+            {"id": streak_id},
+        ).scalar_one()
+    assert state == "frozen"
+
+
+def test_redeeming_a_freeze_without_a_balance_is_rejected() -> None:
+    """Balances are computed, so the ledger itself must refuse to go negative."""
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises(DBAPIError, match="cannot go negative"):
+        with _engine().begin() as connection:
+            user_id = _insert_user(connection)
+            _redeem_freeze(connection, user_id, uuid.uuid4())
+
+
+def test_one_entitlement_can_be_claimed_only_once() -> None:
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    def claim(connection, user_id):
+        connection.execute(
+            text(
+                "INSERT INTO app.reward_ledger "
+                "(id, user_id, source_type, source_id, event_type, asset_type, "
+                " asset_key, quantity) "
+                "VALUES (:id, :user_id, 'reward_claim', :source_id, 'grant', "
+                "'entitlement', 'diet_prefs', 1)"
+            ),
+            {"id": uuid.uuid4(), "user_id": user_id, "source_id": uuid.uuid4()},
+        )
+
+    with pytest.raises(IntegrityError):
+        with _engine().begin() as connection:
+            user_id = _insert_user(connection)
+            claim(connection, user_id)
+            claim(connection, user_id)
+
+
+def test_points_carry_no_asset_key_and_named_assets_require_one() -> None:
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    def insert(connection, user_id, asset_type, asset_key):
+        connection.execute(
+            text(
+                "INSERT INTO app.reward_ledger "
+                "(id, user_id, source_type, source_id, event_type, asset_type, "
+                " asset_key, quantity) "
+                "VALUES (:id, :user_id, 'daily_review', :source_id, 'grant', "
+                ":asset_type, :asset_key, 1)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "user_id": user_id,
+                "source_id": uuid.uuid4(),
+                "asset_type": asset_type,
+                "asset_key": asset_key,
+            },
+        )
+
+    with pytest.raises(IntegrityError):
+        with _engine().begin() as connection:
+            insert(connection, _insert_user(connection), "points", "should_be_null")
+
+    with pytest.raises(IntegrityError):
+        with _engine().begin() as connection:
+            insert(connection, _insert_user(connection), "freeze", None)

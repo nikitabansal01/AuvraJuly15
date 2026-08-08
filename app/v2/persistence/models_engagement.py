@@ -212,11 +212,34 @@ class RewardLedger(V2Base):
         CheckConstraint(
             "event_type IN ('grant','redeem','expire')", name="valid_event_type"
         ),
-        CheckConstraint("asset_type IN ('points','freeze')", name="valid_asset_type"),
+        CheckConstraint(
+            "asset_type IN ('points','freeze','entitlement')",
+            name="valid_asset_type",
+        ),
         CheckConstraint("quantity <> 0", name="nonzero_quantity"),
         CheckConstraint(
             "(event_type = 'grant' AND quantity > 0) OR (event_type IN ('redeem','expire') AND quantity < 0)",
             name="quantity_sign",
+        ),
+        CheckConstraint(
+            "(asset_type = 'points' AND asset_key IS NULL) "
+            "OR (asset_type <> 'points' AND asset_key IS NOT NULL "
+            "AND btrim(asset_key) <> '')",
+            name="asset_key_presence",
+        ),
+        CheckConstraint(
+            "asset_type <> 'entitlement' "
+            "OR (event_type = 'grant' AND quantity = 1)",
+            name="entitlement_quantity",
+        ),
+        # One claim of one entitlement per user, ever. Partial so it constrains
+        # only entitlements and leaves points and freezes free to repeat.
+        Index(
+            "uq_reward_ledger_entitlement",
+            "user_id",
+            "asset_key",
+            unique=True,
+            postgresql_where=text("asset_type = 'entitlement'"),
         ),
         {"schema": APP_SCHEMA},
     )
@@ -232,6 +255,12 @@ class RewardLedger(V2Base):
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     event_type: Mapped[str] = mapped_column(String(16), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: Names the specific non-fungible asset that moved. NULL only for points,
+    #: which are fungible and need no identity.
+    asset_key: Mapped[str | None] = mapped_column(String(64))
+    catalog_version: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="engagement.v1"
+    )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

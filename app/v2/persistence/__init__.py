@@ -171,6 +171,12 @@ _INDEXES = (
     ("app", "conversations", ("user_id",), "ix_conversations_user"),
     (
         "app",
+        "reward_ledger",
+        ("user_id", "asset_type", "created_at"),
+        "ix_reward_ledger_user_id_asset_type_created_at",
+    ),
+    (
+        "app",
         "plan_refreshes",
         ("user_id", "local_date"),
         "ix_plan_refreshes_accepted_day",

@@ -284,3 +284,48 @@ def test_question_definition_freezes_when_checkin_starts_before_any_answer() -> 
                 ),
                 {"id": question_id},
             )
+
+
+def test_a_scale_answer_must_be_numeric() -> None:
+    """Weekly-trends aggregates cast this to numeric; one bad row would 500.
+
+    validate_weekly_answer enforces the same rule in the application layer,
+    which does not survive a backfill or a manual insert.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    engine = _engine()
+    with engine.begin() as connection:
+        scale_question_id = connection.execute(
+            text(
+                "SELECT id FROM app.weekly_checkin_questions "
+                "WHERE version = 'weekly-checkin.v1' AND answer_type = 'scale' "
+                "ORDER BY ordinal LIMIT 1"
+            )
+        ).scalar_one()
+
+    def answer(connection, value):
+        user_id = _insert_user(connection)
+        conversation_id = _insert_conversation(connection, user_id, "weekly_checkin")
+        checkin_id = _insert_checkin(connection, user_id, conversation_id)
+        connection.execute(
+            text(
+                "INSERT INTO app.weekly_checkin_responses "
+                "(id, weekly_checkin_id, question_id, answer) "
+                "VALUES (:id, :checkin_id, :question_id, CAST(:answer AS jsonb))"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "checkin_id": checkin_id,
+                "question_id": scale_question_id,
+                "answer": json.dumps({"value": value}),
+            },
+        )
+
+    with pytest.raises(DBAPIError, match="numeric value"):
+        with engine.begin() as connection:
+            answer(connection, "very rested")
+
+    with engine.begin() as connection:
+        answer(connection, 4)

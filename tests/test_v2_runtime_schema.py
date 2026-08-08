@@ -12,7 +12,7 @@ from app.v2.runtime import schema
 def test_checked_in_recovery_history_has_the_engagement_ledger_head():
     # A newly added migration must deliberately update this contract and its
     # deployment/rehearsal evidence rather than silently changing process gates.
-    assert schema.expected_schema_head() == "20260808_0011"
+    assert schema.expected_schema_head() == "20260808_0012"
 
 
 class _Result:
