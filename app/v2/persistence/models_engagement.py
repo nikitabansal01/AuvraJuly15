@@ -278,6 +278,22 @@ class Conversation(TimestampMixin, V2Base):
             name="valid_thread_type",
         ),
         CheckConstraint("revision > 0", name="positive_revision"),
+        CheckConstraint(
+            "num_nonnulls(subject_type, subject_id) <> 1", name="subject_pairing"
+        ),
+        CheckConstraint(
+            "subject_type IS NULL OR subject_type IN ('action_plan')",
+            name="valid_subject_type",
+        ),
+        # One care-plan thread per plan, guaranteed by the database.
+        Index(
+            "uq_conversations_subject",
+            "user_id",
+            "subject_type",
+            "subject_id",
+            unique=True,
+            postgresql_where=text("subject_type IS NOT NULL"),
+        ),
         {"schema": APP_SCHEMA},
     )
     id: Mapped[uuid.UUID] = mapped_column(
@@ -295,6 +311,10 @@ class Conversation(TimestampMixin, V2Base):
     thread_type: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="general"
     )
+    #: What this thread is about, when it is about something. A care-plan
+    #: check-in names its plan here rather than in message metadata.
+    subject_type: Mapped[str | None] = mapped_column(String(32))
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     revision: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )

@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.v2.api.problem_details import ProblemDetailsRoute
 from app.v2.api.routes import (
     account,
+    checkins,
     conversations,
     cycle,
     engagement,
@@ -28,5 +29,6 @@ router.include_router(engagement.router)
 router.include_router(rewards.router)
 router.include_router(observations.router)
 router.include_router(cycle.router)
+router.include_router(checkins.router)
 router.include_router(conversations.router)
 router.include_router(jobs.router)

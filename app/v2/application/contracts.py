@@ -691,3 +691,8 @@ class CycleStateResponse(ContractModel):
     cycle_length_source: str
     last_period_start: date | None
     next_period_estimate: date | None
+
+
+class WeeklyCheckinPageResponse(ContractModel):
+    checkins: list[WeeklyCheckinResponse]
+    next_cursor: uuid.UUID | None
