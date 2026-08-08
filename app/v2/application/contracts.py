@@ -550,3 +550,57 @@ class AccountDeletionStatusResponse(ContractModel):
     deletion_request_id: uuid.UUID
     state: str
     receipt_available: bool
+
+
+class RewardBalance(ContractModel):
+    """A computed balance. Never stored; always a sum over the ledger."""
+
+    asset_type: str
+    asset_key: str | None
+    balance: int
+
+
+class RewardGrant(ContractModel):
+    asset_type: str
+    asset_key: str | None
+    quantity: int
+
+
+class RewardState(ContractModel):
+    reward_id: str
+    title: str
+    category: str
+    effect: str
+    icon: str
+    required_streak_days: int
+    state: str
+    claimed_at: datetime | None
+
+
+class RewardsOverviewResponse(ContractModel):
+    catalog_version: str
+    current_streak_days: int
+    best_streak_days: int
+    balances: list[RewardBalance]
+    rewards: list[RewardState]
+
+
+class RewardClaimResponse(ContractModel):
+    reward_id: str
+    catalog_version: str
+    granted: list[RewardGrant]
+    claimed_at: datetime
+
+
+class StreakFreezeRequest(ContractModel):
+    """Freezes one already-closed local day the user would otherwise lose."""
+
+    local_date: date
+
+
+class StreakFreezeResponse(ContractModel):
+    local_date: date
+    timezone: str
+    streak_day_id: uuid.UUID
+    freezes_remaining: int
+    streak_days: int

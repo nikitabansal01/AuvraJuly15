@@ -12,6 +12,7 @@ from app.v2.api.routes import (
     jobs,
     onboarding,
     plans,
+    rewards,
 )
 from app.v2.api.routes.common import problem_responses
 
@@ -22,5 +23,6 @@ router.include_router(identity.router)
 router.include_router(account.router)
 router.include_router(plans.router)
 router.include_router(engagement.router)
+router.include_router(rewards.router)
 router.include_router(conversations.router)
 router.include_router(jobs.router)
