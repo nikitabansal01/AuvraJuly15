@@ -23,6 +23,11 @@ from app.v2.application.errors import (
     unprocessable_content,
 )
 from app.v2.application.services import _begin_idempotent, _complete_idempotent
+from app.v2.domain.observation_catalog import (
+    CATALOG_VERSION as OBSERVATION_CATALOG_VERSION,
+    SEVERITY_UNIT,
+    SYMPTOM as OBSERVATION_SYMPTOM,
+)
 from app.v2.domain.engagement_policy import (
     closed_streak_length,
     daily_review_state,
@@ -31,6 +36,7 @@ from app.v2.domain.engagement_policy import (
 )
 from app.v2.domain.identity import VerifiedPrincipal
 from app.v2.persistence.models import ActionPlan, ActionPlanItem, User
+from app.v2.persistence.models_observations import UserObservation
 from app.v2.persistence.models_engagement import (
     ActionEvent,
     DailyReview,
@@ -38,7 +44,6 @@ from app.v2.persistence.models_engagement import (
     PlanRefresh,
     RewardLedger,
     StreakLedger,
-    SymptomObservation,
 )
 from app.v2.persistence.uow import SqlAlchemyUnitOfWork
 
@@ -400,6 +405,36 @@ def _adjudicate_completed_review(
     return completed, streak_state, points
 
 
+def _symptom_observation(
+    *, user_id: uuid.UUID, request: SymptomObservationRequest, timezone: str
+) -> UserObservation:
+    """Map the v1-shaped symptom request onto the generalized observation table.
+
+    This route predates the canonical /me/observations surface and the mobile
+    client still uses it, so the legacy DTO is kept and translated here rather
+    than duplicating a second write path.
+    """
+
+    severity_given = request.severity is not None
+    return UserObservation(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        observation_type=OBSERVATION_SYMPTOM,
+        code=request.symptom_code,
+        catalog_version=OBSERVATION_CATALOG_VERSION,
+        observed_at=request.observed_at,
+        observed_local_date=request.observed_at.astimezone(
+            ZoneInfo(timezone)
+        ).date(),
+        observed_timezone=timezone,
+        value_numeric=request.severity if severity_given else None,
+        value_unit=SEVERITY_UNIT if severity_given else None,
+        value_codes=None if severity_given else ["present"],
+        client_observation_id=uuid.uuid4(),
+        note=request.note,
+    )
+
+
 async def record_symptom(
     uow: SqlAlchemyUnitOfWork,
     *,
@@ -420,8 +455,11 @@ async def record_symptom(
     )
     if decision.replay_body is not None:
         return SymptomObservationResponse.model_validate(decision.replay_body)
-    observation = SymptomObservation(
-        id=uuid.uuid4(), user_id=user.id, **request.model_dump()
+    profile = await uow.profiles.get(user.id)
+    if profile is None:
+        raise not_found("Profile")
+    observation = _symptom_observation(
+        user_id=user.id, request=request, timezone=profile.timezone
     )
     uow.session.add(observation)
     _complete_idempotent(

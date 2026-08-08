@@ -15,6 +15,7 @@ import os
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -594,6 +595,10 @@ def _json_safe(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, bytes):
         return base64.b64encode(value).decode("ascii")
+    if isinstance(value, Decimal):
+        # Exported as a string so an exact decimal never becomes a lossy float
+        # on the way out of the user's own data.
+        return format(value.normalize(), "f")
     if isinstance(value, dict):
         return {str(key): _json_safe(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -705,8 +710,8 @@ _EXPORT_QUERIES: tuple[tuple[str, str], ...] = (
         "SELECT response.id, response.weekly_checkin_id, response.question_id, response.answer, response.answered_at FROM app.weekly_checkin_responses response JOIN app.weekly_checkins checkin ON checkin.id = response.weekly_checkin_id WHERE checkin.user_id = :user_id ORDER BY response.weekly_checkin_id, response.id",
     ),
     (
-        "symptom_observations",
-        "SELECT id, observed_at, symptom_code, severity, note FROM app.symptom_observations WHERE user_id = :user_id ORDER BY observed_at, id",
+        "user_observations",
+        "SELECT id, observation_type, code, catalog_version, observed_at, observed_local_date, observed_timezone, value_numeric, value_unit, value_codes, value_text, source, supersedes_id, note, recorded_at FROM app.user_observations WHERE user_id = :user_id ORDER BY observed_at, id",
     ),
     (
         "media_assets",

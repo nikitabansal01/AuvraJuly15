@@ -93,10 +93,21 @@ class FakeSession:
         self.added.extend(values)
 
 
+class FakeProfiles:
+    """record_symptom reads the timezone to stamp the observation's local day."""
+
+    def __init__(self, timezone: str = "UTC"):
+        self.timezone = timezone
+
+    async def get(self, _user_id):
+        return SimpleNamespace(timezone=self.timezone)
+
+
 class FakeUow:
     def __init__(self, session, user):
         self.session = session
         self.users = FakeUsers(user)
+        self.profiles = FakeProfiles()
         self.idempotency = FakeIdempotencyRepository()
         self.commits = 0
         self.flushes = 0

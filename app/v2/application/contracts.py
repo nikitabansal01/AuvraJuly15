@@ -604,3 +604,71 @@ class StreakFreezeResponse(ContractModel):
     streak_day_id: uuid.UUID
     freezes_remaining: int
     streak_days: int
+
+
+class ObservationValue(ContractModel):
+    """Exactly one of these is set, mirroring the database's typed columns."""
+
+    numeric: float | None = None
+    unit: str | None = None
+    codes: list[str] | None = None
+    text: str | None = Field(default=None, max_length=4000)
+
+
+class ObservationWriteRequest(ContractModel):
+    client_observation_id: uuid.UUID
+    observation_type: str = Field(min_length=1, max_length=24)
+    code: str = Field(min_length=1, max_length=64)
+    observed_at: datetime
+    value: ObservationValue
+    note: str | None = Field(default=None, max_length=4000)
+    #: Corrections cite the assertion they replace instead of rewriting it.
+    supersedes_observation_id: uuid.UUID | None = None
+
+
+class ObservationResponse(ContractModel):
+    observation_id: uuid.UUID
+    observation_type: str
+    code: str
+    catalog_version: str
+    observed_at: datetime
+    observed_local_date: date
+    value: ObservationValue
+    note: str | None
+    supersedes_observation_id: uuid.UUID | None
+    recorded_at: datetime
+
+
+class ObservationPageResponse(ContractModel):
+    observations: list[ObservationResponse]
+    next_cursor: uuid.UUID | None
+
+
+class DerivedBodyMetrics(ContractModel):
+    """Computed on read. Never stored, so it cannot go stale."""
+
+    bmi: float | None
+    bmi_band: str | None
+    waist_height_ratio: float | None
+
+
+class CurrentObservationsResponse(ContractModel):
+    entries: list[ObservationResponse]
+    derived: DerivedBodyMetrics
+
+
+class ObservationCatalogEntry(ContractModel):
+    code: str
+    observation_type: str
+    value_kind: str
+    label: str
+    unit: str | None
+    minimum: float | None
+    maximum: float | None
+    choices: list[str]
+    multi_select: bool
+
+
+class ObservationCatalogResponse(ContractModel):
+    catalog_version: str
+    entries: list[ObservationCatalogEntry]

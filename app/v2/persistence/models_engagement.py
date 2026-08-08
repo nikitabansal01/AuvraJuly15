@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -17,13 +18,14 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.v2.persistence.base import APP_SCHEMA, OPS_SCHEMA, V2Base
@@ -426,31 +428,6 @@ class WeeklyResponse(V2Base):
     answered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-
-
-class SymptomObservation(V2Base):
-    __tablename__ = "symptom_observations"
-    __table_args__ = (
-        CheckConstraint(
-            "severity IS NULL OR severity BETWEEN 0 AND 10", name="valid_severity"
-        ),
-        {"schema": APP_SCHEMA},
-    )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("app.users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    observed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    symptom_code: Mapped[str] = mapped_column(String(64), nullable=False)
-    severity: Mapped[int | None] = mapped_column(Integer)
-    note: Mapped[str | None] = mapped_column(Text)
 
 
 class ResearchSource(TimestampMixin, V2Base):

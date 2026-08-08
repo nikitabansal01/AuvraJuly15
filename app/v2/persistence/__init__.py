@@ -15,6 +15,7 @@ from app.v2.persistence.models import (
     User,
     UserProfile,
 )
+from app.v2.persistence.models_observations import UserObservation
 from app.v2.persistence.models_engagement import (
     ActionEvent,
     AiEvaluation,
@@ -34,7 +35,6 @@ from app.v2.persistence.models_engagement import (
     ResearchSource,
     RewardLedger,
     StreakLedger,
-    SymptomObservation,
     WeeklyCheckin,
     WeeklyQuestion,
     WeeklyResponse,
@@ -183,9 +183,15 @@ _INDEXES = (
     ),
     (
         "app",
-        "symptom_observations",
-        ("user_id", "observed_at"),
-        "ix_symptom_observations_user_time",
+        "user_observations",
+        ("user_id", "code", "observed_at"),
+        "ix_user_observations_user_code_time",
+    ),
+    (
+        "app",
+        "user_observations",
+        ("user_id", "observation_type", "observed_local_date"),
+        "ix_user_observations_type_day",
     ),
     (
         "ops",
@@ -204,7 +210,7 @@ _INDEXES = (
 _UNINTENDED_INDEXES = (
     ("app", "action_item_events", "ix_action_item_events_user_id"),
     ("app", "conversations", "ix_conversations_user_id"),
-    ("app", "symptom_observations", "ix_symptom_observations_user_id"),
+    ("app", "user_observations", "ix_user_observations_user_id"),
 )
 
 
@@ -275,7 +281,7 @@ __all__ = [
     "WeeklyCheckin",
     "WeeklyQuestion",
     "WeeklyResponse",
-    "SymptomObservation",
+    "UserObservation",
     "ResearchSource",
     "ResearchCitation",
     "AiInvocation",

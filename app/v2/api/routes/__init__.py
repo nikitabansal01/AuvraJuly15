@@ -10,6 +10,7 @@ from app.v2.api.routes import (
     health,
     identity,
     jobs,
+    observations,
     onboarding,
     plans,
     rewards,
@@ -24,5 +25,6 @@ router.include_router(account.router)
 router.include_router(plans.router)
 router.include_router(engagement.router)
 router.include_router(rewards.router)
+router.include_router(observations.router)
 router.include_router(conversations.router)
 router.include_router(jobs.router)

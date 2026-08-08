@@ -293,11 +293,19 @@ async def test_canonical_export_is_encrypted_and_excludes_operational_job_payloa
             )
             await connection.execute(
                 text(
-                    "INSERT INTO app.symptom_observations "
-                    "(id, user_id, observed_at, symptom_code, severity, note) "
-                    "VALUES (:id, :user_id, now(), 'headache', 3, 'private note')"
+                    "INSERT INTO app.user_observations "
+                    "(id, user_id, observation_type, code, observed_at, "
+                    " observed_local_date, observed_timezone, value_numeric, "
+                    " value_unit, client_observation_id, note) "
+                    "VALUES (:id, :user_id, 'symptom', 'headache', now(), "
+                    "current_date, 'UTC', 3, 'score_0_10', :client_id, "
+                    "'private note')"
                 ),
-                {"id": uuid.uuid4(), "user_id": user_id},
+                {
+                    "id": uuid.uuid4(),
+                    "user_id": user_id,
+                    "client_id": uuid.uuid4(),
+                },
             )
         cipher = AesGcmAccountExportCipher(
             "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
@@ -314,7 +322,7 @@ async def test_canonical_export_is_encrypted_and_excludes_operational_job_payloa
         )
         assert payload["format"] == "auvra.account-export.v1"
         assert payload["datasets"]["profile"][0]["display_name"] == "Export Test"
-        assert payload["datasets"]["symptom_observations"][0]["note"] == "private note"
+        assert payload["datasets"]["user_observations"][0]["note"] == "private note"
         assert "generation_jobs" not in payload["datasets"]
         assert "auth_subject" not in payload["datasets"]["account"][0]
     finally:
