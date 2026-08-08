@@ -9,6 +9,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
+from app.v2.persistence.base import VERSION_TABLE, VERSION_TABLE_SCHEMA
 from app.v2.persistence.database import get_engine
 
 
@@ -36,7 +37,10 @@ async def check_database_schema_head() -> None:
         async with get_engine().connect() as connection:
             actual = (
                 await connection.execute(
-                    text("SELECT version_num FROM alembic_version")
+                    text(
+                        "SELECT version_num FROM "
+                        f'"{VERSION_TABLE_SCHEMA}"."{VERSION_TABLE}"'
+                    )
                 )
             ).scalar_one_or_none()
     except Exception as exc:

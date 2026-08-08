@@ -9,6 +9,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from app.v2.persistence import V2Base
+from app.v2.persistence.base import VERSION_TABLE, VERSION_TABLE_SCHEMA
 from app.v2.runtime.config import settings
 
 # this is the Alembic Config object, which provides
@@ -38,7 +39,12 @@ LANGGRAPH_RUNTIME_TABLES = frozenset(
 
 
 def include_object(object_, name, type_, reflected, compare_to):
-    """Exclude only the known LangGraph-owned checkpoint objects."""
+    """Exclude LangGraph-owned checkpoint objects and Alembic's own bookkeeping."""
+    if type_ == "table" and name == VERSION_TABLE:
+        # Alembic auto-excludes its default version table name, but not a
+        # renamed one, so autogenerate would otherwise propose dropping it.
+        return False
+
     if type_ == "table" and name in LANGGRAPH_RUNTIME_TABLES:
         return False
 
@@ -82,6 +88,8 @@ def run_migrations_offline() -> None:
         compare_server_default=True,
         include_object=include_object,
         include_schemas=True,
+        version_table=VERSION_TABLE,
+        version_table_schema=VERSION_TABLE_SCHEMA,
     )
 
     with context.begin_transaction():
@@ -111,6 +119,8 @@ def run_migrations_online() -> None:
             compare_server_default=True,
             include_object=include_object,
             include_schemas=True,
+            version_table=VERSION_TABLE,
+            version_table_schema=VERSION_TABLE_SCHEMA,
         )
 
         with context.begin_transaction():
