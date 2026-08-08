@@ -12,14 +12,26 @@
 # and every v2 migration is additive-only with respect to `public.*`. Verified
 # by tests/test_v2_migration_architecture.py and tests/test_v2_deployment_boundary.py.
 #
-# Deployed 2026-08-08: auvra-v2-worker is live (srv-d9romdqjnfac7385gqeg).
-# auvra-v2-api is created and fully configured (srv-d9romrijnfac7385hfa0,
-# https://auvra-v2-api.onrender.com) but cannot start: FIREBASE_PRIVATE_KEY_ID
-# and FIREBASE_CLIENT_ID are only in the original Firebase service-account
-# JSON, which is not recoverable from the private key material already in use
-# and was not re-obtained in this session. Supply both from the Firebase
-# console (Project Settings -> Service accounts -> Generate new private key,
-# project auvra-adf59) to unblock the API deploy.
+# Deployed and verified live 2026-08-08:
+#   auvra-v2-worker  srv-d9romdqjnfac7385gqeg
+#   auvra-v2-api     srv-d9romrijnfac7385hfa0  https://auvra-v2-api.onrender.com
+# Verified end-to-end against production: health checks, the Firebase auth
+# boundary (401 with no token), the public observation catalog, and a full
+# onboarding-session write (rate limiter -> idempotency check -> Postgres
+# write -> 201) all pass.
+#
+# FIREBASE_PRIVATE_KEY_ID and FIREBASE_CLIENT_ID are deliberately not set.
+# They are optional Firebase Admin SDK metadata -- verified against the
+# google-auth library source, which requires only client_email, token_uri and
+# private_key to build a working credential -- and the original service
+# account JSON that would have supplied them is not recoverable. See
+# app/v2/runtime/config.py and app/v2/infrastructure/auth/firebase_runtime.py.
+#
+# A companion Key Value instance (auvra-v2-redis) backs the API's abuse
+# controls; its IP allow list is 0.0.0.0/0, matching the legacy web service's
+# existing convention, since it already requires TLS and a generated password
+# and carries no business data (Redis here is queue/cache only, per this
+# codebase's own architectural rule).
 #
 # Both services build the identical Dockerfile from one protected commit. CI
 # must promote one immutable registry image before a public production cutover;
