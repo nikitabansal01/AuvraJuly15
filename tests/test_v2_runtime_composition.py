@@ -80,6 +80,36 @@ def test_api_configuration_requires_no_worker_provider_credentials(monkeypatch):
         runtime_config.validate_plan_worker_configuration()
 
 
+def test_api_configuration_accepts_firebase_credentials_without_optional_metadata(
+    monkeypatch,
+):
+    """private_key_id/client_id are optional Admin SDK metadata, not secrets.
+
+    google.oauth2.service_account.Credentials.from_service_account_info only
+    requires client_email, token_uri and private_key to build a working,
+    cryptographically valid credential; verified against the library source.
+    A deployment whose original service-account JSON download is lost but
+    whose private_key is intact and unchanged must still be able to start.
+    """
+    monkeypatch.setattr(
+        runtime_config,
+        "settings",
+        _settings(FIREBASE_PRIVATE_KEY_ID="", FIREBASE_CLIENT_ID=""),
+    )
+    runtime_config.validate_api_configuration()
+
+
+def test_api_configuration_still_rejects_a_missing_private_key(monkeypatch):
+    """The field that is actually the secret must still fail closed."""
+    monkeypatch.setattr(
+        runtime_config,
+        "settings",
+        _settings(FIREBASE_PRIVATE_KEY=""),
+    )
+    with pytest.raises(RuntimeError, match="FIREBASE_PRIVATE_KEY is missing"):
+        runtime_config.validate_api_configuration()
+
+
 def test_api_configuration_rejects_wildcard_production_hosts(monkeypatch):
     monkeypatch.setattr(runtime_config, "settings", _settings(ALLOWED_HOSTS=["*"]))
     with pytest.raises(RuntimeError, match="ALLOWED_HOSTS"):
@@ -226,6 +256,37 @@ def test_deletion_worker_requires_explicit_approval_and_credentials(monkeypatch)
     )
     with pytest.raises(RuntimeError, match="V2_REDIS_URL"):
         runtime_config.validate_plan_worker_configuration()
+
+
+def test_deletion_worker_accepts_firebase_credentials_without_optional_metadata(
+    monkeypatch,
+):
+    """Same relaxation as the API: private_key_id/client_id are not required."""
+    monkeypatch.setattr(
+        runtime_config,
+        "settings",
+        _settings(
+            FIREBASE_PROJECT_ID="project",
+            FIREBASE_PRIVATE_KEY_ID="",
+            FIREBASE_PRIVATE_KEY="private-key",
+            FIREBASE_CLIENT_EMAIL="worker@example.test",
+            FIREBASE_CLIENT_ID="",
+            V2_GEMINI_API_KEY="gemini-secret",
+            V2_TELEMETRY_HMAC_KEY="t" * 32,
+            V2_CLOUDFLARE_ACCOUNT_ID="account",
+            V2_CLOUDFLARE_API_TOKEN="token",
+            V2_SUPABASE_URL="https://project.supabase.test",
+            V2_SUPABASE_SERVICE_ROLE_KEY="role",
+            V2_PUBMED_EMAIL="ops@example.test",
+            V2_ACCOUNT_EXPORT_ENCRYPTION_KEY="export-key",
+            V2_ACCOUNT_EXPORT_BUCKET="account-exports",
+            V2_DELETION_ENABLED=True,
+            V2_DELETION_APPROVAL_REFERENCE="change-request-1234",
+            AUVRA_DELETION_RECEIPT_HMAC_KEY="r" * 32,
+            V2_REDIS_URL="rediss://redis.example.test/0",
+        ),
+    )
+    runtime_config.validate_plan_worker_configuration()
 
 
 def test_log_redaction_formats_before_removing_secret_values():

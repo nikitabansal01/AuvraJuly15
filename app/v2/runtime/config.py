@@ -237,16 +237,23 @@ def validate_api_configuration() -> None:
             "worker-only credentials must not be present in the API environment"
         )
 
-    firebase_values = {
-        "FIREBASE_PROJECT_ID": settings.FIREBASE_PROJECT_ID,
-        "FIREBASE_PRIVATE_KEY_ID": settings.FIREBASE_PRIVATE_KEY_ID,
-        "FIREBASE_PRIVATE_KEY": settings.FIREBASE_PRIVATE_KEY,
-        "FIREBASE_CLIENT_EMAIL": settings.FIREBASE_CLIENT_EMAIL,
-        "FIREBASE_CLIENT_ID": settings.FIREBASE_CLIENT_ID,
-    }
+    # google.oauth2.service_account.Credentials.from_service_account_info only
+    # requires client_email, token_uri (hardcoded in firebase_runtime.py) and
+    # private_key to construct a fully working, cryptographically valid
+    # credential -- confirmed against the library source, not assumed.
+    # private_key_id and client_id are accepted but optional metadata: never
+    # read by verify_id_token, never part of the signature. Requiring them
+    # protects against nothing; it only requires an operator to have copied
+    # every field from a service-account JSON that may no longer be
+    # obtainable if the original download is lost, even though the actual
+    # secret (private_key) is intact and unchanged.
     errors.extend(
         f"{name} is missing or a placeholder"
-        for name, value in firebase_values.items()
+        for name, value in {
+            "FIREBASE_PROJECT_ID": settings.FIREBASE_PROJECT_ID,
+            "FIREBASE_PRIVATE_KEY": settings.FIREBASE_PRIVATE_KEY,
+            "FIREBASE_CLIENT_EMAIL": settings.FIREBASE_CLIENT_EMAIL,
+        }.items()
         if _missing_or_placeholder(value)
     )
 
@@ -267,12 +274,13 @@ def validate_api_configuration() -> None:
 
 
 def _worker_firebase_errors() -> list[str]:
+    # See the matching comment in validate_api_configuration: private_key_id
+    # and client_id are optional Firebase Admin SDK metadata, not required to
+    # construct a working credential.
     firebase_values = {
         "FIREBASE_PROJECT_ID": settings.FIREBASE_PROJECT_ID,
-        "FIREBASE_PRIVATE_KEY_ID": settings.FIREBASE_PRIVATE_KEY_ID,
         "FIREBASE_PRIVATE_KEY": settings.FIREBASE_PRIVATE_KEY,
         "FIREBASE_CLIENT_EMAIL": settings.FIREBASE_CLIENT_EMAIL,
-        "FIREBASE_CLIENT_ID": settings.FIREBASE_CLIENT_ID,
     }
     if settings.V2_DELETION_ENABLED:
         return [

@@ -16,12 +16,14 @@ def initialize_v2_firebase() -> None:
     authenticated calls still fail closed through the token verifier.
     """
 
+    # private_key_id and client_id are accepted below but are optional
+    # Firebase Admin SDK metadata -- google-auth's from_service_account_info
+    # requires only client_email, token_uri and private_key to construct a
+    # working credential, so their absence does not gate readiness here.
     fields = (
         settings.FIREBASE_PROJECT_ID,
-        settings.FIREBASE_PRIVATE_KEY_ID,
         settings.FIREBASE_PRIVATE_KEY,
         settings.FIREBASE_CLIENT_EMAIL,
-        settings.FIREBASE_CLIENT_ID,
     )
     credentials_complete = all(value.strip() for value in fields)
     if not credentials_complete:
