@@ -90,6 +90,10 @@ def get_rate_limit_backend() -> RateLimitBackend:
         raise RateLimitUnavailable("rate limit storage is not configured")
     try:
         import redis.asyncio as redis
+        from redis.backoff import ExponentialBackoff
+        from redis.exceptions import ConnectionError as RedisConnectionError
+        from redis.exceptions import TimeoutError as RedisTimeoutError
+        from redis.retry import Retry
 
         client = redis.from_url(
             settings.V2_REDIS_URL,
@@ -97,6 +101,15 @@ def get_rate_limit_backend() -> RateLimitBackend:
             socket_connect_timeout=2,
             socket_timeout=2,
             health_check_interval=30,
+            # A managed Redis will occasionally drop an idle TCP connection.
+            # Without a retry that single blip surfaces as RateLimitUnavailable
+            # and fail-closed turns it into a 503 for a real user's onboarding.
+            # Two fast retries reconnect through a blip while keeping the total
+            # added latency well under a second; if Redis is genuinely down the
+            # retries are exhausted and the request still fails closed, which is
+            # the behaviour this module deliberately wants.
+            retry=Retry(ExponentialBackoff(cap=0.2, base=0.05), retries=2),
+            retry_on_error=[RedisConnectionError, RedisTimeoutError],
         )
     except Exception as exc:
         raise RateLimitUnavailable("rate limit storage is not configured") from exc

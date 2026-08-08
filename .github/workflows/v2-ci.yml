@@ -39,11 +39,23 @@ jobs:
     env:
       ENVIRONMENT: test
       DATABASE_URL: postgresql://auvra:auvra_test_only@localhost:5432/auvra_test
+      # Without this the PostgreSQL invariant, worker-lease, observation,
+      # reward and insight suites skip themselves and CI reports green on
+      # tests that never ran.
+      AUVRA_TEST_DATABASE_URL: postgresql://auvra:auvra_test_only@localhost:5432/auvra_test
       REDIS_URL: redis://localhost:6379/0
       V2_GUEST_PROOF_SECRET: test-only-guest-proof-secret-32-bytes-minimum
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks needs history to catch a secret that was committed and
+          # then deleted; a shallow clone would only see the current tree.
+          fetch-depth: 0
+      - name: Scan the repository and its history for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -84,12 +96,10 @@ jobs:
           alembic downgrade base
           alembic upgrade head
           alembic check
-      - name: Run exact v2 and legacy reconciliation verification suite
-        run: >-
-          pytest -q
-          tests/test_v2_*.py
-          tests/test_legacy_reconciliation.py
-          tests/test_verify_legacy_backup.py
+      - name: Run the full verification suite
+        # The whole directory, not a glob: a new test file must never be
+        # excluded from CI just because it did not match a pattern.
+        run: pytest -q tests
       - name: Audit locked v2 production dependencies
         run: >-
           pip-audit --requirement requirements-v2.lock --strict --disable-pip

@@ -196,3 +196,53 @@ def test_only_explicit_trusted_proxies_can_supply_forwarded_client_ip(monkeypatc
         SimpleNamespace(V2_TRUSTED_PROXY_CIDRS=["10.0.0.0/8"]),
     )
     assert controls._trusted_client_ip(Request(scope)) == "203.0.113.8"
+
+
+def test_rate_limit_client_retries_transient_connection_failures(monkeypatch):
+    """A dropped idle TCP connection must not 503 a real user's request.
+
+    Fail-closed is deliberate when Redis is genuinely down, but a managed
+    Redis drops idle connections routinely; without a retry that single blip
+    became a user-visible 503 during this deployment.
+    """
+    from redis.exceptions import ConnectionError as RedisConnectionError
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+
+    import redis.asyncio as redis_asyncio
+
+    captured = {}
+
+    def fake_from_url(url, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        controls.settings, "V2_REDIS_URL", "rediss://redis.example.test/0"
+    )
+    monkeypatch.setattr(redis_asyncio, "from_url", fake_from_url)
+    controls.get_rate_limit_backend.cache_clear()
+    try:
+        controls.get_rate_limit_backend()
+    finally:
+        controls.get_rate_limit_backend.cache_clear()
+
+    assert captured["retry"] is not None
+    assert set(captured["retry_on_error"]) == {RedisConnectionError, RedisTimeoutError}
+    # Fail-closed still holds: retries are bounded, not infinite.
+    assert captured["retry"]._retries == 2
+    assert captured["health_check_interval"] == 30
+
+
+@pytest.mark.anyio
+async def test_a_genuinely_unavailable_backend_still_fails_closed(monkeypatch):
+    """After retries are exhausted the limiter must refuse, never allow."""
+
+    class AlwaysFailing:
+        async def eval(self, *args, **kwargs):
+            raise RuntimeError("redis is down")
+
+    limiter = controls.RedisFixedWindowRateLimiter(AlwaysFailing())
+    with pytest.raises(controls.RateLimitUnavailable):
+        await limiter.check(
+            bucket="public-onboarding", subject="1.2.3.4", limit=10, window_seconds=600
+        )
