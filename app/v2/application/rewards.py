@@ -70,7 +70,7 @@ async def _user_and_local_date(
     return user, now.astimezone(ZoneInfo(profile.timezone)).date()
 
 
-async def _qualifying_days(session, user_id: uuid.UUID, before: date) -> list[date]:
+async def qualifying_streak_days(session, user_id: uuid.UUID, before: date) -> list[date]:
     """Finalized local dates that count toward a streak, newest first."""
 
     return list(
@@ -133,7 +133,7 @@ async def rewards_overview(
     user, local = await _user_and_local_date(uow, principal, now)
     session = uow.session
 
-    days = await _qualifying_days(session, user.id, local)
+    days = await qualifying_streak_days(session, user.id, local)
     best = longest_run(days)
     current = closed_streak_length(days, current_local_date=local)
     claimed = await _claimed_at_by_reward(session, user.id)
@@ -195,7 +195,7 @@ async def claim_reward(
         return RewardClaimResponse.model_validate(decision.replay_body)
 
     session = uow.session
-    best = longest_run(await _qualifying_days(session, user.id, local))
+    best = longest_run(await qualifying_streak_days(session, user.id, local))
     if not is_eligible(reward, best_streak_days=best):
         raise conflict(
             "reward_not_eligible",
@@ -334,7 +334,7 @@ async def redeem_streak_freeze(
     )
     await session.flush()
 
-    days = await _qualifying_days(session, user.id, local)
+    days = await qualifying_streak_days(session, user.id, local)
     body = StreakFreezeResponse(
         local_date=request.local_date,
         timezone=profile.timezone,

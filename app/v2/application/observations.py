@@ -25,7 +25,8 @@ from app.v2.application.contracts import (
     ObservationValue,
     ObservationWriteRequest,
 )
-from app.v2.application.errors import not_found, unprocessable_content
+from app.v2.application.errors import forbidden, not_found, unprocessable_content
+from app.v2.application.rewards import qualifying_streak_days
 from app.v2.application.services import _begin_idempotent, _complete_idempotent
 from app.v2.domain.identity import VerifiedPrincipal
 from app.v2.domain.observation_catalog import (
@@ -42,12 +43,19 @@ from app.v2.domain.observation_catalog import (
     validation_error,
     waist_height_ratio,
 )
+from app.v2.domain.reward_catalog import REWARD_CATALOG, longest_run, unlocked_codes
 from app.v2.persistence.models import User
 from app.v2.persistence.models_observations import UserObservation
 from app.v2.persistence.uow import SqlAlchemyUnitOfWork
 
 
 MAX_PAGE_SIZE = 200
+
+#: Personalization codes a reward unlocks. Sourced from the reward catalog so
+#: a reward and the thing it unlocks cannot drift apart.
+GATED_CODES = frozenset(
+    code for reward in REWARD_CATALOG if (code := reward.unlocks_code)
+)
 
 
 def catalog() -> ObservationCatalogResponse:
@@ -113,6 +121,17 @@ async def _user(uow: SqlAlchemyUnitOfWork, principal: VerifiedPrincipal) -> User
     return user
 
 
+async def _unlocked_codes(uow: SqlAlchemyUnitOfWork, user_id, local_date) -> frozenset:
+    """Which personalization codes this user has earned the right to set.
+
+    Derived from the streak ledger through the reward catalog rather than read
+    from a stored flag, so it cannot disagree with the streak it comes from.
+    """
+
+    days = await qualifying_streak_days(uow.session, user_id, local_date)
+    return unlocked_codes(longest_run(days))
+
+
 async def record_observation(
     uow: SqlAlchemyUnitOfWork,
     *,
@@ -145,6 +164,14 @@ async def record_observation(
     )
     if problem is not None:
         raise unprocessable_content("observation_invalid", problem)
+
+    if request.code in GATED_CODES:
+        local = now.astimezone(ZoneInfo(profile.timezone)).date()
+        if request.code not in await _unlocked_codes(uow, user.id, local):
+            raise forbidden(
+                "preference_locked",
+                "Keep your streak going to unlock this personalization.",
+            )
 
     decision = await _begin_idempotent(
         uow,
@@ -259,6 +286,11 @@ async def current_observations(
         statement = statement.where(
             UserObservation.observation_type == observation_type
         )
+    profile = await uow.profiles.get(user.id)
+    local = datetime.now(UTC).astimezone(
+        ZoneInfo(profile.timezone if profile else "UTC")
+    ).date()
+    unlocked = await _unlocked_codes(uow, user.id, local)
     rows = (
         await uow.session.scalars(
             statement.order_by(
@@ -282,6 +314,7 @@ async def current_observations(
     bmi = body_mass_index(weight_kg=weight, height_cm=height)
     return CurrentObservationsResponse(
         entries=[_response(row) for row in latest.values()],
+        unlocked_codes=sorted(unlocked),
         derived=DerivedBodyMetrics(
             bmi=bmi,
             bmi_band=bmi_band(bmi),

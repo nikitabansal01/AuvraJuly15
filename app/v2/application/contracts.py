@@ -654,6 +654,9 @@ class DerivedBodyMetrics(ContractModel):
 
 class CurrentObservationsResponse(ContractModel):
     entries: list[ObservationResponse]
+    #: Personalization codes this user has earned; the client greys out the
+    #: rest without needing a second request.
+    unlocked_codes: list[str]
     derived: DerivedBodyMetrics
 
 

@@ -328,10 +328,6 @@ async def test_writing_and_reading_current_state_round_trips() -> None:
     await write(
         "weight_kg", "body_metric", ObservationValue(numeric=60, unit="kg"), now
     )
-    await write(
-        "diet_preference", "preference", ObservationValue(codes=["vegan"]), now
-    )
-
     async with SqlAlchemyUnitOfWork() as uow:
         current = await current_observations(
             uow, principal=principal, observation_type="body_metric"
@@ -494,3 +490,148 @@ async def test_a_superseded_period_start_stops_driving_the_cycle() -> None:
         corrected = await cycle_state(uow, principal=principal)
     assert corrected.cycle_day == 4
     assert corrected.phase == "menstrual"
+
+
+def _grant_streak(connection, user_id, days: int) -> None:
+    """Give a user `days` of qualifying history so rewards unlock."""
+    from sqlalchemy import text
+
+    today = datetime.now(UTC).date()
+    for offset in range(1, days + 1):
+        streak_id, ledger_id = uuid.uuid4(), uuid.uuid4()
+        connection.execute(
+            text(
+                "INSERT INTO app.reward_ledger (id, user_id, source_type, "
+                " source_id, event_type, asset_type, asset_key, quantity) "
+                "VALUES (:id, :user_id, 'seed_grant', :source_id, 'grant', "
+                "'freeze', 'streak_freeze', 1)"
+            ),
+            {"id": uuid.uuid4(), "user_id": user_id, "source_id": uuid.uuid4()},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO app.reward_ledger (id, user_id, source_type, "
+                " source_id, event_type, asset_type, asset_key, quantity) "
+                "VALUES (:id, :user_id, 'streak_freeze', :streak_id, 'redeem', "
+                "'freeze', 'streak_freeze', -1)"
+            ),
+            {"id": ledger_id, "user_id": user_id, "streak_id": streak_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO app.streak_days (id, user_id, local_date, kind, "
+                " timezone, evidence_type, evidence_id, adjudication_state) "
+                "VALUES (:id, :user_id, :day, 'daily', 'UTC', 'freeze', "
+                ":evidence_id, 'frozen')"
+            ),
+            {
+                "id": streak_id,
+                "user_id": user_id,
+                "day": today - timedelta(days=offset),
+                "evidence_id": ledger_id,
+            },
+        )
+
+
+def _principal_for(subject: str):
+    from app.v2.domain.identity import VerifiedPrincipal
+
+    return VerifiedPrincipal(
+        auth_provider="firebase",
+        subject=subject,
+        email=None,
+        email_verified=True,
+        display_name=None,
+    )
+
+
+def _seeded_user(streak_days: int = 0) -> str:
+    from sqlalchemy import text
+
+    with _engine().begin() as connection:
+        user_id = _insert_user(connection)
+        if streak_days:
+            _grant_streak(connection, user_id, streak_days)
+        return connection.execute(
+            text("SELECT auth_subject FROM app.users WHERE id = :id"),
+            {"id": user_id},
+        ).scalar_one()
+
+
+@pytest.mark.anyio
+async def test_a_locked_personalization_cannot_be_set() -> None:
+    """Eligibility is derived from the streak ledger, never a stored flag."""
+    from app.v2.application.contracts import ObservationValue, ObservationWriteRequest
+    from app.v2.application.errors import ApplicationProblem
+    from app.v2.application.observations import record_observation
+    from app.v2.persistence.uow import SqlAlchemyUnitOfWork
+
+    principal = _principal_for(_seeded_user(streak_days=0))
+    with pytest.raises(ApplicationProblem) as problem:
+        async with SqlAlchemyUnitOfWork() as uow:
+            await record_observation(
+                uow,
+                principal=principal,
+                request=ObservationWriteRequest(
+                    client_observation_id=uuid.uuid4(),
+                    observation_type="preference",
+                    code="diet_preference",
+                    observed_at=datetime.now(UTC),
+                    value=ObservationValue(codes=["vegan"]),
+                ),
+                key=f"k-{uuid.uuid4()}",
+            )
+    assert problem.value.code == "preference_locked"
+
+
+@pytest.mark.anyio
+async def test_an_earned_personalization_can_be_set_and_is_reported_unlocked() -> None:
+    from app.v2.application.contracts import ObservationValue, ObservationWriteRequest
+    from app.v2.application.observations import current_observations, record_observation
+    from app.v2.persistence.uow import SqlAlchemyUnitOfWork
+
+    # diet_prefs unlocks at seven qualifying days.
+    principal = _principal_for(_seeded_user(streak_days=7))
+    async with SqlAlchemyUnitOfWork() as uow:
+        await record_observation(
+            uow,
+            principal=principal,
+            request=ObservationWriteRequest(
+                client_observation_id=uuid.uuid4(),
+                observation_type="preference",
+                code="diet_preference",
+                observed_at=datetime.now(UTC),
+                value=ObservationValue(codes=["vegan"]),
+            ),
+            key=f"k-{uuid.uuid4()}",
+        )
+
+    async with SqlAlchemyUnitOfWork() as uow:
+        current = await current_observations(
+            uow, principal=principal, observation_type="preference"
+        )
+    assert "diet_preference" in current.unlocked_codes
+    assert [e.value.codes for e in current.entries] == [["vegan"]]
+
+
+@pytest.mark.anyio
+async def test_an_ungated_observation_needs_no_streak() -> None:
+    from app.v2.application.contracts import ObservationValue, ObservationWriteRequest
+    from app.v2.application.observations import record_observation
+    from app.v2.persistence.uow import SqlAlchemyUnitOfWork
+
+    principal = _principal_for(_seeded_user(streak_days=0))
+    async with SqlAlchemyUnitOfWork() as uow:
+        written = await record_observation(
+            uow,
+            principal=principal,
+            request=ObservationWriteRequest(
+                client_observation_id=uuid.uuid4(),
+                observation_type="body_metric",
+                code="weight_kg",
+                observed_at=datetime.now(UTC),
+                value=ObservationValue(numeric=62, unit="kg"),
+            ),
+            key=f"k-{uuid.uuid4()}",
+        )
+    assert written.value.numeric == 62.0

@@ -564,10 +564,18 @@
             },
             "title": "Entries",
             "type": "array"
+          },
+          "unlocked_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unlocked Codes",
+            "type": "array"
           }
         },
         "required": [
           "entries",
+          "unlocked_codes",
           "derived"
         ],
         "title": "CurrentObservationsResponse",
