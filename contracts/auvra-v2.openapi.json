@@ -117,6 +117,69 @@
         "title": "ActionEventResponse",
         "type": "object"
       },
+      "AdherenceBucket": {
+        "additionalProperties": false,
+        "properties": {
+          "adherence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adherence"
+          },
+          "bucket_end": {
+            "format": "date",
+            "title": "Bucket End",
+            "type": "string"
+          },
+          "bucket_start": {
+            "format": "date",
+            "title": "Bucket Start",
+            "type": "string"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "days_earned": {
+            "title": "Days Earned",
+            "type": "integer"
+          },
+          "days_frozen": {
+            "title": "Days Frozen",
+            "type": "integer"
+          },
+          "days_missed": {
+            "title": "Days Missed",
+            "type": "integer"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "integer"
+          },
+          "is_provisional": {
+            "title": "Is Provisional",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bucket_start",
+          "bucket_end",
+          "completed",
+          "eligible",
+          "adherence",
+          "days_earned",
+          "days_frozen",
+          "days_missed",
+          "is_provisional"
+        ],
+        "title": "AdherenceBucket",
+        "type": "object"
+      },
       "AssessmentResponse": {
         "additionalProperties": false,
         "properties": {
@@ -183,6 +246,37 @@
           "answers"
         ],
         "title": "AssessmentWriteRequest",
+        "type": "object"
+      },
+      "CategoryAdherence": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "presented": {
+            "title": "Presented",
+            "type": "integer"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          }
+        },
+        "required": [
+          "category",
+          "rate",
+          "presented"
+        ],
+        "title": "CategoryAdherence",
         "type": "object"
       },
       "ClaimOnboardingRequest": {
@@ -948,6 +1042,72 @@
           "version"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "InsightsSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "adherence_by_category": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryAdherence"
+            },
+            "title": "Adherence By Category",
+            "type": "array"
+          },
+          "days_observed": {
+            "title": "Days Observed",
+            "type": "integer"
+          },
+          "generated_for_local_date": {
+            "format": "date",
+            "title": "Generated For Local Date",
+            "type": "string"
+          },
+          "phase_distribution": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseDays"
+            },
+            "title": "Phase Distribution",
+            "type": "array"
+          },
+          "range_end": {
+            "format": "date",
+            "title": "Range End",
+            "type": "string"
+          },
+          "range_start": {
+            "format": "date",
+            "title": "Range Start",
+            "type": "string"
+          },
+          "sufficient": {
+            "title": "Sufficient",
+            "type": "boolean"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "top_symptoms": {
+            "items": {
+              "$ref": "#/components/schemas/SymptomPattern"
+            },
+            "title": "Top Symptoms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_for_local_date",
+          "timezone",
+          "range_start",
+          "range_end",
+          "adherence_by_category",
+          "top_symptoms",
+          "phase_distribution",
+          "days_observed",
+          "sufficient"
+        ],
+        "title": "InsightsSummaryResponse",
         "type": "object"
       },
       "JobResponse": {
@@ -1778,6 +1938,25 @@
         "title": "OnboardingSessionResponse",
         "type": "object"
       },
+      "PhaseDays": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "days"
+        ],
+        "title": "PhaseDays",
+        "type": "object"
+      },
       "PlanGenerationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2133,6 +2312,49 @@
         "title": "ProfileResponse",
         "type": "object"
       },
+      "ProgressReportResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/AdherenceBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "range_end": {
+            "format": "date",
+            "title": "Range End",
+            "type": "string"
+          },
+          "range_start": {
+            "format": "date",
+            "title": "Range Start",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ProgressTotals"
+          }
+        },
+        "required": [
+          "period",
+          "timezone",
+          "range_start",
+          "range_end",
+          "buckets",
+          "totals"
+        ],
+        "title": "ProgressReportResponse",
+        "type": "object"
+      },
       "ProgressSummaryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2188,6 +2410,57 @@
           "refreshes_used"
         ],
         "title": "ProgressSummaryResponse",
+        "type": "object"
+      },
+      "ProgressTotals": {
+        "additionalProperties": false,
+        "properties": {
+          "adherence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adherence"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "current_streak_days": {
+            "title": "Current Streak Days",
+            "type": "integer"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "integer"
+          },
+          "longest_streak_days": {
+            "title": "Longest Streak Days",
+            "type": "integer"
+          },
+          "refreshes_used": {
+            "title": "Refreshes Used",
+            "type": "integer"
+          },
+          "reward_points": {
+            "title": "Reward Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "completed",
+          "eligible",
+          "adherence",
+          "current_streak_days",
+          "longest_streak_days",
+          "reward_points",
+          "refreshes_used"
+        ],
+        "title": "ProgressTotals",
         "type": "object"
       },
       "RewardBalance": {
@@ -2497,6 +2770,76 @@
         "title": "SymptomObservationResponse",
         "type": "object"
       },
+      "SymptomPattern": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "mean_severity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Severity"
+          },
+          "occurrences": {
+            "title": "Occurrences",
+            "type": "integer"
+          },
+          "sufficient": {
+            "title": "Sufficient",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "occurrences",
+          "mean_severity",
+          "sufficient"
+        ],
+        "title": "SymptomPattern",
+        "type": "object"
+      },
+      "SymptomPatternsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "minimum_observations": {
+            "title": "Minimum Observations",
+            "type": "integer"
+          },
+          "patterns": {
+            "items": {
+              "$ref": "#/components/schemas/SymptomPattern"
+            },
+            "title": "Patterns",
+            "type": "array"
+          },
+          "range_end": {
+            "format": "date",
+            "title": "Range End",
+            "type": "string"
+          },
+          "range_start": {
+            "format": "date",
+            "title": "Range Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_start",
+          "range_end",
+          "minimum_observations",
+          "patterns"
+        ],
+        "title": "SymptomPatternsResponse",
+        "type": "object"
+      },
       "WeeklyCheckinAnswerRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2767,6 +3110,72 @@
           "answered_at"
         ],
         "title": "WeeklyCheckinSavedAnswerResponse",
+        "type": "object"
+      },
+      "WeeklyTrendPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "week_start": {
+            "format": "date",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_start",
+          "ordinal",
+          "prompt",
+          "value"
+        ],
+        "title": "WeeklyTrendPoint",
+        "type": "object"
+      },
+      "WeeklyTrendsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/WeeklyTrendPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "range_end": {
+            "format": "date",
+            "title": "Range End",
+            "type": "string"
+          },
+          "range_start": {
+            "format": "date",
+            "title": "Range Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_start",
+          "range_end",
+          "points"
+        ],
+        "title": "WeeklyTrendsResponse",
         "type": "object"
       }
     },
@@ -4364,6 +4773,486 @@
         "summary": "Create Account Export",
         "tags": [
           "v2-account"
+        ]
+      }
+    },
+    "/api/v2/me/insights/summary": {
+      "get": {
+        "operationId": "getInsightsSummaryV2",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Summary",
+        "tags": [
+          "v2-insights"
+        ]
+      }
+    },
+    "/api/v2/me/insights/symptom-patterns": {
+      "get": {
+        "operationId": "getSymptomPatternsV2",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymptomPatternsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Symptom Patterns",
+        "tags": [
+          "v2-insights"
+        ]
+      }
+    },
+    "/api/v2/me/insights/weekly-trends": {
+      "get": {
+        "operationId": "getWeeklyTrendsV2",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyTrendsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Weekly Trends",
+        "tags": [
+          "v2-insights"
         ]
       }
     },
@@ -6266,6 +7155,190 @@
         "summary": "Update Profile",
         "tags": [
           "v2-identity"
+        ]
+      }
+    },
+    "/api/v2/me/progress": {
+      "get": {
+        "description": "One route with a period parameter replaces v1's weekly/monthly/overall.",
+        "operationId": "getMyProgressReportV2",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "week",
+              "pattern": "^(week|month|all)$",
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Precondition Required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              },
+              "application/problem+json": {}
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Progress",
+        "tags": [
+          "v2-insights"
         ]
       }
     },

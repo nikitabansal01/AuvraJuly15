@@ -11,6 +11,7 @@ from app.v2.api.routes import (
     engagement,
     health,
     identity,
+    insights,
     jobs,
     observations,
     onboarding,
@@ -30,5 +31,6 @@ router.include_router(rewards.router)
 router.include_router(observations.router)
 router.include_router(cycle.router)
 router.include_router(checkins.router)
+router.include_router(insights.router)
 router.include_router(conversations.router)
 router.include_router(jobs.router)

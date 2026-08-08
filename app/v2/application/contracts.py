@@ -696,3 +696,86 @@ class CycleStateResponse(ContractModel):
 class WeeklyCheckinPageResponse(ContractModel):
     checkins: list[WeeklyCheckinResponse]
     next_cursor: uuid.UUID | None
+
+
+class AdherenceBucket(ContractModel):
+    bucket_start: date
+    bucket_end: date
+    completed: int
+    eligible: int
+    #: None, never zero, when nothing was eligible in the window.
+    adherence: float | None
+    days_earned: int
+    days_frozen: int
+    days_missed: int
+    is_provisional: bool
+
+
+class ProgressTotals(ContractModel):
+    completed: int
+    eligible: int
+    adherence: float | None
+    current_streak_days: int
+    longest_streak_days: int
+    reward_points: int
+    refreshes_used: int
+
+
+class ProgressReportResponse(ContractModel):
+    period: str
+    timezone: str
+    range_start: date
+    range_end: date
+    buckets: list[AdherenceBucket]
+    totals: ProgressTotals
+
+
+class CategoryAdherence(ContractModel):
+    category: str
+    rate: float | None
+    presented: int
+
+
+class SymptomPattern(ContractModel):
+    code: str
+    occurrences: int
+    mean_severity: float | None
+    #: False when there are too few observations for the figure to mean much.
+    sufficient: bool
+
+
+class SymptomPatternsResponse(ContractModel):
+    range_start: date
+    range_end: date
+    minimum_observations: int
+    patterns: list[SymptomPattern]
+
+
+class WeeklyTrendPoint(ContractModel):
+    week_start: date
+    ordinal: int
+    prompt: str
+    value: float | None
+
+
+class WeeklyTrendsResponse(ContractModel):
+    range_start: date
+    range_end: date
+    points: list[WeeklyTrendPoint]
+
+
+class PhaseDays(ContractModel):
+    phase: str
+    days: int
+
+
+class InsightsSummaryResponse(ContractModel):
+    generated_for_local_date: date
+    timezone: str
+    range_start: date
+    range_end: date
+    adherence_by_category: list[CategoryAdherence]
+    top_symptoms: list[SymptomPattern]
+    phase_distribution: list[PhaseDays]
+    days_observed: int
+    sufficient: bool
