@@ -97,24 +97,34 @@ pointed at nothing, at another user's ledger row, or at a grant instead of a
 spend, extending a streak with no token spent. Fixed in the same migration that
 shipped the freeze feature, so the exploit never shipped with it.
 
-**3. The worker could not claim a single job.** Deploying the worker to real
+**3. Every Android release build was broken.** An uncommitted change to
+`build.gradle` threw a hard error on any release build lacking four
+`AUVRA_ANDROID_*` variables. EAS manages signing credentials itself and never
+sets those, so every EAS build failed — and it had also deleted the
+`debug.keystore` the debug config still referenced. The security intent (never
+sign a release with the debug keystore) was correct and is kept, now scoped to
+local builds only. A stale 12 MB JavaScript bundle committed under
+`android/app/src/main/assets/` was also removed: a committed bundle silently
+ships old code regardless of what was actually built.
+
+**4. The worker could not claim a single job.** Deploying the worker to real
 PostgreSQL for the first time surfaced a driver-level bug: the lease interval
 was built by string concatenation, which the async driver rejects for an
 integer parameter. Every claim and heartbeat failed. Invisible to the test
 suite because every worker test used a fake in-memory session; six new tests
 now exercise it against real PostgreSQL.
 
-**4. A rate-limit trip reported the wrong status.** The rate limiter runs
+**5. A rate-limit trip reported the wrong status.** The rate limiter runs
 outside the layer where the error handler is registered, so a legitimate 429
 (with its `Retry-After` header) collapsed into a bare 500. Found live when a
 Redis misconfiguration surfaced it.
 
-**5. A transient Redis blip failed a real user's first step.** Managed Redis
+**6. A transient Redis blip failed a real user's first step.** Managed Redis
 drops idle connections routinely, and the client had no retry, so one dropped
 connection returned 503 on onboarding. Now retries twice with bounded backoff —
 while still failing closed if Redis is genuinely down, which is deliberate.
 
-**6. The account export would have broken on the schema change**, and its
+**7. The account export would have broken on the schema change**, and its
 serializer would have exported exact decimal values as lossy floats.
 
 ---
@@ -162,7 +172,8 @@ carve-outs, no permitted legacy adapters.
 | Schema round-trip | `upgrade → downgrade → upgrade` clean from empty, on PostgreSQL 17 |
 | Schema drift | None — ORM, migrations and database agree |
 | API contract | 41 operations, OpenAPI 3.1.1, checked in and diffed in CI |
-| Mobile | 75 tests, type-check clean, both gates at zero exceptions, Android bundle verified |
+| Mobile | 75 tests, type-check clean, both gates at zero exceptions |
+| **Signed APK** | **Built and verified**: contains the v2 API URL, zero references to the legacy host, zero `/api/v1` calls |
 | Architecture gate | Passing — no module over 800 lines, no function over 100, no provider SDK outside adapters |
 
 The test suite previously **reported green on tests that never ran**: the
@@ -201,7 +212,9 @@ for a reason unrelated to security.
 
 1. **Change the password** on the account exposed in git history. Needs Firebase
    console access.
-2. **Test the APK** on a physical device.
+2. **Install and test the APK** on a physical device — built and verified,
+   ready to install:
+   `https://expo.dev/artifacts/eas/g3ympItBxbYoOvTYsNbwS6Jp8cS1wgTtAi5dVp5jeXU.apk`
 3. **Decide on legacy data** — migrate the 29 users, or archive.
 4. **Delete the legacy service** once you are satisfied. It is suspended and
    fully reversible today.
