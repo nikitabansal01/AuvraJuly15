@@ -1,0 +1,13 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ participant R as Redis
+ participant W as Worker
+ M->>A: create plan generation (idempotency key)
+ A->>P: persist job/outbox
+ A->>R: enqueue committed job id
+ A-->>M: 202 job id
+ W->>P: lease + heartbeat
+ W->>W: providers outside transaction
+ W->>P: publish or retry/dead-letter

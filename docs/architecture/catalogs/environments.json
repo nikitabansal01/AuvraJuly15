@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "catalog": "environments",
+  "snapshot": {
+    "as_of": "2026-08-01",
+    "baseline": "Proposed v2 environment isolation and promotion policy",
+    "approval": "PENDING_OWNER"
+  },
+  "records": [
+    {"id":"environment.local_ci","name":"Local and CI","lifecycle":"TARGET_PLANNED","owner":"Platform engineering","purpose":"Deterministic development and automated verification","data_class":"Synthetic only","isolation":"Dedicated PostgreSQL 17/Redis containers or ephemeral services; emulator/test Firebase; fake provider adapters by default","deployable":"Same application image build inputs; no production credentials","gate":"Blank bootstrap, upgrade/rollback, contract, authorization, worker restart and drift tests","evidence":["ADR-012","ADR-014"]},
+    {"id":"environment.staging","name":"Staging","lifecycle":"TARGET_PLANNED","owner":"Platform engineering","purpose":"Production-equivalent release exercise and 72-hour soak","data_class":"Synthetic and explicitly sanitized migration fixtures only","isolation":"Separate Supabase, Firebase, Redis, storage, providers and credentials","deployable":"Exact immutable image later promoted to production","gate":"Full mobile/API/security/privacy/provider failure/backup-restore exercise; zero open Critical/High and P0/P1","evidence":["ADR-012","ADR-014"]},
+    {"id":"environment.production","name":"Production","lifecycle":"TARGET_PLANNED","owner":"Platform engineering","purpose":"iOS/Android production service","data_class":"User account and health-related application data","isolation":"Dedicated company-owned accounts, credentials and stable company API hostname","deployable":"Immutable staging-proven image; migrations run once before service start","gate":"Typed fail-closed config, owner/legal/clinical decisions, release thresholds, tested rollback/restore and two administrators","evidence":["ADR-012","ADR-013","ADR-014"]},
+    {"id":"environment.legacy_archive","name":"Legacy evidence archive","lifecycle":"LEGACY_ARCHIVE","owner":"Legacy archive custodian","purpose":"Encrypted restricted migration and behavior evidence only","data_class":"Legacy application rows, objects and sanitized fixtures under approved retention","isolation":"No serving application access; no public ingress; access logged","deployable":"Not a rollback target and never receives v2 writes","gate":"Checksum, access list, retention/erasure decision and owner sign-off","evidence":["docs/DATABASE_RECOVERY.md","ADR-012","ADR-013"]}
+  ]
+}

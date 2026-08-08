@@ -1,0 +1,33 @@
+flowchart TB
+  subgraph Company["Company-owned accounts - two administrators"]
+    subgraph Render["Render - one promoted immutable image"]
+      API["API service\nFastAPI v2"]
+      Worker["Worker service\nDurable job runner"]
+      Predeploy["Pre-deploy migration\nRuns once"]
+    end
+    subgraph Supabase["Supabase PostgreSQL 17"]
+      App["app schema"]
+      Ops["ops schema"]
+      Runtime["runtime schema"]
+    end
+    Redis["Managed Redis\nqueue/cache/lock"]
+    Storage["Permanent object storage/CDN"]
+    Firebase["Firebase Auth"]
+  end
+  Mobile["Signed iOS / Android app"] -->|"HTTPS v2 + token"| API
+  Mobile -->|"Auth SDK"| Firebase
+  Predeploy --> App
+  Predeploy --> Ops
+  API --> App
+  API --> Ops
+  API --> Redis
+  Worker --> App
+  Worker --> Ops
+  Worker --> Runtime
+  Worker --> Redis
+  Worker --> Storage
+  API --> Storage
+  Providers["External provider gateways"] <-->|"TLS; minimum necessary"| Worker
+  API -.-> Telemetry["Redacted telemetry"]
+  Worker -.-> Telemetry
+

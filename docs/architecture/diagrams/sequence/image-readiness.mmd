@@ -1,0 +1,11 @@
+sequenceDiagram
+ participant W as Worker
+ participant I as Image provider
+ participant S as Object storage
+ participant P as PostgreSQL
+ W->>I: generate approved image
+ I-->>W: candidate bytes
+ W->>S: persist permanent object
+ W->>S: verify reachability/hash
+ W->>P: link approved asset
+ Note over W,P: READY requires 4 actions and 16 reachable assets

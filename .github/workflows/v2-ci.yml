@@ -1,0 +1,116 @@
+name: AUVRA v2 backend quality gates
+
+on:
+  pull_request:
+  push:
+    branches: [main, "codex/auvra-v2-backend"]
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-and-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: auvra_test
+          POSTGRES_USER: auvra
+          POSTGRES_PASSWORD: auvra_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U auvra -d auvra_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql://auvra:auvra_test_only@localhost:5432/auvra_test
+      REDIS_URL: redis://localhost:6379/0
+      V2_GUEST_PROOF_SECRET: test-only-guest-proof-secret-32-bytes-minimum
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-v2-dev.lock
+      - name: Install locked application dependencies
+        run: pip install --require-hashes --requirement requirements-v2-dev.lock
+      - name: Verify dependency locks are current
+        run: |
+          pip install uv==0.10.9
+          uv pip compile requirements-v2.txt --output-file /tmp/requirements-v2.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --custom-compile-command 'uv pip compile requirements-v2.txt --output-file requirements-v2.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes'
+          uv pip compile requirements-v2-dev.txt --output-file /tmp/requirements-v2-dev.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --custom-compile-command 'uv pip compile requirements-v2-dev.txt --output-file requirements-v2-dev.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes'
+          diff --unified requirements-v2.lock /tmp/requirements-v2.lock
+          diff --unified requirements-v2-dev.lock /tmp/requirements-v2-dev.lock
+      - name: Enforce deterministic OpenAPI contract
+        run: |
+          python scripts/export_v2_openapi.py /tmp/auvra-v2.openapi.json
+          diff --unified contracts/auvra-v2.openapi.json /tmp/auvra-v2.openapi.json
+      - name: Enforce v2 architectural boundaries
+        run: python scripts/check_v2_architecture.py
+      - name: Enforce deterministic source formatting
+        run: >-
+          black --check --line-length 100
+          app/v2
+          alembic/recovery_versions
+          scripts/check_v2_architecture.py
+          scripts/reconcile_legacy_backup.py
+          scripts/verify_legacy_backup.py
+          tests/test_v2_*.py
+          tests/test_legacy_reconciliation.py
+          tests/test_verify_legacy_backup.py
+      - name: Compile production source
+        run: python -m compileall -q app/v2 alembic/env.py
+      - name: Bootstrap the blank PostgreSQL 17 schema
+        run: alembic upgrade head
+      - name: Verify blank database base rollback and reapply
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+          alembic check
+      - name: Run exact v2 and legacy reconciliation verification suite
+        run: >-
+          pytest -q
+          tests/test_v2_*.py
+          tests/test_legacy_reconciliation.py
+          tests/test_verify_legacy_backup.py
+      - name: Audit locked v2 production dependencies
+        run: >-
+          pip-audit --requirement requirements-v2.lock --strict --disable-pip
+      - name: Generate v2 SBOM
+        run: |
+          mkdir -p artifacts
+          cyclonedx-py requirements requirements-v2.lock --output-file artifacts/auvra-v2-sbom.json --of JSON
+      - name: Build v2 runtime image boundary
+        run: |
+          docker build --tag auvra-v2-ci:${{ github.sha }} .
+          docker run --rm --entrypoint sh auvra-v2-ci:${{ github.sha }} -ec '
+            test -f /app/app/v2/main.py
+            test -f /app/alembic/env.py
+            test -f /app/contracts/auvra-v2.openapi.json
+            test ! -e /app/app/core
+            test ! -e /app/app/services
+            test ! -e /app/alembic/versions
+            test ! -e /app/tests
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auvra-v2-sbom
+          path: artifacts/auvra-v2-sbom.json
+          if-no-files-found: error

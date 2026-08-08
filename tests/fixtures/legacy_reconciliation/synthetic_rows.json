@@ -1,0 +1,14 @@
+{
+  "daily_assignments": {"columns": ["id", "uid", "schedule_id", "recommendation_id"], "rows": [["assignment-1", "user-1", "schedule-1", "record-1"]]},
+  "question_sessions": {"columns": ["session_id"], "rows": [["session-1"]]},
+  "recommendation_advices": {"columns": ["id", "recommendation_id", "uid", "session_id"], "rows": [["advice-1", "record-1", "user-1", "session-1"]]},
+  "recommendation_completions": {"columns": ["id", "uid", "recommendation_id"], "rows": [["completion-1", "user-1", "record-1"]]},
+  "recommendation_records": {"columns": ["id", "uid", "session_id", "asset_reference"], "rows": [["record-1", "user-1", "session-1", "https://legacy.invalid/images/referenced.png"]]},
+  "recommendation_redistributions": {"columns": ["id", "uid", "recommendation_id"], "rows": []},
+  "recommendation_schedules": {"columns": ["id", "uid", "recommendation_id"], "rows": [["schedule-1", "user-1", "record-1"]]},
+  "schedule_redistributions": {"columns": ["id", "schedule_id"], "rows": [["schedule-redistribution-1", "schedule-1"]]},
+  "session_processing_status": {"columns": ["session_id", "request_payload"], "rows": [["session-1", "REDACTED_REQUEST_TOKEN"]]},
+  "user_profiles": {"columns": ["uid", "name", "email"], "rows": [["user-1", "Synthetic Person", "REDACTED_EMAIL_TOKEN"]]},
+  "user_responses": {"columns": ["id", "uid", "answer"], "rows": [["response-1", "user-1", "REDACTED_ANSWER_TOKEN"]]},
+  "user_schedules": {"columns": ["id", "uid"], "rows": [["user-schedule-1", "user-1"]]}
+}

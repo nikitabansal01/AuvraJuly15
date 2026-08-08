@@ -1,0 +1,14 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ participant F as Firebase
+ M->>A: create onboarding session
+ A->>P: session + hashed proof
+ M->>A: put validated assessment
+ A->>P: versioned assessment
+ M->>F: authenticate
+ M->>A: claim session + proof
+ A->>F: verify token
+ A->>P: atomically bind session/user and consent
+ A-->>M: claimed identity

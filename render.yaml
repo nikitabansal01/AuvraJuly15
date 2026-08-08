@@ -1,43 +1,161 @@
+# AUVRA v2 production blueprint.  This file is intentionally source-only:
+# create isolated staging/prod databases and set every ``sync: false`` value
+# in Render after owner approval and credential rotation.  Do not attach it to
+# the legacy AUVRA service or its legacy Supabase project.
+#
+# Both services build the identical Dockerfile from one protected commit. CI
+# must promote one immutable registry image before a public production cutover;
+# that external promotion pipeline is not represented by this source blueprint.
 services:
   - type: web
-    name: auvra-backend
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    # Never serve traffic against a schema whose migrations failed.
-    startCommand: alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    # Readiness checks the database; /api/v1/health remains a lightweight liveness probe.
-    healthCheckPath: /api/v1/health/ready
+    name: auvra-v2-api
+    runtime: docker
+    dockerCommand: uvicorn app.v2.main:app --host 0.0.0.0 --port $PORT
+    # Render executes this once for this deployment before traffic reaches the
+    # service. The API start command never runs migrations.
+    preDeployCommand: alembic upgrade head
+    healthCheckPath: /api/v2/health/ready
+    maxShutdownDelaySeconds: 40
+    autoDeployTrigger: checksPass
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
       - key: ENVIRONMENT
         value: production
+      - key: LOG_LEVEL
+        value: INFO
       - key: DATABASE_URL
         sync: false
-      - key: LANGGRAPH_CHECKPOINT_POSTGRES_DSN
+      # The v2 deployment uses direct PostgreSQL connections with one bounded
+      # pool per Render process.  Set `pooler` and both pool counts to zero
+      # together only when a transaction pooler is explicitly selected.
+      - key: DATABASE_CONNECTION_MODE
+        value: direct
+      - key: DATABASE_POOL_SIZE
+        value: "5"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "2"
+      - key: DATABASE_POOL_TIMEOUT_SECONDS
+        value: "30"
+      - key: DATABASE_POOL_RECYCLE_SECONDS
+        value: "1800"
+      - key: DATABASE_STATEMENT_TIMEOUT_MS
+        value: "15000"
+      - key: ALLOWED_HOSTS
         sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: V2_GUEST_PROOF_SECRET
+        sync: false
+      - key: V2_REQUIRED_CONSENT_VERSIONS
+        sync: false
+      # Redis only stores expiring abuse-control counters in the API. It must
+      # be the isolated, TLS Redis URL for this environment.
+      - key: V2_REDIS_URL
+        sync: false
+      - key: V2_MAX_REQUEST_BODY_BYTES
+        value: "1048576"
+      - key: V2_PUBLIC_ONBOARDING_LIMIT
+        value: "10"
+      - key: V2_PUBLIC_ONBOARDING_WINDOW_SECONDS
+        value: "600"
+      - key: V2_COSTLY_MUTATION_LIMIT
+        value: "6"
+      - key: V2_COSTLY_MUTATION_WINDOW_SECONDS
+        value: "300"
+      - key: V2_TRUSTED_PROXY_CIDRS
+        value: "[]"
+      # A non-secret routing gate. It must match the approved worker release
+      # before the API will create durable deletion requests.
+      - key: V2_DELETION_ENABLED
+        value: "false"
       - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
         sync: false
-      - key: OPENAI_API_KEY
+      - key: FIREBASE_CLIENT_ID
         sync: false
-      - key: GROQ_API_KEY
+
+  - type: worker
+    name: auvra-v2-worker
+    runtime: docker
+    dockerCommand: python -m app.v2.infrastructure.plan_worker_entrypoint
+    maxShutdownDelaySeconds: 40
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
         sync: false
-      - key: PINECONE_API_KEY
-        sync: false
-      - key: PINECONE_INDEX
-        value: "auvra-papers"
-      - key: PINECONE_ENVIRONMENT
-        value: "us-east-1"
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: ENABLE_LLM_OTHERS
-        value: "true"
-      - key: LLM_OTHERS_TIMEOUT
+      - key: DATABASE_CONNECTION_MODE
+        value: direct
+      - key: DATABASE_POOL_SIZE
+        value: "5"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "2"
+      - key: DATABASE_POOL_TIMEOUT_SECONDS
         value: "30"
-    
-      - key: RUNPOD_API_KEY
+      - key: DATABASE_POOL_RECYCLE_SECONDS
+        value: "1800"
+      - key: DATABASE_STATEMENT_TIMEOUT_MS
+        value: "15000"
+      - key: V2_GEMINI_API_KEY
         sync: false
+      - key: V2_GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: V2_TELEMETRY_HMAC_KEY
+        sync: false
+      - key: V2_CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: V2_CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: V2_CLOUDFLARE_IMAGE_MODEL
+        value: "@cf/black-forest-labs/flux-1-schnell"
+      - key: V2_SUPABASE_URL
+        sync: false
+      - key: V2_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: V2_PLAN_MEDIA_BUCKET
+        value: plan-images
+      # Account exports are encrypted before upload; this worker is the only
+      # process that receives the encryption key or private storage authority.
+      - key: V2_ACCOUNT_EXPORT_ENCRYPTION_KEY
+        sync: false
+      - key: V2_ACCOUNT_EXPORT_BUCKET
+        value: account-exports
+      # Deletion remains disabled until the owner/legal decision and all
+      # provider credentials are configured together.
+      - key: V2_DELETION_ENABLED
+        value: "false"
+      - key: V2_DELETION_APPROVAL_REFERENCE
+        sync: false
+      - key: AUVRA_DELETION_RECEIPT_HMAC_KEY
+        sync: false
+      - key: V2_REDIS_URL
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_CLIENT_ID
+        sync: false
+      - key: V2_PUBMED_TOOL
+        value: auvra
+      - key: V2_PUBMED_EMAIL
+        sync: false
+      - key: V2_WORKER_LEASE_SECONDS
+        value: "60"
+      - key: V2_PLAN_JOB_TIMEOUT_SECONDS
+        value: "300"
+      - key: V2_CONVERSATION_JOB_TIMEOUT_SECONDS
+        value: "90"
+      - key: V2_WORKER_SHUTDOWN_SECONDS
+        value: "30"

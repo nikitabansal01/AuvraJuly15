@@ -1,0 +1,11 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ participant W as Worker
+ M->>A: replacement (idempotency key)
+ A->>P: refresh request + job
+ W->>P: lease request
+ W->>W: generate/validate replacement
+ W->>P: link old/new item and accept refresh
+ A-->>M: current revision

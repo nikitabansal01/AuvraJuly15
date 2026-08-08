@@ -1,0 +1,16 @@
+sequenceDiagram
+    autonumber
+    participant U as Authenticated user
+    participant A as API
+    participant P as PostgreSQL
+    participant W as Erasure worker
+    participant F as Firebase
+    participant S as Object storage/cache/runtime
+    U->>A: DELETE /api/v2/me (idempotency key)
+    A->>P: mark deletion_pending, audit and durable job
+    A-->>U: accepted request status
+    W->>P: claim erasure job and enumerate scoped records
+    W->>S: delete objects, caches, summaries and checkpoints
+    W->>F: revoke/delete provider identity as approved
+    W->>P: tombstone/delete data, record evidence and completion
+    U->>A: obtain export/status through approved endpoint

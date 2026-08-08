@@ -1,0 +1,20 @@
+sequenceDiagram
+    autonumber
+    participant M as Mobile client
+    participant A as API module
+    participant P as PostgreSQL app/ops
+    participant R as Redis transport
+    participant W as Durable worker
+    participant X as AI/evidence/media adapters
+    M->>A: POST plan generation (idempotency key)
+    A->>P: persist request, job and outbox atomically
+    A->>R: enqueue job id after commit
+    A-->>M: 202 Accepted + job id
+    W->>P: claim lease and heartbeat
+    W->>X: retrieve, generate and validate outside transaction
+    X-->>W: structured output and permanent asset references
+    W->>P: publish READY only if 4 actions + 16 reachable assets
+    P-->>W: commit publication
+    M->>A: GET job / today plan
+    A->>P: read authoritative state
+    A-->>M: job state or READY plan

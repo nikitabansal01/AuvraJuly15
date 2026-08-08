@@ -1,0 +1,10 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ M->>A: record event (client event id)
+ A->>P: immutable action event, deduplicated
+ M->>A: submit daily review
+ A->>P: review + normalized items
+ A->>P: adjudicate streak day and reward ledger
+ A-->>M: progress projection

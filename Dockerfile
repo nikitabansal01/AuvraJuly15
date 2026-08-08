@@ -1,36 +1,52 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS builder
 
-# Set working directory
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libpq-dev \
-    curl \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc g++ libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-v2.lock .
+RUN pip install \
+    --no-cache-dir \
+    --require-hashes \
+    --prefix=/install \
+    --requirement requirements-v2.lock
 
-# Copy application code
-COPY . .
 
-# Create necessary directories
-RUN mkdir -p logs uploads
+FROM python:3.11-slim AS runtime
 
-# Expose port
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    ENVIRONMENT=production
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system auvra \
+    && useradd --system --gid auvra --home-dir /app --shell /usr/sbin/nologin auvra
+
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+# The image deliberately contains no legacy routes, models, services, data,
+# tests, or historical migrations.  Alembic needs only the v2 migration root
+# and env.py; version_locations in alembic.ini prevents legacy migrations from
+# ever being selected.
+COPY --chown=auvra:auvra alembic.ini ./
+COPY --chown=auvra:auvra alembic/env.py alembic/env.py
+COPY --chown=auvra:auvra alembic/recovery_versions/ alembic/recovery_versions/
+COPY --chown=auvra:auvra app/__init__.py app/__init__.py
+COPY --chown=auvra:auvra app/v2/ app/v2/
+COPY --chown=auvra:auvra contracts/ contracts/
+
+USER auvra
+
 EXPOSE 8000
 
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV ENVIRONMENT=production
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl --fail --silent http://localhost:8000/api/v2/health/live || exit 1
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health/ready || exit 1
-
-# Fail closed if the schema migration cannot complete.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Schema migration is an explicit pre-deploy operation, never a web-process side effect.
+CMD ["uvicorn", "app.v2.main:app", "--host", "0.0.0.0", "--port", "8000"]

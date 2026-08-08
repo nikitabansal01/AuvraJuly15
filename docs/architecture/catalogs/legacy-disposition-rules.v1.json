@@ -1,0 +1,23 @@
+{
+  "$schema": "../schemas/legacy-disposition-rules.schema.json",
+  "catalog_version": "1.0.0",
+  "source_contract": {
+    "application_row_total": 1022,
+    "migration_revisions": ["20260801_0002", "20260808_0003"],
+    "default_for_ambiguous_or_unconsented": "QUARANTINE"
+  },
+  "rules": [
+    {"legacy_table": "daily_assignments", "legacy_id_column": "id", "disposition": "ARCHIVE", "reason_code": "LEGACY_DERIVED_ASSIGNMENT", "canonical_target_tables": ["app.daily_review_items"]},
+    {"legacy_table": "question_sessions", "legacy_id_column": "session_id", "disposition": "QUARANTINE", "reason_code": "CONSENT_NOT_EVIDENCED", "canonical_target_tables": ["app.onboarding_sessions"], "requires": ["documented consent", "validated assessment"]},
+    {"legacy_table": "recommendation_advices", "legacy_id_column": "id", "disposition": "ARCHIVE", "reason_code": "LEGACY_DERIVED_ADVICE", "canonical_target_tables": ["app.action_plan_item_variants"]},
+    {"legacy_table": "recommendation_completions", "legacy_id_column": "id", "disposition": "QUARANTINE", "reason_code": "CANONICAL_ITEM_NOT_PROVEN", "canonical_target_tables": ["app.action_item_events"], "requires": ["canonical item ownership"]},
+    {"legacy_table": "recommendation_records", "legacy_id_column": "id", "disposition": "ARCHIVE", "reason_code": "LEGACY_GENERATED_PLAN_NOT_CANONICAL", "canonical_target_tables": ["app.action_plans"]},
+    {"legacy_table": "recommendation_redistributions", "legacy_id_column": "id", "disposition": "ARCHIVE", "reason_code": "LEGACY_SCHEDULE_STATE", "canonical_target_tables": ["app.plan_refreshes"]},
+    {"legacy_table": "recommendation_schedules", "legacy_id_column": "id", "disposition": "ARCHIVE", "reason_code": "LEGACY_SCHEDULE_STATE", "canonical_target_tables": ["app.action_plans"]},
+    {"legacy_table": "schedule_redistributions", "legacy_id_column": "id", "disposition": "ARCHIVE", "reason_code": "LEGACY_SCHEDULE_STATE", "canonical_target_tables": ["app.plan_refreshes"]},
+    {"legacy_table": "session_processing_status", "legacy_id_column": "session_id", "disposition": "QUARANTINE", "reason_code": "LEGACY_PROCESSING_PAYLOAD", "canonical_target_tables": ["ops.generation_jobs"]},
+    {"legacy_table": "user_profiles", "legacy_id_column": "uid", "disposition": "QUARANTINE", "reason_code": "CONSENT_NOT_EVIDENCED", "canonical_target_tables": ["app.users", "app.user_profiles"], "requires": ["documented consent", "authenticated subject proof"]},
+    {"legacy_table": "user_responses", "legacy_id_column": "id", "disposition": "QUARANTINE", "reason_code": "CONSENT_NOT_EVIDENCED", "canonical_target_tables": ["app.onboarding_assessments"], "requires": ["documented consent", "validated assessment"]},
+    {"legacy_table": "user_schedules", "legacy_id_column": "id", "disposition": "ARCHIVE", "reason_code": "LEGACY_DERIVED_SCHEDULE", "canonical_target_tables": ["app.daily_reviews"]}
+  ]
+}

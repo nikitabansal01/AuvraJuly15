@@ -1,0 +1,21 @@
+C4Component
+title AUVRA v2 - Mobile Components (TARGET PLANNED)
+Container_Boundary(mobile, "AUVRA iOS and Android") {
+  Component(navigation, "Typed navigation", "React Navigation", "Approved journey graph")
+  Component(features, "Feature containers/components", "React Native", "Presentation aligned with backend domains")
+  Component(state, "Feature state machines", "Reducers", "Ephemeral workflow state")
+  Component(query, "Server-state layer", "TanStack Query", "Caching, invalidation and offline recovery")
+  Component(client, "Generated v2 client", "OpenAPI TypeScript", "DTOs, URL, token and transport")
+  Component(auth, "Authentication core", "Firebase", "Sole session truth")
+  Component(storage, "Secure local storage", "SecureStore", "Necessary credentials and UID-scoped non-health metadata")
+  Component(images, "PlanImage", "expo-image", "Permanent image prefetch/render")
+}
+Rel(navigation, features, "Selects screen")
+Rel(features, state, "Sends UI events")
+Rel(features, query, "Reads/mutates server state")
+Rel(query, client, "Calls typed operations")
+Rel(client, auth, "Obtains current token")
+Rel(auth, storage, "Stores necessary credential state")
+Rel(features, images, "Renders verified assets")
+Rel(images, query, "Prefetch readiness coordinates plan reveal")
+

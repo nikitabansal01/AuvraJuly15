@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://architecture.auvra.internal/schemas/catalog.schema.json",
+  "title": "AUVRA architecture catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog", "snapshot", "records"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "catalog": {
+      "enum": [
+        "features",
+        "services",
+        "tables",
+        "metrics",
+        "api",
+        "jobs_events",
+        "providers",
+        "environments",
+        "prompts_models"
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["as_of", "baseline", "approval"],
+      "properties": {
+        "as_of": {"type": "string", "format": "date"},
+        "baseline": {"type": "string", "minLength": 1},
+        "approval": {
+          "enum": ["PENDING_OWNER", "APPROVED", "SUPERSEDED"]
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/record"}
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": ["id", "name", "lifecycle", "owner", "evidence"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "name": {"type": "string", "minLength": 1},
+        "lifecycle": {
+          "enum": [
+            "AS_IS",
+            "TARGET_PLANNED",
+            "TARGET_PARTIAL",
+            "TARGET_IMPLEMENTED_UNVERIFIED",
+            "TARGET_VERIFIED",
+            "LEGACY_ARCHIVE",
+            "REMOVE"
+          ]
+        },
+        "owner": {"type": "string", "minLength": 1},
+        "disposition": {"enum": ["KEEP", "REBUILD", "ARCHIVE", "REMOVE"]},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "notes": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  }
+}

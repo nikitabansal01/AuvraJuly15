@@ -1,0 +1,461 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-01T09:48:16.384552+00:00",
+  "scope": "Committed source evidence; no secret values or health-data contents captured.",
+  "backend": {
+    "repository": "/Users/mohanganesh/AUVRA/.worktrees/auvra-recovery",
+    "ref": "c02892a8e1d5ec6bc76040e25df4e93d8fb60cfc",
+    "commit": "c02892a8e1d5ec6bc76040e25df4e93d8fb60cfc",
+    "commit_date": "2026-07-26T12:24:31+05:30",
+    "subject": "Persist generated image library records",
+    "working_tree_status_at_build": "",
+    "tracked_files": 276,
+    "python_lines_all": 84474,
+    "python_lines_app": 69102,
+    "largest_python_files": [
+      {
+        "path": "app/services/action_plan_generator.py",
+        "lines": 9529
+      },
+      {
+        "path": "app/services/rag_service.py",
+        "lines": 3338
+      },
+      {
+        "path": "app/langgraph/graphs/care_plan_checkin.py",
+        "lines": 2875
+      },
+      {
+        "path": "app/api/v1/endpoints/action_plan.py",
+        "lines": 2365
+      },
+      {
+        "path": "app/services/chat/tools.py",
+        "lines": 1842
+      },
+      {
+        "path": "app/core/database.py",
+        "lines": 1614
+      },
+      {
+        "path": "app/services/pubmed_service.py",
+        "lines": 1611
+      },
+      {
+        "path": "app/services/prompt_recommendation_engine.py",
+        "lines": 1533
+      },
+      {
+        "path": "app/api/v1/endpoints/chat.py",
+        "lines": 1473
+      },
+      {
+        "path": "app/services/chat/langgraph_agent.py",
+        "lines": 1427
+      },
+      {
+        "path": "app/services/safety/medical_safety.py",
+        "lines": 1273
+      },
+      {
+        "path": "app/services/weekly_checkin_ai.py",
+        "lines": 1192
+      },
+      {
+        "path": "app/services/image_library_service.py",
+        "lines": 1183
+      },
+      {
+        "path": "app/api/v1/endpoints/questions.py",
+        "lines": 1100
+      },
+      {
+        "path": "app/api/v1/endpoints/care_plan_checkin.py",
+        "lines": 1088
+      }
+    ],
+    "orm_tables": [
+      {
+        "table": "action_plan_daily_reviews",
+        "class": "ActionPlanDailyReview",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "action_plan_evaluations",
+        "class": "ActionPlanEvaluation",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "action_plan_feedback",
+        "class": "ActionPlanFeedback",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "action_plan_item_variants",
+        "class": "ActionPlanItemVariant",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "action_plan_items",
+        "class": "ActionPlanItem",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "action_plan_refresh_logs",
+        "class": "ActionPlanRefreshLog",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "action_plans",
+        "class": "ActionPlan",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "ai_model_usage_logs",
+        "class": "AIModelUsageLog",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "assignment_skip_logs",
+        "class": "AssignmentSkipLog",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "care_plan_checkin_threads",
+        "class": "CarePlanCheckInThread",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "chat_messages",
+        "class": "ChatMessage",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "chat_sessions",
+        "class": "ChatSession",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "conversation_summaries",
+        "class": "ConversationSummary",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "daily_assignments",
+        "class": "DailyAssignment",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "image_library",
+        "class": "ImageLibrary",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "mood_logs",
+        "class": "MoodLog",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "pubmed_cache",
+        "class": "PubMedCache",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "question_sessions",
+        "class": "QuestionSession",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "recommendation_advices",
+        "class": "RecommendationAdvice",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "recommendation_completions",
+        "class": "RecommendationCompletion",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "recommendation_records",
+        "class": "RecommendationRecord",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "recommendation_redistributions",
+        "class": "RecommendationRedistribution",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "recommendation_schedules",
+        "class": "RecommendationSchedule",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "schedule_redistributions",
+        "class": "ScheduleRedistribution",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "session_processing_status",
+        "class": "SessionProcessingStatus",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "symptom_checkin_threads",
+        "class": "SymptomCheckInThread",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "symptom_logs",
+        "class": "SymptomLog",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "user_profiles",
+        "class": "UserProfile",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "user_responses",
+        "class": "UserResponse",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "user_rewards",
+        "class": "UserReward",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "user_schedules",
+        "class": "UserSchedule",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "user_streak_data",
+        "class": "UserStreakData",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "weekly_checkin_questions",
+        "class": "WeeklyCheckInQuestion",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "weekly_checkin_sessions",
+        "class": "WeeklyCheckInSession",
+        "source": "app/core/database.py"
+      },
+      {
+        "table": "weekly_checkins",
+        "class": "WeeklyCheckIn",
+        "source": "app/core/database.py"
+      }
+    ],
+    "orm_table_count": 35,
+    "route_operation_count": 132,
+    "mutation_operation_count": 66,
+    "syntactically_unguarded_operation_count": 52,
+    "syntactically_unguarded_mutation_count": 19,
+    "route_guard_methodology": "Static AST/lexical evidence only: an operation is marked guarded when its function contains a recognized Depends(...) or Firebase verification marker. Manual review remains required.",
+    "asyncio_create_task_hits": 4,
+    "transaction_call_hits": {
+      "commit": 146,
+      "rollback": 56,
+      "begin": 4
+    },
+    "test_file_count": 23,
+    "test_files": [
+      "scripts/test_e2e_gpt_tool.py",
+      "scripts/test_pubmed_service.py",
+      "test_all_edge_cases.py",
+      "test_complete_flow.py",
+      "test_evaluation.py",
+      "test_evaluation_complete.py",
+      "test_fallback_e2e.py",
+      "test_groq_action_generation.py",
+      "test_groq_api.py",
+      "test_groq_fallback.py",
+      "test_groq_full_validation.py",
+      "test_suite.py",
+      "tests/test_action_plan_system.py",
+      "tests/test_care_plan_checkin_transcribe.py",
+      "tests/test_cloudflare_image_provider.py",
+      "tests/test_cycle_phase_calculation.py",
+      "tests/test_database_health.py",
+      "tests/test_healthy_user.py",
+      "tests/test_hormone_analysis.py",
+      "tests/test_legacy_data_migration_contract.py",
+      "tests/test_session_persistence.py",
+      "tests/test_v3_mobile_integration.py",
+      "tests/test_weekly_checkin_transcribe.py"
+    ],
+    "evidence_sha256": {
+      "app/api/v1/api.py": "1ff1788f8f7ed27980f3086310a403dc7a5d836aa9ce0a68ca95191db556bb57",
+      "app/core/config.py": "cd8e770d4bb3dc7faee2c2a18a3782759ae02dd2d4ee9b143364ccad5dd72c8e",
+      "app/core/database.py": "7e994a7a1474f4a0dee3618035e46a7eba1a30db1a57254b46215a5d8389b49b",
+      "app/main.py": "808f6aa1020ce0daed92ec76896ee3b927259f0814545bac4b4d73f8c683bf5c"
+    }
+  },
+  "mobile": {
+    "repository": "/Users/mohanganesh/AUVRA/.worktrees/auvra-mobile-ios",
+    "ref": "923e09c234c7b105d9f9ec15347ea555fa45a104",
+    "commit": "923e09c234c7b105d9f9ec15347ea555fa45a104",
+    "commit_date": "2026-07-26T11:28:25+05:30",
+    "subject": "Stabilize Firebase token retrieval on mobile",
+    "working_tree_status_at_build": "M android/app/build.gradle\n M android/app/src/main/AndroidManifest.xml",
+    "tracked_files": 523,
+    "typescript_javascript_lines": 56708,
+    "largest_code_files": [
+      {
+        "path": "app/screens/ChatbotScreen.tsx",
+        "lines": 3599
+      },
+      {
+        "path": "app/screens/HomeScreen.tsx",
+        "lines": 3103
+      },
+      {
+        "path": "app/screens/PersonalizeScreen.tsx",
+        "lines": 1955
+      },
+      {
+        "path": "components/ActionPlanTimeline.tsx",
+        "lines": 1868
+      },
+      {
+        "path": "temp_master_HomeScreen.tsx",
+        "lines": 1734
+      },
+      {
+        "path": "temp_timeline_db6617d.tsx",
+        "lines": 1703
+      },
+      {
+        "path": "app/screens/ActionDetailScreen.tsx",
+        "lines": 1658
+      },
+      {
+        "path": "components/PlanManagerModal.tsx",
+        "lines": 1589
+      },
+      {
+        "path": "app/screens/QuestionScreen.tsx",
+        "lines": 1531
+      },
+      {
+        "path": "old_HomeScreen.tsx",
+        "lines": 1279
+      },
+      {
+        "path": "components/TypeActionPlan.tsx",
+        "lines": 1213
+      },
+      {
+        "path": "app/screens/PaywallScreen.tsx",
+        "lines": 1188
+      },
+      {
+        "path": "components/DailyReviewModal.tsx",
+        "lines": 1123
+      },
+      {
+        "path": "services/homeService.ts",
+        "lines": 1016
+      },
+      {
+        "path": "components/SymptomPredictionCard.tsx",
+        "lines": 833
+      }
+    ],
+    "raw_fetch_call_count": 61,
+    "raw_fetch_files": [
+      "app/screens/ProfileScreen.tsx",
+      "components/SymptomPredictionCard.tsx",
+      "components/WellnessDashboard.tsx",
+      "services/carePlanCheckinService.ts",
+      "services/chatService.ts",
+      "services/homeService.ts",
+      "services/insightsService.ts",
+      "services/personalizationService.ts",
+      "services/preferencesService.ts",
+      "services/rewardService.ts",
+      "services/sessionService.ts",
+      "services/symptomCheckinService.ts",
+      "services/symptomTrackingService.ts",
+      "services/weeklyCheckinService.ts"
+    ],
+    "api_url_implementation_files": [
+      "app/screens/ProfileScreen.tsx",
+      "services/carePlanCheckinService.ts",
+      "services/chatService.ts",
+      "services/homeService.ts",
+      "services/insightsService.ts",
+      "services/personalizationService.ts",
+      "services/preferencesService.ts",
+      "services/rewardService.ts",
+      "services/sessionService.ts",
+      "services/symptomCheckinService.ts",
+      "services/symptomTrackingService.ts",
+      "services/weeklyCheckinService.ts"
+    ],
+    "api_url_implementation_file_count": 12,
+    "async_storage_files": [
+      "app/screens/HomeScreen.tsx",
+      "app/screens/LoginScreen.tsx",
+      "app/screens/QuestionScreen.tsx",
+      "app/screens/ResearchingScreen.tsx",
+      "app/screens/ResultLoadingScreen.tsx",
+      "app/screens/SignupLoadingScreen.tsx",
+      "components/BottomNavigationBar.tsx",
+      "components/DailyReviewModal.tsx",
+      "components/LoginBottomSheet.tsx",
+      "config/firebase.ts",
+      "services/authService.ts",
+      "services/sessionService.ts",
+      "temp_master_HomeScreen.tsx",
+      "utils/streakMilestones.ts"
+    ],
+    "plaintext_password_storage_reference_count": 7,
+    "plaintext_password_storage_references": [
+      {
+        "path": "services/authService.ts",
+        "line": 10
+      },
+      {
+        "path": "services/authService.ts",
+        "line": 38
+      },
+      {
+        "path": "services/authService.ts",
+        "line": 43
+      },
+      {
+        "path": "services/authService.ts",
+        "line": 92
+      },
+      {
+        "path": "services/authService.ts",
+        "line": 218
+      },
+      {
+        "path": "services/authService.ts",
+        "line": 251
+      },
+      {
+        "path": "services/sessionService.ts",
+        "line": 571
+      }
+    ],
+    "test_file_count": 0,
+    "test_files": [],
+    "duplicate_or_temporary_source_markers": [
+      "old_HomeScreen.tsx",
+      "temp_master_HomeScreen.tsx",
+      "temp_timeline_db6617d.tsx"
+    ],
+    "evidence_sha256": {
+      "App.tsx": "8602b4e10a296dc6738f2d8e674fd17e67b0a8a401dfa9a141d7de277ec0b2b5",
+      "services/authService.ts": "3313109b21e2aa806d64503628a44dcc1041ea12bee628b64379cf9dd37dbbed"
+    }
+  }
+}

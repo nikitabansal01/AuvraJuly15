@@ -1,0 +1,9 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ M->>A: create symptom observation
+ A->>P: owner-scoped fact
+ M->>A: optional typed conversation message
+ A->>P: ordered message
+ A-->>M: non-diagnostic acknowledgement

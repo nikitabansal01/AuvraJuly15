@@ -1,0 +1,27 @@
+C4Container
+title AUVRA v2 - Container View (TARGET PLANNED)
+Person(member, "AUVRA member", "iOS/Android user")
+System_Ext(firebase, "Firebase Authentication", "Authentication provider")
+System_Ext(providers, "Provider gateways", "LLM, evidence and image APIs")
+System_Ext(telemetry, "Telemetry backend", "Redacted operational signals")
+System_Boundary(auvra, "AUVRA v2") {
+  Container(mobile, "Mobile app", "React Native / Expo", "Typed presentation and offline-safe workflows")
+  Container(api, "API", "FastAPI modular monolith", "Authentication, validation and synchronous commands/queries")
+  Container(worker, "Durable worker", "Same application image", "Leased asynchronous business jobs")
+  ContainerDb(pg, "PostgreSQL 17", "Supabase", "app + ops + runtime source of truth")
+  ContainerDb(redis, "Redis", "Managed Redis", "Queue transport, cache and locks only")
+  ContainerDb(storage, "Object storage/CDN", "Permanent storage", "Immutable media and time-limited exports")
+}
+Rel(member, mobile, "Uses")
+Rel(mobile, firebase, "Obtains session token", "SDK/TLS")
+Rel(mobile, api, "Calls generated OpenAPI v2 client", "HTTPS + Firebase token")
+Rel(api, pg, "Short transactions", "SQL/TLS")
+Rel(api, redis, "Enqueues identifiers / cache", "TLS")
+Rel(api, storage, "Reads permanent assets", "HTTPS")
+Rel(worker, pg, "Claims jobs, persists results, publishes atomically", "SQL/TLS")
+Rel(worker, redis, "Consumes queue / locks", "TLS")
+Rel(worker, providers, "Calls through adapters outside DB transactions", "TLS")
+Rel(worker, storage, "Persists and verifies assets", "TLS")
+Rel(api, telemetry, "Exports allowlisted signals")
+Rel(worker, telemetry, "Exports allowlisted signals")
+

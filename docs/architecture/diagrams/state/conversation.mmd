@@ -1,0 +1,5 @@
+stateDiagram-v2
+ [*] --> active
+ active --> active: append ordered message / summary
+ active --> closed: owner closure
+ closed --> [*]

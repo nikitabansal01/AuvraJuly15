@@ -1,0 +1,8 @@
+stateDiagram-v2
+ [*] --> active
+ active --> completed: immutable event
+ active --> skipped: immutable event
+ active --> replaced: accepted refresh
+ completed --> [*]
+ skipped --> [*]
+ replaced --> [*]

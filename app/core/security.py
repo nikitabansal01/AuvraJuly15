@@ -120,7 +120,7 @@ async def verify_firebase_token(token: str) -> dict:
             # Don't log every cache hit to avoid log spam during polling
             return cached_result
         
-        logger.info(f"Firebase token verification started: token length={len(token)}")
+        logger.info("Firebase token verification started")
         
         # Check if Firebase app is initialized
         if not firebase_admin._apps:
@@ -133,7 +133,7 @@ async def verify_firebase_token(token: str) -> dict:
         # Verify Firebase token
         logger.info("Firebase token verification in progress...")
         decoded_token = auth.verify_id_token(token, check_revoked=False)
-        logger.info(f"Firebase token verification successful: uid={decoded_token.get('uid')}, email={decoded_token.get('email')}")
+        logger.info("Firebase token verification successful")
         
         # Cache the successful verification
         _cache_token(token, decoded_token)
@@ -142,34 +142,15 @@ async def verify_firebase_token(token: str) -> dict:
         
     except Exception as e:
         logger.error(f"Firebase token verification failed: {str(e)}", exc_info=True)
-        
-        # DEVELOPMENT BYPASS: If verification fails in dev mode (e.g. missing credentials), 
-        # decode the token without verification to allow local development.
-        if settings.DEBUG or settings.ENVIRONMENT == "development":
-            logger.warning("⚠️ DEVELOPMENT MODE: Bypassing Firebase token verification failure")
-            try:
-                import jwt
-                # Decode without verification to get the real UID from the token
-                decoded_token = jwt.decode(token, options={"verify_signature": False})
-                
-                # Map 'sub' to 'uid' as Firebase Admin SDK does
-                if 'uid' not in decoded_token:
-                    decoded_token['uid'] = decoded_token.get('sub') or decoded_token.get('user_id')
-                
-                logger.info(f"Bypassed verification. UID: {decoded_token.get('uid')}")
-                return decoded_token
-            except Exception as decode_error:
-                logger.error(f"Failed to decode token without verification: {decode_error}")
-                # Fallback to mock user if decoding fails
-                return {
-                    "uid": "test-user-id",
-                    "email": "test@example.com",
-                    "name": "Test User"
-                }
-        
+
+        # There is deliberately no development bypass here. Decoding an
+        # unverified token and trusting its `sub` claim accepts any
+        # self-signed JWT as any user, and the settings that once gated it
+        # (DEBUG, ENVIRONMENT != "production") are also satisfied by staging.
+        # The provider exception is logged above; it never reaches the client.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid Firebase token: {str(e)}",
+            detail="Invalid authentication token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -185,7 +166,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         logger.info(f"Token length: {len(token) if token else 0}")
         
         decoded_token = await verify_firebase_token(token)
-        logger.info(f"Firebase token verification successful: uid={decoded_token.get('uid')}")
+        logger.info("Firebase token verification successful")
         
         # Extract Firebase user information
         user_info = {
@@ -198,7 +179,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             "provider": decoded_token.get("firebase", {}).get("sign_in_provider", "password")
         }
         
-        logger.info(f"User information extraction completed: uid={user_info.get('user_id')}, email={user_info.get('email')}")
+        logger.info("User information extraction completed")
         return user_info
         
     except Exception as e:

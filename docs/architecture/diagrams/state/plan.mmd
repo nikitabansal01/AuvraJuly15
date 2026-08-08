@@ -1,0 +1,9 @@
+stateDiagram-v2
+ [*] --> generating
+ generating --> ready: atomic completeness gate
+ generating --> failed: exhausted/blocked job
+ ready --> superseded: accepted replacement revision
+ ready --> archived: lifecycle closure
+ failed --> [*]
+ superseded --> [*]
+ archived --> [*]

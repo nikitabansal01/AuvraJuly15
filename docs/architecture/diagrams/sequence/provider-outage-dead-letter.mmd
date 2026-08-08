@@ -1,0 +1,11 @@
+sequenceDiagram
+ participant W as Worker
+ participant P as PostgreSQL
+ participant X as Provider
+ W->>P: claim leased job
+ W->>X: request
+ X-->>W: timeout/error
+ W->>P: retry_wait with bounded backoff
+ W->>P: retry attempts
+ W->>P: dead_letter on exhaustion
+ Note over W,P: no blind replay; operator records decision

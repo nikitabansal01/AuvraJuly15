@@ -12,8 +12,8 @@ import time
 import logging
 from contextlib import asynccontextmanager
 
-from app.core.config import settings
-from app.api.v1.api import api_router
+from app.core.config import settings, validate_production_configuration
+from app.v2.api.router import router as api_v2_router
 from app.core.logging import setup_logging
 from app.core.firebase import initialize_firebase
 from app.core.rate_limiter import get_rate_limiter, custom_rate_limit_handler
@@ -28,6 +28,10 @@ async def lifespan(app: FastAPI):
     
     # Startup
     logger.info("Starting AUVRA application...")
+
+    # V2 production security is fail-closed before any network listener is
+    # considered ready.
+    validate_production_configuration()
     
     # Initialize database. This is deliberately fail-closed: migrations run in
     # Render's start command, and the server must not accept traffic unless the
@@ -42,10 +46,15 @@ async def lifespan(app: FastAPI):
     
     # Initialize Firebase
     try:
-        initialize_firebase()
+        initialized = initialize_firebase()
+        if settings.ENVIRONMENT == "production" and not initialized:
+            raise RuntimeError("Firebase did not initialize")
         logger.info("Firebase initialized")
-    except Exception as e:
-        logger.warning(f"Firebase initialization failed: {e}")
+    except Exception:
+        if settings.ENVIRONMENT == "production":
+            logger.error("Firebase initialization failed; aborting startup")
+            raise
+        logger.warning("Firebase initialization failed")
     
     logger.info("AUVRA application started successfully")
     
@@ -80,6 +89,7 @@ def create_application() -> FastAPI:
         redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
         lifespan=lifespan,
     )
+    app.openapi_version = "3.1.1"
     
     # ════════════════════════════════════════════════════════════════════════
     # RATE LIMITING - Initialize slowapi with Redis backend
@@ -92,11 +102,11 @@ def create_application() -> FastAPI:
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["*"],
-        expose_headers=["*"],
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials="*" not in settings.CORS_ORIGINS,
+        allow_methods=settings.CORS_ALLOW_METHODS,
+        allow_headers=settings.CORS_ALLOW_HEADERS,
+        expose_headers=["ETag", "X-Request-ID"],
     )
 
     # Trusted Host middleware (production only)
@@ -145,7 +155,11 @@ def create_application() -> FastAPI:
         )
 
     # Register routers
-    app.include_router(api_router, prefix="/api/v1")
+    if settings.ENABLE_LEGACY_V1:
+        from app.api.v1.api import api_router
+
+        app.include_router(api_router, prefix=settings.API_V1_STR)
+    app.include_router(api_v2_router, prefix=settings.API_V2_STR)
 
     @app.get("/health")
     @app.head("/health")

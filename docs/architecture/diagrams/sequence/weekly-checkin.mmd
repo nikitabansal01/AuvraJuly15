@@ -1,0 +1,10 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ M->>A: get due check-in
+ A->>P: read week/version
+ M->>A: create check-in
+ A->>P: one user/week row
+ M->>A: put response
+ A->>P: unique question response

@@ -5,18 +5,18 @@ import json
 from app.core.config import settings
 
 
-def initialize_firebase():
+def initialize_firebase() -> bool:
     """Initialize Firebase"""
     try:
         # Skip if already initialized
         if firebase_admin._apps:
-            return
+            return True
         
         # Service account key file exists
         if os.path.exists("auvra-adf59-firebase-adminsdk-fbsvc-f60acd9df3.json"):
                 cred = credentials.Certificate("auvra-adf59-firebase-adminsdk-fbsvc-f60acd9df3.json")
                 firebase_admin.initialize_app(cred)
-                return
+                return True
             
         
         # Environment variables configuration
@@ -25,7 +25,7 @@ def initialize_firebase():
         if settings.FIREBASE_PROJECT_ID and settings.FIREBASE_PROJECT_ID not in placeholder_markers:
             if not settings.FIREBASE_PRIVATE_KEY or settings.FIREBASE_PRIVATE_KEY in placeholder_markers:
                 print("⚠️ Firebase skipped: Private key missing or placeholder. Provide real credentials to enable Firebase features.")
-                return
+                return False
             firebase_config = {
                 "type": "service_account",
                 "project_id": settings.FIREBASE_PROJECT_ID,
@@ -44,14 +44,18 @@ def initialize_firebase():
         else:
             # Use default app in development
             firebase_admin.initialize_app()
+        return True
             
-    except Exception as e:
-        print(f"Firebase initialization error: {e}")
+    except Exception:
+        if settings.ENVIRONMENT == "production":
+            raise RuntimeError("Firebase production initialization failed") from None
+        print("Firebase initialization error")
         # Use default app in development
         try:
             firebase_admin.initialize_app()
-        except:
-            pass
+            return True
+        except Exception:
+            return False
 
 
 def verify_firebase_token(token: str) -> dict:
@@ -143,4 +147,4 @@ def list_users(max_results: int = 1000):
         
         return users
     except Exception as e:
-        raise Exception(f"Failed to list users: {str(e)}") 
+        raise Exception(f"Failed to list users: {str(e)}")

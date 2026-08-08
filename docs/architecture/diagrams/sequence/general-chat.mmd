@@ -1,0 +1,11 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ participant W as AI worker
+ M->>A: create conversation/message
+ A->>P: append ordered message
+ A->>P: durable response job
+ W->>W: safety-gated provider call
+ W->>P: append assistant message/summary
+ A-->>M: typed conversation

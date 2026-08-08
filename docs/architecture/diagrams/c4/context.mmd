@@ -1,0 +1,14 @@
+C4Context
+title AUVRA v2 - System Context (TARGET PLANNED)
+Person(member, "AUVRA member", "Uses the iOS or Android app")
+Person(operator, "AUVRA operator", "Responds through approved runbooks")
+System(auvra, "AUVRA v2", "Health-support plans, progress and typed conversations; not a diagnostic service")
+System_Ext(firebase, "Firebase Authentication", "Verifies user identity")
+System_Ext(providers, "AI, evidence and image providers", "Replaceable provider gateways")
+System_Ext(telemetry, "Redacted telemetry backend", "Receives allowlisted operational signals")
+Rel(member, auvra, "Uses", "iOS/Android + HTTPS")
+Rel(operator, auvra, "Operates", "Restricted operational access")
+Rel(auvra, firebase, "Verifies tokens / manages account lifecycle", "TLS")
+Rel(auvra, providers, "Retrieves evidence and generates validated content/media", "TLS")
+Rel(auvra, telemetry, "Exports redacted traces, metrics and logs", "OTLP/TLS")
+

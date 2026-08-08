@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> queued
+    queued --> leased: worker claim
+    leased --> running: heartbeat starts
+    running --> publishing: validated output and assets
+    publishing --> succeeded: atomic READY publication
+    running --> retry_wait: retryable failure
+    retry_wait --> queued: backoff elapsed
+    running --> dead_letter: attempts exhausted / non-retryable
+    leased --> queued: lease expired
+    succeeded --> [*]
+    dead_letter --> [*]

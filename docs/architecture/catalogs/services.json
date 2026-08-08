@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0.0",
+  "catalog": "services",
+  "snapshot": {
+    "as_of": "2026-08-01",
+    "baseline": "AUVRA v2 target architecture",
+    "approval": "PENDING_OWNER"
+  },
+  "records": [
+    {
+      "id": "service.api",
+      "name": "FastAPI API process",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Platform engineering",
+      "kind": "deployable",
+      "image": "same immutable image as worker",
+      "responsibilities": ["HTTP adaptation", "authentication", "validation", "command/query dispatch", "problem details", "bounded request bodies", "distributed abuse control"],
+      "prohibited": ["provider SDK use", "request-scoped fire-and-forget business work", "transaction ownership in handlers", "using Redis as business truth"],
+      "evidence": ["ADR-001", "ADR-011", "ADR-014", "runbooks/API_AND_DATABASE.md"]
+    },
+    {
+      "id": "service.worker",
+      "name": "Durable worker process",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Media, jobs and operational infrastructure",
+      "kind": "deployable",
+      "image": "same immutable image as API",
+      "responsibilities": ["claim durable jobs", "lease heartbeat", "provider orchestration", "atomic publication", "dead-letter handling"],
+      "prohibited": ["using Redis as business truth", "publishing partial plans", "holding database transactions across provider calls"],
+      "evidence": ["ADR-007", "ADR-008"]
+    },
+    {
+      "id": "module.identity",
+      "name": "Identity and access",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Identity and access",
+      "kind": "module",
+      "owns": ["app.users", "authentication policies"],
+      "evidence": ["ADR-002"]
+    },
+    {
+      "id": "module.onboarding",
+      "name": "Onboarding, consent and profiles",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Onboarding, consent and profiles",
+      "kind": "module",
+      "owns": ["app.user_profiles", "app.consent_records", "app.onboarding_sessions", "app.onboarding_assessments"],
+      "evidence": ["ADR-003", "ADR-013"]
+    },
+    {
+      "id": "module.plans",
+      "name": "Plans, actions and Daily Review",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Plans, actions and Daily Review",
+      "kind": "module",
+      "owns": ["plan family", "action event history", "daily reviews", "plan refreshes"],
+      "evidence": ["ADR-004"]
+    },
+    {
+      "id": "module.engagement",
+      "name": "Progress, streaks, rewards and refreshes",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Progress, streaks, rewards and refreshes",
+      "kind": "module",
+      "owns": ["app.streak_days", "app.reward_ledger", "progress queries"],
+      "evidence": ["ADR-005", "ADR-010"]
+    },
+    {
+      "id": "module.conversations",
+      "name": "Conversations and check-ins",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Conversations and check-ins",
+      "kind": "module",
+      "owns": ["conversations", "messages", "summaries", "weekly check-ins"],
+      "evidence": ["ADR-006"]
+    },
+    {
+      "id": "module.symptoms",
+      "name": "Symptom observations",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Symptom observations",
+      "kind": "module",
+      "owns": ["app.symptom_observations"],
+      "evidence": ["ADR-006", "ADR-013"]
+    },
+    {
+      "id": "module.ai_quality",
+      "name": "Evidence, AI safety and evaluation",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Evidence, AI safety and evaluation",
+      "kind": "module",
+      "owns": ["research sources", "citations", "AI invocation metadata", "plan evaluations", "prompt registry"],
+      "evidence": ["ADR-008"]
+    },
+    {
+      "id": "module.operations",
+      "name": "Media, jobs and operational infrastructure",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Media, jobs and operational infrastructure",
+      "kind": "module",
+      "owns": ["media assets", "jobs", "outbox", "idempotency", "redacted audit events"],
+      "evidence": ["ADR-007", "ADR-009", "ADR-014"]
+    },
+    {
+      "id": "runtime.postgresql",
+      "name": "Supabase PostgreSQL 17",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Platform engineering",
+      "kind": "managed dependency",
+      "responsibilities": ["application source of truth", "durable job authority", "outbox", "LangGraph runtime checkpoints"],
+      "evidence": ["ADR-012"]
+    },
+    {
+      "id": "runtime.redis",
+      "name": "Redis",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Platform engineering",
+      "kind": "managed dependency",
+      "responsibilities": ["queue transport", "cache", "distributed locks", "expiring rate-limit counters"],
+      "prohibited": ["business source of truth", "permanent conversation history"],
+      "evidence": ["ADR-007"]
+    },
+    {
+      "id": "client.mobile",
+      "name": "AUVRA iOS and Android client",
+      "lifecycle": "TARGET_PLANNED",
+      "owner": "Mobile engineering",
+      "kind": "client",
+      "responsibilities": ["authenticated presentation", "offline-safe interaction", "generated OpenAPI client", "accessible native journeys"],
+      "evidence": ["ADR-015"]
+    }
+  ]
+}

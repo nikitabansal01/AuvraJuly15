@@ -1,0 +1,25 @@
+# AUVRA v2 production runtime only.  The legacy dependency graph remains in
+# requirements.txt for evidence/recovery work, but must never be packaged in
+# the v2 API or worker image.
+#
+# Update this file deliberately, then regenerate requirements-v2.lock with:
+# uv pip compile requirements-v2.txt --output-file requirements-v2.lock \
+#   --python-version 3.11 --python-platform x86_64-manylinux_2_28 \
+#   --generate-hashes
+# 0.104.1 resolved Starlette 0.27.0, which is affected by multiple published
+# advisories. Keep FastAPI on the current supported line so its Starlette
+# constraint selects a patched release; the lock below is the deployed fact.
+fastapi==0.135.1
+uvicorn[standard]==0.24.0
+firebase-admin==6.2.0
+pydantic==2.13.4
+pydantic-settings==2.1.0
+sqlalchemy==2.0.23
+alembic==1.13.1
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+anyio==3.7.1
+httpx==0.28.1
+pillow==12.3.0
+cryptography==50.0.0
+redis[hiredis]==8.1.0

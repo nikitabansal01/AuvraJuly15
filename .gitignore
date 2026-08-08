@@ -5,6 +5,12 @@ __pycache__/
 *.so
 .Python
 build/
+# The architecture handbook build source is reviewed production tooling, not a
+# generated Python build directory.
+!docs/architecture/build/
+!docs/architecture/build/**
+docs/architecture/build/__pycache__/
+docs/architecture/build/*.py[cod]
 develop-eggs/
 dist/
 downloads/
@@ -122,9 +128,6 @@ uploads/
 .env.local
 .env.production
 
-# Docker
-.dockerignore
-
 # SSL certificates
 nginx/ssl/ 
 
@@ -135,3 +138,11 @@ app_logs.txt
 app_logs_utf8.txt
 rag_checkpoints.json
 rag_checkpoint.json
+
+# Generated and temporary source artifacts must not become competing code paths
+*.backup
+*.bak
+*.orig
+temp_*.py
+output/pdf/*.png
+tmp/pdfs/

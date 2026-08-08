@@ -1,0 +1,7 @@
+stateDiagram-v2
+ [*] --> requested
+ requested --> running: worker claim
+ running --> completed: all scopes evidenced
+ running --> failed: scope failure
+ failed --> running: approved bounded retry
+ completed --> [*]

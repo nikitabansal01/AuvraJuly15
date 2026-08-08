@@ -1,0 +1,12 @@
+sequenceDiagram
+ participant M as Mobile
+ participant A as API
+ participant P as PostgreSQL
+ participant W as Erasure worker
+ participant E as External scopes
+ M->>A: delete me (idempotency key)
+ A->>P: deletion request, audit and durable job
+ W->>P: enumerate user-scoped records
+ W->>E: Firebase, objects, cache and runtime deletion
+ W->>P: complete/tombstone with evidence
+ A-->>M: recorded status

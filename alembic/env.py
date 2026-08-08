@@ -8,8 +8,8 @@ import sys
 # Add the app directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from app.core.database import Base
-from app.core.config import settings
+from app.v2.persistence import V2Base
+from app.v2.runtime.config import settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -22,7 +22,7 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-target_metadata = Base.metadata
+target_metadata = V2Base.metadata
 
 # These tables are created and migrated by LangGraph's Postgres checkpointer
 # at runtime. They deliberately live outside AUVRA's ORM/Alembic metadata and
@@ -81,6 +81,7 @@ def run_migrations_offline() -> None:
         compare_type=True,
         compare_server_default=True,
         include_object=include_object,
+        include_schemas=True,
     )
 
     with context.begin_transaction():
@@ -109,6 +110,7 @@ def run_migrations_online() -> None:
             compare_type=True,
             compare_server_default=True,
             include_object=include_object,
+            include_schemas=True,
         )
 
         with context.begin_transaction():

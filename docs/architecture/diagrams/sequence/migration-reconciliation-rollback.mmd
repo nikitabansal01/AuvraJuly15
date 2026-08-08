@@ -1,0 +1,11 @@
+sequenceDiagram
+ participant O as Operator
+ participant L as Isolated PG17 legacy
+ participant T as Fresh v2 target
+ participant R as Reconciler
+ O->>L: restore backup only in isolation
+ O->>T: bootstrap Alembic target
+ R->>T: dry-run/apply mapped rows + quarantine
+ R->>R: reconcile 1,022 application rows
+ O->>T: repeat second fresh rehearsal
+ Note over O,T: post-write rollback is compatible v2 only

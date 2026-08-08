@@ -1,0 +1,11 @@
+erDiagram
+  USERS ||--o{ GENERATION_JOBS : owns
+  GENERATION_JOBS ||--o{ AI_INVOCATIONS : records
+  GENERATION_JOBS o|--o{ OUTBOX_EVENTS : emits
+  USERS ||--o{ IDEMPOTENCY_KEYS : scopes
+  USERS ||--o{ AUDIT_EVENTS : subject_of
+  CONVERSATIONS ||--o{ CHECKPOINTS : runtime_for
+  CHECKPOINTS ||--o{ CHECKPOINT_BLOBS : stores
+  CHECKPOINTS ||--o{ CHECKPOINT_WRITES : stages
+  CHECKPOINT_MIGRATIONS ||--o{ CHECKPOINTS : versions
+

@@ -1,0 +1,31 @@
+flowchart LR
+  subgraph Device["Zone 1 - User device"]
+    Mobile["AUVRA mobile"]
+    Secure["SecureStore\nno passwords/health drafts"]
+  end
+  subgraph Edge["Zone 2 - Public edge"]
+    API["API\nToken + input validation"]
+  end
+  subgraph Private["Zone 3 - Private application data"]
+    Worker["Durable worker"]
+    PG[("PostgreSQL\napp + ops + runtime")]
+    Redis[("Redis\nno business truth")]
+    Objects[("Permanent objects")]
+  end
+  subgraph External["Zone 4 - External processors"]
+    Firebase["Firebase Auth"]
+    Providers["AI/evidence/image providers"]
+    Telemetry["Telemetry backend"]
+  end
+  Mobile -->|"TLS + bearer token"| API
+  Mobile --> Secure
+  Mobile --> Firebase
+  API -->|"owner-scoped SQL"| PG
+  API -->|"opaque job IDs"| Redis
+  Worker --> PG
+  Worker --> Redis
+  Worker -->|"minimum necessary; no identifiers in image prompts"| Providers
+  Worker --> Objects
+  API -. "allowlisted metadata only" .-> Telemetry
+  Worker -. "allowlisted metadata only" .-> Telemetry
+

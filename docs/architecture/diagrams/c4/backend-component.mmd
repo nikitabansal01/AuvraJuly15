@@ -1,0 +1,24 @@
+C4Component
+title AUVRA v2 - Backend Components (TARGET PLANNED)
+Container_Boundary(apiworker, "API + worker application image") {
+  Component(adapter, "API adapters", "FastAPI", "OpenAPI, authentication, validation and RFC 9457")
+  Component(application, "Application commands/queries", "Python", "Use-case orchestration and module interfaces")
+  Component(domain, "Domain policies", "Python", "Invariants and state machines")
+  Component(uow, "Unit of Work", "SQLAlchemy 2.x", "Only transaction owner")
+  Component(repositories, "Repository adapters", "SQLAlchemy", "Owner-scoped persistence")
+  Component(jobrunner, "Durable job runner", "Python", "Lease, heartbeat, retry and dead letter")
+  Component(gateways, "Provider gateways", "Ports/adapters", "LLM, evidence, image, storage, identity")
+  Component(outbox, "Outbox publisher", "Python", "Reliable event publication")
+  Component(observability, "Telemetry boundary", "OpenTelemetry", "Allowlisted, redacted signals")
+}
+Rel(adapter, application, "Dispatches")
+Rel(application, domain, "Evaluates")
+Rel(application, uow, "Scopes persistence")
+Rel(uow, repositories, "Provides session")
+Rel(application, jobrunner, "Creates durable job via UoW")
+Rel(jobrunner, gateways, "Calls outside transaction")
+Rel(jobrunner, uow, "Publishes result in short transaction")
+Rel(uow, outbox, "Persists event atomically")
+Rel(adapter, observability, "Emits safe request signals")
+Rel(jobrunner, observability, "Emits safe job/provider signals")
+

@@ -1,0 +1,8 @@
+stateDiagram-v2
+ [*] --> active
+ active --> claimed: valid proof + authenticated claim
+ active --> expired: expiry
+ active --> revoked: operator action
+ claimed --> [*]
+ expired --> [*]
+ revoked --> [*]
