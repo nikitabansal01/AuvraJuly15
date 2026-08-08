@@ -407,6 +407,70 @@ async def test_v2_process_exposes_only_v2_application_routes_and_problem_details
     assert response.json()["request_id"] == "request-1234"
 
 
+@pytest.mark.anyio
+async def test_a_rate_limit_problem_keeps_its_status_and_retry_after_header(
+    monkeypatch,
+):
+    """public_onboarding_rate_limit_middleware runs inside the custom
+    @app.middleware("http") wrapper, outside the routed ASGI chain that
+    @app.exception_handler(ApplicationProblem) actually intercepts. An
+    ApplicationProblem raised there previously fell through to the generic
+    Exception handler and reported a bare 500, losing the real status and any
+    Retry-After header a client needs to back off correctly.
+    """
+    from app.v2.application.errors import too_many_requests
+
+    async def fake_rate_limit(request, call_next):  # type: ignore[no-untyped-def]
+        raise too_many_requests(retry_after_seconds=17)
+
+    monkeypatch.setattr(
+        v2_main, "public_onboarding_rate_limit_middleware", fake_rate_limit
+    )
+    app = create_application()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        response = await client.post(
+            "/api/v2/onboarding/sessions",
+            json={},
+            headers={"X-Request-ID": "request-1234"},
+        )
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "17"
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "rate_limit_exceeded"
+
+
+@pytest.mark.anyio
+async def test_a_rate_limit_backend_outage_reports_503_not_500(monkeypatch):
+    """The Redis-unavailable case: this is exactly the failure this session
+    hit live in production before the Key Value instance's IP allow list was
+    configured. The app already failed safe (no leaked internals) but under
+    the wrong status code."""
+    from app.v2.application.errors import service_unavailable
+
+    async def fake_rate_limit(request, call_next):  # type: ignore[no-untyped-def]
+        raise service_unavailable(
+            "rate_limit_unavailable",
+            "Request protection is temporarily unavailable.",
+        )
+
+    monkeypatch.setattr(
+        v2_main, "public_onboarding_rate_limit_middleware", fake_rate_limit
+    )
+    app = create_application()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        response = await client.post(
+            "/api/v2/onboarding/sessions",
+            json={},
+            headers={"X-Request-ID": "request-1234"},
+        )
+    assert response.status_code == 503
+    assert response.json()["code"] == "rate_limit_unavailable"
+
+
 def test_runtime_modules_do_not_import_legacy_process_components():
     root = __import__("pathlib").Path(__file__).parents[1]
     runtime_sources = [

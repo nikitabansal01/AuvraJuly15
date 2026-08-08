@@ -123,6 +123,18 @@ def _install_request_middleware(app: FastAPI) -> None:
         started = time.perf_counter()
         try:
             response = await public_onboarding_rate_limit_middleware(request, call_next)
+        except ApplicationProblem as problem:
+            # public_onboarding_rate_limit_middleware is called directly from
+            # this @app.middleware("http") function, not from inside the
+            # routed ASGI chain that Starlette's ExceptionMiddleware wraps.
+            # The @app.exception_handler(ApplicationProblem) registered below
+            # only intercepts exceptions raised inside that inner chain, so an
+            # ApplicationProblem raised here (for example too_many_requests's
+            # 429 with its Retry-After header, or a Redis-outage 503) would
+            # otherwise fall through to the generic Exception handler and
+            # report a bare 500 -- correct in that it fails closed and never
+            # leaks internals, but the wrong status for a client to act on.
+            response = _problem_response(request, problem, request_id)
         except Exception:
             # Exception handlers below turn v2 errors into problem details.
             logger.error("v2_request_pipeline_failed", extra={"request_id": request_id})
