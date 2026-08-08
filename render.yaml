@@ -1,7 +1,25 @@
-# AUVRA v2 production blueprint.  This file is intentionally source-only:
-# create isolated staging/prod databases and set every ``sync: false`` value
-# in Render after owner approval and credential rotation.  Do not attach it to
-# the legacy AUVRA service or its legacy Supabase project.
+# AUVRA v2 production blueprint.  This file is intentionally source-only; set
+# every ``sync: false`` value in Render after owner approval and credential
+# rotation.
+#
+# DATABASE_URL deliberately points at the same Supabase project as the legacy
+# service, not an isolated database. The original plan called for a separate
+# shadow database, but this workspace has no privilege to create a new
+# Supabase project in the org, so isolation is enforced at the schema level
+# instead: the v2 chain owns only the `app`/`ops` schemas (see
+# alembic/recovery_versions/), records its own head in
+# `public.alembic_version_v2` rather than the legacy `public.alembic_version`,
+# and every v2 migration is additive-only with respect to `public.*`. Verified
+# by tests/test_v2_migration_architecture.py and tests/test_v2_deployment_boundary.py.
+#
+# Deployed 2026-08-08: auvra-v2-worker is live (srv-d9romdqjnfac7385gqeg).
+# auvra-v2-api is created and fully configured (srv-d9romrijnfac7385hfa0,
+# https://auvra-v2-api.onrender.com) but cannot start: FIREBASE_PRIVATE_KEY_ID
+# and FIREBASE_CLIENT_ID are only in the original Firebase service-account
+# JSON, which is not recoverable from the private key material already in use
+# and was not re-obtained in this session. Supply both from the Firebase
+# console (Project Settings -> Service accounts -> Generate new private key,
+# project auvra-adf59) to unblock the API deploy.
 #
 # Both services build the identical Dockerfile from one protected commit. CI
 # must promote one immutable registry image before a public production cutover;

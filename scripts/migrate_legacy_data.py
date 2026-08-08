@@ -8,6 +8,29 @@ separate database that has already been bootstrapped at revision
 
 The command is validation-only unless ``--apply`` is supplied.  It never logs
 row contents or connection URLs.
+
+STATUS (2026-08-08): superseded by the schema actually shipped. ``20260723_0001``
+was an early v2 baseline draft that reused legacy public-schema table and
+column names; it was archived (see ``alembic/legacy_evidence/``) and replaced
+by the ``app``/``ops`` canonical schema starting at ``20260801_0002``, whose
+table shapes (UUID-revisioned plans, generalized ``user_observations``,
+JSON-versioned ``onboarding_assessments`` validated against a strict
+documented-enum schema) do not match ``LEGACY_COLUMNS`` below. Running this
+script against the current chain will correctly refuse via
+``_validate_contract`` rather than silently miscopy.
+
+A live production audit on this date found 29 legacy Firebase users, almost
+all inactive for ~11-12 months, with free-text onboarding answers that do not
+validate against the current strict ``MobileQuestionnaireV1`` schema. Forcing
+them through would mean guessing at a mapping the data does not unambiguously
+support — the plan's own governing rule is that ambiguous rows stay archived,
+not guessed into the canonical schema. ``app.users``/``app.user_profiles`` also
+do not need pre-population: the v2 onboarding-claim flow
+(``app/v2/application/services.py::claim_onboarding_session``) creates both
+automatically, identically for a new or returning user, the moment anyone
+completes onboarding again. A real legacy migration remains possible later —
+the legacy tables are untouched in ``public.*`` — but it is an owner-approved
+ETL design task against the current schema, not a rerun of this script.
 """
 
 from __future__ import annotations
