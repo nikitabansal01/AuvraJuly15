@@ -120,7 +120,7 @@ class PostgresJobWorker:
                 )
                 UPDATE ops.generation_jobs job
                 SET state = 'running', lease_owner = :token,
-                    lease_expires_at = now() + (:lease || ' seconds')::interval,
+                    lease_expires_at = now() + make_interval(secs => :lease),
                     heartbeat_at = now(), started_at = COALESCE(started_at, now()),
                     attempt_count = attempt_count + 1, phase = 'running'
                 FROM candidate
@@ -193,7 +193,7 @@ class PostgresJobWorker:
             text(
                 """UPDATE ops.generation_jobs
                 SET heartbeat_at = now(),
-                    lease_expires_at = now() + (:lease || ' seconds')::interval
+                    lease_expires_at = now() + make_interval(secs => :lease)
                 WHERE id = :id AND state = 'running' AND lease_owner = :token"""
             ),
             {"id": job.id, "token": job.lease_token, "lease": self.lease_seconds},
@@ -290,7 +290,7 @@ class PostgresJobWorker:
                     phase = CASE WHEN :terminal OR attempt_count >= max_attempts THEN 'dead_letter' ELSE 'retry_wait' END,
                     error_code = :error,
                     available_at = CASE WHEN :terminal OR attempt_count >= max_attempts THEN available_at
-                                        ELSE now() + (LEAST(300, 2 ^ attempt_count) || ' seconds')::interval END,
+                                        ELSE now() + make_interval(secs => LEAST(300, 2 ^ attempt_count)) END,
                     finished_at = CASE WHEN :terminal OR attempt_count >= max_attempts THEN now() ELSE NULL END,
                     lease_owner = NULL, lease_expires_at = NULL
                 WHERE id = :id AND state = 'running' AND lease_owner = :token"""

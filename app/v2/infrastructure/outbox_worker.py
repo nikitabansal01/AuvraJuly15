@@ -106,7 +106,7 @@ class PostgresOutboxWorker:
                 )
                 UPDATE ops.outbox_events event
                 SET state = 'running', lease_owner = :token,
-                    lease_expires_at = now() + (:lease || ' seconds')::interval,
+                    lease_expires_at = now() + make_interval(secs => :lease),
                     heartbeat_at = now(), attempt_count = attempt_count + 1
                 FROM candidate
                 WHERE event.id = candidate.id
@@ -158,7 +158,7 @@ class PostgresOutboxWorker:
             text(
                 """UPDATE ops.outbox_events
                 SET heartbeat_at = now(),
-                    lease_expires_at = now() + (:lease || ' seconds')::interval
+                    lease_expires_at = now() + make_interval(secs => :lease)
                 WHERE id = :id AND state = 'running' AND lease_owner = :token"""
             ),
             {"id": event.id, "token": event.lease_token, "lease": self.lease_seconds},
@@ -271,7 +271,7 @@ class PostgresOutboxWorker:
                     error_code = :error,
                     available_at = CASE WHEN :terminal OR attempt_count >= max_attempts
                                         THEN available_at
-                                        ELSE now() + (LEAST(300, 2 ^ attempt_count) || ' seconds')::interval END,
+                                        ELSE now() + make_interval(secs => LEAST(300, 2 ^ attempt_count)) END,
                     finished_at = CASE WHEN :terminal OR attempt_count >= max_attempts
                                        THEN now() ELSE NULL END,
                     lease_owner = NULL, lease_expires_at = NULL
