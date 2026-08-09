@@ -158,6 +158,18 @@ def _action_count(payload: Mapping[str, Any]) -> int:
     return len(actions) if isinstance(actions, list) else -1
 
 
+def _first_action_shape(payload: Mapping[str, Any]) -> str:
+    actions = payload.get("actions")
+    if not isinstance(actions, list) or not actions:
+        return _shape_of(actions)
+    action = actions[0]
+    if not isinstance(action, Mapping):
+        return _shape_of(action)
+    return ", ".join(
+        f"{key}={_shape_of(value)}" for key, value in action.items()
+    )
+
+
 def _shape_of(value: object) -> str:
     if isinstance(value, list):
         return f"list[{len(value)}]"
@@ -200,7 +212,15 @@ class PlanGenerationOrchestrator:
             _action_count(response.content),
             _shape_of(response.content.get("wellbeing_actions")),
         )
-        candidate = candidate_from_payload(response.content)
+        try:
+            candidate = candidate_from_payload(response.content)
+        except PlanCandidateRejected as exc:
+            logger.warning(
+                "plan candidate rejected reason=%s first_action=%s",
+                exc.reason_code,
+                _first_action_shape(response.content),
+            )
+            raise
         validate_candidate_evidence(candidate, sources, request.evidence_queries)
         uploaded: list[GeneratedPlanAsset] = []
         observed_images: list[AiInvocationMetadata] = []
