@@ -11,7 +11,10 @@ from app.v2.application.conversation_response import (
     ConversationSnapshotMessage,
 )
 from app.v2.application.plan_generation import ProviderFailure
-from app.v2.infrastructure.plan_generation_providers import GeminiConversationGateway
+from app.v2.infrastructure.plan_generation_providers import (
+    GeminiConversationGateway,
+    _extract_json_object,
+)
 
 
 def _request() -> ConversationResponseRequest:
@@ -76,3 +79,22 @@ async def test_gemini_conversation_adapter_rejects_invalid_provider_response_wit
 def test_gemini_conversation_adapter_fails_closed_without_credentials():
     with pytest.raises(ValueError, match="API key"):
         GeminiConversationGateway(api_key="", model="x", telemetry_hmac_key=b"k" * 32)
+
+
+def test_extract_json_object_handles_markdown_fences_and_prose():
+    payload = {"actions": [{"category": "eat"}]}
+    canonical = json.dumps(payload)
+    assert _extract_json_object(canonical) == payload
+    assert _extract_json_object(f"```json\n{canonical}\n```") == payload
+    assert (
+        _extract_json_object(f"Here is your plan:\n```\n{canonical}\n```\nEnjoy!")
+        == payload
+    )
+    assert _extract_json_object(f"Leading prose {canonical} trailing prose") == payload
+
+
+def test_extract_json_object_rejects_non_object_or_broken_json():
+    assert _extract_json_object("[]") is None
+    assert _extract_json_object('{"broken": ') is None
+    assert _extract_json_object("no json here") is None
+    assert _extract_json_object("") is None

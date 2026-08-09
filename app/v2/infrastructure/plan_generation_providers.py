@@ -556,11 +556,8 @@ def _gemini_plan_payload(response: Mapping[str, Any]) -> Mapping[str, Any]:
         text = _last_model_text(response.get("steps"))
     if not isinstance(text, str):
         raise ProviderFailure("gemini_invalid_response", retryable=False)
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ProviderFailure("gemini_invalid_json", retryable=True) from exc
-    if not isinstance(payload, Mapping):
+    payload = _extract_json_object(text)
+    if payload is None:
         raise ProviderFailure("gemini_invalid_json", retryable=True)
     return payload
 
@@ -603,6 +600,35 @@ def _gemini_conversation_text(response: Mapping[str, Any]) -> str:
     if not isinstance(text, str):
         raise ProviderFailure("gemini_invalid_response", retryable=False)
     return text
+
+
+def _extract_json_object(text: str) -> Mapping[str, Any] | None:
+    """Parse a JSON object from Gemini output, tolerating markdown fences
+    and prose around the payload.
+
+    Gemini's structured output sometimes arrives wrapped in ```json code
+    fences, or with explanatory text around the object.  Rather than failing
+    on the raw string, strip the fences and take the first balanced
+    ``{ ... }`` region before attempting ``json.loads``.
+    """
+
+    cleaned = text.strip()
+    lines = cleaned.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    cleaned = "\n".join(lines).strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    candidate = cleaned[start : end + 1]
+    try:
+        value = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, Mapping) else None
 
 
 def _last_model_text(steps: object) -> str | None:
