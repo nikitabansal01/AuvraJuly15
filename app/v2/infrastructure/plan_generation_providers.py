@@ -559,6 +559,12 @@ def _gemini_plan_payload(response: Mapping[str, Any]) -> Mapping[str, Any]:
     payload = _extract_json_object(text)
     if payload is None:
         raise ProviderFailure("gemini_invalid_json", retryable=True)
+    # The model sometimes ignores the constrained schema's key name and
+    # returns the plan under "wellbeing_actions" instead of "actions".
+    # Normalize at the provider boundary so the domain contract stays
+    # canonical and the same candidate validation applies to both.
+    if "actions" not in payload and isinstance(payload.get("wellbeing_actions"), list):
+        payload = {**payload, "actions": payload["wellbeing_actions"]}
     return payload
 
 
