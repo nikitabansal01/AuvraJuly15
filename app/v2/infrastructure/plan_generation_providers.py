@@ -559,9 +559,9 @@ def _gemini_plan_payload(response: Mapping[str, Any]) -> Mapping[str, Any]:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ProviderFailure("gemini_invalid_json", retryable=False) from exc
+        raise ProviderFailure("gemini_invalid_json", retryable=True) from exc
     if not isinstance(payload, Mapping):
-        raise ProviderFailure("gemini_invalid_json", retryable=False)
+        raise ProviderFailure("gemini_invalid_json", retryable=True)
     return payload
 
 
