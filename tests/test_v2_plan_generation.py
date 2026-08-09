@@ -36,6 +36,7 @@ from app.v2.domain.plan_evidence import (
 from app.v2.infrastructure.plan_generation_providers import (
     CloudflareFluxImageGateway,
     GeminiStructuredPlanGateway,
+    OpenAIStructuredPlanGateway,
     PubmedEvidenceResolver,
     SupabasePermanentMediaStore,
 )
@@ -444,6 +445,106 @@ async def test_gemini_adapter_requests_structured_output_and_redacts_telemetry()
     assert observed["request"]["response_format"]["mime_type"] == "application/json"
     assert observed["api_key"] == "key"
     assert "key=" not in observed["url"]
+
+
+@pytest.mark.anyio
+async def test_openai_adapter_requests_strict_structured_output_and_normalizes_key():
+    observed: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed["request"] = json.loads(request.content)
+        observed["url"] = str(request.url)
+        observed["authorization"] = request.headers.get("authorization")
+        wellbeing = _payload()
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": json.dumps(wellbeing)}}],
+                "usage": {"prompt_tokens": 9, "completion_tokens": 13},
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    gateway = OpenAIStructuredPlanGateway(
+        api_key="key",
+        model="gpt-test",
+        telemetry_hmac_key=b"t" * 32,
+        client=client,
+    )
+    response = await gateway.generate(
+        task="plan_generation",
+        prompt_version="plan.v1",
+        context={"private": "health answer"},
+        evidence=[EvidenceSource(canonical_url=SOURCE_URL, title="Evidence")],
+    )
+    await client.aclose()
+
+    assert response.content["actions"][0]["title"] == "Action 1"
+    assert response.invocation.input_tokens == 9
+    assert response.invocation.provider == "openai"
+    assert "private" not in str(asdict(response.invocation))
+    assert "health answer" not in str(asdict(response.invocation))
+    assert observed["authorization"] == "Bearer key"
+    assert "key=" not in observed["url"]
+    schema = observed["request"]["response_format"]["json_schema"]
+    assert schema["strict"] is True
+    assert schema["schema"]["additionalProperties"] is False
+
+
+@pytest.mark.anyio
+async def test_openai_adapter_tolerates_wellbeing_actions_key_and_bad_json():
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {"message": {"content": json.dumps({"wellbeing_actions": _payload()["actions"]})}}
+                    ],
+                    "usage": {},
+                },
+            )
+        )
+    )
+    gateway = OpenAIStructuredPlanGateway(
+        api_key="key",
+        model="gpt-test",
+        telemetry_hmac_key=b"t" * 32,
+        client=client,
+    )
+    response = await gateway.generate(
+        task="plan_generation",
+        prompt_version="plan.v1",
+        context={},
+        evidence=[EvidenceSource(canonical_url=SOURCE_URL, title="Evidence")],
+    )
+    await client.aclose()
+    assert response.content["actions"][0]["title"] == "Action 1"
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": "not json"}}], "usage": {}},
+            )
+        )
+    )
+    gateway = OpenAIStructuredPlanGateway(
+        api_key="key",
+        model="gpt-test",
+        telemetry_hmac_key=b"t" * 32,
+        client=client,
+    )
+    with pytest.raises(ProviderFailure) as exc_info:
+        await gateway.generate(
+            task="plan_generation",
+            prompt_version="plan.v1",
+            context={},
+            evidence=[EvidenceSource(canonical_url=SOURCE_URL, title="Evidence")],
+        )
+    await client.aclose()
+    assert exc_info.value.code == "openai_invalid_json"
+    assert exc_info.value.retryable is True
 
 
 @pytest.mark.anyio

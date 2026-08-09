@@ -59,6 +59,8 @@ class RuntimeSettings(BaseSettings):
     # ``validate_api_configuration`` and must not be set on the API service.
     V2_GEMINI_API_KEY: str = ""
     V2_GEMINI_MODEL: str = "gemini-2.5-flash"
+    V2_OPENAI_API_KEY: str = ""
+    V2_OPENAI_MODEL: str = "gpt-5-mini"
     V2_TELEMETRY_HMAC_KEY: str = ""
     V2_CLOUDFLARE_ACCOUNT_ID: str = ""
     V2_CLOUDFLARE_API_TOKEN: str = ""
@@ -225,6 +227,7 @@ def validate_api_configuration() -> None:
 
     worker_credentials = {
         "V2_GEMINI_API_KEY": settings.V2_GEMINI_API_KEY,
+        "V2_OPENAI_API_KEY": settings.V2_OPENAI_API_KEY,
         "V2_TELEMETRY_HMAC_KEY": settings.V2_TELEMETRY_HMAC_KEY,
         "V2_CLOUDFLARE_API_TOKEN": settings.V2_CLOUDFLARE_API_TOKEN,
         "V2_SUPABASE_SERVICE_ROLE_KEY": settings.V2_SUPABASE_SERVICE_ROLE_KEY,
@@ -299,6 +302,8 @@ def _worker_provider_errors() -> list[str]:
     worker_values = {
         "V2_GEMINI_API_KEY": settings.V2_GEMINI_API_KEY,
         "V2_GEMINI_MODEL": settings.V2_GEMINI_MODEL,
+        "V2_OPENAI_API_KEY": settings.V2_OPENAI_API_KEY,
+        "V2_OPENAI_MODEL": settings.V2_OPENAI_MODEL,
         "V2_TELEMETRY_HMAC_KEY": settings.V2_TELEMETRY_HMAC_KEY,
         "V2_CLOUDFLARE_ACCOUNT_ID": settings.V2_CLOUDFLARE_ACCOUNT_ID,
         "V2_CLOUDFLARE_API_TOKEN": settings.V2_CLOUDFLARE_API_TOKEN,

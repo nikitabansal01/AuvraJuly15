@@ -38,7 +38,7 @@ from app.v2.infrastructure.auth.firebase_runtime import initialize_v2_firebase
 from app.v2.infrastructure.plan_generation_providers import (
     CloudflareFluxImageGateway,
     GeminiConversationGateway,
-    GeminiStructuredPlanGateway,
+    OpenAIStructuredPlanGateway,
     PubmedEvidenceResolver,
     SupabasePermanentMediaStore,
 )
@@ -49,9 +49,9 @@ def build_plan_worker() -> PostgresJobWorker:
     """Build only real providers; development fakes never enter this process."""
 
     validate_plan_worker_configuration()
-    plan_gateway = GeminiStructuredPlanGateway(
-        api_key=settings.V2_GEMINI_API_KEY,
-        model=settings.V2_GEMINI_MODEL,
+    plan_gateway = OpenAIStructuredPlanGateway(
+        api_key=settings.V2_OPENAI_API_KEY,
+        model=settings.V2_OPENAI_MODEL,
         telemetry_hmac_key=settings.V2_TELEMETRY_HMAC_KEY.encode("utf-8"),
     )
     evidence_resolver = PubmedEvidenceResolver(
