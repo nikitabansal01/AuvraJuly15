@@ -674,6 +674,16 @@ def _openai_request(
         if query_terms
         else ""
     )
+    citation_instruction = (
+        "For each action, choose citation_urls only from the supplied evidence list, and only "
+        "entries whose title shares at least one word with that action's title, purpose, or "
+        "instructions and at least one of the keywords above. Each citation_urls entry must be "
+        "an exact URL from the supplied evidence. "
+        if query_terms
+        else "For each action, choose citation_urls only from the supplied evidence list, using "
+        "entries whose title shares at least one word with that action's title, purpose, or "
+        "instructions. Each citation_urls entry must be an exact URL from the supplied evidence. "
+    )
     instruction = (
         "Create exactly four practical wellbeing actions. Do not diagnose, prescribe, promise outcomes, "
         "or make medical claims. Cite only supplied evidence URLs. Return only the requested JSON schema. "
@@ -682,6 +692,7 @@ def _openai_request(
         "suicide, medication, prescription, dosage, supplement, or contraindication. Keep every field "
         "gentle, everyday, and non-clinical. "
         + keyword_instruction
+        + citation_instruction
     )
     return {
         "model": model,
