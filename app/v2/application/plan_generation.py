@@ -158,6 +158,16 @@ def _action_count(payload: Mapping[str, Any]) -> int:
     return len(actions) if isinstance(actions, list) else -1
 
 
+def _shape_of(value: object) -> str:
+    if isinstance(value, list):
+        return f"list[{len(value)}]"
+    if isinstance(value, Mapping):
+        return f"dict{tuple(sorted(value.keys()))}"
+    if isinstance(value, str):
+        return f"str({len(value)})"
+    return type(value).__name__
+
+
 class PlanGenerationOrchestrator:
     """Build an unpublished, complete plan bundle; never exposes partial media."""
 
@@ -185,9 +195,10 @@ class PlanGenerationOrchestrator:
             evidence=sources,
         )
         logger.info(
-            "plan gateway response keys=%s actions_count=%s",
+            "plan gateway response keys=%s actions_count=%s wellbeing=%s",
             sorted(response.content.keys()),
             _action_count(response.content),
+            _shape_of(response.content.get("wellbeing_actions")),
         )
         candidate = candidate_from_payload(response.content)
         validate_candidate_evidence(candidate, sources, request.evidence_queries)
