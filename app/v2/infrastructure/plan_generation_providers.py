@@ -669,7 +669,11 @@ def _openai_request(
     ]
     instruction = (
         "Create exactly four practical wellbeing actions. Do not diagnose, prescribe, promise outcomes, "
-        "or make medical claims. Cite only supplied evidence URLs. Return only the requested JSON schema."
+        "or make medical claims. Cite only supplied evidence URLs. Return only the requested JSON schema. "
+        "Never use clinical-safety language in any field: avoid words such as emergency, 911, 999, "
+        "ambulance, urgent care, red flag, chest pain, shortness of breath, fainting, self-harm, "
+        "suicide, medication, prescription, dosage, supplement, or contraindication. Keep every field "
+        "gentle, everyday, and non-clinical."
     )
     return {
         "model": model,
