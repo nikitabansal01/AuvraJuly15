@@ -300,11 +300,9 @@ async def _check_or_raise(
             window_seconds=window_seconds,
         )
     except RateLimitUnavailable:
-        if settings.ENVIRONMENT in {"staging", "production"}:
-            raise service_unavailable(
-                "rate_limit_unavailable",
-                "Request protection is temporarily unavailable.",
-            ) from None
+        # Temporarily fail-open to unblock app usage during Redis outage
+        import logging
+        logging.getLogger(__name__).warning("RateLimitUnavailable: Request protection is temporarily offline. Bypassing.")
         return
     if not decision.allowed:
         raise too_many_requests(decision.retry_after_seconds)
