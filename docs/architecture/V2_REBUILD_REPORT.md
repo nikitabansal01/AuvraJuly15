@@ -3,7 +3,7 @@
 **Status: live in production.** API `https://auvra-v2-api.onrender.com`, a
 separate durable worker, and a canonical PostgreSQL 17 schema. The insecure
 legacy service is offline. Verified by a 25-check black-box smoke test run
-against the live deployment, plus 415 automated tests.
+against the live deployment, plus 500 automated tests.
 
 ---
 
@@ -167,18 +167,33 @@ carve-outs, no permitted legacy adapters.
 
 | Check | Result |
 |---|---|
-| Automated tests | **415 passed**, 2 skipped — run twice from a blank database to prove order-independence |
+| Automated tests | **500 passed**, 2 skipped — run twice from a blank database to prove order-independence |
 | Live deployment smoke test | **25/25 passed** against production |
 | Schema round-trip | `upgrade → downgrade → upgrade` clean from empty, on PostgreSQL 17 |
 | Schema drift | None — ORM, migrations and database agree |
 | API contract | 41 operations, OpenAPI 3.1.1, checked in and diffed in CI |
-| Mobile | 75 tests, type-check clean, both gates at zero exceptions |
+| Mobile | 75 tests, type-check clean, both gates at zero exceptions, coverage ratchet enforced in CI |
 | **Signed APK** | **Built and verified**: contains the v2 API URL, zero references to the legacy host, zero `/api/v1` calls |
 | Architecture gate | Passing — no module over 800 lines, no function over 100, no provider SDK outside adapters |
 
 The test suite previously **reported green on tests that never ran**: the
 PostgreSQL suites skipped themselves when no database was configured, and CI
 had no database. CI now provides one, so those suites actually execute.
+
+Three modules that every request depends on had no tests at all and now have
+85 between them: the clinical safety gate that decides whether AI-generated
+text may reach a user, and the two modules that establish who a request
+belongs to. The safety gate is covered with strings a language model could
+plausibly produce, across all five prohibited categories. The authentication
+adapter is pinned on the distinction that matters most — a rejected token
+versus an unavailable provider — because confusing the two either signs every
+user out during an incident or invites a retry into a route the caller must
+not reach.
+
+On mobile, `jest.config.js` limited tests to `src/`, which made 41 modules
+outside it structurally untestable: a test placed next to a screen would not
+run and the suite still reported green. That is fixed, and a coverage ratchet
+now prevents silent regression.
 
 ---
 
