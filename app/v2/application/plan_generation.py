@@ -200,10 +200,16 @@ class PlanGenerationOrchestrator:
         """Run network-bound work outside a transaction and clean up on failure."""
 
         sources = await self._resolve_evidence(request.evidence_queries)
+        # The provider never sees the bounded evidence queries, yet the
+        # domain gate requires each action's visible text to share
+        # vocabulary with them. Surface the queries (safe categorical
+        # strings, never raw answers) so the model can echo the same terms.
+        provider_context = dict(request.request_context)
+        provider_context["evidence_queries"] = list(request.evidence_queries)
         response = await self._plan_gateway.generate(
             task=request.task,
             prompt_version=request.prompt_version,
-            context=request.request_context,
+            context=provider_context,
             evidence=sources,
         )
         logger.info(

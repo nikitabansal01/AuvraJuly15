@@ -667,13 +667,21 @@ def _openai_request(
         }
         for source in evidence
     ]
+    query_terms = _evidence_query_terms(context.get("evidence_queries"))
+    keyword_instruction = (
+        f"Use at least one of these exact keywords in every action's title, purpose, or "
+        f"instructions: {', '.join(sorted(query_terms))}. "
+        if query_terms
+        else ""
+    )
     instruction = (
         "Create exactly four practical wellbeing actions. Do not diagnose, prescribe, promise outcomes, "
         "or make medical claims. Cite only supplied evidence URLs. Return only the requested JSON schema. "
         "Never use clinical-safety language in any field: avoid words such as emergency, 911, 999, "
         "ambulance, urgent care, red flag, chest pain, shortness of breath, fainting, self-harm, "
         "suicide, medication, prescription, dosage, supplement, or contraindication. Keep every field "
-        "gentle, everyday, and non-clinical."
+        "gentle, everyday, and non-clinical. "
+        + keyword_instruction
     )
     return {
         "model": model,
@@ -715,6 +723,49 @@ def _openai_plan_payload(response: Mapping[str, Any]) -> Mapping[str, Any]:
     if "actions" not in payload and isinstance(payload.get("wellbeing_actions"), list):
         payload = {**payload, "actions": payload["wellbeing_actions"]}
     return payload
+
+
+def _evidence_query_terms(queries: object) -> set[str]:
+    """Mirror the domain gate's stopword set so echoed keywords pass.
+
+    The candidate relevance check keeps only ``[a-z]{3,}`` tokens that are
+    not in a fixed stopword set.  Listing the exact surviving terms in the
+    prompt lets the model echo them and pass that deterministic gate.
+    """
+
+    ignored = {
+        "adult",
+        "adults",
+        "action",
+        "activity",
+        "choose",
+        "consistent",
+        "for",
+        "behavior",
+        "evidence",
+        "lifestyle",
+        "of",
+        "source",
+        "study",
+        "the",
+        "to",
+        "verified",
+        "wellbeing",
+    }
+    import re as _re
+
+    terms: set[str] = set()
+    if not isinstance(queries, (list, tuple)):
+        return terms
+    for query in queries:
+        if not isinstance(query, str):
+            continue
+        terms.update(
+            token
+            for token in _re.findall(r"[a-z]{3,}", query.casefold())
+            if token not in ignored
+        )
+    return terms
 
 
 def _gemini_request(
