@@ -1,6 +1,7 @@
 """Durable plan-generation handler composed from I/O and atomic publication."""
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from app.v2.domain.plan_generation import PlanCandidateRejected
 from app.v2.infrastructure.worker import ClaimedJob, TerminalJobFailure
 from app.v2.persistence.models import OnboardingAssessment, UserProfile
 from app.v2.persistence.uow import SqlAlchemyUnitOfWork
+
+logger = logging.getLogger(__name__)
 
 UowFactory = Callable[[], SqlAlchemyUnitOfWork]
 
@@ -55,6 +58,11 @@ class PlanGenerationJobRunner:
         except PlanCandidateRejected as exc:
             # Candidate policy failures are deterministic and must dead-letter;
             # retrying the same untrusted response cannot make it safe.
+            logger.warning(
+                "plan candidate rejected reason=%s job=%s",
+                exc.reason_code,
+                job.id,
+            )
             raise TerminalJobFailure(exc.reason_code) from exc
         except ProviderFailure as exc:
             async with self._uow_factory() as uow:

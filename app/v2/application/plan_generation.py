@@ -8,6 +8,7 @@ short atomic persistence/publication transaction.
 from __future__ import annotations
 
 import asyncio
+import logging
 import hashlib
 import hmac
 import json
@@ -23,6 +24,8 @@ from app.v2.domain.plan_generation import (
     validate_candidate_evidence,
 )
 from app.v2.domain.plan_image_prompts import image_prompt_token
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderFailure(RuntimeError):
@@ -150,6 +153,11 @@ class PermanentMediaStore(Protocol):
         ...
 
 
+def _action_count(payload: Mapping[str, Any]) -> int:
+    actions = payload.get("actions")
+    return len(actions) if isinstance(actions, list) else -1
+
+
 class PlanGenerationOrchestrator:
     """Build an unpublished, complete plan bundle; never exposes partial media."""
 
@@ -175,6 +183,11 @@ class PlanGenerationOrchestrator:
             prompt_version=request.prompt_version,
             context=request.request_context,
             evidence=sources,
+        )
+        logger.info(
+            "plan gateway response keys=%s actions_count=%s",
+            sorted(response.content.keys()),
+            _action_count(response.content),
         )
         candidate = candidate_from_payload(response.content)
         validate_candidate_evidence(candidate, sources, request.evidence_queries)

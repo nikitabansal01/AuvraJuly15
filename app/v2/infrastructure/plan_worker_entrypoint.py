@@ -1,6 +1,7 @@
 """Production composition root for the separately deployed v2 plan worker."""
 from __future__ import annotations
 
+import logging
 import os
 import socket
 
@@ -10,6 +11,7 @@ from app.v2.runtime.config import (
     settings,
     validate_plan_worker_configuration,
 )
+from app.v2.runtime.logging import configure_logging
 from app.v2.runtime.schema import check_database_schema_head
 from app.v2.persistence.database import check_database_readiness
 from app.v2.application.plan_generation import PlanGenerationOrchestrator
@@ -232,7 +234,12 @@ async def run_v2_worker() -> None:
             await worker.aclose()
 
 
+logger = logging.getLogger(__name__)
+
+
 def main() -> None:
+    configure_logging(settings.LOG_LEVEL)
+    logger.info("auvra-v2-worker starting: plan, conversation, and account lanes")
     anyio.run(run_v2_worker)
 
 
