@@ -42,6 +42,10 @@ def _settings(**overrides):
         },
         "V2_GEMINI_API_KEY": "",
         "V2_GEMINI_MODEL": "gemini-2.5-flash",
+        # Mirrors RuntimeSettings; a field the validators read but the fixture
+        # omits fails as an AttributeError rather than a useful assertion.
+        "V2_OPENAI_API_KEY": "",
+        "V2_OPENAI_MODEL": "gpt-5-mini",
         "V2_TELEMETRY_HMAC_KEY": "",
         "V2_CLOUDFLARE_ACCOUNT_ID": "",
         "V2_CLOUDFLARE_API_TOKEN": "",
@@ -272,6 +276,7 @@ def test_deletion_worker_accepts_firebase_credentials_without_optional_metadata(
             FIREBASE_CLIENT_EMAIL="worker@example.test",
             FIREBASE_CLIENT_ID="",
             V2_GEMINI_API_KEY="gemini-secret",
+            V2_OPENAI_API_KEY="openai-secret",
             V2_TELEMETRY_HMAC_KEY="t" * 32,
             V2_CLOUDFLARE_ACCOUNT_ID="account",
             V2_CLOUDFLARE_API_TOKEN="token",
@@ -508,3 +513,31 @@ def test_render_blueprint_uses_v2_health_predeploy_and_separate_secret_sets():
     assert "V2_GEMINI_API_KEY" not in api_section
     assert "V2_ACCOUNT_EXPORT_ENCRYPTION_KEY" not in api_section
     assert "FIREBASE_PRIVATE_KEY" in worker_section
+
+
+@pytest.mark.parametrize(
+    "url, expect_error",
+    [
+        ("rediss://user:pw@oregon-keyvalue.render.com:6379", False),
+        # Render's private-network hostname: bare service id, no dots.
+        ("redis://red-d9rojtf10e5c738hg8c0:6379", False),
+        # Plaintext to a public FQDN really is unsafe and stays rejected.
+        ("redis://oregon-keyvalue.render.com:6379", True),
+        ("redis://localhost:6379", True),
+    ],
+)
+def test_redis_transport_allows_private_network_but_not_public_plaintext(
+    monkeypatch, url, expect_error
+):
+    """A blanket rediss:// rule forced every request onto the public internet.
+
+    That is slower, less reliable and billed as egress -- it consumed most of a
+    month's bandwidth allowance. The private-network URL is not a weaker
+    choice: the traffic never leaves the network.
+    """
+    monkeypatch.setattr(runtime_config, "settings", _settings(V2_REDIS_URL=url))
+    if expect_error:
+        with pytest.raises(RuntimeError, match="V2_REDIS_URL"):
+            runtime_config.validate_api_configuration()
+    else:
+        runtime_config.validate_api_configuration()

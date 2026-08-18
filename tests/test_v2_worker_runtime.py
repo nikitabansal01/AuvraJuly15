@@ -290,3 +290,49 @@ def test_combined_worker_rejects_duplicate_job_filters():
                 PostgresJobWorker("b", lambda _: None, job_type="plan_generation"),
             ),
         )
+
+
+def test_idle_polling_backs_off_but_stays_responsive_to_work() -> None:
+    """An idle worker must not query an external database every second.
+
+    Four workers polling once a second spent 3.7 GB of a 5 GB monthly
+    bandwidth allowance asking Supabase whether an empty queue had work.
+    Backing off geometrically while idle cuts that by roughly thirty times,
+    and resetting the moment a job is claimed keeps a busy queue draining at
+    full speed.
+    """
+    from app.v2.infrastructure.worker import MAX_IDLE_POLL_SECONDS, next_poll_delay
+
+    base = 1.0
+    delay = base
+
+    # Idle: the delay grows geometrically and then stops at the ceiling.
+    seen = []
+    for _ in range(10):
+        delay = next_poll_delay(
+            delay, worked=False, base=base, maximum=MAX_IDLE_POLL_SECONDS
+        )
+        seen.append(delay)
+    assert seen[0] == 2.0
+    assert seen[1] == 4.0
+    assert max(seen) == MAX_IDLE_POLL_SECONDS
+    assert all(d <= MAX_IDLE_POLL_SECONDS for d in seen)
+
+    # Claiming a job returns immediately to the base interval.
+    assert next_poll_delay(
+        MAX_IDLE_POLL_SECONDS, worked=True, base=base, maximum=MAX_IDLE_POLL_SECONDS
+    ) == base
+
+
+def test_backoff_never_returns_less_than_the_base_interval() -> None:
+    from app.v2.infrastructure.worker import next_poll_delay
+
+    assert next_poll_delay(0.0, worked=False, base=2.0, maximum=30.0) >= 2.0
+    assert next_poll_delay(0.0, worked=True, base=2.0, maximum=30.0) == 2.0
+
+
+def test_a_base_above_the_ceiling_is_respected_rather_than_shrunk() -> None:
+    """A deployment that deliberately polls slowly must not be sped up."""
+    from app.v2.infrastructure.worker import next_poll_delay
+
+    assert next_poll_delay(60.0, worked=False, base=60.0, maximum=60.0) == 60.0

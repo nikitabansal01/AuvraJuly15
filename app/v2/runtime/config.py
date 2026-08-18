@@ -183,12 +183,45 @@ def _database_connection_errors() -> list[str]:
     return errors
 
 
+def _is_private_network_host(url: str) -> bool:
+    """True when the host is a provider-internal name, not a public address.
+
+    Render's internal hostnames are bare service identifiers with no dots and
+    resolve only inside the private network, so traffic to them never crosses
+    the public internet. A public endpoint always has a dotted FQDN.
+    """
+
+    try:
+        host = make_url(url).host or ""
+    except Exception:
+        return False
+    return bool(host) and "." not in host and host != "localhost"
+
+
+def _redis_transport_error(url: str) -> str | None:
+    """Require TLS on the public internet; allow plaintext inside the network.
+
+    A blanket rediss:// rule sounds safer but pushes every request onto the
+    public internet, which is slower, less reliable and billed as egress. The
+    private-network URL is the correct choice for a service co-located with its
+    Redis, and it is not a weaker one: the traffic never leaves the network.
+    """
+
+    if url.startswith("rediss://"):
+        return None
+    if url.startswith("redis://") and _is_private_network_host(url):
+        return None
+    return (
+        "V2_REDIS_URL must use TLS (rediss://) unless it is a private-network host"
+    )
+
+
 def _api_operational_errors() -> list[str]:
     errors: list[str] = []
     if _missing_or_placeholder(settings.V2_REDIS_URL):
         errors.append("V2_REDIS_URL is required for distributed API rate limiting")
-    elif not settings.V2_REDIS_URL.startswith("rediss://"):
-        errors.append("V2_REDIS_URL must use TLS (rediss://) in staging or production")
+    elif error := _redis_transport_error(settings.V2_REDIS_URL):
+        errors.append(error)
     if not 1_024 <= settings.V2_MAX_REQUEST_BODY_BYTES <= 10_485_760:
         errors.append("V2_MAX_REQUEST_BODY_BYTES must be between 1024 and 10485760")
     for name, value in {

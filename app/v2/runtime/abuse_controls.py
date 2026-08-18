@@ -300,9 +300,22 @@ async def _check_or_raise(
             window_seconds=window_seconds,
         )
     except RateLimitUnavailable:
-        # Temporarily fail-open to unblock app usage during Redis outage
-        import logging
-        logging.getLogger(__name__).warning("RateLimitUnavailable: Request protection is temporarily offline. Bypassing.")
+        if settings.ENVIRONMENT in {"staging", "production"}:
+            # Fail closed. Bypassing here would silently remove the only limit
+            # on the unauthenticated onboarding endpoint and, worse, on the
+            # costly-mutation paths (plan generation, conversation messages,
+            # exports) that spend real money on LLM and image providers -- so a
+            # Redis outage would become an unbounded provider bill.
+            #
+            # The transient-blip problem that motivated an earlier bypass is
+            # addressed at its source instead: the client now retries
+            # connection failures with bounded backoff, and the deployment uses
+            # the provider's private-network Redis address, so a blip no longer
+            # reaches this handler.
+            raise service_unavailable(
+                "rate_limit_unavailable",
+                "Request protection is temporarily unavailable.",
+            ) from None
         return
     if not decision.allowed:
         raise too_many_requests(decision.retry_after_seconds)

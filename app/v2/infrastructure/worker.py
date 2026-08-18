@@ -339,6 +339,29 @@ class PostgresJobWorker:
         return uow.session
 
 
+#: An idle worker backs off to this ceiling instead of polling forever at the
+#: base interval. The queue is almost always empty -- plan generation is driven
+#: by a user action, not a schedule -- so a fixed one-second poll spent an
+#: entire month's bandwidth allowance querying a database across the public
+#: internet to be told there was nothing to do.
+MAX_IDLE_POLL_SECONDS = 30.0
+
+
+def next_poll_delay(
+    current: float, *, worked: bool, base: float, maximum: float
+) -> float:
+    """Poll promptly while there is work, back off geometrically when idle.
+
+    Responsiveness is preserved where it matters: the delay resets to `base`
+    the moment a job is claimed, so a busy queue is still drained at full
+    speed. Only a genuinely idle worker slows down.
+    """
+
+    if worked:
+        return base
+    return min(max(current, base) * 2.0, maximum)
+
+
 async def run_worker(worker: PostgresJobWorker, *, poll_seconds: float = 1.0) -> None:
     """Run one least-privilege worker (compatibility wrapper)."""
 
@@ -373,10 +396,17 @@ async def run_workers(
 async def _run_worker_loop(
     worker: PostgresJobWorker, stopping: anyio.Event, poll_seconds: float
 ) -> None:
+    delay = poll_seconds
     while not stopping.is_set():
         worked = await _run_one_with_shutdown_drain(worker, stopping)
+        delay = next_poll_delay(
+            delay,
+            worked=worked,
+            base=poll_seconds,
+            maximum=max(poll_seconds, MAX_IDLE_POLL_SECONDS),
+        )
         if not worked and not stopping.is_set():
-            await anyio.sleep(poll_seconds)
+            await anyio.sleep(delay)
 
 
 async def _run_one_with_shutdown_drain(
