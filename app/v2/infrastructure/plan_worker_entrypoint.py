@@ -35,10 +35,12 @@ from app.v2.infrastructure.account_lifecycle import (
     SupabasePrivateAccountStorage,
 )
 from app.v2.infrastructure.auth.firebase_runtime import initialize_v2_firebase
+from app.v2.infrastructure.plan_generation_openai import (
+    OpenAIStructuredPlanGateway,
+)
 from app.v2.infrastructure.plan_generation_providers import (
     CloudflareFluxImageGateway,
     GeminiConversationGateway,
-    OpenAIStructuredPlanGateway,
     PubmedEvidenceResolver,
     SupabasePermanentMediaStore,
 )

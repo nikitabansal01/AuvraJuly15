@@ -33,10 +33,12 @@ from app.v2.domain.plan_evidence import (
     assessment_context_from_answers,
     evidence_queries_for,
 )
+from app.v2.infrastructure.plan_generation_openai import (
+    OpenAIStructuredPlanGateway,
+)
 from app.v2.infrastructure.plan_generation_providers import (
     CloudflareFluxImageGateway,
     GeminiStructuredPlanGateway,
-    OpenAIStructuredPlanGateway,
     PubmedEvidenceResolver,
     SupabasePermanentMediaStore,
 )
@@ -499,7 +501,13 @@ async def test_openai_adapter_tolerates_wellbeing_actions_key_and_bad_json():
                 200,
                 json={
                     "choices": [
-                        {"message": {"content": json.dumps({"wellbeing_actions": _payload()["actions"]})}}
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {"wellbeing_actions": _payload()["actions"]}
+                                )
+                            }
+                        }
                     ],
                     "usage": {},
                 },
