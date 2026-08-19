@@ -917,13 +917,42 @@ async def complete_action(
         if not uid:
             raise HTTPException(status_code=400, detail="User ID not found")
         
-        from app.core.database import ActionPlanItem
+        from app.core.database import ActionPlan, ActionPlanItem
         
         # Get the action
         item = db.query(ActionPlanItem).filter(
             and_(ActionPlanItem.id == item_id, ActionPlanItem.uid == uid)
         ).first()
-        
+
+        if not item:
+            # Self-heal an item orphaned by a mid-generation signup.
+            #
+            # If the user signed up while their plan was still generating, the
+            # plan could be transferred to them while its items were still being
+            # written, leaving plan.uid set and item.uid NULL. The plan rendered
+            # but every completion returned 404 (observed 2026-08-19 13:47).
+            # Ownership is claimed here only through the parent plan the user
+            # already provably owns, so this cannot reach another user's data.
+            orphan = (
+                db.query(ActionPlanItem)
+                .join(ActionPlan, ActionPlan.id == ActionPlanItem.plan_id)
+                .filter(
+                    ActionPlanItem.id == item_id,
+                    ActionPlanItem.uid.is_(None),
+                    ActionPlan.uid == uid,
+                )
+                .first()
+            )
+            if orphan:
+                logger.warning(
+                    f"[ORPHAN_REPAIR] Item {item_id} had no owner but its plan "
+                    f"{orphan.plan_id} belongs to {uid}; adopting"
+                )
+                orphan.uid = uid
+                orphan.session_id = None
+                db.commit()
+                item = orphan
+
         if not item:
             raise HTTPException(status_code=404, detail="Action not found")
         

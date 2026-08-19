@@ -6624,7 +6624,27 @@ JSON ONLY:
             plan.generation_time_ms = generation_time_ms
             plan.gpt_model_used = gpt_model_used or self.GPT_MODEL
             plan.updated_at = datetime.utcnow()
-            
+
+            # The plan row is the authority on ownership, not the arguments this
+            # call started with.
+            #
+            # A guest generation creates its placeholder plan early and inserts
+            # items ~90s later, at the end. If the user signs up inside that
+            # window, the link endpoint finds the placeholder, transfers it
+            # (plan.uid = user, plan.session_id = None) and deletes the session
+            # -- correctly, but the plan has no items yet, so there is nothing
+            # for it to re-own. Stamping items with the original `user_id`
+            # (None) then produced a plan owned by the user whose items were
+            # owned by nobody: the app rendered the plan and every completion
+            # returned 404 Action not found, observed live on 2026-08-19 13:47.
+            owner_uid = plan.uid or user_id
+            owner_session_id = None if plan.uid else (plan.session_id or session_id)
+            if plan.uid and plan.uid != user_id:
+                logger.info(
+                    f"[GENERATE] Plan {plan.id} was claimed by {plan.uid} during "
+                    f"generation; stamping items with the new owner"
+                )
+
             # Create action items
             for slot, action in enumerate(actions, start=1):
                 # Get conditions from action or user context
@@ -6643,8 +6663,8 @@ JSON ONLY:
                 
                 item = ActionPlanItem(
                     plan_id=plan.id,
-                    uid=user_id,
-                    session_id=session_id,  # Store session ID
+                    uid=owner_uid,
+                    session_id=owner_session_id,
                     slot=slot,
                     time_slot=action.get("time_slot", "morning"),
                     category=action.get("category", "food"),

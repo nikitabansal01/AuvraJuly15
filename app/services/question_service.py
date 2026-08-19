@@ -578,7 +578,27 @@ class QuestionService:
                 guest_plan = self.db.query(ActionPlan).filter(
                     ActionPlan.session_id == session_id
                 ).first()
-                
+
+                # A plan row can exist while generation is still running: the
+                # generator inserts a placeholder up front and its items only at
+                # the end. Adopting that placeholder here transfers an empty
+                # plan and deletes the session, leaving the generator with no
+                # way to learn who now owns it -- the items then land unowned
+                # and every completion 404s. Only adopt a plan that actually has
+                # items; otherwise fall through to the in-progress branch below,
+                # which marks the session linked and lets the generator finish
+                # the handover.
+                if guest_plan:
+                    guest_plan_has_items = self.db.query(ActionPlanItem).filter(
+                        ActionPlanItem.plan_id == guest_plan.id
+                    ).first() is not None
+                    if not guest_plan_has_items:
+                        logger.info(
+                            f"⏳ Guest plan {guest_plan.id} for session {session_id} has no "
+                            f"items yet (generation in flight); deferring transfer"
+                        )
+                        guest_plan = None
+
                 if guest_plan:
                     logger.info(f"✅ Found existing GUEST ActionPlan {guest_plan.id} for session {session_id}")
                     
