@@ -22,7 +22,7 @@ import random
 import asyncio
 import traceback
 import hashlib
-from typing import Optional, List, Dict, Any, Tuple, Literal
+from typing import Optional, List, Dict, Any, Tuple, Literal, Callable
 from datetime import datetime, timezone, date, timedelta
 
 import httpx
@@ -1329,6 +1329,25 @@ Respond with valid JSON array only."""
 # ACTION PLAN GENERATOR SERVICE
 # ============================================================================
 
+
+def _report_progress(
+    callback: Optional[Callable[[int, str], None]], percent: int, message: str
+) -> None:
+    """Report a real phase boundary, never letting reporting break generation.
+
+    A failure to write a progress row must not lose a plan the user has already
+    waited two minutes (and real provider spend) for, so this swallows and logs
+    rather than propagating.
+    """
+
+    if callback is None:
+        return
+    try:
+        callback(percent, message)
+    except Exception as exc:  # progress is advisory; the plan is the product
+        logger.warning(f"[GENERATE] progress report failed at {percent}%: {exc}")
+
+
 class ActionPlanGenerator:
     """
     Main orchestrator for generating personalized daily action plans.
@@ -1629,7 +1648,12 @@ class ActionPlanGenerator:
         skip_quality_check: bool = False,
         session_id: Optional[str] = None,  # For guest users
         carryforward_items: Optional[List[Dict[str, Any]]] = None,  # Items to carry forward from yesterday
-        is_background_task: bool = False  # Skip in_progress check for background tasks
+        is_background_task: bool = False,  # Skip in_progress check for background tasks
+        # Reports real phase boundaries to the caller. Without it the only
+        # progress the client ever saw was 5% while every category sat in
+        # "processing", then a jump straight to 95% when all three were marked
+        # complete together -- so a two-minute generation looked like a hang.
+        progress_callback: Optional[Callable[[int, str], None]] = None,
     ) -> Dict[str, Any]:
         """
         Generate a completely new action plan.
@@ -1750,6 +1774,7 @@ class ActionPlanGenerator:
             else:
                 # Step 1: Load user context (needed for GPT generation)
                 logger.info(f"[GENERATE] Step 1: Loading user context...")
+                _report_progress(progress_callback, 10, "Reading your answers")
                 user_context = await self._load_user_context(user_id, db, session_id=session_id)
                 
                 if not user_context:
@@ -1956,6 +1981,7 @@ class ActionPlanGenerator:
                 # Step 2: Generate actions via GPT-5-mini with retry logic
                 # Pydantic validation ensures complete data - no fallbacks
                 logger.info(f"[GENERATE] Step 2: Generating all 4 actions via GPT...")
+                _report_progress(progress_callback, 25, "Choosing today's actions")
                 actions = None
                 gpt_cost = 0.0
                 used_model = self.GPT_MODEL
@@ -2081,6 +2107,7 @@ class ActionPlanGenerator:
                 logger.info(
                     f"[GENERATE] Step 3: Generating images for {len(actions)} actions (image_mode={image_mode})..."
                 )
+                _report_progress(progress_callback, 60, "Creating your images")
                 actions_with_images, image_cost = await self._generate_all_images(
                     actions=actions,
                     user_id=user_id,
@@ -2112,6 +2139,7 @@ class ActionPlanGenerator:
             # Step 4: Store plan in database
             # Use a fresh, short-lived session to avoid "connection closed" errors after long external calls.
             logger.info(f"{log_prefix} Step 4: Storing plan in database...")
+            _report_progress(progress_callback, 92, "Saving your plan")
             write_db = await _create_async_session(self.async_session_maker)
             try:
                 plan = await self._store_plan(

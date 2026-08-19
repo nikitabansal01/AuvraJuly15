@@ -154,6 +154,40 @@ class ProcessingStatusService:
             if created:
                 db_session.close()
     
+    def update_progress(self, session_id: str, progress: int, phase: str) -> bool:
+        """Record a real phase boundary reported by the generator.
+
+        `update_category_status` derives progress from how many of the three
+        categories are complete, which only works if they finish one at a time.
+        The generator produces the whole plan in a single call and marks all
+        three complete together, so that path can only ever emit 5% and then
+        95%. This lets the generator report where it actually is.
+        """
+
+        db_session, created = self._get_session()
+        try:
+            processing_status = db_session.query(SessionProcessingStatus).filter(
+                SessionProcessingStatus.session_id == session_id
+            ).first()
+            if not processing_status:
+                return False
+            # Never move backwards: a late callback from a superseded run must
+            # not make the bar jump back and look stuck again.
+            if progress > (processing_status.progress or 0):
+                processing_status.progress = progress
+            processing_status.phase = phase
+            processing_status.message = phase
+            processing_status.heartbeat_at = datetime.utcnow()
+            db_session.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update progress: {session_id}, error={str(e)}")
+            db_session.rollback()
+            return False
+        finally:
+            if created:
+                db_session.close()
+
     def update_processing_completed(self, session_id: str, result: Dict[str, Any] = None) -> bool:
         """Update to processing completed status"""
         db_session, created = self._get_session()

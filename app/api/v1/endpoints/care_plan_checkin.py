@@ -1,5 +1,5 @@
 """Care Plan Check-in API endpoints (Refactored to use LangGraph)."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Optional
@@ -554,6 +554,33 @@ async def respond_care_plan_checkin(
         # Return fallback error message to user via 500? Or smooth error?
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+@router.post("/transcribe", response_model=TranscribeResponse)
+async def transcribe_care_plan_audio(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Transcribe a spoken answer during a care-plan check-in.
+
+    The service method and the response model already existed here; only this
+    route was never registered, so the app's voice ("yap") input posted to
+    /api/v1/care-plan-checkin/transcribe and got a 404 while the identical
+    symptom and weekly check-in flows worked. Mirrors those two handlers
+    exactly, including their error mapping, so the three voice paths behave
+    the same way.
+    """
+    try:
+        uid = current_user["uid"]
+        service = CarePlanCheckInService(db)
+        text = await service.transcribe_audio(uid, file)
+        return {"text": text}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Care plan transcribe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/event", response_model=RespondCarePlanCheckInResponse)
 async def care_plan_ui_event(

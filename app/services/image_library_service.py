@@ -18,6 +18,7 @@ import os
 import base64
 import hashlib
 import logging
+import uuid
 import time
 import json
 import asyncio
@@ -190,26 +191,33 @@ class ImageLibraryService:
             logger.warning(f"[IMAGE] Received empty prompt for {category}/{variant_type}")
             return ("", False, 0.0)
         
+        # Every image for a plan is processed concurrently, so these multi-line
+        # blocks interleave in the log. Without a per-operation tag the lines
+        # read as if one action matched another action's image -- which looks
+        # exactly like a cache-correctness bug and is not one. `op` ties each
+        # line back to the operation that emitted it.
+        op = uuid.uuid4().hex[:6]
+
         # Log what we're processing
-        logger.info(f"🖼️ [IMAGE] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
+        logger.info(f"🖼️ [IMAGE:{op}] Processing: title='{prompt[:40]}...' category={category} variant={variant_type}")
         
         try:
             # Step 1: Get embedding for the TITLE (if not provided)
             # This gives stable cache matching regardless of prompt style changes
             if title_embedding is None:
-                logger.info(f"[IMAGE] Step 1: Getting embedding for title '{prompt[:30]}...'")
+                logger.info(f"[IMAGE:{op}] Step 1: Getting embedding for title '{prompt[:30]}...'")
                 title_embedding = await self._get_embedding(prompt)
             
             if not title_embedding:
-                logger.warning(f"[IMAGE] ⚠️ Embedding failed for '{prompt[:30]}...' - generating without cache")
+                logger.warning(f"[IMAGE:{op}] ⚠️ Embedding failed for '{prompt[:30]}...' - generating without cache")
                 return await self._generate_and_store_image(
                     prompt, category, variant_type, user_id, None, db
                 )
             
-            logger.info(f"[IMAGE] Step 1: ✅ Got embedding (dim={len(title_embedding)})")
+            logger.info(f"[IMAGE:{op}] Step 1: ✅ Got embedding (dim={len(title_embedding)})")
             
             # Step 2: Search for semantically similar cached images by TITLE
-            logger.info(f"[IMAGE] Step 2: Searching cache with threshold {self.SIMILARITY_THRESHOLD}")
+            logger.info(f"[IMAGE:{op}] Step 2: Searching cache with threshold {self.SIMILARITY_THRESHOLD}")
             cached_image = await self._find_similar_image(
                 title_embedding, 
                 category, 
@@ -225,31 +233,31 @@ class ImageLibraryService:
                     # Found a semantically similar image!
                     await self._update_image_usage(cached_image["id"], user_id, db)
                     elapsed = time.time() - start_time
-                    logger.info(f"[IMAGE] Step 2: ✅ CACHE HIT!")
-                    logger.info(f"[IMAGE]   Title: '{prompt[:40]}...'")
-                    logger.info(f"[IMAGE]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
-                    logger.info(f"[IMAGE]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
-                    logger.info(f"[IMAGE]   Time: {elapsed:.2f}s, Cost: $0.00")
+                    logger.info(f"[IMAGE:{op}] Step 2: ✅ CACHE HIT!")
+                    logger.info(f"[IMAGE:{op}]   Title: '{prompt[:40]}...'")
+                    logger.info(f"[IMAGE:{op}]   Matched: '{cached_image.get('prompt_text', '')[:40]}...'")
+                    logger.info(f"[IMAGE:{op}]   Similarity: {cached_image['similarity']:.4f} (threshold: {self.SIMILARITY_THRESHOLD})")
+                    logger.info(f"[IMAGE:{op}]   Time: {elapsed:.2f}s, Cost: $0.00")
                     return (cached_url, True, 0.0)
                 else:
-                    logger.warning(f"[IMAGE] ⚠️ Cache hit but empty URL for '{prompt[:30]}...', regenerating")
+                    logger.warning(f"[IMAGE:{op}] ⚠️ Cache hit but empty URL for '{prompt[:30]}...', regenerating")
             
             # Step 3: No cache hit - generate new image
             elapsed_cache = time.time() - start_time
-            logger.info(f"[IMAGE] Step 2: ❌ CACHE MISS (checked in {elapsed_cache:.2f}s)")
-            logger.info(f"[IMAGE] Step 3: 🎨 Generating new image for '{prompt[:40]}...'")
+            logger.info(f"[IMAGE:{op}] Step 2: ❌ CACHE MISS (checked in {elapsed_cache:.2f}s)")
+            logger.info(f"[IMAGE:{op}] Step 3: 🎨 Generating new image for '{prompt[:40]}...'")
             
             result = await self._generate_and_store_image(
                 prompt, category, variant_type, user_id, title_embedding, db
             )
             
             elapsed = time.time() - start_time
-            logger.info(f"[IMAGE] Step 3: ✅ Generation complete in {elapsed:.2f}s")
+            logger.info(f"[IMAGE:{op}] Step 3: ✅ Generation complete in {elapsed:.2f}s")
             
             return result
             
         except Exception as e:
-            logger.error(f"[IMAGE] ❌ Error: {e}")
+            logger.error(f"[IMAGE:{op}] ❌ Error: {e}")
             # Fallback: try to generate without caching
             return await self._generate_and_store_image(
                 prompt, category, variant_type, user_id, None, db

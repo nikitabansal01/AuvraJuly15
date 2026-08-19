@@ -356,6 +356,13 @@ async def _generate_recommendations_background(session_id: str, service, process
         for category in ["food", "movement", "mindfulness"]:
             processing_service.update_category_status(session_id, category, "processing", f"{category} plan generation in progress")
 
+        # The generator reports where it actually is. Previously the client saw
+        # 5% for the entire two-minute run and then a jump to 95%, because the
+        # three categories are generated in one call and marked complete
+        # together -- so a working generation was indistinguishable from a hang.
+        def _report(percent: int, message: str) -> None:
+            processing_service.update_progress(session_id, percent, message)
+
         # ═══════════════════════════════════════════════════════════════════════
         # FIX: Use singleton pattern instead of creating new instance per request
         # This avoids re-initializing httpx clients, OpenAI clients, etc.
@@ -376,7 +383,8 @@ async def _generate_recommendations_background(session_id: str, service, process
                 db=async_session,
                 image_mode="full", # Generate ALL images now!
                 session_id=session_id,
-                is_background_task=True  # Skip in_progress check - we are the background task!
+                is_background_task=True,  # Skip in_progress check - we are the background task!
+                progress_callback=_report,
             )
             
             if response.get("success"):
