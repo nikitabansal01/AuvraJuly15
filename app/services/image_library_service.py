@@ -263,6 +263,49 @@ class ImageLibraryService:
                 prompt, category, variant_type, user_id, None, db
             )
     
+    async def find_reusable_image(
+        self,
+        prompt: str,
+        category: str,
+        variant_type: Optional[str],
+        user_id: str,
+        db: AsyncSession,
+        *,
+        threshold: float = 0.78,
+    ) -> Optional[str]:
+        """Last-resort cache read when every provider has failed.
+
+        Relaxes the similarity threshold and allows images the user has already
+        seen: a close-enough, previously shown image is strictly better than an
+        empty URL, and an empty URL is what previously caused the generator to
+        delete an otherwise complete plan.  Never generates; read-only.
+        """
+
+        try:
+            embedding = await self._get_embedding(prompt)
+            if not embedding:
+                return None
+            match = await self._find_similar_image(
+                embedding,
+                category,
+                variant_type,
+                user_id,
+                db,
+                threshold=threshold,
+                include_seen=True,
+            )
+            if match and match.get("image_url"):
+                logger.warning(
+                    "[IMAGE-RESCUE] Reusing cached image (similarity %.3f) for '%s'",
+                    match.get("similarity", 0.0),
+                    prompt[:40],
+                )
+                return match["image_url"]
+            return None
+        except Exception as exc:
+            logger.error(f"[IMAGE-RESCUE] failed for '{prompt[:40]}': {exc}")
+            return None
+
     async def _get_embedding(self, text: str) -> Optional[List[float]]:
         """
         Generate embedding using OpenAI ada-002.
@@ -389,7 +432,10 @@ class ImageLibraryService:
         category: str,
         variant_type: Optional[str],
         user_id: str,
-        db: AsyncSession
+        db: AsyncSession,
+        *,
+        threshold: Optional[float] = None,
+        include_seen: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """
         Find a semantically similar image that hasn't been shown to this user.
@@ -436,7 +482,7 @@ class ImageLibraryService:
             for row in rows:
                 # row structure: (id, image_url, prompt_text, prompt_embedding, used_by_users)
                 used_by = row.used_by_users or []
-                if user_id in used_by:
+                if user_id in used_by and not include_seen:
                     skipped_by_user += 1
                     continue
                 
@@ -463,7 +509,10 @@ class ImageLibraryService:
                 similarity = self._cosine_similarity(prompt_embedding, stored_embedding)
                 similarities.append((similarity, row.prompt_text[:30] if row.prompt_text else "???"))
                 
-                if similarity > self.SIMILARITY_THRESHOLD and similarity > best_similarity:
+                effective_threshold = (
+                    threshold if threshold is not None else self.SIMILARITY_THRESHOLD
+                )
+                if similarity > effective_threshold and similarity > best_similarity:
                     best_similarity = similarity
                     best_match = {
                         "id": row.id,
@@ -602,15 +651,46 @@ class ImageLibraryService:
         category: str,
         variant_type: Optional[str],
     ) -> Tuple[Optional[bytes], str]:
-        """Call the configured provider without disguising provider failures."""
+        """Call the configured provider, failing over to the other one.
+
+        On 2026-08-19 Cloudflare returned 429 on a production generation while
+        Gemini sat fully configured and untried; every image came back empty,
+        and the whole plan -- minutes of user waiting and a completed GPT call
+        -- was thrown away. A provider failure should degrade to the secondary
+        provider, not to an empty URL.
+        """
         if self.image_provider == "cloudflare":
             image_bytes = await self._call_cloudflare_image(
                 prompt, category, variant_type
             )
-            return image_bytes, self.cloudflare_model_name
+            if image_bytes:
+                return image_bytes, self.cloudflare_model_name
+            if self.gemini_api_key:
+                logger.warning(
+                    "[IMAGE] Cloudflare unavailable; failing over to Gemini for '%s'",
+                    prompt[:40],
+                )
+                image_bytes = await self._call_gemini_image(
+                    prompt, category, variant_type
+                )
+                if image_bytes:
+                    return image_bytes, self.gemini_model_name
+            return None, self.cloudflare_model_name
 
         image_bytes = await self._call_gemini_image(prompt, category, variant_type)
-        return image_bytes, self.gemini_model_name
+        if image_bytes:
+            return image_bytes, self.gemini_model_name
+        if self.cloudflare_account_id and self.cloudflare_api_token:
+            logger.warning(
+                "[IMAGE] Gemini unavailable; failing over to Cloudflare for '%s'",
+                prompt[:40],
+            )
+            image_bytes = await self._call_cloudflare_image(
+                prompt, category, variant_type
+            )
+            if image_bytes:
+                return image_bytes, self.cloudflare_model_name
+        return None, self.gemini_model_name
 
     async def _call_cloudflare_image(
         self,
@@ -624,11 +704,21 @@ class ImageLibraryService:
             return None
 
         if time.monotonic() < self._cloudflare_retry_after:
+            # This skip was previously silent. During the 2026-08-19 quota
+            # incident it made 13 image "generations" complete in 0.2s with no
+            # provider call and no log line, which read as a cache bug.
+            logger.warning(
+                "[CLOUDFLARE] Skipping image call: rate-limit cooldown for %.0fs more",
+                self._cloudflare_retry_after - time.monotonic(),
+            )
             return None
 
         try:
             async with self._async_semaphore("cloudflare", 4):
                 if time.monotonic() < self._cloudflare_retry_after:
+                    logger.warning(
+                        "[CLOUDFLARE] Skipping image call inside semaphore: cooldown active"
+                    )
                     return None
 
                 # FLUX accepts at most 2,048 prompt characters. Some action

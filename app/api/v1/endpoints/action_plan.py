@@ -240,8 +240,13 @@ async def get_today_assignments(
                 if processing.started_at:
                     elapsed = (datetime.utcnow() - processing.started_at).total_seconds()
                 
-                # If processing has been running for > 120 seconds, treat as timed out/failed
-                if elapsed > 120:
+                # The stale cutoff must sit ABOVE the pipeline's real duration:
+                # this same file estimates up to 150s, the last healthy
+                # generation took 118.9s, and provider failover legitimately
+                # adds more. At 120s this marked healthy runs failed while
+                # they were still working. Heartbeats continue during
+                # generation, so five minutes of silence means genuinely dead.
+                if elapsed > 300:
                     logger.warning(f"[STALE_SESSION] Session {linked_session.session_id} has been in state '{processing.processing_status}' for {int(elapsed)}s (>120s). Marking failed.")
                     processing.processing_status = "failed"
                     db.commit()
@@ -540,6 +545,31 @@ async def get_today_plan_status(
                 SessionProcessingStatus.session_id == linked_session.session_id
             ).first()
             
+            if processing and processing.processing_status == "failed":
+                # Without this branch a failed generation fell through to the
+                # bare "doesn't exist" response, which the app reads as "keep
+                # waiting" -- on 2026-08-19 a user watched a spinner for three
+                # minutes after the backend already knew the generation was
+                # dead. Failure is a terminal answer and the client must hear
+                # it as one.
+                logger.warning(
+                    f"[STATUS] Session {linked_session.session_id} generation failed for {uid}"
+                )
+                return {
+                    "plan_exists": False,
+                    "generating": False,
+                    "generation_failed": True,
+                    "plan_id": None,
+                    "plan_date": str(today),
+                    "ready": False,
+                    "total_assignments": 0,
+                    "session_id": linked_session.session_id,
+                    "processing_status": "failed",
+                    "progress": 0,
+                    "phase": "Failed",
+                    "message": "We couldn't finish your plan. Pull down to try again.",
+                }
+
             if processing and processing.processing_status in ["queued", "in_progress"]:
                 # Session is still generating - return progress info
                 elapsed = 0

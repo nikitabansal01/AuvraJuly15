@@ -6495,25 +6495,50 @@ JSON ONLY:
         
         for action in actions:
             category = action.get("category", "food").lower()
+            # FALLBACK_IMAGE_URLS is a map of empty strings, so this "fallback"
+            # never saved anything: it filled the missing slots with "", the
+            # completeness check downstream saw the empty URLs, and the whole
+            # plan -- a finished GPT call the user had waited minutes for --
+            # was deleted.  Before conceding, reuse the closest cached image at
+            # a relaxed threshold, repeats allowed: on 2026-08-19 a Cloudflare
+            # 429 wiped a plan while the cache held hundreds of usable images.
             fallback_url = FALLBACK_IMAGE_URLS.get(category, FALLBACK_IMAGE_URLS["food"])
             
             # Check hero
             hero_url = action.get("hero_image_url")
             if not hero_url or hero_url == "":
-                action["hero_image_url"] = fallback_url
-                action["hero_image_cached"] = False
-                final_missing_hero += 1
-                logger.warning(f"⚠️ Using fallback for hero: '{action.get('title', 'Unknown')}'")
+                rescued = await self.image_service.find_reusable_image(
+                    action.get("title", ""), category, None, user_id or "guest", db
+                )
+                if rescued:
+                    action["hero_image_url"] = rescued
+                    action["hero_image_cached"] = True
+                else:
+                    action["hero_image_url"] = fallback_url
+                    action["hero_image_cached"] = False
+                    final_missing_hero += 1
+                    logger.warning(f"⚠️ Using fallback for hero: '{action.get('title', 'Unknown')}'")
             
             # Check variants
             for variant in action.get("variants", []):
                 if isinstance(variant, dict):
                     variant_url = variant.get("image_url")
                     if not variant_url or variant_url == "":
-                        variant["image_url"] = fallback_url
-                        variant["image_cached"] = False
-                        final_missing_variant += 1
-                        logger.warning(f"⚠️ Using fallback for variant: '{variant.get('title', 'Unknown')}'")
+                        rescued = await self.image_service.find_reusable_image(
+                            variant.get("title", "") or action.get("title", ""),
+                            category,
+                            variant.get("variant_type"),
+                            user_id or "guest",
+                            db,
+                        )
+                        if rescued:
+                            variant["image_url"] = rescued
+                            variant["image_cached"] = True
+                        else:
+                            variant["image_url"] = fallback_url
+                            variant["image_cached"] = False
+                            final_missing_variant += 1
+                            logger.warning(f"⚠️ Using fallback for variant: '{variant.get('title', 'Unknown')}'")
         
         total_fallbacks = final_missing_hero + final_missing_variant
         if total_fallbacks > 0:
