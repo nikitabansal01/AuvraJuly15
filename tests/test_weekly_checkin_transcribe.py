@@ -9,6 +9,14 @@ from starlette.datastructures import UploadFile
 # Add project root to path (consistent with other tests)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# These exercise legacy transcription services, which depend on the `openai`
+# package from requirements.txt. The v2 image deliberately excludes legacy code
+# and its dependencies, and CI installs only the v2 sets -- so without this the
+# import error aborted collection for the *entire* suite. Skipping keeps CI
+# running the whole tests/ directory (never a glob, so a new file cannot be
+# silently excluded) while these run wherever the legacy stack is installed.
+pytest.importorskip("openai")
+
 from app.services.weekly_checkin_service import WeeklyCheckInService
 
 

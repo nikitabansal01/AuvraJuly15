@@ -211,6 +211,12 @@ def test_database_initialization_surfaces_connectivity_failure(monkeypatch):
 
 
 async def test_production_langgraph_never_falls_back_to_sqlite(monkeypatch):
+    # Legacy graph code, whose `langgraph` dependency lives in requirements.txt.
+    # The v2 image excludes legacy code and its dependencies and CI installs only
+    # the v2 sets, so this asserts nothing there; it still runs wherever the
+    # legacy stack is installed. Scoped to this test so the rest of the module,
+    # which needs no legacy packages, keeps running in CI.
+    pytest.importorskip("langgraph")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     from app.langgraph.graphs import care_plan_checkin
 
