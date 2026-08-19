@@ -727,25 +727,50 @@ class ImageLibraryService:
                 enhanced = self._enhance_prompt(prompt, category, variant_type)[:2000]
                 model_path = self.cloudflare_model_name.lstrip("/")
                 logger.info("🎨 [CLOUDFLARE] generating: %s...", prompt[:50])
-                response = await self.client.post(
-                    (
-                        "https://api.cloudflare.com/client/v4/accounts/"
-                        f"{self.cloudflare_account_id}/ai/run/{model_path}"
-                    ),
-                    headers={
-                        "Authorization": f"Bearer {self.cloudflare_api_token}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "prompt": enhanced,
-                        "steps": self.cloudflare_image_steps,
-                    },
-                    timeout=120.0,
-                )
+
+                # A 429 here is usually a burst limit, not exhausted quota: the
+                # run on 2026-08-19 08:14 saw six 200s and one 429, and that
+                # single 429 armed a 60-second provider-wide cooldown which
+                # then skipped 28 calls that would almost certainly have
+                # succeeded. Retry *this* request instead of disabling the
+                # provider for everyone, and reserve the global cooldown for a
+                # 429 that survives its retries -- which is what genuine daily
+                # exhaustion looks like.
+                response = None
+                for attempt in range(3):
+                    response = await self.client.post(
+                        (
+                            "https://api.cloudflare.com/client/v4/accounts/"
+                            f"{self.cloudflare_account_id}/ai/run/{model_path}"
+                        ),
+                        headers={
+                            "Authorization": f"Bearer {self.cloudflare_api_token}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "prompt": enhanced,
+                            "steps": self.cloudflare_image_steps,
+                        },
+                        timeout=120.0,
+                    )
+                    if response.status_code != 429:
+                        break
+                    if attempt < 2:
+                        backoff = 2.0 * (attempt + 1)
+                        logger.info(
+                            "[CLOUDFLARE] 429 (burst) for '%s'; retrying in %.0fs",
+                            prompt[:40],
+                            backoff,
+                        )
+                        await asyncio.sleep(backoff)
 
                 if response.status_code == 429:
+                    # Still limited after retries: treat as real exhaustion.
                     self._cloudflare_retry_after = time.monotonic() + 60.0
-                    logger.warning("Cloudflare Workers AI daily/rate limit reached")
+                    logger.warning(
+                        "Cloudflare Workers AI rate limit persists after retries; "
+                        "pausing provider for 60s"
+                    )
                     return None
 
                 if response.status_code >= 400:
@@ -798,9 +823,15 @@ class ImageLibraryService:
                 enhanced = self._enhance_prompt(prompt, category, variant_type)
                 logger.info(f"🎨 [GEMINI] generating: {prompt[:50]}...")
 
+                # v1beta, not v1: image generation is not served on the v1
+                # surface. The `responseFormat` block previously sent here is
+                # not a field this API accepts, and unknown fields are rejected
+                # outright -- every failover attempt on 2026-08-19 came back
+                # 400 Bad Request with the reason discarded by the caller, so
+                # the secondary provider looked configured and was in fact dead.
                 response = await self.client.post(
                     (
-                        "https://generativelanguage.googleapis.com/v1/models/"
+                        "https://generativelanguage.googleapis.com/v1beta/models/"
                         f"{self.gemini_model_name}:generateContent"
                     ),
                     headers={
@@ -814,17 +845,29 @@ class ImageLibraryService:
                             }]
                         }],
                         "generationConfig": {
-                            "responseModalities": ["IMAGE"],
-                            "responseFormat": {
-                                "image": {
-                                    "aspectRatio": "1:1",
-                                    "imageSize": "512"
-                                }
-                            }
+                            "responseModalities": ["TEXT", "IMAGE"],
                         },
                     },
                     timeout=120.0,
                 )
+
+                if response.status_code >= 400 and response.status_code != 429:
+                    # Log what Google actually objected to. Previously this was
+                    # swallowed by raise_for_status and surfaced only as
+                    # "Client error '400 Bad Request'", which says nothing about
+                    # the model name, the API surface or the payload.
+                    try:
+                        detail = response.json().get("error", {})
+                        reason = detail.get("message", "")[:300]
+                    except Exception:
+                        reason = response.text[:300]
+                    logger.error(
+                        "[GEMINI] rejected image request (HTTP %s, model=%s): %s",
+                        response.status_code,
+                        self.gemini_model_name,
+                        reason,
+                    )
+                    return None
 
                 if response.status_code == 429:
                     error_payload = response.json().get("error", {})
