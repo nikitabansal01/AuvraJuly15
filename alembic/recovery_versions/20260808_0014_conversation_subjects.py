@@ -56,23 +56,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DROP TRIGGER IF EXISTS ck_conversation_subject_scope ON app.conversations"
-    )
+    op.execute("DROP TRIGGER IF EXISTS ck_conversation_subject_scope ON app.conversations")
     op.execute("DROP FUNCTION IF EXISTS app.check_conversation_subject()")
     op.execute("DROP FUNCTION IF EXISTS app.assert_conversation_subject(uuid)")
     op.execute("DROP INDEX IF EXISTS app.uq_conversations_subject")
     op.execute(
-        "ALTER TABLE app.conversations "
-        "DROP CONSTRAINT ck_conversations_valid_subject_type"
+        "ALTER TABLE app.conversations " "DROP CONSTRAINT ck_conversations_valid_subject_type"
     )
-    op.execute(
-        "ALTER TABLE app.conversations "
-        "DROP CONSTRAINT ck_conversations_subject_pairing"
-    )
-    op.execute(
-        "ALTER TABLE app.conversations DROP COLUMN subject_id, DROP COLUMN subject_type"
-    )
+    op.execute("ALTER TABLE app.conversations " "DROP CONSTRAINT ck_conversations_subject_pairing")
+    op.execute("ALTER TABLE app.conversations DROP COLUMN subject_id, DROP COLUMN subject_type")
 
 
 def _create_subject_scope_guard() -> None:

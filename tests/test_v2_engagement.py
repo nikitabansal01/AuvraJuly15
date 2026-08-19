@@ -307,8 +307,7 @@ async def test_daily_review_is_complete_plan_scoped_and_immutable() -> None:
         local_date=date(2026, 8, 8),
     )
     items = [
-        SimpleNamespace(id=uuid4(), plan_id=plan.id, status="active", slot=slot)
-        for slot in (1, 2)
+        SimpleNamespace(id=uuid4(), plan_id=plan.id, status="active", slot=slot) for slot in (1, 2)
     ]
     body = DailyReviewRequest.model_validate(
         {"items": [{"plan_item_id": item.id, "outcome": "completed"} for item in items]}
@@ -340,9 +339,7 @@ async def test_daily_review_is_complete_plan_scoped_and_immutable() -> None:
 
     bad_body = {"items": [{"plan_item_id": items[0].id, "outcome": "completed"}]}
     with pytest.raises(ValidationError):
-        DailyReviewRequest.model_validate(
-            {"items": [bad_body["items"][0], bad_body["items"][0]]}
-        )
+        DailyReviewRequest.model_validate({"items": [bad_body["items"][0], bad_body["items"][0]]})
 
 
 def test_metrics_use_latest_events_and_only_closed_qualifying_days() -> None:
@@ -369,12 +366,8 @@ def test_metrics_use_latest_events_and_only_closed_qualifying_days() -> None:
 
 
 def test_daily_adjudication_policy_is_closed_day_only_and_freeze_qualifies() -> None:
-    assert is_closed_local_day(
-        plan_date=date(2026, 3, 8), current_local_date=date(2026, 3, 9)
-    )
-    assert not is_closed_local_day(
-        plan_date=date(2026, 3, 8), current_local_date=date(2026, 3, 8)
-    )
+    assert is_closed_local_day(plan_date=date(2026, 3, 8), current_local_date=date(2026, 3, 9))
+    assert not is_closed_local_day(plan_date=date(2026, 3, 8), current_local_date=date(2026, 3, 8))
     assert daily_review_state(completed_count=4, total_count=4) == "earned"
     assert daily_review_state(completed_count=3, total_count=4) == "missed"
     assert reward_points_for_streak_state("earned") == 1
@@ -428,26 +421,8 @@ async def test_closed_daily_review_replays_one_streak_and_one_reward() -> None:
         now=datetime(2026, 3, 9, 8, 0, tzinfo=UTC),
     )
     assert first == replay
-    assert (
-        len(
-            [
-                row
-                for row in uow.session.added
-                if row.__class__.__name__ == "StreakLedger"
-            ]
-        )
-        == 1
-    )
-    assert (
-        len(
-            [
-                row
-                for row in uow.session.added
-                if row.__class__.__name__ == "RewardLedger"
-            ]
-        )
-        == 1
-    )
+    assert len([row for row in uow.session.added if row.__class__.__name__ == "StreakLedger"]) == 1
+    assert len([row for row in uow.session.added if row.__class__.__name__ == "RewardLedger"]) == 1
 
 
 @pytest.mark.anyio
@@ -480,9 +455,7 @@ async def test_selected_variant_replacement_creates_one_successor_revision() -> 
     ]
     copied_variants = [
         [
-            SimpleNamespace(
-                id=uuid4(), variant_type=f"v{index}", content={}, asset_id=uuid4()
-            )
+            SimpleNamespace(id=uuid4(), variant_type=f"v{index}", content={}, asset_id=uuid4())
             for index in range(1, 4)
         ]
         for _ in items

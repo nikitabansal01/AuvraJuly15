@@ -15,9 +15,7 @@ _BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[^\s,;\]\}]+")
 
 
 def _redact(value: str) -> str:
-    value = _SECRET_PATTERN.sub(
-        lambda match: f"{match.group('label')}=[REDACTED]", value
-    )
+    value = _SECRET_PATTERN.sub(lambda match: f"{match.group('label')}=[REDACTED]", value)
     return _BEARER_PATTERN.sub("Bearer [REDACTED]", value)
 
 

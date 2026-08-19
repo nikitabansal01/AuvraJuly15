@@ -49,13 +49,9 @@ OnboardingProof = Annotated[
 _STRONG_REVISION_ETAG = re.compile(r'^"(?P<revision>0|[1-9][0-9]*)"$')
 
 
-def _require_strong_revision(
-    if_match: str | None, *, minimum: int, resource: str
-) -> int:
+def _require_strong_revision(if_match: str | None, *, minimum: int, resource: str) -> int:
     if not if_match:
-        raise precondition_required(
-            f"If-Match with the current {resource} revision is required."
-        )
+        raise precondition_required(f"If-Match with the current {resource} revision is required.")
     match = _STRONG_REVISION_ETAG.fullmatch(if_match.strip())
     if match is None:
         raise precondition_required("If-Match must be a quoted, strong integer ETag.")
@@ -76,9 +72,7 @@ async def require_profile_revision(
 async def require_assessment_revision(
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> int:
-    return _require_strong_revision(
-        if_match, minimum=0, resource="onboarding assessment"
-    )
+    return _require_strong_revision(if_match, minimum=0, resource="onboarding assessment")
 
 
 async def require_plan_revision(

@@ -144,16 +144,12 @@ class PostgresOutboxWorker:
         except LeaseLost:
             return True
         except Exception as exc:
-            await self._retry_or_fail(
-                uow, event, self._error_code(exc), self._retryable(exc)
-            )
+            await self._retry_or_fail(uow, event, self._error_code(exc), self._retryable(exc))
             return True
         await self._mark_published(uow, event)
         return True
 
-    async def heartbeat(
-        self, uow: SqlAlchemyUnitOfWork, event: ClaimedOutboxEvent
-    ) -> bool:
+    async def heartbeat(self, uow: SqlAlchemyUnitOfWork, event: ClaimedOutboxEvent) -> bool:
         result = await self._session(uow).execute(
             text(
                 """UPDATE ops.outbox_events
@@ -202,9 +198,7 @@ class PostgresOutboxWorker:
         )
         await uow.commit()
 
-    async def _mark_published(
-        self, uow: SqlAlchemyUnitOfWork, event: ClaimedOutboxEvent
-    ) -> None:
+    async def _mark_published(self, uow: SqlAlchemyUnitOfWork, event: ClaimedOutboxEvent) -> None:
         result = await self._session(uow).execute(
             text(
                 """UPDATE ops.outbox_events
@@ -308,9 +302,7 @@ class PostgresOutboxWorker:
 def _freeze_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     def freeze(value: Any) -> Any:
         if isinstance(value, dict):
-            return MappingProxyType(
-                {str(key): freeze(item) for key, item in value.items()}
-            )
+            return MappingProxyType({str(key): freeze(item) for key, item in value.items()})
         if isinstance(value, list):
             return tuple(freeze(item) for item in value)
         return value

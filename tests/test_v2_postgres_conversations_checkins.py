@@ -102,9 +102,7 @@ def test_weekly_checkin_requires_same_owner_typed_conversation() -> None:
             _insert_checkin(connection, user_id, conversation_id)
 
 
-def test_weekly_response_must_match_definition_and_completion_requires_all_answers() -> (
-    None
-):
+def test_weekly_response_must_match_definition_and_completion_requires_all_answers() -> None:
     from sqlalchemy import text
     from sqlalchemy.exc import DBAPIError
 
@@ -125,9 +123,7 @@ def test_weekly_response_must_match_definition_and_completion_requires_all_answe
     with pytest.raises(DBAPIError, match="definition version"):
         with engine.begin() as connection:
             user_id = _insert_user(connection)
-            conversation_id = _insert_conversation(
-                connection, user_id, "weekly_checkin"
-            )
+            conversation_id = _insert_conversation(connection, user_id, "weekly_checkin")
             checkin_id = _insert_checkin(connection, user_id, conversation_id)
             wrong_question_id = uuid.uuid4()
             connection.execute(
@@ -159,9 +155,7 @@ def test_weekly_response_must_match_definition_and_completion_requires_all_answe
     with pytest.raises(DBAPIError, match="answer every required definition question"):
         with engine.begin() as connection:
             user_id = _insert_user(connection)
-            conversation_id = _insert_conversation(
-                connection, user_id, "weekly_checkin"
-            )
+            conversation_id = _insert_conversation(connection, user_id, "weekly_checkin")
             checkin_id = _insert_checkin(connection, user_id, conversation_id)
             connection.execute(
                 text(
@@ -177,9 +171,7 @@ def test_weekly_response_must_match_definition_and_completion_requires_all_answe
                 },
             )
             connection.execute(
-                text(
-                    "UPDATE app.weekly_checkins SET completed_at = now() WHERE id = :id"
-                ),
+                text("UPDATE app.weekly_checkins SET completed_at = now() WHERE id = :id"),
                 {"id": checkin_id},
             )
 
@@ -226,9 +218,7 @@ def test_completed_checkins_responses_and_referenced_questions_are_immutable() -
     with pytest.raises(DBAPIError, match="weekly check-in response is immutable"):
         with engine.begin() as connection:
             connection.execute(
-                text(
-                    "UPDATE app.weekly_checkin_responses SET answer = :answer WHERE id = :id"
-                ),
+                text("UPDATE app.weekly_checkin_responses SET answer = :answer WHERE id = :id"),
                 {"id": response_id, "answer": json.dumps({"value": 6})},
             )
     with pytest.raises(DBAPIError, match="completed weekly check-in is immutable"):
@@ -237,14 +227,10 @@ def test_completed_checkins_responses_and_referenced_questions_are_immutable() -
                 text("UPDATE app.weekly_checkins SET timezone = 'UTC' WHERE id = :id"),
                 {"id": checkin_id},
             )
-    with pytest.raises(
-        DBAPIError, match="definition referenced by a check-in is immutable"
-    ):
+    with pytest.raises(DBAPIError, match="definition referenced by a check-in is immutable"):
         with engine.begin() as connection:
             connection.execute(
-                text(
-                    "UPDATE app.weekly_checkin_questions SET prompt = 'Changed' WHERE id = :id"
-                ),
+                text("UPDATE app.weekly_checkin_questions SET prompt = 'Changed' WHERE id = :id"),
                 {"id": question_ids[0]},
             )
 
@@ -254,14 +240,10 @@ def test_question_definition_freezes_when_checkin_starts_before_any_answer() -> 
     from sqlalchemy.exc import DBAPIError
 
     engine = _engine()
-    with pytest.raises(
-        DBAPIError, match="definition referenced by a check-in is immutable"
-    ):
+    with pytest.raises(DBAPIError, match="definition referenced by a check-in is immutable"):
         with engine.begin() as connection:
             user_id = _insert_user(connection)
-            conversation_id = _insert_conversation(
-                connection, user_id, "weekly_checkin"
-            )
+            conversation_id = _insert_conversation(connection, user_id, "weekly_checkin")
             question_id = uuid.uuid4()
             connection.execute(
                 text(
@@ -279,9 +261,7 @@ def test_question_definition_freezes_when_checkin_starts_before_any_answer() -> 
                 version="weekly-checkin.freeze-test.v1",
             )
             connection.execute(
-                text(
-                    "UPDATE app.weekly_checkin_questions SET prompt = 'Changed' WHERE id = :id"
-                ),
+                text("UPDATE app.weekly_checkin_questions SET prompt = 'Changed' WHERE id = :id"),
                 {"id": question_id},
             )
 

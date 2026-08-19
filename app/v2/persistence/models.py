@@ -67,9 +67,7 @@ class User(TimestampMixin, V2Base):
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     auth_provider: Mapped[str] = mapped_column(
         String(32), nullable=False, default="firebase", server_default="firebase"
     )
@@ -109,9 +107,7 @@ class UserProfile(TimestampMixin, V2Base):
     locale: Mapped[str] = mapped_column(
         String(16), nullable=False, default="en", server_default="en"
     )
-    version: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1"
-    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     user: Mapped[User] = relationship(back_populates="profile")
 
@@ -123,9 +119,7 @@ class ConsentRecord(V2Base):
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.users.id", ondelete="CASCADE"),
@@ -151,9 +145,7 @@ class OnboardingSession(TimestampMixin, V2Base):
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     proof_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(
         String(24),
@@ -161,9 +153,7 @@ class OnboardingSession(TimestampMixin, V2Base):
         default=OnboardingStatus.ACTIVE.value,
         server_default=OnboardingStatus.ACTIVE.value,
     )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     claimed_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.users.id", ondelete="RESTRICT"),
@@ -189,9 +179,7 @@ class OnboardingAssessment(TimestampMixin, V2Base):
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.onboarding_sessions.id", ondelete="CASCADE"),
@@ -236,9 +224,7 @@ class GenerationJob(TimestampMixin, V2Base):
         {"schema": OPS_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.users.id", ondelete="CASCADE"),
@@ -252,9 +238,7 @@ class GenerationJob(TimestampMixin, V2Base):
         default=JobState.QUEUED.value,
         server_default=JobState.QUEUED.value,
     )
-    progress: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     phase: Mapped[str | None] = mapped_column(String(64))
     request_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
@@ -280,16 +264,12 @@ class OutboxEvent(TimestampMixin, V2Base):
     __table_args__ = (
         CheckConstraint("attempt_count >= 0", name="nonnegative_attempts"),
         CheckConstraint("max_attempts > 0", name="positive_max_attempts"),
-        CheckConstraint(
-            "state IN ('pending','running','published','failed')", name="valid_state"
-        ),
+        CheckConstraint("state IN ('pending','running','published','failed')", name="valid_state"),
         Index("ix_outbox_events_state_available", "state", "available_at"),
         {"schema": OPS_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.users.id", ondelete="SET NULL"),
@@ -335,9 +315,7 @@ class IdempotencyRecord(TimestampMixin, V2Base):
         {"schema": OPS_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scope: Mapped[str] = mapped_column(String(96), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -350,9 +328,7 @@ class IdempotencyRecord(TimestampMixin, V2Base):
     )
     response_status: Mapped[int | None] = mapped_column(Integer)
     response_body: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class MediaAsset(TimestampMixin, V2Base):
@@ -363,15 +339,11 @@ class MediaAsset(TimestampMixin, V2Base):
         CheckConstraint("width IS NULL OR width > 0", name="positive_width"),
         CheckConstraint("height IS NULL OR height > 0", name="positive_height"),
         CheckConstraint("public_url LIKE 'https://%'", name="https_public_url"),
-        CheckConstraint(
-            "status IN ('pending','ready','failed','deleted')", name="valid_status"
-        ),
+        CheckConstraint("status IN ('pending','ready','failed','deleted')", name="valid_status"),
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.users.id", ondelete="SET NULL"),
@@ -419,9 +391,7 @@ class ActionPlan(TimestampMixin, V2Base):
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.users.id", ondelete="CASCADE"),
@@ -462,15 +432,11 @@ class ActionPlanItem(TimestampMixin, V2Base):
     __table_args__ = (
         UniqueConstraint("plan_id", "slot"),
         CheckConstraint("slot >= 1 AND slot <= 4", name="valid_slot"),
-        CheckConstraint(
-            "status IN ('active','replaced','retired')", name="valid_status"
-        ),
+        CheckConstraint("status IN ('active','replaced','retired')", name="valid_status"),
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     plan_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.action_plans.id", ondelete="CASCADE"),
@@ -512,9 +478,7 @@ class ActionPlanItemVariant(TimestampMixin, V2Base):
         {"schema": APP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     item_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{APP_SCHEMA}.action_plan_items.id", ondelete="CASCADE"),

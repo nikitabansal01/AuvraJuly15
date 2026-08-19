@@ -146,9 +146,7 @@ async def test_a_provider_outage_is_never_reported_as_a_bad_token(
 
 
 @pytest.mark.anyio
-async def test_an_unclassified_failure_fails_safe_as_unavailable(
-    monkeypatch, initialized_firebase
-):
+async def test_an_unclassified_failure_fails_safe_as_unavailable(monkeypatch, initialized_firebase):
     """An unrecognised provider error must not be presented as a bad token."""
 
     _verify_raises(monkeypatch, RuntimeError("something unexpected"))
@@ -199,9 +197,7 @@ async def test_sub_is_accepted_when_uid_is_absent(monkeypatch, initialized_fireb
 
 
 @pytest.mark.anyio
-async def test_optional_claims_absent_yields_a_usable_principal(
-    monkeypatch, initialized_firebase
-):
+async def test_optional_claims_absent_yields_a_usable_principal(monkeypatch, initialized_firebase):
     _verify_returns(monkeypatch, {"uid": "subject-only"})
     principal = await FirebaseIdentityTokenVerifier().verify("a-token")
 
@@ -225,7 +221,5 @@ def test_a_malformed_auth_time_becomes_none_rather_than_a_guess(value) -> None:
 
 
 def test_a_valid_auth_time_is_translated_to_utc() -> None:
-    assert _authentication_time(1_754_000_000) == datetime.fromtimestamp(
-        1_754_000_000, UTC
-    )
+    assert _authentication_time(1_754_000_000) == datetime.fromtimestamp(1_754_000_000, UTC)
     assert _authentication_time(1_754_000_000).tzinfo is UTC

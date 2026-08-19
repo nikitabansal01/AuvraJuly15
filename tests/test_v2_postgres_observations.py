@@ -48,10 +48,7 @@ def _insert_user(connection) -> uuid.UUID:
         {"id": user_id, "subject": f"obs-{user_id}"},
     )
     connection.execute(
-        text(
-            "INSERT INTO app.user_profiles (user_id, timezone) "
-            "VALUES (:user_id, 'UTC')"
-        ),
+        text("INSERT INTO app.user_profiles (user_id, timezone) " "VALUES (:user_id, 'UTC')"),
         {"user_id": user_id},
     )
     return user_id
@@ -215,10 +212,7 @@ def test_observations_are_immutable() -> None:
             user_id = _insert_user(connection)
             observation_id = _insert(connection, user_id)
             connection.execute(
-                text(
-                    "UPDATE app.user_observations SET value_numeric = 9 "
-                    "WHERE id = :id"
-                ),
+                text("UPDATE app.user_observations SET value_numeric = 9 " "WHERE id = :id"),
                 {"id": observation_id},
             )
 
@@ -238,7 +232,9 @@ def test_a_non_user_source_must_name_its_origin() -> None:
     with pytest.raises(IntegrityError):
         with _engine().begin() as connection:
             _insert(
-                connection, _insert_user(connection), source="user",
+                connection,
+                _insert_user(connection),
+                source="user",
                 source_id=uuid.uuid4(),
             )
 
@@ -251,16 +247,22 @@ def test_the_live_view_excludes_superseded_rows() -> None:
         original = _insert(connection, user_id, value_numeric=3)
         correction = _insert(connection, user_id, value_numeric=8, supersedes_id=original)
 
-        live = connection.execute(
-            text(
-                "SELECT id FROM app.user_observations_live WHERE user_id = :user_id"
-            ),
-            {"user_id": user_id},
-        ).scalars().all()
-        every = connection.execute(
-            text("SELECT id FROM app.user_observations WHERE user_id = :user_id"),
-            {"user_id": user_id},
-        ).scalars().all()
+        live = (
+            connection.execute(
+                text("SELECT id FROM app.user_observations_live WHERE user_id = :user_id"),
+                {"user_id": user_id},
+            )
+            .scalars()
+            .all()
+        )
+        every = (
+            connection.execute(
+                text("SELECT id FROM app.user_observations WHERE user_id = :user_id"),
+                {"user_id": user_id},
+            )
+            .scalars()
+            .all()
+        )
 
     assert set(live) == {correction}
     assert set(every) == {original, correction}
@@ -289,9 +291,7 @@ async def test_writing_and_reading_current_state_round_trips() -> None:
     with _engine().begin() as connection:
         user_id = _insert_user(connection)
         subject = connection.execute(
-            __import__("sqlalchemy").text(
-                "SELECT auth_subject FROM app.users WHERE id = :id"
-            ),
+            __import__("sqlalchemy").text("SELECT auth_subject FROM app.users WHERE id = :id"),
             {"id": user_id},
         ).scalar_one()
 
@@ -322,12 +322,12 @@ async def test_writing_and_reading_current_state_round_trips() -> None:
 
     await write("height_cm", "body_metric", ObservationValue(numeric=165, unit="cm"), now)
     old = await write(
-        "weight_kg", "body_metric", ObservationValue(numeric=70, unit="kg"),
+        "weight_kg",
+        "body_metric",
+        ObservationValue(numeric=70, unit="kg"),
         now - timedelta(days=30),
     )
-    await write(
-        "weight_kg", "body_metric", ObservationValue(numeric=60, unit="kg"), now
-    )
+    await write("weight_kg", "body_metric", ObservationValue(numeric=60, unit="kg"), now)
     async with SqlAlchemyUnitOfWork() as uow:
         current = await current_observations(
             uow, principal=principal, observation_type="body_metric"
@@ -339,9 +339,7 @@ async def test_writing_and_reading_current_state_round_trips() -> None:
     assert current.derived.bmi_band == "typical_range"
 
     async with SqlAlchemyUnitOfWork() as uow:
-        history = await list_observations(
-            uow, principal=principal, code="weight_kg"
-        )
+        history = await list_observations(uow, principal=principal, code="weight_kg")
     assert [o.value.numeric for o in history.observations] == [60.0, 70.0]
     assert old.observation_id in {o.observation_id for o in history.observations}
 
@@ -357,9 +355,7 @@ async def test_an_invalid_value_is_rejected_before_it_reaches_the_database() -> 
     with _engine().begin() as connection:
         user_id = _insert_user(connection)
         subject = connection.execute(
-            __import__("sqlalchemy").text(
-                "SELECT auth_subject FROM app.users WHERE id = :id"
-            ),
+            __import__("sqlalchemy").text("SELECT auth_subject FROM app.users WHERE id = :id"),
             {"id": user_id},
         ).scalar_one()
 

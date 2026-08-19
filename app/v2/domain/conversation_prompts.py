@@ -24,9 +24,7 @@ class ConversationPromptContract:
 
 
 _CONTRACTS = {
-    "general": ConversationPromptContract(
-        "general", "Offer supportive, non-diagnostic guidance."
-    ),
+    "general": ConversationPromptContract("general", "Offer supportive, non-diagnostic guidance."),
     "care_plan": ConversationPromptContract(
         "care_plan", "Discuss the recorded care plan without prescribing."
     ),

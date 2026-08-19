@@ -149,9 +149,7 @@ def test_placeholder_detection_rejects_explicit_placeholder_values(value):
 
 
 def test_api_configuration_rejects_worker_secrets(monkeypatch):
-    monkeypatch.setattr(
-        runtime_config, "settings", _settings(V2_GEMINI_API_KEY="secret")
-    )
+    monkeypatch.setattr(runtime_config, "settings", _settings(V2_GEMINI_API_KEY="secret"))
     with pytest.raises(RuntimeError, match="worker-only credentials"):
         runtime_config.validate_api_configuration()
 
@@ -207,9 +205,7 @@ def test_worker_configuration_requires_tls_and_sane_deadlines(monkeypatch):
         ({"DATABASE_POOL_SIZE": 11}, "DATABASE_POOL_SIZE must be between"),
     ],
 )
-def test_api_configuration_fails_closed_for_operational_controls(
-    monkeypatch, overrides, message
-):
+def test_api_configuration_fails_closed_for_operational_controls(monkeypatch, overrides, message):
     monkeypatch.setattr(runtime_config, "settings", _settings(**overrides))
     with pytest.raises(RuntimeError, match=message):
         runtime_config.validate_api_configuration()
@@ -253,10 +249,10 @@ def test_deletion_worker_requires_explicit_approval_and_credentials(monkeypatch)
             V2_CLOUDFLARE_API_TOKEN="token",
             V2_SUPABASE_URL="https://project.supabase.test",
             V2_SUPABASE_SERVICE_ROLE_KEY="role",
-                V2_PUBMED_EMAIL="ops@example.test",
-                V2_DELETION_ENABLED=True,
-                V2_REDIS_URL="",
-            ),
+            V2_PUBMED_EMAIL="ops@example.test",
+            V2_DELETION_ENABLED=True,
+            V2_REDIS_URL="",
+        ),
     )
     with pytest.raises(RuntimeError, match="V2_REDIS_URL"):
         runtime_config.validate_plan_worker_configuration()
@@ -356,9 +352,7 @@ async def test_route_failure_logs_a_stable_event_without_exception_text(monkeypa
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
     ) as client:
-        response = await client.get(
-            "/api/v2/explode", headers={"X-Request-ID": "request-1234"}
-        )
+        response = await client.get("/api/v2/explode", headers={"X-Request-ID": "request-1234"})
     assert response.status_code == 500
     assert events[0][0] == "v2_request_unhandled_failure"
     assert "very-secret" not in repr(events)
@@ -377,14 +371,10 @@ async def test_api_lifespan_requires_database_schema_at_checked_in_head(monkeypa
     async def dispose() -> None:
         events.append("dispose")
 
-    monkeypatch.setattr(
-        v2_main, "validate_api_configuration", lambda: events.append("config")
-    )
+    monkeypatch.setattr(v2_main, "validate_api_configuration", lambda: events.append("config"))
     monkeypatch.setattr(v2_main, "check_database_readiness", readiness)
     monkeypatch.setattr(v2_main, "check_database_schema_head", schema)
-    monkeypatch.setattr(
-        v2_main, "initialize_v2_firebase", lambda: events.append("firebase")
-    )
+    monkeypatch.setattr(v2_main, "initialize_v2_firebase", lambda: events.append("firebase"))
     monkeypatch.setattr(v2_main, "dispose_database", dispose)
 
     async with v2_main.lifespan(create_application()):
@@ -428,9 +418,7 @@ async def test_a_rate_limit_problem_keeps_its_status_and_retry_after_header(
     async def fake_rate_limit(request, call_next):  # type: ignore[no-untyped-def]
         raise too_many_requests(retry_after_seconds=17)
 
-    monkeypatch.setattr(
-        v2_main, "public_onboarding_rate_limit_middleware", fake_rate_limit
-    )
+    monkeypatch.setattr(v2_main, "public_onboarding_rate_limit_middleware", fake_rate_limit)
     app = create_application()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
@@ -460,9 +448,7 @@ async def test_a_rate_limit_backend_outage_reports_503_not_500(monkeypatch):
             "Request protection is temporarily unavailable.",
         )
 
-    monkeypatch.setattr(
-        v2_main, "public_onboarding_rate_limit_middleware", fake_rate_limit
-    )
+    monkeypatch.setattr(v2_main, "public_onboarding_rate_limit_middleware", fake_rate_limit)
     app = create_application()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"

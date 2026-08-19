@@ -64,9 +64,7 @@ async def _definition(uow: SqlAlchemyUnitOfWork, checkin: WeeklyCheckin):
     responses = list(
         (
             await uow.session.scalars(
-                select(WeeklyResponse).where(
-                    WeeklyResponse.weekly_checkin_id == checkin.id
-                )
+                select(WeeklyResponse).where(WeeklyResponse.weekly_checkin_id == checkin.id)
             )
         ).all()
     )
@@ -103,9 +101,9 @@ async def list_weekly_checkins(
         )
     rows = (
         await uow.session.scalars(
-            statement.order_by(
-                WeeklyCheckin.week_start.desc(), WeeklyCheckin.id.desc()
-            ).limit(limit + 1)
+            statement.order_by(WeeklyCheckin.week_start.desc(), WeeklyCheckin.id.desc()).limit(
+                limit + 1
+            )
         )
     ).all()
 

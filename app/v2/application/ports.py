@@ -20,9 +20,7 @@ class AiResult:
 
 
 class AiGateway(Protocol):
-    async def invoke(
-        self, *, task: str, prompt_version: str, payload: dict[str, Any]
-    ) -> AiResult:
+    async def invoke(self, *, task: str, prompt_version: str, payload: dict[str, Any]) -> AiResult:
         ...
 
 

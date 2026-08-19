@@ -41,9 +41,7 @@ def _request_id(request: Request) -> str:
     return supplied if _SAFE_REQUEST_ID.fullmatch(supplied) else str(uuid.uuid4())
 
 
-def _v2_problem(
-    request: Request, status: int, title: str, code: str, detail: str
-) -> JSONResponse:
+def _v2_problem(request: Request, status: int, title: str, code: str, detail: str) -> JSONResponse:
     return _problem_response(
         request,
         ApplicationProblem(status, title, code, detail),
@@ -84,9 +82,7 @@ def create_application() -> FastAPI:
         description="AUVRA v2 mobile API",
         version="2.0.0",
         openapi_version="3.1.1",
-        docs_url="/docs"
-        if settings.ENVIRONMENT not in {"staging", "production"}
-        else None,
+        docs_url="/docs" if settings.ENVIRONMENT not in {"staging", "production"} else None,
         redoc_url=None,
         lifespan=lifespan,
     )
@@ -105,9 +101,7 @@ def create_application() -> FastAPI:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
     _install_request_middleware(app)
-    app.add_middleware(
-        RequestBodyLimitMiddleware, max_bytes=settings.V2_MAX_REQUEST_BODY_BYTES
-    )
+    app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.V2_MAX_REQUEST_BODY_BYTES)
     _register_exception_handlers(app)
     app.include_router(api_v2_router, prefix="/api/v2")
     return app
@@ -155,15 +149,11 @@ def _register_exception_handlers(app: FastAPI) -> None:
     """Keep v2 failures RFC 9457-shaped without changing legacy behavior."""
 
     @app.exception_handler(ApplicationProblem)
-    async def application_problem(
-        request: Request, problem: ApplicationProblem
-    ) -> JSONResponse:
+    async def application_problem(request: Request, problem: ApplicationProblem) -> JSONResponse:
         return _problem_response(request, problem, _request_id(request))
 
     @app.exception_handler(RequestValidationError)
-    async def validation_problem(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_problem(request: Request, exc: RequestValidationError) -> JSONResponse:
         if not request.url.path.startswith("/api/v2"):
             return JSONResponse(status_code=422, content={"detail": exc.errors()})
         return _v2_problem(
@@ -177,33 +167,21 @@ def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_problem(request: Request, exc: HTTPException) -> JSONResponse:
         if not request.url.path.startswith("/api/v2"):
-            return JSONResponse(
-                status_code=exc.status_code, content={"detail": exc.detail}
-            )
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
         detail = exc.detail if isinstance(exc.detail, str) else "Request failed."
-        return _v2_problem(
-            request, exc.status_code, "Request Failed", "http_error", detail
-        )
+        return _v2_problem(request, exc.status_code, "Request Failed", "http_error", detail)
 
     @app.exception_handler(StarletteHTTPException)
-    async def starlette_http_problem(
-        request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def starlette_http_problem(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         if not request.url.path.startswith("/api/v2"):
-            return JSONResponse(
-                status_code=exc.status_code, content={"detail": exc.detail}
-            )
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
         detail = exc.detail if isinstance(exc.detail, str) else "Request failed."
-        return _v2_problem(
-            request, exc.status_code, "Request Failed", "http_error", detail
-        )
+        return _v2_problem(request, exc.status_code, "Request Failed", "http_error", detail)
 
     @app.exception_handler(Exception)
     async def internal_problem(request: Request, _: Exception) -> JSONResponse:
         if not request.url.path.startswith("/api/v2"):
-            return JSONResponse(
-                status_code=500, content={"detail": "Internal server error."}
-            )
+            return JSONResponse(status_code=500, content={"detail": "Internal server error."})
         return _v2_problem(
             request,
             500,

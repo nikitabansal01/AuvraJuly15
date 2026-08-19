@@ -17,9 +17,7 @@ _ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
             JobState.CANCELLED,
         }
     ),
-    JobState.RETRY_WAIT: frozenset(
-        {JobState.QUEUED, JobState.DEAD_LETTER, JobState.CANCELLED}
-    ),
+    JobState.RETRY_WAIT: frozenset({JobState.QUEUED, JobState.DEAD_LETTER, JobState.CANCELLED}),
     JobState.FAILED: frozenset({JobState.QUEUED, JobState.DEAD_LETTER}),
     JobState.READY: frozenset(),
     JobState.CANCELLED: frozenset(),

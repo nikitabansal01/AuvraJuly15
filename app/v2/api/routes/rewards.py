@@ -55,9 +55,7 @@ async def claim(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> RewardClaimResponse:
-    return await claim_reward(
-        uow, principal=principal, reward_id=reward_id, key=idempotency_key
-    )
+    return await claim_reward(uow, principal=principal, reward_id=reward_id, key=idempotency_key)
 
 
 @router.post(
@@ -78,6 +76,4 @@ async def create_streak_freeze(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> StreakFreezeResponse:
-    return await redeem_streak_freeze(
-        uow, principal=principal, request=body, key=idempotency_key
-    )
+    return await redeem_streak_freeze(uow, principal=principal, request=body, key=idempotency_key)

@@ -76,9 +76,7 @@ async def replace_plan_with_selected_variant(
     old_item = next((item for item in old_items if item.id == request.item_id), None)
     if old_item is None:
         raise not_found("Plan item")
-    selected_variant = await _selected_variant(
-        uow, old_item.id, request.selected_variant_id
-    )
+    selected_variant = await _selected_variant(uow, old_item.id, request.selected_variant_id)
     _selected_variant_content(selected_variant)
     successor, new_items = await _make_successor(
         uow, plan, old_items, old_item, selected_variant, now
@@ -123,9 +121,7 @@ async def replace_plan_with_selected_variant(
 
 def _require_replaceable_plan(plan: ActionPlan) -> None:
     if not plan.is_current or plan.status != PlanStatus.READY.value:
-        raise conflict(
-            "plan_not_current", "Only the current ready plan can be replaced."
-        )
+        raise conflict("plan_not_current", "Only the current ready plan can be replaced.")
 
 
 async def _ensure_unreviewed(uow: SqlAlchemyUnitOfWork, plan_id: uuid.UUID) -> None:
@@ -141,16 +137,12 @@ async def _ensure_unreviewed(uow: SqlAlchemyUnitOfWork, plan_id: uuid.UUID) -> N
         )
 
 
-async def _locked_plan_items(
-    uow: SqlAlchemyUnitOfWork, plan_id: uuid.UUID
-) -> list[ActionPlanItem]:
+async def _locked_plan_items(uow: SqlAlchemyUnitOfWork, plan_id: uuid.UUID) -> list[ActionPlanItem]:
     return list(
         (
             await uow.session.scalars(
                 select(ActionPlanItem)
-                .where(
-                    ActionPlanItem.plan_id == plan_id, ActionPlanItem.status == "active"
-                )
+                .where(ActionPlanItem.plan_id == plan_id, ActionPlanItem.status == "active")
                 .order_by(ActionPlanItem.slot)
                 .with_for_update()
             )
@@ -186,9 +178,7 @@ async def _make_successor(
     now: datetime,
 ) -> tuple[ActionPlan, dict[uuid.UUID, ActionPlanItem]]:
     if len(old_items) != 4:
-        raise conflict(
-            "plan_not_complete", "Only a complete published plan can be replaced."
-        )
+        raise conflict("plan_not_complete", "Only a complete published plan can be replaced.")
     job = GenerationJob(
         id=uuid.uuid4(),
         user_id=plan.user_id,
@@ -283,9 +273,7 @@ async def _copy_variants(
 ) -> None:
     variants = (
         await uow.session.scalars(
-            select(ActionPlanItemVariant).where(
-                ActionPlanItemVariant.item_id == old_item.id
-            )
+            select(ActionPlanItemVariant).where(ActionPlanItemVariant.item_id == old_item.id)
         )
     ).all()
     if len(variants) != 3:

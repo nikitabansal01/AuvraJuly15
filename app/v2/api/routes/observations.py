@@ -27,9 +27,7 @@ from app.v2.persistence.uow import SqlAlchemyUnitOfWork
 
 router = domain_router()
 
-_OBSERVATION_TYPE = Query(
-    default=None, min_length=1, max_length=24, pattern=r"^[a-z_]+$"
-)
+_OBSERVATION_TYPE = Query(default=None, min_length=1, max_length=24, pattern=r"^[a-z_]+$")
 
 
 @router.get(
@@ -62,9 +60,7 @@ async def create_observation(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> ObservationResponse:
-    return await record_observation(
-        uow, principal=principal, request=body, key=idempotency_key
-    )
+    return await record_observation(uow, principal=principal, request=body, key=idempotency_key)
 
 
 @router.get(
@@ -102,6 +98,4 @@ async def read_current(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> CurrentObservationsResponse:
-    return await current_observations(
-        uow, principal=principal, observation_type=observation_type
-    )
+    return await current_observations(uow, principal=principal, observation_type=observation_type)

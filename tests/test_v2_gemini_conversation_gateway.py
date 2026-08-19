@@ -86,10 +86,7 @@ def test_extract_json_object_handles_markdown_fences_and_prose():
     canonical = json.dumps(payload)
     assert _extract_json_object(canonical) == payload
     assert _extract_json_object(f"```json\n{canonical}\n```") == payload
-    assert (
-        _extract_json_object(f"Here is your plan:\n```\n{canonical}\n```\nEnjoy!")
-        == payload
-    )
+    assert _extract_json_object(f"Here is your plan:\n```\n{canonical}\n```\nEnjoy!") == payload
     assert _extract_json_object(f"Leading prose {canonical} trailing prose") == payload
 
 

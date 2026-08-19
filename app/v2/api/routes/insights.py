@@ -75,9 +75,7 @@ async def read_symptom_patterns(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> SymptomPatternsResponse:
-    return await symptom_patterns(
-        uow, principal=principal, start=range_start, end=range_end
-    )
+    return await symptom_patterns(uow, principal=principal, start=range_start, end=range_end)
 
 
 @router.get(
@@ -92,6 +90,4 @@ async def read_weekly_trends(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> WeeklyTrendsResponse:
-    return await weekly_trends(
-        uow, principal=principal, start=range_start, end=range_end
-    )
+    return await weekly_trends(uow, principal=principal, start=range_start, end=range_end)

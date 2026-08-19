@@ -165,9 +165,7 @@ def _uuid_for(
     digest = bytearray(
         hmac.new(
             key,
-            f"canonical-id\x00{target_table}\x00{legacy_table}\x00{legacy_id}".encode(
-                "utf-8"
-            ),
+            f"canonical-id\x00{target_table}\x00{legacy_table}\x00{legacy_id}".encode("utf-8"),
             hashlib.sha256,
         ).digest()[:16]
     )
@@ -201,9 +199,7 @@ def _unescape_copy(value: str) -> str | None:
             result.append(simple[escaped])
             index += 2
         elif (
-            escaped.isdigit()
-            and index + 3 < len(value)
-            and value[index + 1 : index + 4].isdigit()
+            escaped.isdigit() and index + 3 < len(value) and value[index + 1 : index + 4].isdigit()
         ):
             result.append(chr(int(value[index + 1 : index + 4], 8)))
             index += 4
@@ -217,9 +213,7 @@ def _parse_copy_dump(
     path: Path,
 ) -> dict[str, tuple[tuple[str, ...], list[tuple[str, dict[str, str | None]]]]]:
     """Parse only structured COPY fields in memory; never return or print rows."""
-    parsed: dict[
-        str, tuple[tuple[str, ...], list[tuple[str, dict[str, str | None]]]]
-    ] = {}
+    parsed: dict[str, tuple[tuple[str, ...], list[tuple[str, dict[str, str | None]]]]] = {}
     current_name: str | None = None
     current_columns: tuple[str, ...] = ()
     current_rows: list[tuple[str, dict[str, str | None]]] = []
@@ -235,9 +229,7 @@ def _parse_copy_dump(
                     current_name = match.group(1)
                     if current_name in parsed:
                         raise ReconciliationError("duplicate COPY section")
-                    current_columns = tuple(
-                        column.strip() for column in match.group(2).split(",")
-                    )
+                    current_columns = tuple(column.strip() for column in match.group(2).split(","))
                     if len(current_columns) != len(set(current_columns)) or not all(
                         current_columns
                     ):
@@ -250,16 +242,10 @@ def _parse_copy_dump(
                     continue
                 values = line.split("\t")
                 if len(values) != len(current_columns):
-                    raise ReconciliationError(
-                        f"COPY field count mismatch at line {line_number}"
-                    )
-                current_rows.append(
-                    (line, dict(zip(current_columns, map(_unescape_copy, values))))
-                )
+                    raise ReconciliationError(f"COPY field count mismatch at line {line_number}")
+                current_rows.append((line, dict(zip(current_columns, map(_unescape_copy, values)))))
     except (OSError, UnicodeError) as exc:
-        raise ReconciliationError(
-            "database export is not a readable UTF-8 gzip COPY dump"
-        ) from exc
+        raise ReconciliationError("database export is not a readable UTF-8 gzip COPY dump") from exc
     if current_name is not None:
         raise ReconciliationError("unterminated COPY section")
     return parsed
@@ -291,15 +277,11 @@ def _source_media_references(rows: Iterable[dict[str, str | None]]) -> set[str]:
             for text in _walk_strings(candidate):
                 for token in MEDIA_TOKEN.findall(text):
                     parsed = urlparse(token)
-                    references.add(
-                        unquote((parsed.path if parsed.scheme else token)).lstrip("/")
-                    )
+                    references.add(unquote((parsed.path if parsed.scheme else token)).lstrip("/"))
     return references
 
 
-def _classify_storage(
-    path: Path, source_references: set[str], key: bytes
-) -> dict[str, object]:
+def _classify_storage(path: Path, source_references: set[str], key: bytes) -> dict[str, object]:
     try:
         with zipfile.ZipFile(path) as archive:
             entries = sorted(
@@ -318,8 +300,7 @@ def _classify_storage(
                 ]
                 normalized_reference_matches.update(matches)
             content_hashes = {
-                entry.filename: hashlib.sha256(archive.read(entry)).hexdigest()
-                for entry in entries
+                entry.filename: hashlib.sha256(archive.read(entry)).hexdigest() for entry in entries
             }
             grouped_names: dict[str, list[str]] = defaultdict(list)
             for name, content_hash in content_hashes.items():
@@ -344,9 +325,7 @@ def _classify_storage(
                     classification = "orphaned"
                 objects.append(
                     {
-                        "object_key_fingerprint": _hmac(
-                            key, "storage-key\x00" + entry.filename
-                        ),
+                        "object_key_fingerprint": _hmac(key, "storage-key\x00" + entry.filename),
                         "content_sha256": content_hash,
                         "bytes": entry.file_size,
                         "classification": classification,
@@ -372,9 +351,9 @@ def _classify_storage(
         }
         for reference in missing
     ]
-    all_classifications = [item["classification"] for item in objects] + [
-        "missing"
-    ] * len(missing_objects)
+    all_classifications = [item["classification"] for item in objects] + ["missing"] * len(
+        missing_objects
+    )
     classification_counts = Counter(all_classifications)
     return {
         "object_count": len(objects),
@@ -417,9 +396,7 @@ def build_reconciliation_report(
         raise ReconciliationError("a non-empty private fingerprint key is required")
     if mode == "apply":
         if target_attestation is None:
-            raise ReconciliationError(
-                "apply requires an isolated PostgreSQL 17 target attestation"
-            )
+            raise ReconciliationError("apply requires an isolated PostgreSQL 17 target attestation")
         if (
             target_attestation.get("postgres_major") != 17
             or target_attestation.get("target_revision") != TARGET_SCHEMA_REVISION
@@ -443,9 +420,7 @@ def build_reconciliation_report(
             raise ReconciliationError("required legacy identifier column is absent")
         ids = [row[rule.id_column] for _, row in rows]
         if any(not identifier for identifier in ids) or len(ids) != len(set(ids)):
-            raise ReconciliationError(
-                "legacy table has absent or duplicate primary identifiers"
-            )
+            raise ReconciliationError("legacy table has absent or duplicate primary identifiers")
         id_sets[(table, rule.id_column)] = set(ids)  # type: ignore[arg-type]
 
     records: list[dict[str, object]] = []
@@ -458,12 +433,9 @@ def build_reconciliation_report(
             assert legacy_id is not None
             missing_reference_edges = [
                 f"{table}.{source_column}->{referenced_table}.{referenced_column}"
-                for source_column, referenced_table, referenced_column in REFERENCES.get(
-                    table, ()
-                )
+                for source_column, referenced_table, referenced_column in REFERENCES.get(table, ())
                 if row.get(source_column) is not None
-                and row[source_column]
-                not in id_sets[(referenced_table, referenced_column)]
+                and row[source_column] not in id_sets[(referenced_table, referenced_column)]
             ]
             orphaned = bool(missing_reference_edges)
             disposition = "QUARANTINE" if orphaned else rule.disposition
@@ -494,9 +466,7 @@ def build_reconciliation_report(
         or len({(record["legacy_table"], record["legacy_id"]) for record in records})
         != expected_total
     ):
-        raise ReconciliationError(
-            "row ledger is not one-to-one with the required input inventory"
-        )
+        raise ReconciliationError("row ledger is not one-to-one with the required input inventory")
     storage = _classify_storage(storage_export, source_references, key)
     dispositions = Counter(record["disposition"] for record in records)
     orphan_summary_rendered: dict[str, dict[str, int]] = {}
@@ -549,9 +519,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--storage-export", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--mode", choices=("dry-run", "apply"), default="dry-run")
-    parser.add_argument(
-        "--fingerprint-key-env", default="LEGACY_RECONCILIATION_FINGERPRINT_KEY"
-    )
+    parser.add_argument("--fingerprint-key-env", default="LEGACY_RECONCILIATION_FINGERPRINT_KEY")
     parser.add_argument("--target-attestation", type=Path)
     return parser.parse_args()
 
@@ -568,9 +536,7 @@ def main() -> int:
         inspect_storage_export(args.storage_export)
         attestation = None
         if args.target_attestation:
-            attestation = json.loads(
-                args.target_attestation.read_text(encoding="utf-8")
-            )
+            attestation = json.loads(args.target_attestation.read_text(encoding="utf-8"))
         report = build_reconciliation_report(
             args.database_export,
             args.storage_export,
@@ -586,9 +552,7 @@ def main() -> int:
     ) as exc:
         print(f"Reconciliation failed: {exc}", file=sys.stderr)
         return 1
-    args.output.write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("Reconciliation completed: content-free ledger written.")
     return 0
 

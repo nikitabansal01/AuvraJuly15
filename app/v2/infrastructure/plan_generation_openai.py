@@ -23,6 +23,7 @@ from app.v2.application.plan_generation import (
 )
 from app.v2.domain.plan_generation import CANONICAL_VARIANT_TYPES, EvidenceSource
 from app.v2.domain.plan_image_prompts import sanitize_image_prompt
+
 # Shared HTTP/JSON helpers stay with the other providers; importing them here
 # is one-directional, so there is no cycle.
 from app.v2.infrastructure.plan_generation_providers import (
@@ -30,8 +31,6 @@ from app.v2.infrastructure.plan_generation_providers import (
     _integer,
     _raise_for_status,
 )
-
-
 
 
 OPENAI_STRUCTURED_PLAN_SCHEMA: dict[str, Any] = {
@@ -208,9 +207,7 @@ def _openai_request(
         "Never use clinical-safety language in any field: avoid words such as emergency, 911, 999, "
         "ambulance, urgent care, red flag, chest pain, shortness of breath, fainting, self-harm, "
         "suicide, medication, prescription, dosage, supplement, or contraindication. Keep every field "
-        "gentle, everyday, and non-clinical. "
-        + keyword_instruction
-        + citation_instruction
+        "gentle, everyday, and non-clinical. " + keyword_instruction + citation_instruction
     )
     return {
         "model": model,
@@ -290,9 +287,6 @@ def _evidence_query_terms(queries: object) -> set[str]:
         if not isinstance(query, str):
             continue
         terms.update(
-            token
-            for token in _re.findall(r"[a-z]{3,}", query.casefold())
-            if token not in ignored
+            token for token in _re.findall(r"[a-z]{3,}", query.casefold()) if token not in ignored
         )
     return terms
-

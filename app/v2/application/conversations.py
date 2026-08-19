@@ -208,9 +208,7 @@ async def get_conversation(
     )
     page = messages[-message_limit:]
     next_cursor = (
-        _encode_message_cursor(page[0].sequence)
-        if len(messages) > message_limit
-        else None
+        _encode_message_cursor(page[0].sequence) if len(messages) > message_limit else None
     )
     return ConversationDetailResponse(
         **_conversation_response(conversation).model_dump(),
@@ -261,19 +259,13 @@ async def create_conversation_message(
     )
     if decision.replay_body is not None:
         return ConversationMessageAcceptedResponse.model_validate(decision.replay_body)
-    conversation = await uow.conversations.get_owned(
-        conversation_id, user.id, for_update=True
-    )
+    conversation = await uow.conversations.get_owned(conversation_id, user.id, for_update=True)
     if conversation is None:
         raise not_found("Conversation")
     if conversation.status != "active":
-        raise conflict(
-            "conversation_closed", "Messages cannot be added to a closed conversation."
-        )
+        raise conflict("conversation_closed", "Messages cannot be added to a closed conversation.")
     if conversation.revision != expected_revision:
-        raise precondition_failed(
-            "The conversation has changed; fetch its current ETag."
-        )
+        raise precondition_failed("The conversation has changed; fetch its current ETag.")
     existing = await uow.conversations.get_by_client_message(
         conversation.id, request.client_message_id
     )
@@ -348,9 +340,7 @@ async def get_weekly_checkin_due(
     week_start = iso_week_start(now, profile.timezone)
     checkin = await uow.weekly_checkins.get_for_week(user.id, week_start)
     if checkin is None:
-        return WeeklyCheckinDueResponse(
-            due=True, week_start=week_start, timezone=profile.timezone
-        )
+        return WeeklyCheckinDueResponse(due=True, week_start=week_start, timezone=profile.timezone)
     questions = await uow.weekly_checkins.list_questions(checkin.definition_version)
     responses = await uow.weekly_checkins.list_responses(checkin.id)
     return WeeklyCheckinDueResponse(
@@ -384,16 +374,10 @@ async def create_weekly_checkin(
     )
     if decision.replay_body is not None:
         return WeeklyCheckinResponse.model_validate(decision.replay_body)
-    existing = await uow.weekly_checkins.get_for_week(
-        user.id, week_start, for_update=True
-    )
+    existing = await uow.weekly_checkins.get_for_week(user.id, week_start, for_update=True)
     if existing is not None:
-        raise conflict(
-            "weekly_checkin_already_exists", "This weekly check-in already exists."
-        )
-    questions = await uow.weekly_checkins.list_questions(
-        WEEKLY_CHECKIN_DEFINITION_VERSION
-    )
+        raise conflict("weekly_checkin_already_exists", "This weekly check-in already exists.")
+    questions = await uow.weekly_checkins.list_questions(WEEKLY_CHECKIN_DEFINITION_VERSION)
     if not questions or not any(question.required for question in questions):
         raise conflict(
             "weekly_checkin_definition_unavailable",
@@ -459,13 +443,9 @@ async def put_weekly_checkin_answer(
     if checkin is None:
         raise not_found("Weekly check-in")
     if checkin.completed_at is not None:
-        raise conflict(
-            "weekly_checkin_completed", "This weekly check-in is already complete."
-        )
+        raise conflict("weekly_checkin_completed", "This weekly check-in is already complete.")
     if checkin.revision != expected_revision:
-        raise precondition_failed(
-            "The weekly check-in has changed; fetch its current ETag."
-        )
+        raise precondition_failed("The weekly check-in has changed; fetch its current ETag.")
     question = await uow.weekly_checkins.get_question(question_id)
     if question is None:
         raise not_found("Weekly check-in question")
@@ -533,13 +513,9 @@ async def complete_weekly_checkin(
     if checkin is None:
         raise not_found("Weekly check-in")
     if checkin.completed_at is not None:
-        raise conflict(
-            "weekly_checkin_completed", "This weekly check-in is already complete."
-        )
+        raise conflict("weekly_checkin_completed", "This weekly check-in is already complete.")
     if checkin.revision != expected_revision:
-        raise precondition_failed(
-            "The weekly check-in has changed; fetch its current ETag."
-        )
+        raise precondition_failed("The weekly check-in has changed; fetch its current ETag.")
     required, answered = await uow.weekly_checkins.count_required_answered(
         checkin.id, checkin.definition_version
     )

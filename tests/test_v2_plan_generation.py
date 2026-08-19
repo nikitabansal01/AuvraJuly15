@@ -138,9 +138,7 @@ class _MediaStore:
         self.put_calls = 0
         self.deleted: list[str] = []
 
-    async def put(
-        self, *, content: bytes, mime_type: str, object_key: str
-    ) -> StoredMedia:
+    async def put(self, *, content: bytes, mime_type: str, object_key: str) -> StoredMedia:
         self.put_calls += 1
         if self.fail_at == self.put_calls:
             raise ProviderFailure("storage_timeout", retryable=True)
@@ -214,9 +212,7 @@ async def test_deterministic_adapters_exercise_the_full_orchestration_contract()
         image_generator=DeterministicImageGenerator(),
         media_store=_MediaStore(),
     ).generate(
-        PlanGenerationRequest(
-            "plan_generation", "plan.v1", {"private": "answer"}, ("routine",)
-        )
+        PlanGenerationRequest("plan_generation", "plan.v1", {"private": "answer"}, ("routine",))
     )
 
     assert len(bundle.assets) == 16
@@ -257,9 +253,7 @@ async def test_unverified_citations_fail_before_media_generation():
         image_generator=_ImageGateway(),
         media_store=store,
     )
-    with pytest.raises(
-        PlanCandidateRejected, match="candidate_evidence_unretrieved_citation"
-    ):
+    with pytest.raises(PlanCandidateRejected, match="candidate_evidence_unretrieved_citation"):
         await orchestrator.generate(
             PlanGenerationRequest("plan_generation", "plan.v1", {}, ("gentle routine",))
         )
@@ -273,9 +267,7 @@ def test_medical_claim_and_variant_shape_are_rejected():
         candidate_from_payload(unsafe)
 
     invalid_variants = _payload()
-    invalid_variants["actions"][0]["variants"] = invalid_variants["actions"][0][
-        "variants"
-    ][:2]
+    invalid_variants["actions"][0]["variants"] = invalid_variants["actions"][0]["variants"][:2]
     with pytest.raises(PlanCandidateRejected, match="candidate_shape"):
         candidate_from_payload(invalid_variants)
 
@@ -327,11 +319,7 @@ def test_safe_candidate_and_deterministic_evidence_relevance_are_accepted() -> N
     candidate = candidate_from_payload(_payload())
     validate_candidate_evidence(
         candidate,
-        [
-            EvidenceSource(
-                canonical_url=SOURCE_URL, title="Verified gentle routine study"
-            )
-        ],
+        [EvidenceSource(canonical_url=SOURCE_URL, title="Verified gentle routine study")],
         ("gentle routine wellbeing",),
     )
 
@@ -353,11 +341,7 @@ def test_irrelevant_citation_title_is_rejected_even_when_url_and_action_match() 
     with pytest.raises(PlanCandidateRejected) as raised:
         validate_candidate_evidence(
             candidate,
-            [
-                EvidenceSource(
-                    canonical_url=SOURCE_URL, title="Astronomy telescope observations"
-                )
-            ],
+            [EvidenceSource(canonical_url=SOURCE_URL, title="Astronomy telescope observations")],
             ("gentle routine wellbeing",),
         )
     assert raised.value.reason_code == "candidate_evidence_citation_title_irrelevant"
@@ -396,9 +380,7 @@ def test_evidence_queries_are_typed_bounded_and_ignore_free_text() -> None:
         "physical activity beginner adult wellbeing",
         "sleep hygiene adult wellbeing",
     )
-    assert "Alex" not in str(
-        context.provider_context(timezone="UTC", local_date="2026-08-08")
-    )
+    assert "Alex" not in str(context.provider_context(timezone="UTC", local_date="2026-08-08"))
     assert "secret diagnosis" not in " ".join(queries)
 
 
@@ -503,9 +485,7 @@ async def test_openai_adapter_tolerates_wellbeing_actions_key_and_bad_json():
                     "choices": [
                         {
                             "message": {
-                                "content": json.dumps(
-                                    {"wellbeing_actions": _payload()["actions"]}
-                                )
+                                "content": json.dumps({"wellbeing_actions": _payload()["actions"]})
                             }
                         }
                     ],
@@ -562,9 +542,7 @@ async def test_cloudflare_and_storage_adapters_preserve_image_integrity():
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if "/ai/run/" in str(request.url):
-            return httpx.Response(
-                200, content=PNG_BYTES, headers={"content-type": "image/png"}
-            )
+            return httpx.Response(200, content=PNG_BYTES, headers={"content-type": "image/png"})
         return httpx.Response(200, json={"Key": "stored"})
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -599,9 +577,7 @@ async def test_content_addressed_storage_recovers_from_an_existing_immutable_obj
         requests.append(request)
         if request.method == "POST":
             return httpx.Response(400, json={"message": "Asset Already Exists"})
-        return httpx.Response(
-            200, content=PNG_BYTES, headers={"content-type": "image/png"}
-        )
+        return httpx.Response(200, content=PNG_BYTES, headers={"content-type": "image/png"})
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     store = SupabasePermanentMediaStore(
@@ -628,19 +604,13 @@ async def test_pubmed_resolver_accepts_only_official_eutilities_records():
             return httpx.Response(200, json={"esearchresult": {"idlist": ["12345678"]}})
         return httpx.Response(
             200,
-            json={
-                "result": {"12345678": {"title": "Verified study", "pubdate": "2025"}}
-            },
+            json={"result": {"12345678": {"title": "Verified study", "pubdate": "2025"}}},
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    resolver = PubmedEvidenceResolver(
-        tool="auvra", email="ops@example.test", client=client
-    )
+    resolver = PubmedEvidenceResolver(tool="auvra", email="ops@example.test", client=client)
     sources = await resolver.resolve("wellbeing lifestyle intervention")
     await client.aclose()
     assert sources == (
-        EvidenceSource(
-            canonical_url=SOURCE_URL, title="Verified study", published_date="2025"
-        ),
+        EvidenceSource(canonical_url=SOURCE_URL, title="Verified study", published_date="2025"),
     )

@@ -48,34 +48,26 @@ class PlanAssessmentContext:
         }
 
 
-def assessment_context_from_answers(
-    answers: Mapping[str, object]
-) -> PlanAssessmentContext:
+def assessment_context_from_answers(answers: Mapping[str, object]) -> PlanAssessmentContext:
     """Project validation-controlled enum answers; ignore custom and identifying text."""
 
     focus_values = answers.get("lifestyle_focus")
     focus = (
-        tuple(
-            item for item in focus_values if isinstance(item, str) and item in _FOCUSES
-        )
+        tuple(item for item in focus_values if isinstance(item, str) and item in _FOCUSES)
         if isinstance(focus_values, (list, tuple))
         else ()
     )
     activity = _ACTIVITY_LEVELS.get(answers.get("workout_intensity"))
     sleep_band = _SLEEP_BANDS.get(answers.get("sleep_duration"))
     stress = answers.get("stress_level")
-    stress_level = (
-        stress if isinstance(stress, str) and stress in _STRESS_LEVELS else None
-    )
+    stress_level = stress if isinstance(stress, str) and stress in _STRESS_LEVELS else None
     return PlanAssessmentContext(
         lifestyle_focus=tuple(sorted(set(focus))),
         activity_level=activity,
         sleep_band=sleep_band,
         stress_level=stress_level,
         has_period_concern=_nonempty_list(answers.get("period_concerns")),
-        has_mental_wellbeing_concern=_nonempty_list(
-            answers.get("mental_health_concerns")
-        ),
+        has_mental_wellbeing_concern=_nonempty_list(answers.get("mental_health_concerns")),
     )
 
 

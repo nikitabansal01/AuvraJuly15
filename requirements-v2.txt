@@ -5,7 +5,7 @@
 # Update this file deliberately, then regenerate requirements-v2.lock with:
 # uv pip compile requirements-v2.txt --output-file requirements-v2.lock \
 #   --python-version 3.11 --python-platform x86_64-manylinux_2_28 \
-#   --generate-hashes
+#   --generate-hashes --exclude-newer 2026-08-08T15:19:00Z --exclude-newer 2026-08-08T15:19:00Z
 # 0.104.1 resolved Starlette 0.27.0, which is affected by multiple published
 # advisories. Keep FastAPI on the current supported line so its Starlette
 # constraint selects a patched release; the lock below is the deployed fact.

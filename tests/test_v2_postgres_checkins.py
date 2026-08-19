@@ -63,10 +63,7 @@ def _seed_user_with_plan(connection) -> tuple[uuid.UUID, str, uuid.UUID]:
         {"id": user_id, "subject": subject},
     )
     connection.execute(
-        text(
-            "INSERT INTO app.user_profiles (user_id, timezone) "
-            "VALUES (:user_id, 'UTC')"
-        ),
+        text("INSERT INTO app.user_profiles (user_id, timezone) " "VALUES (:user_id, 'UTC')"),
         {"user_id": user_id},
     )
     connection.execute(
@@ -191,12 +188,18 @@ async def test_opening_a_plan_checkin_twice_returns_one_thread() -> None:
 
     async with SqlAlchemyUnitOfWork() as uow:
         first = await open_plan_checkin(
-            uow, principal=principal, plan_id=plan_id, revision=1,
+            uow,
+            principal=principal,
+            plan_id=plan_id,
+            revision=1,
             key=f"k-{uuid.uuid4()}",
         )
     async with SqlAlchemyUnitOfWork() as uow:
         second = await open_plan_checkin(
-            uow, principal=principal, plan_id=plan_id, revision=1,
+            uow,
+            principal=principal,
+            plan_id=plan_id,
+            revision=1,
             key=f"k-{uuid.uuid4()}",
         )
     assert first.conversation_id == second.conversation_id
@@ -214,7 +217,10 @@ async def test_a_stale_plan_revision_is_rejected() -> None:
     with pytest.raises(ApplicationProblem) as problem:
         async with SqlAlchemyUnitOfWork() as uow:
             await open_plan_checkin(
-                uow, principal=_principal(subject), plan_id=plan_id, revision=99,
+                uow,
+                principal=_principal(subject),
+                plan_id=plan_id,
+                revision=99,
                 key=f"k-{uuid.uuid4()}",
             )
     assert problem.value.code == "plan_revision_conflict"
@@ -233,7 +239,10 @@ async def test_a_plan_checkin_on_another_users_plan_is_not_found() -> None:
     with pytest.raises(ApplicationProblem) as problem:
         async with SqlAlchemyUnitOfWork() as uow:
             await open_plan_checkin(
-                uow, principal=_principal(subject), plan_id=their_plan, revision=1,
+                uow,
+                principal=_principal(subject),
+                plan_id=their_plan,
+                revision=1,
                 key=f"k-{uuid.uuid4()}",
             )
     assert problem.value.status == 404
@@ -294,9 +303,7 @@ async def test_a_partially_answered_checkin_can_be_reread_by_id() -> None:
 
     principal = _principal(subject)
     async with SqlAlchemyUnitOfWork() as uow:
-        checkin = await get_weekly_checkin(
-            uow, principal=principal, checkin_id=checkin_id
-        )
+        checkin = await get_weekly_checkin(uow, principal=principal, checkin_id=checkin_id)
     assert checkin.checkin_id == checkin_id
     assert checkin.completed_at is None
     assert len(checkin.answers) == 1

@@ -223,8 +223,6 @@ def evaluate(
         cycle_length_source=source,
         last_period_start=last_start,
         next_period_estimate=(
-            last_start + timedelta(days=effective_length)
-            if cycle_length_days is not None
-            else None
+            last_start + timedelta(days=effective_length) if cycle_length_days is not None else None
         ),
     )

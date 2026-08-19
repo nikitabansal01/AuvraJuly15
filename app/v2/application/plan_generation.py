@@ -144,9 +144,7 @@ class ImageGenerator(Protocol):
 
 
 class PermanentMediaStore(Protocol):
-    async def put(
-        self, *, content: bytes, mime_type: str, object_key: str
-    ) -> StoredMedia:
+    async def put(self, *, content: bytes, mime_type: str, object_key: str) -> StoredMedia:
         ...
 
     async def delete(self, *, object_key: str) -> None:
@@ -165,9 +163,7 @@ def _first_action_shape(payload: Mapping[str, Any]) -> str:
     action = actions[0]
     if not isinstance(action, Mapping):
         return _shape_of(action)
-    return ", ".join(
-        f"{key}={_shape_of(value)}" for key, value in action.items()
-    )
+    return ", ".join(f"{key}={_shape_of(value)}" for key, value in action.items())
 
 
 def _shape_of(value: object) -> str:
@@ -275,17 +271,13 @@ class PlanGenerationOrchestrator:
             invocation=response.invocation,
         )
 
-    async def _resolve_evidence(
-        self, queries: Sequence[str]
-    ) -> tuple[EvidenceSource, ...]:
+    async def _resolve_evidence(self, queries: Sequence[str]) -> tuple[EvidenceSource, ...]:
         if not queries:
             raise PlanCandidateRejected("candidate_evidence_missing_queries")
         resolved = await asyncio.gather(
             *(self._evidence_resolver.resolve(query) for query in queries)
         )
-        unique = {
-            source.canonical_url: source for sources in resolved for source in sources
-        }
+        unique = {source.canonical_url: source for sources in resolved for source in sources}
         if not unique:
             raise PlanCandidateRejected("candidate_evidence_missing_sources")
         return tuple(unique.values())
@@ -329,10 +321,7 @@ class PlanGenerationOrchestrator:
 
     async def _cleanup(self, uploaded: Sequence[GeneratedPlanAsset]) -> None:
         results = await asyncio.gather(
-            *(
-                self._media_store.delete(object_key=asset.media.object_key)
-                for asset in uploaded
-            ),
+            *(self._media_store.delete(object_key=asset.media.object_key) for asset in uploaded),
             return_exceptions=True,
         )
         del results
@@ -380,9 +369,9 @@ def invocation_metadata(
 
 
 def _payload_hash(payload: Mapping[str, Any], key: bytes) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), default=str
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
+        "utf-8"
+    )
     return hmac.new(key, encoded, hashlib.sha256).hexdigest()
 
 
@@ -406,9 +395,7 @@ def _media_key(
     namespace = generation_job_id or "test"
     if not namespace or "/" in namespace or len(namespace) > 64:
         raise ProviderFailure("invalid_generation_job_namespace", retryable=False)
-    return (
-        f"plans/v2/{namespace}/{digest[:2]}/{digest}-{slot}-{role}-{suffix}.{extension}"
-    )
+    return f"plans/v2/{namespace}/{digest[:2]}/{digest}-{slot}-{role}-{suffix}.{extension}"
 
 
 def _require_distinct_media(assets: Sequence[GeneratedPlanAsset]) -> None:

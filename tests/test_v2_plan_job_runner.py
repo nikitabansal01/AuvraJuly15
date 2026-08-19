@@ -21,11 +21,7 @@ class Session:
 
     async def get(self, model, value):
         del value
-        return (
-            self.assessment
-            if model.__name__ == "OnboardingAssessment"
-            else self.profile
-        )
+        return self.assessment if model.__name__ == "OnboardingAssessment" else self.profile
 
 
 class Uow:

@@ -37,9 +37,7 @@ def reward_points_for_streak_state(state: str) -> int:
     return DAILY_REVIEW_REWARD_POINTS if state == "earned" else 0
 
 
-def closed_streak_length(
-    qualifying_days: Iterable[date], *, current_local_date: date
-) -> int:
+def closed_streak_length(qualifying_days: Iterable[date], *, current_local_date: date) -> int:
     """Derive the current streak from finalized earned/frozen local dates."""
 
     days = set(qualifying_days)

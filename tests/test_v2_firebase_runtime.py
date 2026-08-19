@@ -100,9 +100,7 @@ def test_optional_metadata_is_not_required_to_initialize(monkeypatch, captured):
     assert captured["initialized_with"] == "credential-object"
 
 
-def test_the_certificate_is_built_with_escaped_newlines_restored(
-    monkeypatch, captured
-):
+def test_the_certificate_is_built_with_escaped_newlines_restored(monkeypatch, captured):
     """Environment variables carry the PEM with literal backslash-n; a key that
     keeps them is not parseable and every token verification would fail."""
 
@@ -145,8 +143,6 @@ def test_an_existing_app_for_a_different_project_is_refused(monkeypatch, capture
 
 
 def test_whitespace_only_credentials_count_as_missing(monkeypatch, captured):
-    monkeypatch.setattr(
-        runtime, "settings", _settings(FIREBASE_CLIENT_EMAIL="   ")
-    )
+    monkeypatch.setattr(runtime, "settings", _settings(FIREBASE_CLIENT_EMAIL="   "))
     with pytest.raises(RuntimeError, match="incomplete"):
         runtime.initialize_v2_firebase()

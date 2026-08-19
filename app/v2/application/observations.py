@@ -53,9 +53,7 @@ MAX_PAGE_SIZE = 200
 
 #: Personalization codes a reward unlocks. Sourced from the reward catalog so
 #: a reward and the thing it unlocks cannot drift apart.
-GATED_CODES = frozenset(
-    code for reward in REWARD_CATALOG if (code := reward.unlocks_code)
-)
+GATED_CODES = frozenset(code for reward in REWARD_CATALOG if (code := reward.unlocks_code))
 
 
 def catalog() -> ObservationCatalogResponse:
@@ -91,9 +89,7 @@ def _live(statement: Select) -> Select:
 
 def _value_of(row: UserObservation) -> ObservationValue:
     if row.value_numeric is not None:
-        return ObservationValue(
-            numeric=float(row.value_numeric), unit=row.value_unit
-        )
+        return ObservationValue(numeric=float(row.value_numeric), unit=row.value_unit)
     if row.value_codes is not None:
         return ObservationValue(codes=list(row.value_codes))
     return ObservationValue(text=row.value_text)
@@ -150,9 +146,7 @@ async def record_observation(
     if observable is None:
         raise not_found("Observation code")
 
-    codes = (
-        normalize_codes(request.value.codes) if request.value.codes is not None else None
-    )
+    codes = normalize_codes(request.value.codes) if request.value.codes is not None else None
     problem = validation_error(
         code=request.code,
         observation_type=request.observation_type,
@@ -200,9 +194,7 @@ async def record_observation(
         observed_local_date=request.observed_at.astimezone(ZoneInfo(timezone)).date(),
         observed_timezone=timezone,
         value_numeric=(
-            Decimal(str(request.value.numeric))
-            if request.value.numeric is not None
-            else None
+            Decimal(str(request.value.numeric)) if request.value.numeric is not None else None
         ),
         value_unit=request.value.unit if request.value.numeric is not None else None,
         value_codes=codes,
@@ -216,9 +208,7 @@ async def record_observation(
     await uow.session.flush()
 
     body = _response(row)
-    _complete_idempotent(
-        decision, response_status=201, response_body=body.model_dump(mode="json")
-    )
+    _complete_idempotent(decision, response_status=201, response_body=body.model_dump(mode="json"))
     await uow.commit()
     return body
 
@@ -235,13 +225,9 @@ async def list_observations(
     user = await _user(uow, principal)
     limit = max(1, min(limit, MAX_PAGE_SIZE))
 
-    statement = _live(
-        select(UserObservation).where(UserObservation.user_id == user.id)
-    )
+    statement = _live(select(UserObservation).where(UserObservation.user_id == user.id))
     if observation_type is not None:
-        statement = statement.where(
-            UserObservation.observation_type == observation_type
-        )
+        statement = statement.where(UserObservation.observation_type == observation_type)
     if code is not None:
         statement = statement.where(UserObservation.code == code)
     if cursor is not None:
@@ -251,15 +237,14 @@ async def list_observations(
         # Keyset pagination on the same total order the query sorts by, so a
         # concurrent insert cannot make a row appear twice or be skipped.
         statement = statement.where(
-            (UserObservation.observed_at, UserObservation.id)
-            < (anchor.observed_at, anchor.id)
+            (UserObservation.observed_at, UserObservation.id) < (anchor.observed_at, anchor.id)
         )
 
     rows = (
         await uow.session.scalars(
-            statement.order_by(
-                UserObservation.observed_at.desc(), UserObservation.id.desc()
-            ).limit(limit + 1)
+            statement.order_by(UserObservation.observed_at.desc(), UserObservation.id.desc()).limit(
+                limit + 1
+            )
         )
     ).all()
     has_more = len(rows) > limit
@@ -279,17 +264,11 @@ async def current_observations(
     """The latest live assertion per code, plus values derived from them."""
 
     user = await _user(uow, principal)
-    statement = _live(
-        select(UserObservation).where(UserObservation.user_id == user.id)
-    )
+    statement = _live(select(UserObservation).where(UserObservation.user_id == user.id))
     if observation_type is not None:
-        statement = statement.where(
-            UserObservation.observation_type == observation_type
-        )
+        statement = statement.where(UserObservation.observation_type == observation_type)
     profile = await uow.profiles.get(user.id)
-    local = datetime.now(UTC).astimezone(
-        ZoneInfo(profile.timezone if profile else "UTC")
-    ).date()
+    local = datetime.now(UTC).astimezone(ZoneInfo(profile.timezone if profile else "UTC")).date()
     unlocked = await _unlocked_codes(uow, user.id, local)
     rows = (
         await uow.session.scalars(
@@ -318,8 +297,6 @@ async def current_observations(
         derived=DerivedBodyMetrics(
             bmi=bmi,
             bmi_band=bmi_band(bmi),
-            waist_height_ratio=waist_height_ratio(
-                waist_cm=waist, height_cm=height
-            ),
+            waist_height_ratio=waist_height_ratio(waist_cm=waist, height_cm=height),
         ),
     )

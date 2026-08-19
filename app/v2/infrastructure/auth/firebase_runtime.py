@@ -36,9 +36,7 @@ def initialize_v2_firebase() -> None:
         existing = None
     if existing is not None:
         if existing.project_id != settings.FIREBASE_PROJECT_ID:
-            raise RuntimeError(
-                "The existing Firebase app belongs to a different project"
-            )
+            raise RuntimeError("The existing Firebase app belongs to a different project")
         return
     firebase_admin.initialize_app(
         credentials.Certificate(

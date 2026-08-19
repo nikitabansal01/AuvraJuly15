@@ -40,7 +40,5 @@ async def readiness(uow: SqlAlchemyUnitOfWork = Depends(get_uow)) -> HealthRespo
         await uow.session.execute(text("SELECT 1"))
         await check_database_schema_head()
     except Exception as exc:
-        raise service_unavailable(
-            "database_unavailable", "Database is unavailable."
-        ) from exc
+        raise service_unavailable("database_unavailable", "Database is unavailable.") from exc
     return HealthResponse(status="ready", service="auvra-api", version="v2")

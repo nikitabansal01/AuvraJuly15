@@ -45,9 +45,7 @@ def upgrade() -> None:
         """
     )
     op.alter_column("research_sources", "source_type", nullable=False, schema="app")
-    op.alter_column(
-        "research_sources", "source_external_id", nullable=False, schema="app"
-    )
+    op.alter_column("research_sources", "source_external_id", nullable=False, schema="app")
     op.create_unique_constraint(
         "uq_research_sources_type_external",
         "research_sources",
@@ -82,9 +80,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "ai_invocations",
-        sa.Column(
-            "price_version", sa.String(64), nullable=False, server_default="unknown"
-        ),
+        sa.Column("price_version", sa.String(64), nullable=False, server_default="unknown"),
         schema="app",
     )
     op.create_check_constraint(

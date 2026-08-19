@@ -28,9 +28,7 @@ def upgrade() -> None:
 
 
 def _extend_deletion_requests() -> None:
-    op.drop_constraint(
-        "uq_deletion_requests_subject_state", "deletion_requests", schema="ops"
-    )
+    op.drop_constraint("uq_deletion_requests_subject_state", "deletion_requests", schema="ops")
     op.drop_constraint(
         "ck_deletion_requests_ck_deletion_requests_state",
         "deletion_requests",
@@ -41,17 +39,13 @@ def _extend_deletion_requests() -> None:
         sa.Column("generation_job_id", UUID(as_uuid=True)),
         schema="ops",
     )
-    op.add_column(
-        "deletion_requests", sa.Column("current_step", sa.String(64)), schema="ops"
-    )
+    op.add_column("deletion_requests", sa.Column("current_step", sa.String(64)), schema="ops")
     op.add_column(
         "deletion_requests",
         sa.Column("attempt_count", sa.Integer(), nullable=False, server_default="0"),
         schema="ops",
     )
-    op.add_column(
-        "deletion_requests", sa.Column("last_error_code", sa.String(64)), schema="ops"
-    )
+    op.add_column("deletion_requests", sa.Column("last_error_code", sa.String(64)), schema="ops")
     op.add_column(
         "deletion_requests",
         sa.Column(
@@ -115,9 +109,7 @@ def _extend_deletion_requests() -> None:
 def _add_outbox_owner() -> None:
     """Give every new user-owned event a deterministic erasure owner."""
 
-    op.add_column(
-        "outbox_events", sa.Column("owner_user_id", UUID(as_uuid=True)), schema="ops"
-    )
+    op.add_column("outbox_events", sa.Column("owner_user_id", UUID(as_uuid=True)), schema="ops")
     op.create_foreign_key(
         "fk_outbox_events_owner_user",
         "outbox_events",
@@ -188,9 +180,7 @@ def _create_export_and_receipt_tables() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.UniqueConstraint(
-            "generation_job_id", name="uq_account_exports_generation_job"
-        ),
+        sa.UniqueConstraint("generation_job_id", name="uq_account_exports_generation_job"),
         sa.CheckConstraint(
             "state IN ('requested','running','ready','failed','expired')",
             name="ck_account_exports_state",
@@ -211,9 +201,7 @@ def _create_export_and_receipt_tables() -> None:
         schema="ops",
     )
 
-    op.create_index(
-        "ix_account_exports_user_id", "account_exports", ["user_id"], schema="ops"
-    )
+    op.create_index("ix_account_exports_user_id", "account_exports", ["user_id"], schema="ops")
     op.create_index(
         "ix_account_exports_state_expires",
         "account_exports",
@@ -256,9 +244,7 @@ def _create_export_and_receipt_tables() -> None:
             "state IN ('pending','running','verified','failed')",
             name="ck_deletion_steps_state",
         ),
-        sa.CheckConstraint(
-            "attempt_count >= 0", name="ck_deletion_steps_nonnegative_attempts"
-        ),
+        sa.CheckConstraint("attempt_count >= 0", name="ck_deletion_steps_nonnegative_attempts"),
         sa.CheckConstraint(
             "(state = 'verified' AND verified_at IS NOT NULL) OR (state <> 'verified' AND verified_at IS NULL)",
             name="ck_deletion_steps_verified_at",
@@ -428,9 +414,7 @@ def downgrade() -> None:
         "fk_outbox_events_owner_user", "outbox_events", schema="ops", type_="foreignkey"
     )
     op.drop_column("outbox_events", "owner_user_id", schema="ops")
-    op.drop_index(
-        "ix_deletion_requests_state_requested", "deletion_requests", schema="ops"
-    )
+    op.drop_index("ix_deletion_requests_state_requested", "deletion_requests", schema="ops")
     op.drop_index("uq_deletion_requests_active_user", "deletion_requests", schema="ops")
     op.drop_constraint(
         "ck_deletion_requests_ck_deletion_requests_nonnegative_attempts",
@@ -453,9 +437,7 @@ def downgrade() -> None:
         "state IN ('requested','running','completed','failed')",
         schema="ops",
     )
-    op.drop_constraint(
-        "uq_deletion_requests_generation_job", "deletion_requests", schema="ops"
-    )
+    op.drop_constraint("uq_deletion_requests_generation_job", "deletion_requests", schema="ops")
     op.drop_constraint(
         "fk_deletion_requests_generation_job",
         "deletion_requests",

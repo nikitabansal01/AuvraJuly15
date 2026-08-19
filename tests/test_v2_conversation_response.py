@@ -61,13 +61,9 @@ def test_response_safety_has_stable_terminal_codes(content, code):
 
 
 def test_red_flag_is_deterministic_and_requires_no_provider_call():
-    assert requires_escalation(
-        ConversationSnapshotMessage("user", "I want to kill myself")
-    )
+    assert requires_escalation(ConversationSnapshotMessage("user", "I want to kill myself"))
     assert "urgent help" in EMERGENCY_ESCALATION_TEMPLATE
-    assert not requires_escalation(
-        ConversationSnapshotMessage("user", "I feel safe now")
-    )
+    assert not requires_escalation(ConversationSnapshotMessage("user", "I feel safe now"))
 
 
 @pytest.mark.anyio
@@ -76,9 +72,7 @@ async def test_runner_is_least_privilege_for_its_job_type():
         gateway=object(), uow_factory=lambda: Uow(SimpleNamespace())
     )
     with pytest.raises(TerminalJobFailure, match="unsupported_job_type"):
-        await runner.handle(
-            ClaimedJob(uuid4(), uuid4(), "plan_generation", {}, 1, 3, "lease")
-        )
+        await runner.handle(ClaimedJob(uuid4(), uuid4(), "plan_generation", {}, 1, 3, "lease"))
 
 
 class Uow:
@@ -100,9 +94,7 @@ async def test_provider_is_called_only_after_context_uow_closed(monkeypatch):
     conversation_id, message_id, user_id = uuid4(), uuid4(), uuid4()
     loader = Uow(SimpleNamespace())
     finalized = Uow(SimpleNamespace())
-    runner = ConversationResponseJobRunner(
-        gateway=object(), uow_factory=lambda: finalized
-    )
+    runner = ConversationResponseJobRunner(gateway=object(), uow_factory=lambda: finalized)
 
     async def load(job):
         del job
@@ -161,9 +153,7 @@ async def test_red_flag_bypasses_gateway(monkeypatch):
     monkeypatch.setattr(
         runner,
         "_load_context",
-        lambda job: _context(
-            request, ConversationSnapshotMessage("user", "I cannot breathe")
-        ),
+        lambda job: _context(request, ConversationSnapshotMessage("user", "I cannot breathe")),
     )
     captured = {}
 
@@ -175,9 +165,7 @@ async def test_red_flag_bypasses_gateway(monkeypatch):
     result = await runner.handle(
         ClaimedJob(uuid4(), uuid4(), "conversation_response.v1", {}, 1, 3, "lease")
     )
-    assert (
-        result == {"ok": True} and captured["content"] == EMERGENCY_ESCALATION_TEMPLATE
-    )
+    assert result == {"ok": True} and captured["content"] == EMERGENCY_ESCALATION_TEMPLATE
 
 
 async def _context(request, trigger):
@@ -226,9 +214,7 @@ async def test_later_conversation_job_waits_for_predecessor_without_provider_con
             called.append(True)
             raise AssertionError("causally blocked job must not call provider")
 
-    runner = ConversationResponseJobRunner(
-        gateway=Gateway(), uow_factory=lambda: Uow(session)
-    )
+    runner = ConversationResponseJobRunner(gateway=Gateway(), uow_factory=lambda: Uow(session))
     job = ClaimedJob(
         current.id,
         user_id,
@@ -238,9 +224,7 @@ async def test_later_conversation_job_waits_for_predecessor_without_provider_con
         3,
         "lease",
     )
-    with pytest.raises(
-        RetryableJobFailure, match="conversation_response_predecessor_pending"
-    ):
+    with pytest.raises(RetryableJobFailure, match="conversation_response_predecessor_pending"):
         await runner.handle(job)
     assert called == []
 
@@ -263,9 +247,7 @@ async def test_context_ends_at_triggering_message_and_provider_request_has_no_id
         ),
         message_rows=[source, early],
     )
-    runner = ConversationResponseJobRunner(
-        gateway=object(), uow_factory=lambda: Uow(session)
-    )
+    runner = ConversationResponseJobRunner(gateway=object(), uow_factory=lambda: Uow(session))
     context = await runner._load_context(
         ClaimedJob(
             current.id,
@@ -302,9 +284,7 @@ async def test_rejected_provider_output_records_only_rejected_invocation_metadat
     class Gateway:
         async def respond(self, request):
             del request
-            return ConversationGatewayResult(
-                "You likely have flu.", invocation=object()
-            )
+            return ConversationGatewayResult("You likely have flu.", invocation=object())
 
     recorded = {}
 
@@ -319,8 +299,6 @@ async def test_rejected_provider_output_records_only_rejected_invocation_metadat
     monkeypatch.setattr(runner, "_record_rejected_invocation", record)
     runner._gateway = Gateway()
     job = ClaimedJob(uuid4(), uuid4(), "conversation_response.v1", {}, 1, 3, "lease")
-    with pytest.raises(
-        TerminalJobFailure, match="conversation_response_diagnostic_claim"
-    ):
+    with pytest.raises(TerminalJobFailure, match="conversation_response_diagnostic_claim"):
         await runner.handle(job)
     assert recorded["job"] is job and recorded["invocation"] is not None

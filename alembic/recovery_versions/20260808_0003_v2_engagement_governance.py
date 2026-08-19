@@ -49,18 +49,14 @@ def upgrade() -> None:
         sa.Column("client_event_id", UUID(as_uuid=True), nullable=False),
         sa.Column("event_type", sa.String(32), nullable=False),
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column(
-            "payload", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
-        ),
+        sa.Column("payload", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column(
             "recorded_at",
             sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.UniqueConstraint(
-            "user_id", "client_event_id", name="uq_action_item_events_user_client"
-        ),
+        sa.UniqueConstraint("user_id", "client_event_id", name="uq_action_item_events_user_client"),
         sa.CheckConstraint(
             "event_type IN ('completed','skipped','feedback')",
             name="ck_action_item_events_type",
@@ -100,9 +96,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.UniqueConstraint("plan_id", name="uq_daily_reviews_plan"),
-        sa.CheckConstraint(
-            "status IN ('open','completed')", name="ck_daily_reviews_status"
-        ),
+        sa.CheckConstraint("status IN ('open','completed')", name="ck_daily_reviews_status"),
         sa.CheckConstraint(
             "(status = 'open' AND completed_at IS NULL) OR (status = 'completed' AND completed_at IS NOT NULL)",
             name="ck_daily_reviews_completion_state",
@@ -176,9 +170,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.UniqueConstraint(
-            "user_id", "idempotency_key", name="uq_plan_refreshes_user_key"
-        ),
+        sa.UniqueConstraint("user_id", "idempotency_key", name="uq_plan_refreshes_user_key"),
         schema="app",
     )
     op.create_table(
@@ -195,18 +187,14 @@ def upgrade() -> None:
         sa.Column("timezone", sa.String(64), nullable=False),
         sa.Column("evidence_type", sa.String(32), nullable=False),
         sa.Column("evidence_id", UUID(as_uuid=True), nullable=False),
-        sa.Column(
-            "adjudication_state", sa.String(24), nullable=False, server_default="earned"
-        ),
+        sa.Column("adjudication_state", sa.String(24), nullable=False, server_default="earned"),
         sa.Column(
             "earned_at",
             sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.UniqueConstraint(
-            "user_id", "local_date", "kind", name="uq_streak_days_user_day_kind"
-        ),
+        sa.UniqueConstraint("user_id", "local_date", "kind", name="uq_streak_days_user_day_kind"),
         sa.CheckConstraint("kind IN ('daily')", name="ck_streak_days_kind"),
         sa.CheckConstraint(
             "evidence_type IN ('event','review','freeze')",
@@ -233,15 +221,11 @@ def upgrade() -> None:
         sa.Column("asset_type", sa.String(16), nullable=False),
         sa.Column("quantity", sa.Integer(), nullable=False),
         created(),
-        sa.UniqueConstraint(
-            "user_id", "source_type", "source_id", name="uq_reward_ledger_source"
-        ),
+        sa.UniqueConstraint("user_id", "source_type", "source_id", name="uq_reward_ledger_source"),
         sa.CheckConstraint(
             "event_type IN ('grant','redeem','expire')", name="ck_reward_ledger_event"
         ),
-        sa.CheckConstraint(
-            "asset_type IN ('points','freeze')", name="ck_reward_ledger_asset"
-        ),
+        sa.CheckConstraint("asset_type IN ('points','freeze')", name="ck_reward_ledger_asset"),
         sa.CheckConstraint("quantity <> 0", name="ck_reward_ledger_quantity"),
         sa.CheckConstraint(
             "(event_type = 'grant' AND quantity > 0) OR (event_type IN ('redeem','expire') AND quantity < 0)",
@@ -267,9 +251,7 @@ def _conversations() -> None:
             nullable=False,
         ),
         sa.Column("status", sa.String(24), nullable=False, server_default="active"),
-        sa.Column(
-            "thread_type", sa.String(32), nullable=False, server_default="general"
-        ),
+        sa.Column("thread_type", sa.String(32), nullable=False, server_default="general"),
         created(),
         sa.Column(
             "updated_at",
@@ -277,9 +259,7 @@ def _conversations() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.CheckConstraint(
-            "status IN ('active','closed')", name="ck_conversations_status"
-        ),
+        sa.CheckConstraint("status IN ('active','closed')", name="ck_conversations_status"),
         sa.CheckConstraint(
             "thread_type IN ('general','care_plan','weekly_checkin','symptom_checkin','support')",
             name="ck_conversations_type",
@@ -369,12 +349,8 @@ def _weekly() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.UniqueConstraint(
-            "user_id", "week_start", name="uq_weekly_checkins_user_week"
-        ),
-        sa.CheckConstraint(
-            "EXTRACT(ISODOW FROM week_start) = 1", name="ck_weekly_checkins_monday"
-        ),
+        sa.UniqueConstraint("user_id", "week_start", name="uq_weekly_checkins_user_week"),
+        sa.CheckConstraint("EXTRACT(ISODOW FROM week_start) = 1", name="ck_weekly_checkins_monday"),
         schema="app",
     )
     op.create_table(
@@ -383,9 +359,7 @@ def _weekly() -> None:
         sa.Column("version", sa.String(64), nullable=False),
         sa.Column("ordinal", sa.Integer(), nullable=False),
         sa.Column("prompt", sa.Text(), nullable=False),
-        sa.UniqueConstraint(
-            "version", "ordinal", name="uq_weekly_questions_version_ordinal"
-        ),
+        sa.UniqueConstraint("version", "ordinal", name="uq_weekly_questions_version_ordinal"),
         sa.CheckConstraint("ordinal > 0", name="ck_weekly_questions_ordinal"),
         schema="app",
     )
@@ -460,9 +434,7 @@ def _evidence_ai() -> None:
             server_default=sa.text("now()"),
         ),
         sa.UniqueConstraint("canonical_url", name="uq_research_sources_url"),
-        sa.CheckConstraint(
-            "canonical_url LIKE 'https://%'", name="ck_research_sources_url"
-        ),
+        sa.CheckConstraint("canonical_url LIKE 'https://%'", name="ck_research_sources_url"),
         schema="app",
     )
     op.create_table(
@@ -536,9 +508,7 @@ def _evidence_ai() -> None:
         sa.Column("evaluator_version", sa.String(64), nullable=False),
         sa.Column("policy_version", sa.String(64), nullable=False),
         sa.Column("score", sa.Integer()),
-        sa.Column(
-            "result", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
-        ),
+        sa.Column("result", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         created(),
         sa.CheckConstraint(
             "score IS NULL OR score BETWEEN 0 AND 100", name="ck_plan_evaluations_score"
@@ -580,9 +550,7 @@ def _retention() -> None:
             server_default=sa.text("now()"),
         ),
         sa.Column("completed_at", sa.DateTime(timezone=True)),
-        sa.UniqueConstraint(
-            "subject_hash", "state", name="uq_deletion_requests_subject_state"
-        ),
+        sa.UniqueConstraint("subject_hash", "state", name="uq_deletion_requests_subject_state"),
         sa.CheckConstraint(
             "state IN ('requested','running','completed','failed')",
             name="ck_deletion_requests_state",
@@ -794,26 +762,14 @@ def _review_completion_trigger() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER IF EXISTS guard_completed_review_header ON app.daily_reviews")
+    op.execute("DROP TRIGGER IF EXISTS guard_reviewed_plan_items ON app.action_plan_items")
+    op.execute("DROP TRIGGER IF EXISTS guard_completed_review_items ON app.daily_review_items")
+    op.execute("DROP TRIGGER IF EXISTS ck_reviewed_plan_items_coverage " "ON app.action_plan_items")
     op.execute(
-        "DROP TRIGGER IF EXISTS guard_completed_review_header ON app.daily_reviews"
+        "DROP TRIGGER IF EXISTS ck_completed_review_items_coverage " "ON app.daily_review_items"
     )
-    op.execute(
-        "DROP TRIGGER IF EXISTS guard_reviewed_plan_items ON app.action_plan_items"
-    )
-    op.execute(
-        "DROP TRIGGER IF EXISTS guard_completed_review_items ON app.daily_review_items"
-    )
-    op.execute(
-        "DROP TRIGGER IF EXISTS ck_reviewed_plan_items_coverage "
-        "ON app.action_plan_items"
-    )
-    op.execute(
-        "DROP TRIGGER IF EXISTS ck_completed_review_items_coverage "
-        "ON app.daily_review_items"
-    )
-    op.execute(
-        "DROP TRIGGER IF EXISTS ck_completed_review_coverage ON app.daily_reviews"
-    )
+    op.execute("DROP TRIGGER IF EXISTS ck_completed_review_coverage ON app.daily_reviews")
     op.execute("DROP FUNCTION IF EXISTS app.check_reviewed_plan_item()")
     op.execute("DROP FUNCTION IF EXISTS app.guard_reviewed_plan_item()")
     op.execute("DROP FUNCTION IF EXISTS app.guard_completed_review_item()")

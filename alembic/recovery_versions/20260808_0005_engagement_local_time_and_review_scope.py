@@ -106,12 +106,8 @@ def _require_complete_backfill() -> None:
 
 
 def _set_local_decisions_not_null() -> None:
-    op.alter_column(
-        "action_item_events", "decision_local_date", nullable=False, schema="app"
-    )
-    op.alter_column(
-        "action_item_events", "decision_timezone", nullable=False, schema="app"
-    )
+    op.alter_column("action_item_events", "decision_local_date", nullable=False, schema="app")
+    op.alter_column("action_item_events", "decision_timezone", nullable=False, schema="app")
     op.alter_column("plan_refreshes", "local_date", nullable=False, schema="app")
     op.alter_column("plan_refreshes", "timezone", nullable=False, schema="app")
 
@@ -255,9 +251,7 @@ def _replace_review_assertion() -> None:
 
 def downgrade() -> None:
     _restore_prior_review_assertion()
-    op.execute(
-        "DROP TRIGGER IF EXISTS guard_action_event_updates " "ON app.action_item_events"
-    )
+    op.execute("DROP TRIGGER IF EXISTS guard_action_event_updates " "ON app.action_item_events")
     op.execute("DROP TRIGGER IF EXISTS ck_action_event_scope ON app.action_item_events")
     op.execute("DROP FUNCTION IF EXISTS app.guard_action_event_update()")
     op.execute("DROP FUNCTION IF EXISTS app.check_action_event_scope()")
@@ -270,9 +264,7 @@ def downgrade() -> None:
         "ALTER TABLE app.action_item_events DROP CONSTRAINT IF EXISTS "
         "ck_action_item_events_timezone_nonempty"
     )
-    op.drop_index(
-        "ix_plan_refreshes_accepted_day", table_name="plan_refreshes", schema="app"
-    )
+    op.drop_index("ix_plan_refreshes_accepted_day", table_name="plan_refreshes", schema="app")
     op.drop_column("plan_refreshes", "timezone", schema="app")
     op.drop_column("plan_refreshes", "local_date", schema="app")
     op.drop_index(

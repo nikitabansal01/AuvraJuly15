@@ -72,9 +72,9 @@ DEFAULT_REQUIRED_CONSENT_VERSIONS = {
 
 
 def _canonical_hash(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -247,9 +247,7 @@ async def create_onboarding_session(
     )
     if decision.replay_body is not None:
         session_id = uuid.UUID(decision.replay_body["session_id"])
-        proof_token = _derive_guest_proof(
-            guest_proof_secret, idempotency_key, session_id
-        )
+        proof_token = _derive_guest_proof(guest_proof_secret, idempotency_key, session_id)
         return OnboardingSessionResponse(
             session_id=session_id,
             proof_token=proof_token,
@@ -319,9 +317,7 @@ async def put_assessment(
     previous = await uow.onboarding.get_current_assessment(session_id, for_update=True)
     version = 0
     if previous is None and expected_version != 0:
-        raise precondition_failed(
-            "The onboarding assessment does not have the requested revision."
-        )
+        raise precondition_failed("The onboarding assessment does not have the requested revision.")
     if previous is not None:
         if previous.version != expected_version:
             raise precondition_failed(
@@ -387,9 +383,7 @@ async def claim_onboarding(
         proof_token,
         now,
     )
-    assessment = await uow.onboarding.get_current_assessment(
-        session_id, for_update=True
-    )
+    assessment = await uow.onboarding.get_current_assessment(session_id, for_update=True)
     if assessment is None:
         raise conflict(
             "assessment_required",
@@ -710,9 +704,7 @@ async def get_current_plan(
                         content=variant.content,
                         image=_asset_response(variant.asset),
                     )
-                    for variant in sorted(
-                        item.variants, key=lambda current: current.variant_type
-                    )
+                    for variant in sorted(item.variants, key=lambda current: current.variant_type)
                 ],
             )
             for item in sorted(plan.items, key=lambda current: current.slot)

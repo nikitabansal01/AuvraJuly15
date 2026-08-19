@@ -33,8 +33,7 @@ def test_outbox_migration_round_trip_and_refuses_durable_fact_loss() -> None:
         command.upgrade(config, "20260808_0010")
         inspector = inspect(_engine())
         columns = {
-            column["name"]
-            for column in inspector.get_columns("outbox_events", schema="ops")
+            column["name"] for column in inspector.get_columns("outbox_events", schema="ops")
         }
         assert {
             "max_attempts",

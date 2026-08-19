@@ -194,9 +194,7 @@ class GeminiConversationGateway:
         if self._owns_client:
             await self._client.aclose()
 
-    async def respond(
-        self, request: ConversationResponseRequest
-    ) -> ConversationGatewayResult:
+    async def respond(self, request: ConversationResponseRequest) -> ConversationGatewayResult:
         payload = _gemini_conversation_request(self._model, request)
         started_at = time.monotonic()
         try:
@@ -252,9 +250,7 @@ class PubmedEvidenceResolver:
         client: httpx.AsyncClient | None = None,
     ) -> None:
         if not tool or not email or max_results < 1 or min_interval_seconds <= 0:
-            raise ValueError(
-                "PubMed tool, email, result count, and rate limit are required"
-            )
+            raise ValueError("PubMed tool, email, result count, and rate limit are required")
         self._tool = tool
         self._email = email
         self._max_results = max_results
@@ -297,9 +293,7 @@ class PubmedEvidenceResolver:
         sources: list[EvidenceSource] = []
         for pmid in ids:
             record = records.get(pmid)
-            if not isinstance(record, Mapping) or not isinstance(
-                record.get("title"), str
-            ):
+            if not isinstance(record, Mapping) or not isinstance(record.get("title"), str):
                 continue
             date_value = record.get("pubdate")
             sources.append(
@@ -313,13 +307,9 @@ class PubmedEvidenceResolver:
             raise ProviderFailure("pubmed_no_usable_results", retryable=False)
         return tuple(sources)
 
-    async def _request(
-        self, url: str, params: Mapping[str, str | int]
-    ) -> Mapping[str, Any]:
+    async def _request(self, url: str, params: Mapping[str, str | int]) -> Mapping[str, Any]:
         async with self._request_lock:
-            wait_for = self._min_interval_seconds - (
-                time.monotonic() - self._last_request_at
-            )
+            wait_for = self._min_interval_seconds - (time.monotonic() - self._last_request_at)
             if wait_for > 0:
                 await __import__("asyncio").sleep(wait_for)
             try:
@@ -383,9 +373,7 @@ class CloudflareFluxImageGateway:
         except httpx.TimeoutException as exc:
             raise ProviderFailure("cloudflare_image_timeout", retryable=True) from exc
         except httpx.HTTPError as exc:
-            raise ProviderFailure(
-                "cloudflare_image_network_error", retryable=True
-            ) from exc
+            raise ProviderFailure("cloudflare_image_network_error", retryable=True) from exc
         _raise_for_status(response, "cloudflare_image")
         content, _ = _cloudflare_image_content(response)
         if not content:
@@ -400,15 +388,11 @@ class CloudflareFluxImageGateway:
                 prompt_version="plan-image.v1",
                 model=self._model,
                 request_payload={"prompt": sanitized_prompt},
-                response_payload={
-                    "content_sha256": hashlib.sha256(content).hexdigest()
-                },
+                response_payload={"content_sha256": hashlib.sha256(content).hexdigest()},
                 telemetry_hmac_key=self._telemetry_hmac_key,
                 started_at=started_at,
             )
-        return GeneratedImage(
-            content=content, mime_type=mime_type, invocation=invocation
-        )
+        return GeneratedImage(content=content, mime_type=mime_type, invocation=invocation)
 
 
 class SupabasePermanentMediaStore:
@@ -423,9 +407,7 @@ class SupabasePermanentMediaStore:
         client: httpx.AsyncClient | None = None,
     ) -> None:
         if not project_url.startswith("https://") or not service_role_key or not bucket:
-            raise ValueError(
-                "Supabase HTTPS URL, service-role key, and bucket are required"
-            )
+            raise ValueError("Supabase HTTPS URL, service-role key, and bucket are required")
         self._project_url = project_url.rstrip("/")
         self._service_role_key = service_role_key
         self._bucket = bucket
@@ -436,9 +418,7 @@ class SupabasePermanentMediaStore:
         if self._owns_client:
             await self._client.aclose()
 
-    async def put(
-        self, *, content: bytes, mime_type: str, object_key: str
-    ) -> StoredMedia:
+    async def put(self, *, content: bytes, mime_type: str, object_key: str) -> StoredMedia:
         _validate_media(content, mime_type)
         object_path = f"{self._bucket}/{object_key}"
         try:
@@ -477,9 +457,7 @@ class SupabasePermanentMediaStore:
         except httpx.TimeoutException as exc:
             raise ProviderFailure("storage_verify_timeout", retryable=True) from exc
         except httpx.HTTPError as exc:
-            raise ProviderFailure(
-                "storage_verify_network_error", retryable=True
-            ) from exc
+            raise ProviderFailure("storage_verify_network_error", retryable=True) from exc
         _raise_for_status(response, "storage_verify")
         actual_digest = hashlib.sha256(response.content).hexdigest()
         if not hmac.compare_digest(actual_digest, expected_digest):
@@ -498,9 +476,7 @@ class SupabasePermanentMediaStore:
         if response.status_code not in {200, 204, 404}:
             return
 
-    def _headers(
-        self, mime_type: str | None = None, upsert: str | None = None
-    ) -> dict[str, str]:
+    def _headers(self, mime_type: str | None = None, upsert: str | None = None) -> dict[str, str]:
         headers = {
             "Authorization": f"Bearer {self._service_role_key}",
             "apikey": self._service_role_key,
@@ -514,7 +490,6 @@ class SupabasePermanentMediaStore:
     def _public_url(self, object_path: str) -> str:
         encoded_path = quote(object_path, safe="/")
         return f"{self._project_url}/storage/v1/object/public/{encoded_path}"
-
 
 
 def _gemini_request(
@@ -666,18 +641,14 @@ def _cloudflare_image_content(response: httpx.Response) -> tuple[bytes, str]:
     try:
         payload = response.json()
     except json.JSONDecodeError as exc:
-        raise ProviderFailure(
-            "cloudflare_image_invalid_response", retryable=False
-        ) from exc
+        raise ProviderFailure("cloudflare_image_invalid_response", retryable=False) from exc
     image_value = _nested_image(payload)
     if not isinstance(image_value, str):
         raise ProviderFailure("cloudflare_image_invalid_response", retryable=False)
     try:
         return base64.b64decode(image_value, validate=True), "image/png"
     except ValueError as exc:
-        raise ProviderFailure(
-            "cloudflare_image_invalid_response", retryable=False
-        ) from exc
+        raise ProviderFailure("cloudflare_image_invalid_response", retryable=False) from exc
 
 
 def _nested_image(payload: object) -> object:
@@ -691,9 +662,7 @@ def _raise_for_status(response: httpx.Response, provider: str) -> None:
     if response.status_code < 400:
         return
     retryable = response.status_code in {408, 409, 425, 429, 500, 502, 503, 504}
-    raise ProviderFailure(
-        f"{provider}_http_{response.status_code}", retryable=retryable
-    )
+    raise ProviderFailure(f"{provider}_http_{response.status_code}", retryable=retryable)
 
 
 def _asset_already_exists(response: httpx.Response) -> bool:
@@ -705,9 +674,7 @@ def _asset_already_exists(response: httpx.Response) -> bool:
         return False
     if not isinstance(payload, Mapping):
         return False
-    detail = " ".join(
-        str(payload.get(key, "")) for key in ("error", "message", "statusCode")
-    )
+    detail = " ".join(str(payload.get(key, "")) for key in ("error", "message", "statusCode"))
     normalized = detail.casefold()
     return "already exists" in normalized or "duplicate" in normalized
 

@@ -9,13 +9,8 @@ def test_active_v2_chain_has_one_clean_root_and_no_legacy_baseline() -> None:
     versions = ROOT / "alembic" / "recovery_versions"
     files = {path.name: path.read_text() for path in versions.glob("*.py")}
     assert "20260723_0001_canonical_schema_baseline.py" not in files
-    assert (
-        "down_revision: Union[str, None] = None"
-        in files["20260801_0002_auvra_v2_foundation.py"]
-    )
-    assert (
-        "app.core.database import Base" not in (ROOT / "alembic" / "env.py").read_text()
-    )
+    assert "down_revision: Union[str, None] = None" in files["20260801_0002_auvra_v2_foundation.py"]
+    assert "app.core.database import Base" not in (ROOT / "alembic" / "env.py").read_text()
 
 
 def test_legacy_snapshot_is_archived_with_its_checksum() -> None:
@@ -27,10 +22,7 @@ def test_legacy_snapshot_is_archived_with_its_checksum() -> None:
 
 def test_completed_review_invariant_covers_all_mutation_paths() -> None:
     migration = (
-        ROOT
-        / "alembic"
-        / "recovery_versions"
-        / "20260808_0003_v2_engagement_governance.py"
+        ROOT / "alembic" / "recovery_versions" / "20260808_0003_v2_engagement_governance.py"
     ).read_text()
     assert "assert_completed_review(p_review_id uuid)" in migration
     assert "ck_completed_review_coverage" in migration
@@ -44,25 +36,16 @@ def test_completed_review_invariant_covers_all_mutation_paths() -> None:
     assert "user_id = v_user_id" in migration
     assert "guard_completed_review_items" in migration
     assert "guard_reviewed_plan_items" in migration
-    assert (
-        "BEFORE INSERT OR UPDATE OF plan_id OR DELETE ON app.action_plan_items"
-        in migration
-    )
+    assert "BEFORE INSERT OR UPDATE OF plan_id OR DELETE ON app.action_plan_items" in migration
     assert "guard_completed_review_header" in migration
     assert "NEW.local_date IS DISTINCT FROM OLD.local_date" in migration
     assert "NEW.timezone IS DISTINCT FROM OLD.timezone" in migration
-    assert (
-        "UPDATE OF user_id, plan_id, local_date, timezone, status, completed_at"
-        in migration
-    )
+    assert "UPDATE OF user_id, plan_id, local_date, timezone, status, completed_at" in migration
 
 
 def test_review_trigger_downgrade_is_symmetric() -> None:
     migration = (
-        ROOT
-        / "alembic"
-        / "recovery_versions"
-        / "20260808_0003_v2_engagement_governance.py"
+        ROOT / "alembic" / "recovery_versions" / "20260808_0003_v2_engagement_governance.py"
     ).read_text()
     triggers = (
         "ck_completed_review_coverage",

@@ -137,9 +137,7 @@ def _require_complete_review_items(
     expected = {item.id for item in plan_items}
     supplied = {item.plan_item_id for item in request.items}
     if not expected:
-        raise conflict(
-            "review_has_no_eligible_items", "The plan has no active items to review."
-        )
+        raise conflict("review_has_no_eligible_items", "The plan has no active items to review.")
     if supplied != expected:
         raise unprocessable_content(
             "daily_review_items_mismatch",
@@ -148,9 +146,7 @@ def _require_complete_review_items(
 
 
 async def _ensure_review_does_not_exist(session, plan_id: uuid.UUID) -> None:
-    existing = await session.scalar(
-        select(DailyReview).where(DailyReview.plan_id == plan_id)
-    )
+    existing = await session.scalar(select(DailyReview).where(DailyReview.plan_id == plan_id))
     if existing is not None:
         raise conflict(
             "daily_review_already_completed",
@@ -273,9 +269,7 @@ async def daily_review(
     )
     if decision.replay_body is not None:
         return DailyReviewResponse.model_validate(decision.replay_body)
-    plan, items = await _locked_closed_review_plan(
-        session, user.id, plan_id, revision, now
-    )
+    plan, items = await _locked_closed_review_plan(session, user.id, plan_id, revision, now)
     _require_complete_review_items(request, items)
     await _ensure_review_does_not_exist(session, plan.id)
     review = DailyReview(
@@ -353,9 +347,7 @@ async def _locked_closed_review_plan(
         (
             await session.scalars(
                 select(ActionPlanItem)
-                .where(
-                    ActionPlanItem.plan_id == plan.id, ActionPlanItem.status == "active"
-                )
+                .where(ActionPlanItem.plan_id == plan.id, ActionPlanItem.status == "active")
                 .order_by(ActionPlanItem.slot)
                 .with_for_update()
             )
@@ -373,9 +365,7 @@ def _adjudicate_completed_review(
     now: datetime,
 ) -> tuple[int, str, int]:
     completed = sum(item.outcome == "completed" for item in review_items)
-    streak_state = daily_review_state(
-        completed_count=completed, total_count=len(review_items)
-    )
+    streak_state = daily_review_state(completed_count=completed, total_count=len(review_items))
     streak = StreakLedger(
         id=uuid.uuid4(),
         user_id=user.id,
@@ -423,9 +413,7 @@ def _symptom_observation(
         code=request.symptom_code,
         catalog_version=OBSERVATION_CATALOG_VERSION,
         observed_at=request.observed_at,
-        observed_local_date=request.observed_at.astimezone(
-            ZoneInfo(timezone)
-        ).date(),
+        observed_local_date=request.observed_at.astimezone(ZoneInfo(timezone)).date(),
         observed_timezone=timezone,
         value_numeric=request.severity if severity_given else None,
         value_unit=SEVERITY_UNIT if severity_given else None,
@@ -458,9 +446,7 @@ async def record_symptom(
     profile = await uow.profiles.get(user.id)
     if profile is None:
         raise not_found("Profile")
-    observation = _symptom_observation(
-        user_id=user.id, request=request, timezone=profile.timezone
-    )
+    observation = _symptom_observation(user_id=user.id, request=request, timezone=profile.timezone)
     uow.session.add(observation)
     _complete_idempotent(
         decision,
@@ -552,9 +538,7 @@ async def _active_plan_items(session, plan: ActionPlan | None) -> list[ActionPla
     return list(result)
 
 
-async def _completed_item_count(
-    session, user_id: uuid.UUID, items: list[ActionPlanItem]
-) -> int:
+async def _completed_item_count(session, user_id: uuid.UUID, items: list[ActionPlanItem]) -> int:
     if not items:
         return 0
     event_rows = (

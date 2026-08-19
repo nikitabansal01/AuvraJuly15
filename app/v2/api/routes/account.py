@@ -41,9 +41,7 @@ def get_subject_fingerprint() -> SubjectFingerprint:
 RecentAuthenticationDependency = Annotated[
     RecentAuthenticationPolicy, Depends(get_recent_authentication_policy)
 ]
-SubjectFingerprintDependency = Annotated[
-    SubjectFingerprint, Depends(get_subject_fingerprint)
-]
+SubjectFingerprintDependency = Annotated[SubjectFingerprint, Depends(get_subject_fingerprint)]
 
 
 def require_account_deletion_enabled() -> None:

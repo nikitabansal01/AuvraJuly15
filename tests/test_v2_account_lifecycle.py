@@ -101,9 +101,7 @@ class _Uow:
 @pytest.mark.anyio
 async def test_deletion_replays_after_pending_and_links_its_job() -> None:
     uow = _Uow()
-    fingerprint = EnvironmentHmacSubjectFingerprint(
-        "test-only-receipt-secret-with-32-bytes"
-    )
+    fingerprint = EnvironmentHmacSubjectFingerprint("test-only-receipt-secret-with-32-bytes")
     first = await request_account_deletion(
         uow,
         principal=PRINCIPAL,
@@ -120,12 +118,8 @@ async def test_deletion_replays_after_pending_and_links_its_job() -> None:
         subject_fingerprint=fingerprint,
         now=NOW,
     )
-    request = next(
-        item for item in uow.session.added if item.__tablename__ == "deletion_requests"
-    )
-    steps = [
-        item for item in uow.session.added if item.__tablename__ == "deletion_steps"
-    ]
+    request = next(item for item in uow.session.added if item.__tablename__ == "deletion_requests")
+    steps = [item for item in uow.session.added if item.__tablename__ == "deletion_steps"]
     assert replay == first
     assert request.generation_job_id == first.job_id
     assert [step.step_name for step in steps] == list(ERASURE_STEPS)
@@ -143,10 +137,7 @@ async def test_export_accepts_no_fingerprint_and_never_returns_an_object_url() -
         recent_authentication=_AllowRecent(),
         now=NOW,
     )
-    assert (
-        "subject_fingerprint"
-        not in inspect.signature(request_account_export).parameters
-    )
+    assert "subject_fingerprint" not in inspect.signature(request_account_export).parameters
     assert "url" not in result.model_dump(mode="json")
     assert result.expires_at > NOW
 
@@ -158,10 +149,7 @@ def test_export_envelope_is_versioned_authenticated_and_binds_its_export_id() ->
     payload = cipher.encrypt(export_id=export_id, plaintext=b'{"private":"health"}')
     assert payload.startswith(AesGcmAccountExportCipher.PREFIX)
     assert b"health" not in payload
-    assert (
-        cipher.decrypt_for_test(export_id=export_id, payload=payload)
-        == b'{"private":"health"}'
-    )
+    assert cipher.decrypt_for_test(export_id=export_id, payload=payload) == b'{"private":"health"}'
     with pytest.raises(Exception):
         cipher.decrypt_for_test(export_id=uuid4(), payload=payload)
 

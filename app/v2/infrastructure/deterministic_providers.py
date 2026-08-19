@@ -6,9 +6,7 @@ from app.v2.application.ports import AiResult
 
 
 class DeterministicAiGateway:
-    async def invoke(
-        self, *, task: str, prompt_version: str, payload: dict
-    ) -> AiResult:
+    async def invoke(self, *, task: str, prompt_version: str, payload: dict) -> AiResult:
         digest = hashlib.sha256(
             f"{task}:{prompt_version}:{sorted(payload.items())}".encode()
         ).hexdigest()
@@ -34,7 +32,6 @@ class DeterministicEvidenceGateway:
 class DeterministicImageGateway:
     async def create(self, prompt: str) -> dict[str, str]:
         return {
-            "public_url": "https://images.invalid/"
-            + hashlib.sha256(prompt.encode()).hexdigest(),
+            "public_url": "https://images.invalid/" + hashlib.sha256(prompt.encode()).hexdigest(),
             "alt_text": "Generated illustration",
         }

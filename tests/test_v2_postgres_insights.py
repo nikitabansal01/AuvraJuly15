@@ -95,10 +95,7 @@ def _seed_history(days: int, completed_per_day: int = 3, items_per_day: int = 4)
             {"id": user_id, "subject": subject},
         )
         connection.execute(
-            text(
-                "INSERT INTO app.user_profiles (user_id, timezone) "
-                "VALUES (:user_id, 'UTC')"
-            ),
+            text("INSERT INTO app.user_profiles (user_id, timezone) " "VALUES (:user_id, 'UTC')"),
             {"user_id": user_id},
         )
         for offset in range(1, days + 1):
@@ -192,9 +189,7 @@ async def test_weekly_report_matches_a_python_recomputation() -> None:
 
     subject, expected = _seed_history(days=21)
     async with SqlAlchemyUnitOfWork() as uow:
-        report = await progress_report(
-            uow, principal=_principal(subject), period="week"
-        )
+        report = await progress_report(uow, principal=_principal(subject), period="week")
 
     sql_completed = sum(b.completed for b in report.buckets)
     sql_eligible = sum(b.eligible for b in report.buckets)
@@ -218,9 +213,7 @@ async def test_month_and_all_grains_cover_the_same_days() -> None:
     totals = {}
     for period in ("week", "month", "all"):
         async with SqlAlchemyUnitOfWork() as uow:
-            report = await progress_report(
-                uow, principal=_principal(subject), period=period
-            )
+            report = await progress_report(uow, principal=_principal(subject), period=period)
         totals[period] = (report.totals.completed, report.totals.eligible)
         if period == "all":
             assert len(report.buckets) == 1

@@ -85,8 +85,7 @@ def candidate_from_payload(payload: Mapping[str, Any]) -> PlanCandidate:
     if not isinstance(actions_value, list) or len(actions_value) != 4:
         raise PlanCandidateRejected("candidate_shape_actions")
     actions = tuple(
-        _action_from_payload(action, slot)
-        for slot, action in enumerate(actions_value, 1)
+        _action_from_payload(action, slot) for slot, action in enumerate(actions_value, 1)
     )
     return PlanCandidate(actions=actions)
 
@@ -108,10 +107,7 @@ def validate_candidate_evidence(
         raise PlanCandidateRejected("candidate_evidence_missing_sources")
     if not evidence_queries:
         raise PlanCandidateRejected("candidate_evidence_missing_queries")
-    if any(
-        not _https_url(source.canonical_url) or not source.title.strip()
-        for source in sources
-    ):
+    if any(not _https_url(source.canonical_url) or not source.title.strip() for source in sources):
         raise PlanCandidateRejected("candidate_evidence_invalid_retrieved_identity")
     for action in candidate.actions:
         if not action.citation_urls:
@@ -123,9 +119,7 @@ def validate_candidate_evidence(
         for citation_url in action.citation_urls:
             source = sources_by_url[citation_url]
             if not _source_matches_action_and_queries(source, action, evidence_queries):
-                raise PlanCandidateRejected(
-                    "candidate_evidence_citation_title_irrelevant"
-                )
+                raise PlanCandidateRejected("candidate_evidence_citation_title_irrelevant")
 
 
 def _action_from_payload(value: object, expected_slot: int) -> PlanAction:
@@ -137,9 +131,7 @@ def _action_from_payload(value: object, expected_slot: int) -> PlanAction:
     image_prompt = _safe_text(_text(action, "image_prompt"), "image prompt")
     citations = _urls(action.get("citation_urls"), "citation URLs")
     variants_value = action.get("variants")
-    if not isinstance(variants_value, list) or len(variants_value) != len(
-        CANONICAL_VARIANT_TYPES
-    ):
+    if not isinstance(variants_value, list) or len(variants_value) != len(CANONICAL_VARIANT_TYPES):
         raise PlanCandidateRejected("candidate_shape_variants")
     variants = tuple(_variant_from_payload(item) for item in variants_value)
     if {variant.variant_type for variant in variants} != set(CANONICAL_VARIANT_TYPES):
@@ -176,11 +168,7 @@ def _mapping(value: object, label: str) -> Mapping[str, Any]:
 
 def _text(value: Mapping[str, Any], key: str) -> str:
     result = value.get(key)
-    if (
-        not isinstance(result, str)
-        or not result.strip()
-        or len(result.strip()) > MAX_TEXT_LENGTH
-    ):
+    if not isinstance(result, str) or not result.strip() or len(result.strip()) > MAX_TEXT_LENGTH:
         raise PlanCandidateRejected(f"candidate_shape_{key}")
     return result.strip()
 
@@ -232,10 +220,7 @@ def _user_visible_fields(action: PlanAction) -> dict[str, str]:
         "image_prompt": action.image_prompt,
     }
     fields.update(
-        {
-            f"instruction_{index}": step
-            for index, step in enumerate(action.instructions, 1)
-        }
+        {f"instruction_{index}": step for index, step in enumerate(action.instructions, 1)}
     )
     for variant in action.variants:
         prefix = f"variant_{variant.variant_type}"
@@ -295,8 +280,4 @@ def _relevance_terms(value: str) -> set[str]:
         "verified",
         "wellbeing",
     }
-    return {
-        token
-        for token in re.findall(r"[a-z]{3,}", value.casefold())
-        if token not in ignored
-    }
+    return {token for token in re.findall(r"[a-z]{3,}", value.casefold()) if token not in ignored}

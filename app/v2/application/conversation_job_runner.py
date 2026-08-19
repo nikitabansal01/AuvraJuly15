@@ -104,8 +104,7 @@ class ConversationResponseJobRunner:
                 .where(
                     GenerationJob.job_type == "conversation_response.v1",
                     GenerationJob.id != job.id,
-                    GenerationJob.request_payload["conversation_id"].astext
-                    == str(conversation_id),
+                    GenerationJob.request_payload["conversation_id"].astext == str(conversation_id),
                     GenerationJob.state.in_(("queued", "running", "retry_wait")),
                     or_(
                         GenerationJob.created_at < stored_job.created_at,
@@ -150,20 +149,14 @@ class ConversationResponseJobRunner:
             ConversationSnapshotMessage(role=source.role, content=source.content),
         )
 
-    async def _record_rejected_invocation(
-        self, uow, job: ClaimedJob, invocation
-    ) -> None:
+    async def _record_rejected_invocation(self, uow, job: ClaimedJob, invocation) -> None:
         """Persist only keyed metadata when a returned provider output is rejected."""
 
         session = self._session(uow)
         stored = await session.scalar(
             select(GenerationJob).where(GenerationJob.id == job.id).with_for_update()
         )
-        if (
-            stored is None
-            or stored.state != "running"
-            or stored.lease_owner != job.lease_token
-        ):
+        if stored is None or stored.state != "running" or stored.lease_owner != job.lease_token:
             raise LeaseLost()
         existing = await session.scalar(
             select(AiInvocation.id).where(
@@ -191,9 +184,7 @@ class ConversationResponseJobRunner:
         conversation_id, _ = self._ids(job.request_payload)
         conversation = await session.scalar(
             select(Conversation)
-            .where(
-                Conversation.id == conversation_id, Conversation.user_id == job.user_id
-            )
+            .where(Conversation.id == conversation_id, Conversation.user_id == job.user_id)
             .with_for_update()
         )
         if conversation is None:
@@ -206,8 +197,7 @@ class ConversationResponseJobRunner:
             .where(
                 ConversationMessage.conversation_id == conversation_id,
                 or_(
-                    ConversationMessage.metadata_json["response_job_id"].astext
-                    == str(job.id),
+                    ConversationMessage.metadata_json["response_job_id"].astext == str(job.id),
                     ConversationMessage.client_message_id == response_client_message_id,
                 ),
             )
@@ -272,9 +262,7 @@ class ConversationResponseJobRunner:
         return uow.session
 
     @staticmethod
-    def _invocation_row(
-        job: ClaimedJob, invocation, *, result_status: str | None = None
-    ):
+    def _invocation_row(job: ClaimedJob, invocation, *, result_status: str | None = None):
         return AiInvocation(
             id=uuid.uuid4(),
             user_id=job.user_id,

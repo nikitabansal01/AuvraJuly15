@@ -61,9 +61,7 @@ class ConversationRepository:
                 )
             )
         rows = await self._session.scalars(
-            statement.order_by(
-                Conversation.updated_at.desc(), Conversation.id.desc()
-            ).limit(limit)
+            statement.order_by(Conversation.updated_at.desc(), Conversation.id.desc()).limit(limit)
         )
         return list(rows)
 
@@ -160,9 +158,7 @@ class WeeklyCheckinRepository:
         )
         return list(rows)
 
-    async def count_required_answered(
-        self, checkin_id: uuid.UUID, version: str
-    ) -> tuple[int, int]:
+    async def count_required_answered(self, checkin_id: uuid.UUID, version: str) -> tuple[int, int]:
         questions = await self.list_questions(version)
         required_ids = {question.id for question in questions if question.required}
         if not required_ids:

@@ -25,16 +25,12 @@ class FirebaseIdentityTokenVerifier:
         except _INVALID_TOKEN_ERRORS:
             raise InvalidIdentityToken("Firebase rejected the token") from None
         except _PROVIDER_UNAVAILABLE_ERRORS:
-            raise AuthenticationUnavailable(
-                "Firebase token verification is unavailable"
-            ) from None
+            raise AuthenticationUnavailable("Firebase token verification is unavailable") from None
         except Exception:
             # An unclassified provider failure must not be presented as a bad
             # token. Do not log the exception: Firebase errors can include
             # provider response content and this adapter receives credentials.
-            raise AuthenticationUnavailable(
-                "Firebase token verification failed"
-            ) from None
+            raise AuthenticationUnavailable("Firebase token verification failed") from None
 
         subject = claims.get("uid") or claims.get("sub")
         if not isinstance(subject, str) or not subject.strip():

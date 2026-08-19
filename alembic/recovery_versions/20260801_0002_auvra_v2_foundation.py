@@ -45,9 +45,7 @@ def upgrade() -> None:
 
     op.create_table(
         "users",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "auth_provider",
             sa.String(32),
@@ -93,9 +91,7 @@ def upgrade() -> None:
 
     op.create_table(
         "consent_records",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "user_id",
             UUID,
@@ -119,15 +115,11 @@ def upgrade() -> None:
         ),
         schema="app",
     )
-    op.create_index(
-        "ix_consent_records_user_id", "consent_records", ["user_id"], schema="app"
-    )
+    op.create_index("ix_consent_records_user_id", "consent_records", ["user_id"], schema="app")
 
     op.create_table(
         "onboarding_sessions",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("proof_hash", sa.String(64), nullable=False, unique=True),
         sa.Column("status", sa.String(24), nullable=False, server_default="active"),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
@@ -151,9 +143,7 @@ def upgrade() -> None:
 
     op.create_table(
         "onboarding_assessments",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "session_id",
             UUID,
@@ -165,9 +155,7 @@ def upgrade() -> None:
         sa.Column("schema_version", sa.String(64), nullable=False),
         sa.Column("timezone", sa.String(64), nullable=False),
         sa.Column("answers", JSONB, nullable=False),
-        sa.Column(
-            "is_current", sa.Boolean(), nullable=False, server_default=sa.text("true")
-        ),
+        sa.Column("is_current", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column(
             "validated_at",
             sa.DateTime(timezone=True),
@@ -175,9 +163,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         *_timestamps(),
-        sa.CheckConstraint(
-            "version > 0", name="ck_onboarding_assessments_positive_version"
-        ),
+        sa.CheckConstraint("version > 0", name="ck_onboarding_assessments_positive_version"),
         sa.UniqueConstraint(
             "session_id",
             "version",
@@ -208,9 +194,7 @@ def upgrade() -> None:
 
     op.create_table(
         "generation_jobs",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "user_id",
             UUID,
@@ -242,21 +226,15 @@ def upgrade() -> None:
             "progress >= 0 AND progress <= 100",
             name="ck_generation_jobs_valid_progress",
         ),
-        sa.CheckConstraint(
-            "attempt_count >= 0", name="ck_generation_jobs_nonnegative_attempts"
-        ),
-        sa.CheckConstraint(
-            "max_attempts > 0", name="ck_generation_jobs_positive_max_attempts"
-        ),
+        sa.CheckConstraint("attempt_count >= 0", name="ck_generation_jobs_nonnegative_attempts"),
+        sa.CheckConstraint("max_attempts > 0", name="ck_generation_jobs_positive_max_attempts"),
         sa.CheckConstraint(
             "state IN ('queued','running','retry_wait','ready','failed','cancelled','dead_letter')",
             name="ck_generation_jobs_valid_state",
         ),
         schema="ops",
     )
-    op.create_index(
-        "ix_generation_jobs_user_id", "generation_jobs", ["user_id"], schema="ops"
-    )
+    op.create_index("ix_generation_jobs_user_id", "generation_jobs", ["user_id"], schema="ops")
     op.create_index(
         "ix_generation_jobs_state_available",
         "generation_jobs",
@@ -266,9 +244,7 @@ def upgrade() -> None:
 
     op.create_table(
         "outbox_events",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("aggregate_type", sa.String(64), nullable=False),
         sa.Column("aggregate_id", UUID, nullable=False),
         sa.Column("event_type", sa.String(128), nullable=False),
@@ -283,9 +259,7 @@ def upgrade() -> None:
         sa.Column("attempt_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("published_at", sa.DateTime(timezone=True)),
         *_timestamps(),
-        sa.CheckConstraint(
-            "attempt_count >= 0", name="ck_outbox_events_nonnegative_attempts"
-        ),
+        sa.CheckConstraint("attempt_count >= 0", name="ck_outbox_events_nonnegative_attempts"),
         sa.CheckConstraint(
             "state IN ('pending','published','failed')",
             name="ck_outbox_events_valid_state",
@@ -301,9 +275,7 @@ def upgrade() -> None:
 
     op.create_table(
         "idempotency_keys",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("scope", sa.String(96), nullable=False),
         sa.Column("subject", sa.String(255), nullable=False),
         sa.Column("idempotency_key", sa.String(128), nullable=False),
@@ -333,9 +305,7 @@ def upgrade() -> None:
 
     op.create_table(
         "media_assets",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "owner_user_id",
             UUID,
@@ -352,15 +322,9 @@ def upgrade() -> None:
         sa.Column("height", sa.Integer()),
         sa.Column("status", sa.String(24), nullable=False, server_default="pending"),
         *_timestamps(),
-        sa.CheckConstraint(
-            "width IS NULL OR width > 0", name="ck_media_assets_positive_width"
-        ),
-        sa.CheckConstraint(
-            "height IS NULL OR height > 0", name="ck_media_assets_positive_height"
-        ),
-        sa.CheckConstraint(
-            "public_url LIKE 'https://%'", name="ck_media_assets_https_public_url"
-        ),
+        sa.CheckConstraint("width IS NULL OR width > 0", name="ck_media_assets_positive_width"),
+        sa.CheckConstraint("height IS NULL OR height > 0", name="ck_media_assets_positive_height"),
+        sa.CheckConstraint("public_url LIKE 'https://%'", name="ck_media_assets_https_public_url"),
         sa.CheckConstraint(
             "status IN ('pending','ready','failed','deleted')",
             name="ck_media_assets_valid_status",
@@ -384,9 +348,7 @@ def upgrade() -> None:
 
     op.create_table(
         "action_plans",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "user_id",
             UUID,
@@ -403,18 +365,14 @@ def upgrade() -> None:
         sa.Column("local_date", sa.Date(), nullable=False),
         sa.Column("timezone", sa.String(64), nullable=False),
         sa.Column("revision", sa.Integer(), nullable=False),
-        sa.Column(
-            "is_current", sa.Boolean(), nullable=False, server_default=sa.text("true")
-        ),
+        sa.Column("is_current", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("status", sa.String(24), nullable=False, server_default="ready"),
         sa.Column("cycle_snapshot", JSONB, nullable=False),
         sa.Column("context_snapshot", JSONB, nullable=False),
         sa.Column("published_at", sa.DateTime(timezone=True)),
         *_timestamps(),
         sa.CheckConstraint("revision > 0", name="ck_action_plans_positive_revision"),
-        sa.CheckConstraint(
-            "status IN ('ready','archived')", name="ck_action_plans_valid_status"
-        ),
+        sa.CheckConstraint("status IN ('ready','archived')", name="ck_action_plans_valid_status"),
         sa.CheckConstraint(
             "(is_current AND status = 'ready') OR (NOT is_current)",
             name="ck_action_plans_current_plan_is_ready",
@@ -427,9 +385,7 @@ def upgrade() -> None:
         ),
         schema="app",
     )
-    op.create_index(
-        "ix_action_plans_user_id", "action_plans", ["user_id"], schema="app"
-    )
+    op.create_index("ix_action_plans_user_id", "action_plans", ["user_id"], schema="app")
     op.create_index(
         "uq_action_plans_current_user_date",
         "action_plans",
@@ -441,9 +397,7 @@ def upgrade() -> None:
 
     op.create_table(
         "action_plan_items",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "plan_id",
             UUID,
@@ -468,16 +422,12 @@ def upgrade() -> None:
         ),
         sa.Column("status", sa.String(24), nullable=False, server_default="active"),
         *_timestamps(),
-        sa.CheckConstraint(
-            "slot >= 1 AND slot <= 4", name="ck_action_plan_items_valid_slot"
-        ),
+        sa.CheckConstraint("slot >= 1 AND slot <= 4", name="ck_action_plan_items_valid_slot"),
         sa.CheckConstraint(
             "status IN ('active','replaced','retired')",
             name="ck_action_plan_items_valid_status",
         ),
-        sa.UniqueConstraint(
-            "plan_id", "slot", name="uq_action_plan_items_plan_id_slot"
-        ),
+        sa.UniqueConstraint("plan_id", "slot", name="uq_action_plan_items_plan_id_slot"),
         schema="app",
     )
     op.create_index(
@@ -489,9 +439,7 @@ def upgrade() -> None:
 
     op.create_table(
         "action_plan_item_variants",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "item_id",
             UUID,
@@ -677,15 +625,11 @@ def _create_ready_plan_constraint_triggers() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DROP TRIGGER IF EXISTS ck_ready_plan_media_complete ON app.media_assets"
-    )
+    op.execute("DROP TRIGGER IF EXISTS ck_ready_plan_media_complete ON app.media_assets")
     op.execute(
         "DROP TRIGGER IF EXISTS ck_ready_plan_variants_complete ON app.action_plan_item_variants"
     )
-    op.execute(
-        "DROP TRIGGER IF EXISTS ck_ready_plan_items_complete ON app.action_plan_items"
-    )
+    op.execute("DROP TRIGGER IF EXISTS ck_ready_plan_items_complete ON app.action_plan_items")
     op.execute("DROP TRIGGER IF EXISTS ck_ready_plan_complete ON app.action_plans")
     op.execute("DROP FUNCTION IF EXISTS app.check_ready_media_row()")
     op.execute("DROP FUNCTION IF EXISTS app.check_ready_variant_row()")

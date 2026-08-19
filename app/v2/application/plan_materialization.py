@@ -64,14 +64,10 @@ class PlanMaterializer:
         local_date, timezone = self._request_timing(job.request_payload)
         existing = await self._existing_plan(session, job)
         if existing is not None:
-            return PublishedPlan(
-                existing.id, existing.revision, existing.local_date.isoformat()
-            )
+            return PublishedPlan(existing.id, existing.revision, existing.local_date.isoformat())
         source_ids = await self._upsert_sources(uow, bundle)
         asset_ids = await self._upsert_assets(uow, job, bundle)
-        plan = await self._add_plan(
-            uow, job, bundle, asset_ids, source_ids, local_date, timezone
-        )
+        plan = await self._add_plan(uow, job, bundle, asset_ids, source_ids, local_date, timezone)
         self._add_invocations(session, job, bundle)
         published = await self._mark_published(session, stored_job, job, plan)
         await uow.commit()
@@ -133,14 +129,10 @@ class PlanMaterializer:
 
     async def _existing_plan(self, session, job: ClaimedJob) -> ActionPlan | None:
         return await session.scalar(
-            select(ActionPlan)
-            .where(ActionPlan.generation_job_id == job.id)
-            .with_for_update()
+            select(ActionPlan).where(ActionPlan.generation_job_id == job.id).with_for_update()
         )
 
-    async def _add_plan(
-        self, uow, job, bundle, asset_ids, source_ids, local_date, timezone
-    ):
+    async def _add_plan(self, uow, job, bundle, asset_ids, source_ids, local_date, timezone):
         session = self._session(uow)
         revision = await self._next_revision(session, job, local_date)
         plan = self._plan(job, local_date, timezone, revision)
@@ -152,18 +144,14 @@ class PlanMaterializer:
     async def _next_revision(self, session, job: ClaimedJob, local_date) -> int:
         previous = await session.scalar(
             select(ActionPlan.revision)
-            .where(
-                ActionPlan.user_id == job.user_id, ActionPlan.local_date == local_date
-            )
+            .where(ActionPlan.user_id == job.user_id, ActionPlan.local_date == local_date)
             .order_by(ActionPlan.revision.desc())
             .limit(1)
             .with_for_update()
         )
         return (previous or 0) + 1
 
-    def _plan(
-        self, job: ClaimedJob, local_date, timezone: str, revision: int
-    ) -> ActionPlan:
+    def _plan(self, job: ClaimedJob, local_date, timezone: str, revision: int) -> ActionPlan:
         return ActionPlan(
             id=uuid.uuid4(),
             user_id=job.user_id,
@@ -225,9 +213,7 @@ class PlanMaterializer:
             )
 
     @staticmethod
-    def _add_invocations(
-        session, job: ClaimedJob, bundle: PlanGenerationBundle
-    ) -> None:
+    def _add_invocations(session, job: ClaimedJob, bundle: PlanGenerationBundle) -> None:
         for invocation in bundle.invocations:
             PlanMaterializer._add_invocation(session, job, invocation)
 
@@ -317,9 +303,7 @@ class PlanMaterializer:
                 )
                 .returning(ResearchSource.id)
             )
-            result[source.canonical_url] = (
-                await session.execute(statement)
-            ).scalar_one()
+            result[source.canonical_url] = (await session.execute(statement)).scalar_one()
         return result
 
     async def _upsert_assets(
@@ -346,9 +330,7 @@ class PlanMaterializer:
                     height=media.height,
                     status=MediaStatus.READY.value,
                 )
-                .on_conflict_do_nothing(
-                    index_elements=["storage_provider", "bucket", "object_key"]
-                )
+                .on_conflict_do_nothing(index_elements=["storage_provider", "bucket", "object_key"])
                 .returning(MediaAsset.id)
             )
             key = (generated.action_slot, generated.role, generated.variant_type)
@@ -377,11 +359,7 @@ class PlanMaterializer:
 
         local_date = payload.get("local_date")
         timezone = payload.get("timezone")
-        if (
-            not isinstance(local_date, str)
-            or not isinstance(timezone, str)
-            or not timezone
-        ):
+        if not isinstance(local_date, str) or not isinstance(timezone, str) or not timezone:
             raise TerminalJobFailure("invalid_job_payload")
         try:
             ZoneInfo(timezone)
@@ -397,9 +375,7 @@ class PlanMaterializer:
     @staticmethod
     def _safe_context_snapshot(payload: Mapping[str, object]) -> dict[str, object]:
         assessment_id = payload.get("assessment_id")
-        return (
-            {"assessment_id": assessment_id} if isinstance(assessment_id, str) else {}
-        )
+        return {"assessment_id": assessment_id} if isinstance(assessment_id, str) else {}
 
     @staticmethod
     def _pubmed_identity(url: str) -> tuple[str, str]:

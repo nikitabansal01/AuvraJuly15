@@ -87,9 +87,7 @@ class ProblemDetailsRoute(APIRoute):
                 )
                 return _problem_response(request, problem, request_id)
             except HTTPException as exc:
-                detail = (
-                    exc.detail if isinstance(exc.detail, str) else "Request failed."
-                )
+                detail = exc.detail if isinstance(exc.detail, str) else "Request failed."
                 problem = ApplicationProblem(
                     exc.status_code,
                     "Request Failed",

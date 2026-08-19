@@ -53,8 +53,7 @@ def upgrade() -> None:
     )
 
     op.execute(
-        "ALTER TABLE app.reward_ledger "
-        "DROP CONSTRAINT ck_reward_ledger_ck_reward_ledger_asset"
+        "ALTER TABLE app.reward_ledger " "DROP CONSTRAINT ck_reward_ledger_ck_reward_ledger_asset"
     )
     op.execute(
         "ALTER TABLE app.reward_ledger "
@@ -91,8 +90,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "DROP TRIGGER IF EXISTS ck_weekly_scale_answer_numeric "
-        "ON app.weekly_checkin_responses"
+        "DROP TRIGGER IF EXISTS ck_weekly_scale_answer_numeric " "ON app.weekly_checkin_responses"
     )
     op.execute("DROP FUNCTION IF EXISTS app.check_weekly_scale_answer()")
 
@@ -105,20 +103,15 @@ def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS app.ix_reward_ledger_user_id_asset_type_created_at")
     op.execute("DROP INDEX IF EXISTS app.uq_reward_ledger_entitlement")
     op.execute(
-        "ALTER TABLE app.reward_ledger "
-        "DROP CONSTRAINT ck_reward_ledger_entitlement_quantity"
+        "ALTER TABLE app.reward_ledger " "DROP CONSTRAINT ck_reward_ledger_entitlement_quantity"
     )
     op.execute(
-        "ALTER TABLE app.reward_ledger "
-        "DROP CONSTRAINT ck_reward_ledger_asset_key_presence"
+        "ALTER TABLE app.reward_ledger " "DROP CONSTRAINT ck_reward_ledger_asset_key_presence"
     )
     op.execute(
-        "ALTER TABLE app.reward_ledger "
-        "DROP CONSTRAINT ck_reward_ledger_ck_reward_ledger_asset"
+        "ALTER TABLE app.reward_ledger " "DROP CONSTRAINT ck_reward_ledger_ck_reward_ledger_asset"
     )
-    op.execute(
-        "DELETE FROM app.reward_ledger WHERE asset_type = 'entitlement'"
-    )
+    op.execute("DELETE FROM app.reward_ledger WHERE asset_type = 'entitlement'")
     op.execute(
         "ALTER TABLE app.reward_ledger "
         "ADD CONSTRAINT ck_reward_ledger_ck_reward_ledger_asset "

@@ -78,9 +78,7 @@ def build_plan_worker() -> PostgresJobWorker:
         image_generator=image_generator,
         media_store=media_store,
     )
-    runner = PlanGenerationJobRunner(
-        orchestrator=orchestrator, materializer=PlanMaterializer()
-    )
+    runner = PlanGenerationJobRunner(orchestrator=orchestrator, materializer=PlanMaterializer())
     worker_id = os.getenv("RENDER_INSTANCE_ID") or socket.gethostname()
     return PostgresJobWorker(
         worker_id=f"plan-worker:{worker_id}",

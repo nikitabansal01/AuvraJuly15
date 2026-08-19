@@ -26,9 +26,7 @@ from app.v2.persistence.conversations import (
 class SqlAlchemyUnitOfWork:
     """Own one async session and its complete transaction lifecycle."""
 
-    def __init__(
-        self, session_factory: Callable[[], AsyncSession] | None = None
-    ) -> None:
+    def __init__(self, session_factory: Callable[[], AsyncSession] | None = None) -> None:
         self._session_factory = session_factory or get_async_session_maker()
         self.session: AsyncSession | None = None
         self._committed = False

@@ -118,17 +118,12 @@ async def test_retry_and_terminal_errors_have_safe_distinct_states():
     await worker._retry_or_dead_letter(uow, job(), "invalid", retryable=False)
     assert "'dead_letter'" in session.calls[-1][0]
     assert session.calls[-1][1]["terminal"] is True
-    assert (
-        worker._error_code(ProviderFailure("provider_retry", retryable=True))
-        == "provider_retry"
-    )
+    assert worker._error_code(ProviderFailure("provider_retry", retryable=True)) == "provider_retry"
     assert not worker._retryable(TerminalJobFailure("invalid_output"))
 
 
 def test_error_codes_never_include_provider_exception_text():
-    assert "secret" not in PostgresJobWorker._error_code(
-        RuntimeError("secret provider body")
-    )
+    assert "secret" not in PostgresJobWorker._error_code(RuntimeError("secret provider body"))
     assert PostgresJobWorker._retryable(RuntimeError("database reset"))
 
 
@@ -208,9 +203,7 @@ async def test_combined_worker_routes_all_job_lanes_and_closes_shared_resources_
     )
     monkeypatch.setattr(worker_entrypoint, "check_database_readiness", database)
     monkeypatch.setattr(worker_entrypoint, "check_database_schema_head", schema)
-    monkeypatch.setattr(
-        worker_entrypoint, "build_plan_worker", lambda: Worker("plan_generation")
-    )
+    monkeypatch.setattr(worker_entrypoint, "build_plan_worker", lambda: Worker("plan_generation"))
     monkeypatch.setattr(
         worker_entrypoint,
         "build_conversation_worker",
@@ -257,12 +250,8 @@ async def test_enabled_deletion_lane_initializes_firebase_before_workers(monkeyp
     async def run(workers):
         events.append(tuple(worker.job_type for worker in workers))
 
-    monkeypatch.setattr(
-        worker_entrypoint, "settings", SimpleNamespace(V2_DELETION_ENABLED=True)
-    )
-    monkeypatch.setattr(
-        worker_entrypoint, "validate_plan_worker_configuration", lambda: None
-    )
+    monkeypatch.setattr(worker_entrypoint, "settings", SimpleNamespace(V2_DELETION_ENABLED=True))
+    monkeypatch.setattr(worker_entrypoint, "validate_plan_worker_configuration", lambda: None)
     monkeypatch.setattr(worker_entrypoint, "check_database_readiness", noop)
     monkeypatch.setattr(worker_entrypoint, "check_database_schema_head", noop)
     monkeypatch.setattr(
@@ -270,9 +259,7 @@ async def test_enabled_deletion_lane_initializes_firebase_before_workers(monkeyp
     )
     monkeypatch.setattr(worker_entrypoint, "build_plan_worker", Worker)
     monkeypatch.setattr(worker_entrypoint, "build_conversation_worker", Worker)
-    monkeypatch.setattr(
-        worker_entrypoint, "build_account_workers", lambda: (Worker(), Worker())
-    )
+    monkeypatch.setattr(worker_entrypoint, "build_account_workers", lambda: (Worker(), Worker()))
     monkeypatch.setattr(worker_entrypoint, "run_workers", run)
 
     await worker_entrypoint.run_v2_worker()
@@ -282,9 +269,7 @@ async def test_enabled_deletion_lane_initializes_firebase_before_workers(monkeyp
 def test_combined_worker_rejects_duplicate_job_filters():
     with pytest.raises(ValueError, match="distinct job_type"):
         __import__("anyio").run(
-            __import__(
-                "app.v2.infrastructure.worker", fromlist=["run_workers"]
-            ).run_workers,
+            __import__("app.v2.infrastructure.worker", fromlist=["run_workers"]).run_workers,
             (
                 PostgresJobWorker("a", lambda _: None, job_type="plan_generation"),
                 PostgresJobWorker("b", lambda _: None, job_type="plan_generation"),
@@ -309,9 +294,7 @@ def test_idle_polling_backs_off_but_stays_responsive_to_work() -> None:
     # Idle: the delay grows geometrically and then stops at the ceiling.
     seen = []
     for _ in range(10):
-        delay = next_poll_delay(
-            delay, worked=False, base=base, maximum=MAX_IDLE_POLL_SECONDS
-        )
+        delay = next_poll_delay(delay, worked=False, base=base, maximum=MAX_IDLE_POLL_SECONDS)
         seen.append(delay)
     assert seen[0] == 2.0
     assert seen[1] == 4.0
@@ -319,9 +302,12 @@ def test_idle_polling_backs_off_but_stays_responsive_to_work() -> None:
     assert all(d <= MAX_IDLE_POLL_SECONDS for d in seen)
 
     # Claiming a job returns immediately to the base interval.
-    assert next_poll_delay(
-        MAX_IDLE_POLL_SECONDS, worked=True, base=base, maximum=MAX_IDLE_POLL_SECONDS
-    ) == base
+    assert (
+        next_poll_delay(
+            MAX_IDLE_POLL_SECONDS, worked=True, base=base, maximum=MAX_IDLE_POLL_SECONDS
+        )
+        == base
+    )
 
 
 def test_backoff_never_returns_less_than_the_base_interval() -> None:

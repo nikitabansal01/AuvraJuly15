@@ -243,35 +243,21 @@ def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS ck_plan_refresh_scope ON app.plan_refreshes")
     op.execute("DROP FUNCTION IF EXISTS app.check_plan_refresh_scope()")
     op.execute("DROP FUNCTION IF EXISTS app.assert_plan_refresh_scope(uuid)")
-    op.execute(
-        "DROP TRIGGER IF EXISTS guard_reward_ledger_updates ON app.reward_ledger"
-    )
+    op.execute("DROP TRIGGER IF EXISTS guard_reward_ledger_updates ON app.reward_ledger")
     op.execute("DROP FUNCTION IF EXISTS app.guard_reward_ledger_update()")
     op.execute("DROP TRIGGER IF EXISTS guard_streak_day_updates ON app.streak_days")
     op.execute("DROP FUNCTION IF EXISTS app.guard_streak_day_update()")
     op.execute("DROP TRIGGER IF EXISTS ck_streak_day_scope ON app.streak_days")
     op.execute("DROP FUNCTION IF EXISTS app.check_streak_day_scope()")
     op.execute("DROP FUNCTION IF EXISTS app.assert_streak_day_scope(uuid)")
-    op.execute(
-        "ALTER TABLE app.plan_refreshes DROP CONSTRAINT ck_plan_refreshes_nonempty_reason"
-    )
+    op.execute("ALTER TABLE app.plan_refreshes DROP CONSTRAINT ck_plan_refreshes_nonempty_reason")
     op.drop_constraint("uq_plan_refreshes_new_item_id", "plan_refreshes", schema="app")
     op.drop_constraint("uq_plan_refreshes_old_item_id", "plan_refreshes", schema="app")
-    op.drop_constraint(
-        "uq_streak_days_evidence_type_evidence_id", "streak_days", schema="app"
-    )
-    op.execute(
-        "ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_timezone_nonempty"
-    )
-    op.execute(
-        "ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_state_evidence"
-    )
-    op.execute(
-        "ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_ck_streak_days_state"
-    )
-    op.execute(
-        "ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_ck_streak_days_evidence"
-    )
+    op.drop_constraint("uq_streak_days_evidence_type_evidence_id", "streak_days", schema="app")
+    op.execute("ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_timezone_nonempty")
+    op.execute("ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_state_evidence")
+    op.execute("ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_ck_streak_days_state")
+    op.execute("ALTER TABLE app.streak_days DROP CONSTRAINT ck_streak_days_ck_streak_days_evidence")
     op.execute("UPDATE app.streak_days SET evidence_type = 'review'")
     op.execute(
         "ALTER TABLE app.streak_days ADD CONSTRAINT ck_streak_days_ck_streak_days_evidence "

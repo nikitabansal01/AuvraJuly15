@@ -96,9 +96,7 @@ class FakeUsersRepository:
 
 
 class FakeUow:
-    def __init__(
-        self, *, onboarding=None, users=None, profiles=None, jobs=None
-    ) -> None:
+    def __init__(self, *, onboarding=None, users=None, profiles=None, jobs=None) -> None:
         self.idempotency = FakeIdempotencyRepository()
         self.onboarding = onboarding
         self.users = users
@@ -308,9 +306,7 @@ async def test_profile_precondition_and_cross_user_job_access_are_enforced():
         created_at=NOW,
         updated_at=NOW,
     )
-    uow = FakeUow(
-        users=FakeUsersRepository(user), profiles=FakeProfileRepository(profile)
-    )
+    uow = FakeUow(users=FakeUsersRepository(user), profiles=FakeProfileRepository(profile))
     from app.v2.application.contracts import ProfilePatchRequest
 
     with pytest.raises(ApplicationProblem) as error:
@@ -328,11 +324,7 @@ async def test_profile_precondition_and_cross_user_job_access_are_enforced():
 
     class Jobs:
         async def get_owned(self, job_id, user_id):
-            return (
-                other_job
-                if other_job.id == job_id and other_job.user_id == user_id
-                else None
-            )
+            return other_job if other_job.id == job_id and other_job.user_id == user_id else None
 
     uow.jobs = Jobs()
     with pytest.raises(ApplicationProblem) as error:
@@ -389,9 +381,7 @@ async def test_runtime_openapi_advertises_preconditions_and_answer_schema():
     app = FastAPI()
     app.include_router(router, prefix="/api/v2")
     schema = app.openapi()
-    operation = schema["paths"]["/api/v2/onboarding/sessions/{session_id}/assessment"][
-        "put"
-    ]
+    operation = schema["paths"]["/api/v2/onboarding/sessions/{session_id}/assessment"]["put"]
     assert operation["operationId"] == "putOnboardingAssessmentV2"
     assert {"412", "428"}.issubset(operation["responses"])
     assert any(item["name"] == "If-Match" for item in operation["parameters"])
@@ -405,9 +395,9 @@ def test_runtime_openapi_advertises_symptom_observation_creation_contract():
     app.include_router(router, prefix="/api/v2")
     operation = app.openapi()["paths"]["/api/v2/me/symptom-observations"]["post"]
     assert operation["operationId"] == "createSymptomObservation"
-    assert operation["responses"]["201"]["content"]["application/json"]["schema"][
-        "$ref"
-    ].endswith("/SymptomObservationResponse")
+    assert operation["responses"]["201"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/SymptomObservationResponse"
+    )
     assert any(
         parameter["name"] == "Idempotency-Key" and parameter["required"]
         for parameter in operation["parameters"]
@@ -417,17 +407,15 @@ def test_runtime_openapi_advertises_symptom_observation_creation_contract():
 def test_runtime_openapi_advertises_selected_variant_replacement_contract():
     app = FastAPI()
     app.include_router(router, prefix="/api/v2")
-    operation = app.openapi()["paths"]["/api/v2/me/plans/{plan_id}/replacements"][
-        "post"
-    ]
+    operation = app.openapi()["paths"]["/api/v2/me/plans/{plan_id}/replacements"]["post"]
     assert operation["operationId"] == "replacePlanWithSelectedVariantV2"
     assert {"201", "412", "428"}.issubset(operation["responses"])
     parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
     assert parameters["Idempotency-Key"]["required"]
     assert "If-Match" in parameters
-    assert operation["requestBody"]["content"]["application/json"]["schema"][
-        "$ref"
-    ].endswith("/PlanReplacementRequest")
+    assert operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/PlanReplacementRequest"
+    )
 
 
 def test_runtime_openapi_advertises_owner_scoped_generation_recovery_contract():
@@ -435,7 +423,5 @@ def test_runtime_openapi_advertises_owner_scoped_generation_recovery_contract():
     app.include_router(router, prefix="/api/v2")
     operation = app.openapi()["paths"]["/api/v2/me/plan-generations/latest"]["get"]
     assert operation["operationId"] == "getMyLatestPlanGenerationV2"
-    assert any(
-        parameter["name"] == "local_date" for parameter in operation["parameters"]
-    )
+    assert any(parameter["name"] == "local_date" for parameter in operation["parameters"])
     assert "404" in operation["responses"]

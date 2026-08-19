@@ -84,9 +84,7 @@ def evaluate_user_visible_plan_fields(fields: Mapping[str, str]) -> SafetyDecisi
 
     for field, value in fields.items():
         if not isinstance(value, str) or not value.strip():
-            return SafetyDecision(
-                False, "candidate_safety_invalid_visible_text", field=field
-            )
+            return SafetyDecision(False, "candidate_safety_invalid_visible_text", field=field)
         for rule in _RULES:
             if rule.expression.search(value):
                 return SafetyDecision(False, rule.reason_code, field=field)

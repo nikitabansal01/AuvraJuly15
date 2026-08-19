@@ -123,9 +123,7 @@ async def test_redis_counter_key_never_contains_the_actor_identifier():
 
     class Redis:
         async def eval(self, script, keys, key, window):
-            observed.update(
-                {"script": script, "keys": keys, "key": key, "window": window}
-            )
+            observed.update({"script": script, "keys": keys, "key": key, "window": window})
             return (1, 300)
 
     limiter = controls.RedisFixedWindowRateLimiter(Redis())
@@ -186,9 +184,7 @@ def test_only_explicit_trusted_proxies_can_supply_forwarded_client_ip(monkeypatc
     }
     from starlette.requests import Request
 
-    monkeypatch.setattr(
-        controls, "settings", SimpleNamespace(V2_TRUSTED_PROXY_CIDRS=[])
-    )
+    monkeypatch.setattr(controls, "settings", SimpleNamespace(V2_TRUSTED_PROXY_CIDRS=[]))
     assert controls._trusted_client_ip(Request(scope)) == "10.0.0.7"
     monkeypatch.setattr(
         controls,
@@ -216,9 +212,7 @@ def test_rate_limit_client_retries_transient_connection_failures(monkeypatch):
         captured.update(kwargs)
         return object()
 
-    monkeypatch.setattr(
-        controls.settings, "V2_REDIS_URL", "rediss://redis.example.test/0"
-    )
+    monkeypatch.setattr(controls.settings, "V2_REDIS_URL", "rediss://redis.example.test/0")
     monkeypatch.setattr(redis_asyncio, "from_url", fake_from_url)
     controls.get_rate_limit_backend.cache_clear()
     try:

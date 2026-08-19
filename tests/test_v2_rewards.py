@@ -95,8 +95,8 @@ def test_freeze_window_excludes_the_open_day_and_is_bounded() -> None:
 @pytest.mark.parametrize(
     "day, expect_rejected",
     [
-        (date(2026, 8, 9), True),   # future
-        (date(2026, 8, 8), True),   # the current, still-open local day
+        (date(2026, 8, 9), True),  # future
+        (date(2026, 8, 8), True),  # the current, still-open local day
         (date(2026, 8, 7), False),  # yesterday, the newest closed day
         (date(2026, 8, 1), False),  # oldest day inside the window
         (date(2026, 7, 31), True),  # one day past the window

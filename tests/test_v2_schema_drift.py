@@ -14,9 +14,7 @@ def test_onboarding_assessment_current_default_matches_partial_current_index_sem
 
 def test_drift_metadata_keeps_database_uuid_and_intentional_nonunique_invocations():
     metadata = V2Base.metadata
-    assert (
-        str(metadata.tables["app.users"].c.id.server_default.arg) == "gen_random_uuid()"
-    )
+    assert str(metadata.tables["app.users"].c.id.server_default.arg) == "gen_random_uuid()"
     assert not any(
         constraint.unique
         for constraint in metadata.tables["app.ai_invocations"].indexes

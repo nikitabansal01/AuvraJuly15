@@ -80,8 +80,7 @@ def _seed_user(*, qualifying_days: int, timezone: str = "UTC") -> str:
         )
         connection.execute(
             text(
-                "INSERT INTO app.user_profiles (user_id, timezone) "
-                "VALUES (:user_id, :timezone)"
+                "INSERT INTO app.user_profiles (user_id, timezone) " "VALUES (:user_id, :timezone)"
             ),
             {"user_id": user_id, "timezone": timezone},
         )
@@ -217,13 +216,9 @@ async def test_replaying_one_idempotency_key_returns_the_same_body() -> None:
     principal = _principal(_seed_user(qualifying_days=5))
     key = f"k-{uuid.uuid4()}"
     async with SqlAlchemyUnitOfWork() as uow:
-        first = await claim_reward(
-            uow, principal=principal, reward_id="streak_freeze", key=key
-        )
+        first = await claim_reward(uow, principal=principal, reward_id="streak_freeze", key=key)
     async with SqlAlchemyUnitOfWork() as uow:
-        replay = await claim_reward(
-            uow, principal=principal, reward_id="streak_freeze", key=key
-        )
+        replay = await claim_reward(uow, principal=principal, reward_id="streak_freeze", key=key)
     assert replay == first
 
 

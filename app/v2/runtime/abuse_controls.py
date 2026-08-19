@@ -130,8 +130,7 @@ async def close_rate_limit_backend() -> None:
 
 def _request_id(scope: Scope) -> str:
     headers = {
-        key.decode("latin-1").lower(): value.decode("latin-1")
-        for key, value in scope["headers"]
+        key.decode("latin-1").lower(): value.decode("latin-1") for key, value in scope["headers"]
     }
     supplied = headers.get("x-request-id", "")
     return supplied if _SAFE_REQUEST_ID.fullmatch(supplied) else str(uuid.uuid4())
@@ -285,9 +284,7 @@ def _trusted_client_ip(request: Request) -> str:
     return peer
 
 
-async def _check_or_raise(
-    *, bucket: str, subject: str, limit: int, window_seconds: int
-) -> None:
+async def _check_or_raise(*, bucket: str, subject: str, limit: int, window_seconds: int) -> None:
     if settings.ENVIRONMENT in {"development", "test"} and not settings.V2_REDIS_URL:
         # Local unit/device runs do not get a non-distributed in-memory bypass.
         # They simply omit this operational integration; staging/prod fail closed.
@@ -328,9 +325,7 @@ def is_public_onboarding_mutation(method: str, path: str) -> bool:
 
 
 def is_costly_mutation(method: str, path: str) -> bool:
-    return method == "POST" and any(
-        pattern.fullmatch(path) for pattern in _COSTLY_PATHS
-    )
+    return method == "POST" and any(pattern.fullmatch(path) for pattern in _COSTLY_PATHS)
 
 
 async def enforce_public_onboarding_limit(request: Request) -> None:

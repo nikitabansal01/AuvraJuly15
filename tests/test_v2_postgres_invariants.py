@@ -86,19 +86,13 @@ def test_latest_plan_generation_repository_is_owner_scoped_and_deterministic() -
             )
 
     async def read_latest() -> tuple[uuid.UUID | None, uuid.UUID | None]:
-        engine = create_async_engine(
-            _async_database_url(os.environ["AUVRA_TEST_DATABASE_URL"])
-        )
+        engine = create_async_engine(_async_database_url(os.environ["AUVRA_TEST_DATABASE_URL"]))
         factory = async_sessionmaker(engine, expire_on_commit=False)
         try:
             async with factory() as session:
                 repository = JobRepository(session)
-                owner_job = await repository.get_latest_plan_generation(
-                    owner_id, target_day
-                )
-                other_job = await repository.get_latest_plan_generation(
-                    other_id, target_day
-                )
+                owner_job = await repository.get_latest_plan_generation(owner_id, target_day)
+                other_job = await repository.get_latest_plan_generation(other_id, target_day)
                 return (
                     owner_job.id if owner_job else None,
                     other_job.id if other_job else None,
@@ -310,12 +304,7 @@ def test_selected_variant_replacement_and_daily_grant_are_transactional() -> Non
                 now=datetime(2026, 8, 10, tzinfo=UTC),
             )
         review_request = DailyReviewRequest.model_validate(
-            {
-                "items": [
-                    {"plan_item_id": item_id, "outcome": "completed"}
-                    for item_id in item_ids
-                ]
-            }
+            {"items": [{"plan_item_id": item_id, "outcome": "completed"} for item_id in item_ids]}
         )
 
         async def submit() -> object:
@@ -372,9 +361,7 @@ def test_selected_variant_replacement_and_daily_grant_are_transactional() -> Non
         )
         assert (
             connection.execute(
-                text(
-                    "SELECT count(*) FROM app.plan_refreshes WHERE user_id = :user_id"
-                ),
+                text("SELECT count(*) FROM app.plan_refreshes WHERE user_id = :user_id"),
                 {"user_id": user_id},
             ).scalar_one()
             == 1
@@ -511,9 +498,7 @@ def test_completed_review_is_complete_owned_and_immutable() -> None:
     with pytest.raises(DBAPIError, match="completed review header is immutable"):
         with engine.begin() as connection:
             connection.execute(
-                text(
-                    "UPDATE app.daily_reviews SET timezone = 'Asia/Kolkata' WHERE id = :id"
-                ),
+                text("UPDATE app.daily_reviews SET timezone = 'Asia/Kolkata' WHERE id = :id"),
                 {"id": review_id},
             )
 
@@ -663,9 +648,7 @@ def test_engagement_migration_downgrade_restores_prior_review_trigger() -> None:
                 },
             )
             definition = connection.execute(
-                text(
-                    "SELECT pg_get_functiondef('app.assert_completed_review(uuid)'::regprocedure)"
-                )
+                text("SELECT pg_get_functiondef('app.assert_completed_review(uuid)'::regprocedure)")
             ).scalar_one()
             assert "WHERE plan_id = v_plan_id;" in definition
             assert "active plan items" not in definition
@@ -755,9 +738,7 @@ def test_frozen_day_citing_no_ledger_row_is_rejected() -> None:
     with pytest.raises(DBAPIError, match="own redeemed freeze token"):
         with _engine().begin() as connection:
             user_id = _insert_user(connection)
-            _insert_frozen_day(
-                connection, user_id, uuid.uuid4(), uuid.uuid4(), date(2026, 8, 1)
-            )
+            _insert_frozen_day(connection, user_id, uuid.uuid4(), uuid.uuid4(), date(2026, 8, 1))
 
 
 def test_frozen_day_citing_another_users_freeze_is_rejected() -> None:
@@ -770,9 +751,7 @@ def test_frozen_day_citing_another_users_freeze_is_rejected() -> None:
             _grant_freeze(connection, other_id)
             streak_id = uuid.uuid4()
             stolen = _redeem_freeze(connection, other_id, streak_id)
-            _insert_frozen_day(
-                connection, owner_id, streak_id, stolen, date(2026, 8, 2)
-            )
+            _insert_frozen_day(connection, owner_id, streak_id, stolen, date(2026, 8, 2))
 
 
 def test_frozen_day_citing_a_grant_rather_than_a_redeem_is_rejected() -> None:
@@ -782,9 +761,7 @@ def test_frozen_day_citing_a_grant_rather_than_a_redeem_is_rejected() -> None:
         with _engine().begin() as connection:
             user_id = _insert_user(connection)
             grant_id = _grant_freeze(connection, user_id)
-            _insert_frozen_day(
-                connection, user_id, uuid.uuid4(), grant_id, date(2026, 8, 3)
-            )
+            _insert_frozen_day(connection, user_id, uuid.uuid4(), grant_id, date(2026, 8, 3))
 
 
 def test_frozen_day_with_its_own_redeemed_token_is_accepted() -> None:
@@ -797,9 +774,7 @@ def test_frozen_day_with_its_own_redeemed_token_is_accepted() -> None:
         ledger_id = _redeem_freeze(connection, user_id, streak_id)
         _insert_frozen_day(connection, user_id, streak_id, ledger_id, date(2026, 8, 4))
         state = connection.execute(
-            text(
-                "SELECT adjudication_state FROM app.streak_days WHERE id = :id"
-            ),
+            text("SELECT adjudication_state FROM app.streak_days WHERE id = :id"),
             {"id": streak_id},
         ).scalar_one()
     assert state == "frozen"

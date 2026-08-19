@@ -168,9 +168,7 @@ async def test_retry_backoff_binds_a_computed_float_without_a_type_error() -> No
 
     with _engine().begin() as connection:
         state, available_at = connection.execute(
-            text(
-                "SELECT state, available_at FROM ops.generation_jobs WHERE id = :id"
-            ),
+            text("SELECT state, available_at FROM ops.generation_jobs WHERE id = :id"),
             {"id": claimed.id},
         ).one()
     assert state == "retry_wait"

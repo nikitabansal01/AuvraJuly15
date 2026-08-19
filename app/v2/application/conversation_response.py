@@ -49,18 +49,14 @@ class ConversationGatewayResult:
 
 
 class ConversationGateway(Protocol):
-    async def respond(
-        self, request: ConversationResponseRequest
-    ) -> ConversationGatewayResult:
+    async def respond(self, request: ConversationResponseRequest) -> ConversationGatewayResult:
         ...
 
 
 class DeterministicConversationGateway:
     """Test-only fake; production composition must inject a real adapter."""
 
-    async def respond(
-        self, request: ConversationResponseRequest
-    ) -> ConversationGatewayResult:
+    async def respond(self, request: ConversationResponseRequest) -> ConversationGatewayResult:
         del request
         return ConversationGatewayResult(
             "Thanks for sharing that. What would feel most helpful next?"

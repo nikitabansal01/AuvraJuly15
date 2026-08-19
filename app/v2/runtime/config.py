@@ -117,9 +117,7 @@ _PLACEHOLDER_PREFIXES = ("your-", "[your-", "<your-", "placeholder-")
 
 def _missing_or_placeholder(value: str) -> bool:
     normalized = (value or "").strip().lower()
-    return normalized in _PLACEHOLDER_VALUES or normalized.startswith(
-        _PLACEHOLDER_PREFIXES
-    )
+    return normalized in _PLACEHOLDER_VALUES or normalized.startswith(_PLACEHOLDER_PREFIXES)
 
 
 def _validate_database_url(value: str) -> str | None:
@@ -129,10 +127,7 @@ def _validate_database_url(value: str) -> str | None:
         parsed = make_url(value)
     except Exception:
         return "DATABASE_URL is invalid"
-    if (
-        not parsed.drivername.startswith("postgresql")
-        and parsed.drivername != "postgres"
-    ):
+    if not parsed.drivername.startswith("postgresql") and parsed.drivername != "postgres":
         return "DATABASE_URL must use PostgreSQL"
     if settings.ENVIRONMENT in {"staging", "production"}:
         sslmode = parsed.query.get("sslmode", "").lower()
@@ -211,9 +206,7 @@ def _redis_transport_error(url: str) -> str | None:
         return None
     if url.startswith("redis://") and _is_private_network_host(url):
         return None
-    return (
-        "V2_REDIS_URL must use TLS (rediss://) unless it is a private-network host"
-    )
+    return "V2_REDIS_URL must use TLS (rediss://) unless it is a private-network host"
 
 
 def _api_operational_errors() -> list[str]:
@@ -269,9 +262,7 @@ def validate_api_configuration() -> None:
         "AUVRA_DELETION_RECEIPT_HMAC_KEY": settings.AUVRA_DELETION_RECEIPT_HMAC_KEY,
     }
     if any(value.strip() for value in worker_credentials.values()):
-        errors.append(
-            "worker-only credentials must not be present in the API environment"
-        )
+        errors.append("worker-only credentials must not be present in the API environment")
 
     # google.oauth2.service_account.Credentials.from_service_account_info only
     # requires client_email, token_uri (hardcoded in firebase_runtime.py) and
@@ -295,17 +286,14 @@ def validate_api_configuration() -> None:
 
     if (
         len(settings.V2_GUEST_PROOF_SECRET.encode("utf-8")) < 32
-        or settings.V2_GUEST_PROOF_SECRET
-        == "auvra-v2-local-guest-proof-secret-change-me"
+        or settings.V2_GUEST_PROOF_SECRET == "auvra-v2-local-guest-proof-secret-change-me"
     ):
         errors.append("V2_GUEST_PROOF_SECRET must be a unique 32-byte secret")
     required_consents = {"privacy", "health_data_processing"}
     if set(settings.V2_REQUIRED_CONSENT_VERSIONS) != required_consents or any(
         not value.strip() for value in settings.V2_REQUIRED_CONSENT_VERSIONS.values()
     ):
-        errors.append(
-            "V2_REQUIRED_CONSENT_VERSIONS must explicitly set required documents"
-        )
+        errors.append("V2_REQUIRED_CONSENT_VERSIONS must explicitly set required documents")
     _raise_if_invalid(errors, "v2 API")
 
 
@@ -361,9 +349,7 @@ def _worker_provider_errors() -> list[str]:
     if settings.V2_PLAN_JOB_TIMEOUT_SECONDS < settings.V2_WORKER_LEASE_SECONDS:
         errors.append("V2_PLAN_JOB_TIMEOUT_SECONDS must be at least the worker lease")
     if settings.V2_CONVERSATION_JOB_TIMEOUT_SECONDS < settings.V2_WORKER_LEASE_SECONDS:
-        errors.append(
-            "V2_CONVERSATION_JOB_TIMEOUT_SECONDS must be at least the worker lease"
-        )
+        errors.append("V2_CONVERSATION_JOB_TIMEOUT_SECONDS must be at least the worker lease")
     if settings.V2_WORKER_SHUTDOWN_SECONDS < 1:
         errors.append("V2_WORKER_SHUTDOWN_SECONDS must be positive")
     export_values = {
@@ -385,9 +371,7 @@ def _deletion_worker_errors() -> list[str]:
     if _missing_or_placeholder(settings.V2_REDIS_URL):
         errors.append("V2_REDIS_URL is missing or a placeholder")
     if _missing_or_placeholder(settings.V2_DELETION_APPROVAL_REFERENCE):
-        errors.append(
-            "V2_DELETION_APPROVAL_REFERENCE is required when deletion is enabled"
-        )
+        errors.append("V2_DELETION_APPROVAL_REFERENCE is required when deletion is enabled")
     if len(settings.AUVRA_DELETION_RECEIPT_HMAC_KEY.encode("utf-8")) < 32:
         errors.append("AUVRA_DELETION_RECEIPT_HMAC_KEY must contain at least 32 bytes")
     return errors

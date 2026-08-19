@@ -73,9 +73,7 @@ class EnvironmentHmacSubjectFingerprint(SubjectFingerprint):
     ENVIRONMENT_VARIABLE = "AUVRA_DELETION_RECEIPT_HMAC_KEY"
 
     def __init__(self, secret: str | None = None) -> None:
-        configured = (
-            secret if secret is not None else os.getenv(self.ENVIRONMENT_VARIABLE)
-        )
+        configured = secret if secret is not None else os.getenv(self.ENVIRONMENT_VARIABLE)
         if not configured or len(configured.encode("utf-8")) < 32:
             raise service_unavailable(
                 "deletion_receipt_key_unavailable",
@@ -127,9 +125,7 @@ class DocumentedErasureReleaseGate(ErasureReleaseGate):
         # Construction is the explicit deployment gate.  Do not log the value:
         # it can identify an internal incident or legal matter.
         if not self._approval_reference:
-            raise AccountLifecycleFailure(
-                "erasure_release_not_authorized", retryable=False
-            )
+            raise AccountLifecycleFailure("erasure_release_not_authorized", retryable=False)
 
 
 class FirebaseAdminIdentityEraser(FirebaseIdentityEraser):
@@ -141,26 +137,20 @@ class FirebaseAdminIdentityEraser(FirebaseIdentityEraser):
 
     async def revoke_and_delete(self, *, auth_provider: str, auth_subject: str) -> None:
         if auth_provider != "firebase" or not auth_subject.strip():
-            raise AccountLifecycleFailure(
-                "identity_eraser_subject_invalid", retryable=False
-            )
+            raise AccountLifecycleFailure("identity_eraser_subject_invalid", retryable=False)
         try:
             await run_in_threadpool(lambda: auth.revoke_refresh_tokens(auth_subject))
             await run_in_threadpool(lambda: auth.delete_user(auth_subject))
         except auth.UserNotFoundError:
             return
         except _FIREBASE_RETRYABLE_ERRORS as exc:
-            raise AccountLifecycleFailure(
-                "firebase_identity_unavailable", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("firebase_identity_unavailable", retryable=True) from exc
         except (auth.InvalidUidError, auth.UidAlreadyExistsError) as exc:
             raise AccountLifecycleFailure(
                 "identity_eraser_subject_invalid", retryable=False
             ) from exc
         except Exception as exc:
-            raise AccountLifecycleFailure(
-                "firebase_identity_erase_failed", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("firebase_identity_erase_failed", retryable=True) from exc
 
 
 class AesGcmAccountExportCipher:
@@ -189,11 +179,7 @@ class AesGcmAccountExportCipher:
     def encrypt(self, *, export_id: uuid.UUID, plaintext: bytes) -> bytes:
         nonce = os.urandom(12)
         associated_data = self.PREFIX + export_id.bytes
-        return (
-            self.PREFIX
-            + nonce
-            + self._cipher.encrypt(nonce, plaintext, associated_data)
-        )
+        return self.PREFIX + nonce + self._cipher.encrypt(nonce, plaintext, associated_data)
 
     def decrypt_for_test(self, *, export_id: uuid.UUID, payload: bytes) -> bytes:
         """Test-only verifier; delivery must use a separately authorized path."""
@@ -227,20 +213,14 @@ class CanonicalAccountExportBuilder(AccountExportBuilder):
         self._cipher = cipher
         self._uow_factory = uow_factory
 
-    async def build(
-        self, *, export_id: uuid.UUID, user_id: uuid.UUID
-    ) -> tuple[bytes, str]:
+    async def build(self, *, export_id: uuid.UUID, user_id: uuid.UUID) -> tuple[bytes, str]:
         datasets: dict[str, list[dict[str, Any]]] = {}
         async with self._uow_factory() as uow:
             if uow.session is None:
-                raise AccountLifecycleFailure(
-                    "account_export_context_unavailable", retryable=False
-                )
+                raise AccountLifecycleFailure("account_export_context_unavailable", retryable=False)
             for name, statement in _EXPORT_QUERIES:
                 rows = await uow.session.execute(text(statement), {"user_id": user_id})
-                datasets[name] = [
-                    _json_safe(dict(row)) for row in rows.mappings().all()
-                ]
+                datasets[name] = [_json_safe(dict(row)) for row in rows.mappings().all()]
             await uow.commit()
         payload = {
             "format": "auvra.account-export.v1",
@@ -292,9 +272,7 @@ class SupabasePrivateAccountStorage(PrivateExportStorage):
         self, *, export_id: uuid.UUID, content: bytes, expires_at: datetime
     ) -> PrivateExportAsset:
         if expires_at <= datetime.now(UTC) or not content:
-            raise AccountLifecycleFailure(
-                "account_export_invalid_payload", retryable=False
-            )
+            raise AccountLifecycleFailure("account_export_invalid_payload", retryable=False)
         object_key = f"exports/v1/{export_id}.bin"
         path = self._object_path(self._export_bucket, object_key)
         try:
@@ -308,13 +286,9 @@ class SupabasePrivateAccountStorage(PrivateExportStorage):
                 content=content,
             )
         except httpx.TimeoutException as exc:
-            raise AccountLifecycleFailure(
-                "account_export_storage_timeout", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("account_export_storage_timeout", retryable=True) from exc
         except httpx.HTTPError as exc:
-            raise AccountLifecycleFailure(
-                "account_export_storage_network", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("account_export_storage_network", retryable=True) from exc
         if response.status_code in {400, 409}:
             await self._verify_existing(
                 bucket=self._export_bucket,
@@ -330,12 +304,8 @@ class SupabasePrivateAccountStorage(PrivateExportStorage):
     async def delete_user_objects(self, *, user_id: uuid.UUID) -> None:
         references = await self._object_source.references_for_user(user_id=user_id)
         for reference in references:
-            if not _valid_bucket(reference.bucket) or not _valid_object_key(
-                reference.object_key
-            ):
-                raise AccountLifecycleFailure(
-                    "account_storage_reference_invalid", retryable=False
-                )
+            if not _valid_bucket(reference.bucket) or not _valid_object_key(reference.object_key):
+                raise AccountLifecycleFailure("account_storage_reference_invalid", retryable=False)
             try:
                 object_url = (
                     f"{self._project_url}/storage/v1/object/"
@@ -357,9 +327,7 @@ class SupabasePrivateAccountStorage(PrivateExportStorage):
             if response.status_code not in {200, 204, 404}:
                 raise _storage_failure(response.status_code, "account_storage_delete")
 
-    async def _verify_existing(
-        self, *, bucket: str, object_key: str, expected_sha256: str
-    ) -> None:
+    async def _verify_existing(self, *, bucket: str, object_key: str, expected_sha256: str) -> None:
         try:
             response = await self._client.get(
                 f"{self._project_url}/storage/v1/object/{self._object_path(bucket, object_key)}",
@@ -374,12 +342,8 @@ class SupabasePrivateAccountStorage(PrivateExportStorage):
                 "account_export_storage_verify_network", retryable=True
             ) from exc
         if response.status_code != 200:
-            raise _storage_failure(
-                response.status_code, "account_export_storage_verify"
-            )
-        if not hmac.compare_digest(
-            hashlib.sha256(response.content).hexdigest(), expected_sha256
-        ):
+            raise _storage_failure(response.status_code, "account_export_storage_verify")
+        if not hmac.compare_digest(hashlib.sha256(response.content).hexdigest(), expected_sha256):
             raise AccountLifecycleFailure(
                 "account_export_storage_existing_mismatch", retryable=False
             )
@@ -401,9 +365,7 @@ class StoredObjectReference:
 
 
 class UserObjectReferenceSource:
-    async def references_for_user(
-        self, *, user_id: uuid.UUID
-    ) -> Sequence[StoredObjectReference]:
+    async def references_for_user(self, *, user_id: uuid.UUID) -> Sequence[StoredObjectReference]:
         raise NotImplementedError
 
 
@@ -413,9 +375,7 @@ class PostgresUserObjectReferenceSource(UserObjectReferenceSource):
     def __init__(self, *, uow_factory: UowFactory = SqlAlchemyUnitOfWork) -> None:
         self._uow_factory = uow_factory
 
-    async def references_for_user(
-        self, *, user_id: uuid.UUID
-    ) -> Sequence[StoredObjectReference]:
+    async def references_for_user(self, *, user_id: uuid.UUID) -> Sequence[StoredObjectReference]:
         async with self._uow_factory() as uow:
             if uow.session is None:
                 raise AccountLifecycleFailure(
@@ -436,8 +396,7 @@ class PostgresUserObjectReferenceSource(UserObjectReferenceSource):
             )
             await uow.commit()
         return tuple(
-            StoredObjectReference(bucket=row.bucket, object_key=row.object_key)
-            for row in rows
+            StoredObjectReference(bucket=row.bucket, object_key=row.object_key) for row in rows
         )
 
 
@@ -446,9 +405,7 @@ class FailClosedRuntimeCheckpointEraser(RuntimeCheckpointEraser):
 
     async def delete_user_runtime(self, *, user_id: uuid.UUID) -> None:
         del user_id
-        raise AccountLifecycleFailure(
-            "runtime_checkpoint_eraser_unavailable", retryable=False
-        )
+        raise AccountLifecycleFailure("runtime_checkpoint_eraser_unavailable", retryable=False)
 
 
 class PostgresRuntimeCheckpointEraser(RuntimeCheckpointEraser):
@@ -515,9 +472,7 @@ class PostgresRuntimeCheckpointEraser(RuntimeCheckpointEraser):
                 ),
                 {"schema": self._SCHEMA},
             )
-            observed: dict[str, set[str]] = {
-                name: set() for name in self._EXPECTED_COLUMNS
-            }
+            observed: dict[str, set[str]] = {name: set() for name in self._EXPECTED_COLUMNS}
             for row in rows:
                 observed[row.table_name].add(row.column_name)
             if observed != self._EXPECTED_COLUMNS:
@@ -543,9 +498,7 @@ class PostgresRuntimeCheckpointEraser(RuntimeCheckpointEraser):
                 {"namespace": namespace},
             )
             if remaining:
-                raise AccountLifecycleFailure(
-                    "runtime_checkpoint_erase_unverified", retryable=True
-                )
+                raise AccountLifecycleFailure("runtime_checkpoint_erase_unverified", retryable=True)
             await uow.commit()
 
 
@@ -561,15 +514,11 @@ class RedisUserCacheEraser(UserCacheEraser):
     async def purge_user(self, *, user_id: uuid.UUID) -> None:
         pattern = f"{self._prefix}:{user_id}:*"
         try:
-            keys = [
-                key async for key in self._redis.scan_iter(match=pattern, count=100)
-            ]
+            keys = [key async for key in self._redis.scan_iter(match=pattern, count=100)]
             if keys:
                 await self._redis.unlink(*keys)
         except Exception as exc:
-            raise AccountLifecycleFailure(
-                "account_cache_erase_failed", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("account_cache_erase_failed", retryable=True) from exc
 
 
 class FailClosedUserCacheEraser(UserCacheEraser):
@@ -577,9 +526,7 @@ class FailClosedUserCacheEraser(UserCacheEraser):
 
     async def purge_user(self, *, user_id: uuid.UUID) -> None:
         del user_id
-        raise AccountLifecycleFailure(
-            "account_cache_eraser_unavailable", retryable=False
-        )
+        raise AccountLifecycleFailure("account_cache_eraser_unavailable", retryable=False)
 
 
 def _padded_base64(value: str) -> str:
@@ -611,11 +558,7 @@ def _valid_bucket(bucket: str) -> bool:
 
 
 def _valid_object_key(object_key: str) -> bool:
-    return (
-        bool(object_key)
-        and not object_key.startswith("/")
-        and ".." not in object_key.split("/")
-    )
+    return bool(object_key) and not object_key.startswith("/") and ".." not in object_key.split("/")
 
 
 def _storage_failure(status_code: int, operation: str) -> AccountLifecycleFailure:

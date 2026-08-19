@@ -66,8 +66,8 @@ jobs:
       - name: Verify dependency locks are current
         run: |
           pip install uv==0.10.9
-          uv pip compile requirements-v2.txt --output-file /tmp/requirements-v2.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --custom-compile-command 'uv pip compile requirements-v2.txt --output-file requirements-v2.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes'
-          uv pip compile requirements-v2-dev.txt --output-file /tmp/requirements-v2-dev.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --custom-compile-command 'uv pip compile requirements-v2-dev.txt --output-file requirements-v2-dev.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes'
+          uv pip compile requirements-v2.txt --output-file /tmp/requirements-v2.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --exclude-newer 2026-08-08T15:19:00Z --custom-compile-command 'uv pip compile requirements-v2.txt --output-file requirements-v2.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --exclude-newer 2026-08-08T15:19:00Z'
+          uv pip compile requirements-v2-dev.txt --output-file /tmp/requirements-v2-dev.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --exclude-newer 2026-08-08T15:19:00Z --custom-compile-command 'uv pip compile requirements-v2-dev.txt --output-file requirements-v2-dev.lock --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes --exclude-newer 2026-08-08T15:19:00Z'
           diff --unified requirements-v2.lock /tmp/requirements-v2.lock
           diff --unified requirements-v2-dev.lock /tmp/requirements-v2-dev.lock
       - name: Enforce deterministic OpenAPI contract

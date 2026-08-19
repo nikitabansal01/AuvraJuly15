@@ -43,8 +43,7 @@ class UserObservation(V2Base):
         UniqueConstraint("user_id", "client_observation_id"),
         UniqueConstraint("supersedes_id"),
         CheckConstraint(
-            "observation_type IN "
-            "('symptom','body_metric','preference','cycle_event')",
+            "observation_type IN " "('symptom','body_metric','preference','cycle_event')",
             name="valid_type",
         ),
         CheckConstraint(
@@ -52,9 +51,7 @@ class UserObservation(V2Base):
             "'conversation','import')",
             name="valid_source",
         ),
-        CheckConstraint(
-            "(source = 'user') = (source_id IS NULL)", name="source_id_presence"
-        ),
+        CheckConstraint("(source = 'user') = (source_id IS NULL)", name="source_id_presence"),
         CheckConstraint(
             "num_nonnulls(value_numeric, value_codes, value_text) = 1",
             name="exactly_one_value",
@@ -71,9 +68,7 @@ class UserObservation(V2Base):
         CheckConstraint("btrim(code) <> ''", name="code_nonempty"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -85,9 +80,7 @@ class UserObservation(V2Base):
     catalog_version: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="observations.v1"
     )
-    observed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     #: The immutable user-local day the assertion is about, with the timezone
     #: that produced it, so daily aggregates never re-derive a past decision.
     observed_local_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -96,17 +89,13 @@ class UserObservation(V2Base):
     value_unit: Mapped[str | None] = mapped_column(String(16))
     value_codes: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     value_text: Mapped[str | None] = mapped_column(Text)
-    source: Mapped[str] = mapped_column(
-        String(24), nullable=False, server_default="user"
-    )
+    source: Mapped[str] = mapped_column(String(24), nullable=False, server_default="user")
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     #: A correction cites the assertion it replaces rather than rewriting it.
     supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.user_observations.id", ondelete="RESTRICT")
     )
-    client_observation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
+    client_observation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     #: Distinct from observed_at so a plan's cycle snapshot can be replayed
     #: against exactly the observations that existed when it was published.
     recorded_at: Mapped[datetime] = mapped_column(

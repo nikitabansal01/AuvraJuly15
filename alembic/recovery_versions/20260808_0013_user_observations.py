@@ -180,23 +180,15 @@ def downgrade() -> None:
     _reject_lossy_downgrade()
 
     op.execute("DROP VIEW IF EXISTS app.user_observations_live")
-    op.execute(
-        "DROP TRIGGER IF EXISTS guard_user_observation_updates "
-        "ON app.user_observations"
-    )
+    op.execute("DROP TRIGGER IF EXISTS guard_user_observation_updates " "ON app.user_observations")
     op.execute("DROP FUNCTION IF EXISTS app.guard_user_observation_update()")
     op.execute(
-        "DROP TRIGGER IF EXISTS ck_user_observation_correction_scope "
-        "ON app.user_observations"
+        "DROP TRIGGER IF EXISTS ck_user_observation_correction_scope " "ON app.user_observations"
     )
     op.execute("DROP FUNCTION IF EXISTS app.check_user_observation_correction()")
-    op.execute(
-        "DROP FUNCTION IF EXISTS app.assert_user_observation_correction(uuid)"
-    )
+    op.execute("DROP FUNCTION IF EXISTS app.assert_user_observation_correction(uuid)")
 
-    op.execute(
-        "DROP INDEX IF EXISTS app.ix_user_observations_type_day"
-    )
+    op.execute("DROP INDEX IF EXISTS app.ix_user_observations_type_day")
     op.execute("DROP INDEX IF EXISTS app.ix_user_observations_user_code_time")
 
     for constraint in (
@@ -211,9 +203,7 @@ def downgrade() -> None:
         "uq_user_observations_supersedes_id",
         "uq_user_observations_user_id_client_observation_id",
     ):
-        op.execute(
-            f"ALTER TABLE app.user_observations DROP CONSTRAINT {constraint}"
-        )
+        op.execute(f"ALTER TABLE app.user_observations DROP CONSTRAINT {constraint}")
 
     op.execute("DROP FUNCTION IF EXISTS app.is_normalized_code_set(text[])")
 
@@ -225,12 +215,9 @@ def downgrade() -> None:
         """
     )
     op.execute(
-        "UPDATE app.user_observations SET symptom_code = code, "
-        "severity = value_numeric::integer"
+        "UPDATE app.user_observations SET symptom_code = code, " "severity = value_numeric::integer"
     )
-    op.execute(
-        "ALTER TABLE app.user_observations ALTER COLUMN symptom_code SET NOT NULL"
-    )
+    op.execute("ALTER TABLE app.user_observations ALTER COLUMN symptom_code SET NOT NULL")
     op.execute(
         """
         ALTER TABLE app.user_observations

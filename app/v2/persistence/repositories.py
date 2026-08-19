@@ -52,9 +52,7 @@ class ProfileRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get(
-        self, user_id: uuid.UUID, *, for_update: bool = False
-    ) -> UserProfile | None:
+    async def get(self, user_id: uuid.UUID, *, for_update: bool = False) -> UserProfile | None:
         statement = select(UserProfile).where(UserProfile.user_id == user_id)
         if for_update:
             statement = statement.with_for_update()
@@ -95,13 +93,9 @@ class OnboardingRepository:
             statement = statement.with_for_update()
         return await self._session.scalar(statement)
 
-    async def list_assessments(
-        self, session_id: uuid.UUID
-    ) -> list[OnboardingAssessment]:
+    async def list_assessments(self, session_id: uuid.UUID) -> list[OnboardingAssessment]:
         result = await self._session.scalars(
-            select(OnboardingAssessment).where(
-                OnboardingAssessment.session_id == session_id
-            )
+            select(OnboardingAssessment).where(OnboardingAssessment.session_id == session_id)
         )
         return list(result)
 
@@ -129,9 +123,7 @@ class JobRepository:
     def add(self, job: GenerationJob) -> None:
         self._session.add(job)
 
-    async def get_owned(
-        self, job_id: uuid.UUID, user_id: uuid.UUID
-    ) -> GenerationJob | None:
+    async def get_owned(self, job_id: uuid.UUID, user_id: uuid.UUID) -> GenerationJob | None:
         return await self._session.scalar(
             select(GenerationJob).where(
                 GenerationJob.id == job_id,
@@ -148,8 +140,7 @@ class JobRepository:
             .where(
                 GenerationJob.user_id == user_id,
                 GenerationJob.job_type == "plan_generation",
-                GenerationJob.request_payload["local_date"].as_string()
-                == local_date.isoformat(),
+                GenerationJob.request_payload["local_date"].as_string() == local_date.isoformat(),
             )
             .order_by(GenerationJob.created_at.desc(), GenerationJob.id.desc())
             .limit(1)
@@ -160,9 +151,7 @@ class PlanRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_current_ready(
-        self, user_id: uuid.UUID, local_date: date
-    ) -> ActionPlan | None:
+    async def get_current_ready(self, user_id: uuid.UUID, local_date: date) -> ActionPlan | None:
         statement = (
             select(ActionPlan)
             .where(
@@ -220,9 +209,7 @@ class IdempotencyRepository:
                 state=record.state,
                 expires_at=record.expires_at,
             )
-            .on_conflict_do_nothing(
-                index_elements=["scope", "subject", "idempotency_key"]
-            )
+            .on_conflict_do_nothing(index_elements=["scope", "subject", "idempotency_key"])
             .returning(IdempotencyRecord.id)
         )
         inserted_id = (await self._session.execute(statement)).scalar_one_or_none()

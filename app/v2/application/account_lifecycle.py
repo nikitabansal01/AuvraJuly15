@@ -65,9 +65,7 @@ class SubjectFingerprint(Protocol):
 
 
 class AccountExportBuilder(Protocol):
-    async def build(
-        self, *, export_id: uuid.UUID, user_id: uuid.UUID
-    ) -> tuple[bytes, str]:
+    async def build(self, *, export_id: uuid.UUID, user_id: uuid.UUID) -> tuple[bytes, str]:
         """Return encrypted export bytes and a SHA-256 manifest checksum; never a URL."""
 
 
@@ -167,9 +165,7 @@ async def _active_user(uow: SqlAlchemyUnitOfWork, principal: VerifiedPrincipal) 
     return user
 
 
-async def _deletion_user(
-    uow: SqlAlchemyUnitOfWork, principal: VerifiedPrincipal
-) -> User:
+async def _deletion_user(uow: SqlAlchemyUnitOfWork, principal: VerifiedPrincipal) -> User:
     """Resolve a deletion owner while allowing only an idempotent retry in pending state."""
 
     user = await uow.users.get_by_subject(
@@ -329,9 +325,7 @@ async def request_account_deletion(
     )
     for step_name in ERASURE_STEPS:
         uow.session.add(
-            DeletionStep(
-                id=uuid.uuid4(), deletion_request_id=request_id, step_name=step_name
-            )
+            DeletionStep(id=uuid.uuid4(), deletion_request_id=request_id, step_name=step_name)
         )
     uow.outbox.add(
         OutboxEvent(
@@ -344,9 +338,7 @@ async def request_account_deletion(
         )
     )
     user.status = UserStatus.DELETION_PENDING.value
-    response = DeletionResponse(
-        deletion_request_id=request_id, job_id=job_id, state="requested"
-    )
+    response = DeletionResponse(deletion_request_id=request_id, job_id=job_id, state="requested")
     _complete_idempotent(
         decision, response_status=202, response_body=response.model_dump(mode="json")
     )
@@ -388,9 +380,7 @@ class AccountLifecycleJobRunner:
                 return await self._export(job.id, job.user_id, job.request_payload)
             if job.job_type == "account_deletion":
                 return await self._delete(job.id, job.user_id, job.request_payload)
-            raise AccountLifecycleFailure(
-                "unsupported_account_lifecycle_job", retryable=False
-            )
+            raise AccountLifecycleFailure("unsupported_account_lifecycle_job", retryable=False)
         except AccountLifecycleFailure as exc:
             await self._record_lifecycle_failure(job, exc)
             raise
@@ -412,18 +402,10 @@ class AccountLifecycleJobRunner:
     ) -> ExportWork | None:
         async with self._uow_factory() as uow:
             record = await uow.session.scalar(
-                select(AccountExport)
-                .where(AccountExport.id == export_id)
-                .with_for_update()
+                select(AccountExport).where(AccountExport.id == export_id).with_for_update()
             )
-            if (
-                record is None
-                or record.user_id != user_id
-                or record.generation_job_id != job_id
-            ):
-                raise AccountLifecycleFailure(
-                    "account_export_context_unavailable", retryable=False
-                )
+            if record is None or record.user_id != user_id or record.generation_job_id != job_id:
+                raise AccountLifecycleFailure("account_export_context_unavailable", retryable=False)
             if record.state == "ready":
                 await uow.commit()
                 return None
@@ -437,32 +419,20 @@ class AccountLifecycleJobRunner:
             await uow.commit()
         return ExportWork(export_id=export_id, expires_at=expires_at)
 
-    async def _build_export(
-        self, work: ExportWork, user_id: uuid.UUID
-    ) -> tuple[bytes, str]:
+    async def _build_export(self, work: ExportWork, user_id: uuid.UUID) -> tuple[bytes, str]:
         try:
-            content, checksum = await self._exports.build(
-                export_id=work.export_id, user_id=user_id
-            )
+            content, checksum = await self._exports.build(export_id=work.export_id, user_id=user_id)
         except AccountLifecycleFailure:
             raise
         except Exception as exc:
-            raise AccountLifecycleFailure(
-                "account_export_build_failed", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("account_export_build_failed", retryable=True) from exc
         if not isinstance(content, bytes) or not isinstance(checksum, str):
-            raise AccountLifecycleFailure(
-                "account_export_invalid_payload", retryable=False
-            )
+            raise AccountLifecycleFailure("account_export_invalid_payload", retryable=False)
         if hashlib.sha256(content).hexdigest() != checksum:
-            raise AccountLifecycleFailure(
-                "account_export_checksum_mismatch", retryable=False
-            )
+            raise AccountLifecycleFailure("account_export_checksum_mismatch", retryable=False)
         return content, checksum
 
-    async def _store_export(
-        self, work: ExportWork, content: bytes
-    ) -> PrivateExportAsset:
+    async def _store_export(self, work: ExportWork, content: bytes) -> PrivateExportAsset:
         try:
             asset = await self._ports.storage.put_export(
                 export_id=work.export_id, content=content, expires_at=work.expires_at
@@ -470,13 +440,9 @@ class AccountLifecycleJobRunner:
         except AccountLifecycleFailure:
             raise
         except Exception as exc:
-            raise AccountLifecycleFailure(
-                "account_export_storage_failed", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("account_export_storage_failed", retryable=True) from exc
         if not _valid_private_export_asset(asset):
-            raise AccountLifecycleFailure(
-                "account_export_storage_invalid", retryable=False
-            )
+            raise AccountLifecycleFailure("account_export_storage_invalid", retryable=False)
         return asset
 
     async def _publish_export(
@@ -488,14 +454,10 @@ class AccountLifecycleJobRunner:
     ) -> None:
         async with self._uow_factory() as uow:
             record = await uow.session.scalar(
-                select(AccountExport)
-                .where(AccountExport.id == work.export_id)
-                .with_for_update()
+                select(AccountExport).where(AccountExport.id == work.export_id).with_for_update()
             )
             if record is None or record.user_id != user_id:
-                raise AccountLifecycleFailure(
-                    "account_export_context_unavailable", retryable=False
-                )
+                raise AccountLifecycleFailure("account_export_context_unavailable", retryable=False)
             if record.expires_at <= datetime.now(UTC):
                 record.state, record.failure_code = "expired", "account_export_expired"
                 await uow.commit()
@@ -555,9 +517,7 @@ class AccountLifecycleJobRunner:
     ) -> DeletionContext:
         async with self._uow_factory() as uow:
             request = await uow.session.scalar(
-                select(DeletionRequest)
-                .where(DeletionRequest.id == request_id)
-                .with_for_update()
+                select(DeletionRequest).where(DeletionRequest.id == request_id).with_for_update()
             )
             user = await uow.session.get(User, user_id, with_for_update=True)
             if (
@@ -601,9 +561,7 @@ class AccountLifecycleJobRunner:
                     )
                 )
                 if verified_count != len(previous_steps):
-                    raise AccountLifecycleFailure(
-                        "deletion_step_order_violation", retryable=False
-                    )
+                    raise AccountLifecycleFailure("deletion_step_order_violation", retryable=False)
             step = await uow.session.scalar(
                 select(DeletionStep)
                 .where(
@@ -677,13 +635,9 @@ class AccountLifecycleJobRunner:
             await self._record_step_failure(
                 request_id, "postgres_graph_erased", "postgres_erasure_failed"
             )
-            raise AccountLifecycleFailure(
-                "postgres_erasure_failed", retryable=True
-            ) from exc
+            raise AccountLifecycleFailure("postgres_erasure_failed", retryable=True) from exc
 
-    async def _record_step_failure(
-        self, request_id: uuid.UUID, step_name: str, code: str
-    ) -> None:
+    async def _record_step_failure(self, request_id: uuid.UUID, step_name: str, code: str) -> None:
         async with self._uow_factory() as uow:
             step = await uow.session.scalar(
                 select(DeletionStep)
@@ -704,9 +658,7 @@ class AccountLifecycleJobRunner:
                 )
             await uow.commit()
 
-    async def _record_lifecycle_failure(
-        self, job: Any, failure: AccountLifecycleFailure
-    ) -> None:
+    async def _record_lifecycle_failure(self, job: Any, failure: AccountLifecycleFailure) -> None:
         """Persist only a stable code; no provider exception or health content."""
 
         if job.job_type == "account_export":
@@ -715,9 +667,7 @@ class AccountLifecycleJobRunner:
                 return
             async with self._uow_factory() as uow:
                 record = await uow.session.scalar(
-                    select(AccountExport)
-                    .where(AccountExport.id == export_id)
-                    .with_for_update()
+                    select(AccountExport).where(AccountExport.id == export_id).with_for_update()
                 )
                 if record is not None and record.state not in {"ready", "expired"}:
                     record.failure_code = failure.code
@@ -740,9 +690,7 @@ def _uuid_payload(payload: Mapping[str, Any], name: str) -> uuid.UUID:
     try:
         return uuid.UUID(str(payload[name]))
     except (KeyError, TypeError, ValueError) as exc:
-        raise AccountLifecycleFailure(
-            "invalid_account_lifecycle_payload", retryable=False
-        ) from exc
+        raise AccountLifecycleFailure("invalid_account_lifecycle_payload", retryable=False) from exc
 
 
 def _try_uuid_payload(payload: Mapping[str, Any], name: str) -> uuid.UUID | None:

@@ -56,15 +56,16 @@ def test_unknown_code_is_rejected() -> None:
 
 
 def test_code_declared_under_the_wrong_type_is_rejected() -> None:
-    problem = validation_error(
-        code="weight_kg", observation_type=SYMPTOM, numeric=60, unit="kg"
-    )
+    problem = validation_error(code="weight_kg", observation_type=SYMPTOM, numeric=60, unit="kg")
     assert "is a body_metric observation" in problem
 
 
 def test_exactly_one_value_is_required() -> None:
     both = validation_error(
-        code="weight_kg", observation_type=BODY_METRIC, numeric=60, unit="kg",
+        code="weight_kg",
+        observation_type=BODY_METRIC,
+        numeric=60,
+        unit="kg",
         codes=["x"],
     )
     assert both == "An observation records exactly one value."
@@ -76,9 +77,9 @@ def test_exactly_one_value_is_required() -> None:
     "value, unit, expected_ok",
     [
         (60.0, "kg", True),
-        (19.0, "kg", False),   # below minimum
+        (19.0, "kg", False),  # below minimum
         (401.0, "kg", False),  # above maximum
-        (60.0, "lb", False),   # wrong unit
+        (60.0, "lb", False),  # wrong unit
     ],
 )
 def test_numeric_bounds_and_unit_are_enforced(value, unit, expected_ok) -> None:
@@ -89,21 +90,24 @@ def test_numeric_bounds_and_unit_are_enforced(value, unit, expected_ok) -> None:
 
 
 def test_severity_must_be_a_whole_number() -> None:
-    assert validation_error(
-        code="cramps", observation_type=SYMPTOM, numeric=7, unit=SEVERITY_UNIT
-    ) is None
+    assert (
+        validation_error(code="cramps", observation_type=SYMPTOM, numeric=7, unit=SEVERITY_UNIT)
+        is None
+    )
     assert "whole number" in validation_error(
         code="cramps", observation_type=SYMPTOM, numeric=7.5, unit=SEVERITY_UNIT
     )
-    assert validation_error(
-        code="cramps", observation_type=SYMPTOM, numeric=11, unit=SEVERITY_UNIT
-    ) is not None
+    assert (
+        validation_error(code="cramps", observation_type=SYMPTOM, numeric=11, unit=SEVERITY_UNIT)
+        is not None
+    )
 
 
 def test_single_select_rejects_multiple_choices() -> None:
-    assert validation_error(
-        code="diet_preference", observation_type=PREFERENCE, codes=["vegan"]
-    ) is None
+    assert (
+        validation_error(code="diet_preference", observation_type=PREFERENCE, codes=["vegan"])
+        is None
+    )
     assert "single choice" in validation_error(
         code="diet_preference",
         observation_type=PREFERENCE,
@@ -112,11 +116,14 @@ def test_single_select_rejects_multiple_choices() -> None:
 
 
 def test_multi_select_accepts_several_but_rejects_unknown_choices() -> None:
-    assert validation_error(
-        code="food_allergies",
-        observation_type=PREFERENCE,
-        codes=["dairy", "peanuts"],
-    ) is None
+    assert (
+        validation_error(
+            code="food_allergies",
+            observation_type=PREFERENCE,
+            codes=["dairy", "peanuts"],
+        )
+        is None
+    )
     assert "is not a choice" in validation_error(
         code="food_allergies", observation_type=PREFERENCE, codes=["plutonium"]
     )

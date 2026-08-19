@@ -78,9 +78,7 @@ class PostgresJobWorker:
         close_resources: ResourceCloser | None = None,
     ) -> None:
         if lease_seconds < 6:
-            raise ValueError(
-                "lease_seconds must allow at least two heartbeat intervals"
-            )
+            raise ValueError("lease_seconds must allow at least two heartbeat intervals")
         if not job_type:
             raise ValueError("job_type is required for a least-privilege worker")
         self.worker_id = worker_id
@@ -210,9 +208,7 @@ class PostgresJobWorker:
         except LeaseLost:
             return True
         except Exception as exc:
-            await self._retry_or_dead_letter(
-                uow, job, self._error_code(exc), self._retryable(exc)
-            )
+            await self._retry_or_dead_letter(uow, job, self._error_code(exc), self._retryable(exc))
             return True
 
         # A materializer may already have atomically published the plan and set
@@ -347,9 +343,7 @@ class PostgresJobWorker:
 MAX_IDLE_POLL_SECONDS = 30.0
 
 
-def next_poll_delay(
-    current: float, *, worked: bool, base: float, maximum: float
-) -> float:
+def next_poll_delay(current: float, *, worked: bool, base: float, maximum: float) -> float:
     """Poll promptly while there is work, back off geometrically when idle.
 
     Responsiveness is preserved where it matters: the delay resets to `base`
@@ -368,9 +362,7 @@ async def run_worker(worker: PostgresJobWorker, *, poll_seconds: float = 1.0) ->
     await run_workers((worker,), poll_seconds=poll_seconds)
 
 
-async def run_workers(
-    workers: tuple[PostgresJobWorker, ...], *, poll_seconds: float = 1.0
-) -> None:
+async def run_workers(workers: tuple[PostgresJobWorker, ...], *, poll_seconds: float = 1.0) -> None:
     """Route distinct job types in one SIGTERM-aware process."""
 
     if not workers:
@@ -409,9 +401,7 @@ async def _run_worker_loop(
             await anyio.sleep(delay)
 
 
-async def _run_one_with_shutdown_drain(
-    worker: PostgresJobWorker, stopping: anyio.Event
-) -> bool:
+async def _run_one_with_shutdown_drain(worker: PostgresJobWorker, stopping: anyio.Event) -> bool:
     """Apply the drain deadline only after SIGTERM, never to normal work."""
 
     done = anyio.Event()
@@ -445,16 +435,12 @@ def _freeze_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
     def freeze(value: Any) -> Any:
         if isinstance(value, dict):
-            return MappingProxyType(
-                {str(key): freeze(item) for key, item in value.items()}
-            )
+            return MappingProxyType({str(key): freeze(item) for key, item in value.items()})
         if isinstance(value, list):
             return tuple(freeze(item) for item in value)
         return value
 
     frozen = freeze(dict(payload))
-    if not isinstance(
-        frozen, Mapping
-    ):  # defensive: JSON object is required by the schema
+    if not isinstance(frozen, Mapping):  # defensive: JSON object is required by the schema
         raise TerminalJobFailure("invalid_job_payload")
     return frozen

@@ -219,9 +219,7 @@ def _apply_defaults(tables) -> None:
         if "id" in table.c:
             table.c.id.server_default = DefaultClause(text("gen_random_uuid()"))
     for (schema, table_name, column), value in _DEFAULTS.items():
-        tables[f"{schema}.{table_name}"].c[column].server_default = DefaultClause(
-            text(value)
-        )
+        tables[f"{schema}.{table_name}"].c[column].server_default = DefaultClause(text(value))
 
 
 def _rename_unique_constraints(tables) -> None:

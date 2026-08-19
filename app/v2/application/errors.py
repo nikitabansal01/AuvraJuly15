@@ -50,9 +50,7 @@ def conflict(code: str, detail: str) -> ApplicationProblem:
 
 
 def precondition_required(detail: str) -> ApplicationProblem:
-    return ApplicationProblem(
-        428, "Precondition Required", "precondition_required", detail
-    )
+    return ApplicationProblem(428, "Precondition Required", "precondition_required", detail)
 
 
 def precondition_failed(detail: str) -> ApplicationProblem:

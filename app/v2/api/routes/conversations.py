@@ -54,9 +54,7 @@ async def list_my_conversations(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> ConversationPageResponse:
-    return await list_conversations(
-        uow, principal=principal, limit=limit, cursor=cursor
-    )
+    return await list_conversations(uow, principal=principal, limit=limit, cursor=cursor)
 
 
 @router.post(
@@ -79,9 +77,7 @@ async def create_my_conversation(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> ConversationResponse:
-    result = await create_conversation(
-        uow, principal=principal, key=idempotency_key, request=body
-    )
+    result = await create_conversation(uow, principal=principal, key=idempotency_key, request=body)
     response.headers["ETag"] = f'"{result.revision}"'
     return result
 

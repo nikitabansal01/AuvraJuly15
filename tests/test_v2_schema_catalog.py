@@ -29,9 +29,7 @@ def test_v2_metadata_has_canonical_catalog() -> None:
         "ops.deletion_steps",
         "ops.deletion_receipts",
     }
-    actual = {
-        f"{table.schema}.{table.name}" for table in V2Base.metadata.tables.values()
-    }
+    actual = {f"{table.schema}.{table.name}" for table in V2Base.metadata.tables.values()}
     assert expected <= actual
     assert "question_id" in V2Base.metadata.tables["app.weekly_checkin_responses"].c
     deletion_request = V2Base.metadata.tables["ops.deletion_requests"]
@@ -40,9 +38,7 @@ def test_v2_metadata_has_canonical_catalog() -> None:
         for constraint in deletion_request.constraints
         if hasattr(constraint, "sqltext")
     )
-    assert "uq_deletion_requests_active_user" in {
-        index.name for index in deletion_request.indexes
-    }
+    assert "uq_deletion_requests_active_user" in {index.name for index in deletion_request.indexes}
 
 
 def test_account_deletion_has_one_canonical_command() -> None:
@@ -65,10 +61,7 @@ def test_postgres_reflection_matches_v2_metadata() -> None:
     engine = create_engine(os.environ["AUVRA_TEST_DATABASE_URL"])
     inspector = inspect(engine)
     for table in V2Base.metadata.tables.values():
-        columns = {
-            item["name"]
-            for item in inspector.get_columns(table.name, schema=table.schema)
-        }
+        columns = {item["name"] for item in inspector.get_columns(table.name, schema=table.schema)}
         assert set(table.c.keys()) <= columns
         reflected_fks = {
             (fk["constrained_columns"][0], fk["referred_table"])
@@ -118,20 +111,16 @@ def test_postgres_engagement_ledger_constraints_match_metadata_names() -> None:
 
     inspector = inspect(create_engine(os.environ["AUVRA_TEST_DATABASE_URL"]))
     refresh_checks = {
-        item["name"]
-        for item in inspector.get_check_constraints("plan_refreshes", schema="app")
+        item["name"] for item in inspector.get_check_constraints("plan_refreshes", schema="app")
     }
     refresh_unique = {
-        item["name"]
-        for item in inspector.get_unique_constraints("plan_refreshes", schema="app")
+        item["name"] for item in inspector.get_unique_constraints("plan_refreshes", schema="app")
     }
     streak_checks = {
-        item["name"]
-        for item in inspector.get_check_constraints("streak_days", schema="app")
+        item["name"] for item in inspector.get_check_constraints("streak_days", schema="app")
     }
     streak_unique = {
-        item["name"]
-        for item in inspector.get_unique_constraints("streak_days", schema="app")
+        item["name"] for item in inspector.get_unique_constraints("streak_days", schema="app")
     }
     assert {
         "ck_plan_refreshes_nonempty_reason",

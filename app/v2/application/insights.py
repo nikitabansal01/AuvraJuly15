@@ -76,9 +76,7 @@ async def _user_and_local_date(uow, principal, now):
     return user, profile.timezone, now.astimezone(ZoneInfo(profile.timezone)).date()
 
 
-def _resolved_range(
-    *, start: date | None, end: date | None, today: date
-) -> tuple[date, date]:
+def _resolved_range(*, start: date | None, end: date | None, today: date) -> tuple[date, date]:
     resolved_end = end or today
     resolved_start = start or resolved_end - timedelta(days=DEFAULT_REPORT_DAYS - 1)
     problem = range_error(start=resolved_start, end=resolved_end)
@@ -96,9 +94,7 @@ async def _closed_day_adherence(
         await session.execute(
             select(
                 DailyReview.local_date,
-                func.count()
-                .filter(DailyReviewItem.outcome == "completed")
-                .label("completed"),
+                func.count().filter(DailyReviewItem.outcome == "completed").label("completed"),
                 func.count().label("eligible"),
             )
             .join(DailyReviewItem, DailyReviewItem.daily_review_id == DailyReview.id)
@@ -113,9 +109,7 @@ async def _closed_day_adherence(
     return {row.local_date: (row.completed, row.eligible) for row in rows}
 
 
-async def _streak_states(
-    session, user_id: uuid.UUID, start: date, end: date
-) -> dict[date, str]:
+async def _streak_states(session, user_id: uuid.UUID, start: date, end: date) -> dict[date, str]:
     rows = (
         await session.execute(
             select(StreakLedger.local_date, StreakLedger.adjudication_state).where(
@@ -167,9 +161,7 @@ def _as_buckets(
     ordered = []
     for key in sorted(buckets):
         slot = buckets[key]
-        bucket_end = (
-            window_end if grain == ALL else min(bucket_end_for(key, grain), window_end)
-        )
+        bucket_end = window_end if grain == ALL else min(bucket_end_for(key, grain), window_end)
         ordered.append(
             Bucket(
                 bucket_start=key,
@@ -235,18 +227,14 @@ async def progress_report(
 
     now = now or datetime.now(UTC)
     if period not in PERIODS:
-        raise unprocessable_content(
-            "report_period", "Period must be week, month or all."
-        )
+        raise unprocessable_content("report_period", "Period must be week, month or all.")
     user, timezone, today = await _user_and_local_date(uow, principal, now)
     window_start, window_end = _resolved_range(start=start, end=end, today=today)
 
     session = uow.session
     buckets = _as_buckets(
         _accumulate_buckets(
-            adherence=await _closed_day_adherence(
-                session, user.id, window_start, window_end
-            ),
+            adherence=await _closed_day_adherence(session, user.id, window_start, window_end),
             states=await _streak_states(session, user.id, window_start, window_end),
             window_start=window_start,
             window_end=window_end,
@@ -287,9 +275,7 @@ async def _category_adherence(
         await session.execute(
             select(
                 ActionPlanItem.category,
-                func.count()
-                .filter(DailyReviewItem.outcome == "completed")
-                .label("completed"),
+                func.count().filter(DailyReviewItem.outcome == "completed").label("completed"),
                 func.count().label("presented"),
             )
             .select_from(DailyReviewItem)
@@ -343,9 +329,7 @@ async def _symptom_patterns(
         SymptomPattern(
             code=row.code,
             occurrences=row.occurrences,
-            mean_severity=(
-                float(row.mean_severity) if row.mean_severity is not None else None
-            ),
+            mean_severity=(float(row.mean_severity) if row.mean_severity is not None else None),
             sufficient=is_sufficient(row.occurrences),
         )
         for row in rows
@@ -478,8 +462,7 @@ async def insights_summary(
         adherence_by_category=categories,
         top_symptoms=patterns[:5],
         phase_distribution=[
-            {"phase": phase, "days": days}
-            for phase, days in sorted(phase_days.items())
+            {"phase": phase, "days": days} for phase, days in sorted(phase_days.items())
         ],
         days_observed=observed_days or 0,
         sufficient=is_sufficient(observed_days or 0),

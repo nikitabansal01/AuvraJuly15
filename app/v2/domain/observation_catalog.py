@@ -102,8 +102,16 @@ OBSERVATION_CATALOG: tuple[Observable, ...] = (
         PREFERENCE,
         "Food allergies",
         (
-            "dairy", "eggs", "fish", "gluten", "peanuts", "sesame",
-            "shellfish", "soy", "tree_nuts", "none",
+            "dairy",
+            "eggs",
+            "fish",
+            "gluten",
+            "peanuts",
+            "sesame",
+            "shellfish",
+            "soy",
+            "tree_nuts",
+            "none",
         ),
         multi=True,
     ),
@@ -112,8 +120,14 @@ OBSERVATION_CATALOG: tuple[Observable, ...] = (
         PREFERENCE,
         "Cuisines",
         (
-            "south_indian", "north_indian", "chinese", "continental",
-            "japanese", "mediterranean", "mexican", "thai",
+            "south_indian",
+            "north_indian",
+            "chinese",
+            "continental",
+            "japanese",
+            "mediterranean",
+            "mexican",
+            "thai",
         ),
         multi=True,
     ),
@@ -195,9 +209,7 @@ def _codes_error(observable: Observable, values: list[str] | None) -> str | None
 _VALUE_VALIDATORS = {
     NUMERIC: lambda o, n, u, c, t: _numeric_error(o, n, u),
     CODES: lambda o, n, u, c, t: _codes_error(o, c),
-    TEXT: lambda o, n, u, c, t: (
-        None if t is not None else f"'{o.code}' records text."
-    ),
+    TEXT: lambda o, n, u, c, t: (None if t is not None else f"'{o.code}' records text."),
 }
 
 
@@ -222,16 +234,13 @@ def validation_error(
         return f"'{code}' is not a known observation."
     if observable.observation_type != observation_type:
         return (
-            f"'{code}' is a {observable.observation_type} observation, "
-            f"not {observation_type}."
+            f"'{code}' is a {observable.observation_type} observation, " f"not {observation_type}."
         )
     if len([v for v in (numeric, codes, text) if v is not None]) != 1:
         return "An observation records exactly one value."
     if note is not None and len(note) > MAX_NOTE_LENGTH:
         return "Your note is too long."
-    return _VALUE_VALIDATORS[observable.value_kind](
-        observable, numeric, unit, codes, text
-    )
+    return _VALUE_VALIDATORS[observable.value_kind](observable, numeric, unit, codes, text)
 
 
 def body_mass_index(*, weight_kg: float | None, height_cm: float | None) -> float | None:
@@ -261,9 +270,7 @@ def bmi_band(bmi: float | None) -> str | None:
     return "well_above_typical_range"
 
 
-def waist_height_ratio(
-    *, waist_cm: float | None, height_cm: float | None
-) -> float | None:
+def waist_height_ratio(*, waist_cm: float | None, height_cm: float | None) -> float | None:
     if not waist_cm or not height_cm:
         return None
     return round(waist_cm / height_cm, 3)

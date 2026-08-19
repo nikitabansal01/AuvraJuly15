@@ -37,9 +37,7 @@ async def read_weekly_checkins(
     principal: VerifiedPrincipal = Depends(get_verified_principal),
     uow: SqlAlchemyUnitOfWork = Depends(get_uow),
 ) -> WeeklyCheckinPageResponse:
-    return await list_weekly_checkins(
-        uow, principal=principal, limit=limit, cursor=cursor
-    )
+    return await list_weekly_checkins(uow, principal=principal, limit=limit, cursor=cursor)
 
 
 @router.get(

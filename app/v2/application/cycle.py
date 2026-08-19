@@ -72,9 +72,7 @@ async def evaluate_for_user(
 ) -> CycleEvaluation:
     """Shared derivation used by both the route and plan generation."""
 
-    starts = await _live_period_starts(
-        uow.session, user_id, as_of_recorded=as_of_recorded
-    )
+    starts = await _live_period_starts(uow.session, user_id, as_of_recorded=as_of_recorded)
     return evaluate(
         period_starts=starts,
         declared_bucket=await _declared_bucket(uow.session, user_id, uow),

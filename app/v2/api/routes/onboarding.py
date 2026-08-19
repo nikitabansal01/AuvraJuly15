@@ -60,9 +60,7 @@ async def write_assessment(
     session_id: uuid.UUID,
     body: AssessmentWriteRequest,
     response: Response,
-    proof_token: str = Header(
-        alias="X-Onboarding-Proof", min_length=32, max_length=256
-    ),
+    proof_token: str = Header(alias="X-Onboarding-Proof", min_length=32, max_length=256),
     idempotency_key: str = Header(
         alias="Idempotency-Key",
         min_length=8,
@@ -93,9 +91,7 @@ async def write_assessment(
 async def claim_session(
     session_id: uuid.UUID,
     body: ClaimOnboardingRequest,
-    proof_token: str = Header(
-        alias="X-Onboarding-Proof", min_length=32, max_length=256
-    ),
+    proof_token: str = Header(alias="X-Onboarding-Proof", min_length=32, max_length=256),
     idempotency_key: str = Header(
         alias="Idempotency-Key",
         min_length=8,

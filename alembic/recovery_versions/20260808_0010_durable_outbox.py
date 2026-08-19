@@ -53,9 +53,7 @@ def upgrade() -> None:
         sa.Column("max_attempts", sa.Integer(), nullable=False, server_default="5"),
         schema="ops",
     )
-    op.add_column(
-        "outbox_events", sa.Column("lease_owner", sa.String(160)), schema="ops"
-    )
+    op.add_column("outbox_events", sa.Column("lease_owner", sa.String(160)), schema="ops")
     op.add_column(
         "outbox_events",
         sa.Column("lease_expires_at", sa.DateTime(timezone=True)),
@@ -106,9 +104,7 @@ def downgrade() -> None:
         """
     )
     op.drop_constraint("ck_outbox_events_valid_state", "outbox_events", schema="ops")
-    op.drop_constraint(
-        "ck_outbox_events_positive_max_attempts", "outbox_events", schema="ops"
-    )
+    op.drop_constraint("ck_outbox_events_positive_max_attempts", "outbox_events", schema="ops")
     op.drop_column("outbox_events", "finished_at", schema="ops")
     op.drop_column("outbox_events", "error_code", schema="ops")
     op.drop_column("outbox_events", "heartbeat_at", schema="ops")

@@ -53,9 +53,7 @@ _FREEZE_SOURCE_TYPE = "streak_freeze"
 
 
 def _claim_source_id(user_id: uuid.UUID, reward: Reward) -> uuid.UUID:
-    return uuid.uuid5(
-        _REWARD_CLAIM_NAMESPACE, f"{user_id}:{reward.reward_id}:{CATALOG_VERSION}"
-    )
+    return uuid.uuid5(_REWARD_CLAIM_NAMESPACE, f"{user_id}:{reward.reward_id}:{CATALOG_VERSION}")
 
 
 async def _user_and_local_date(
@@ -108,9 +106,7 @@ async def _balances(session, user_id: uuid.UUID) -> list[RewardBalance]:
     ]
 
 
-async def _claimed_at_by_reward(
-    session, user_id: uuid.UUID
-) -> dict[uuid.UUID, datetime]:
+async def _claimed_at_by_reward(session, user_id: uuid.UUID) -> dict[uuid.UUID, datetime]:
     rows = (
         await session.execute(
             select(RewardLedger.source_id, RewardLedger.created_at).where(
@@ -240,9 +236,7 @@ async def claim_reward(
         ],
         claimed_at=now,
     )
-    _complete_idempotent(
-        decision, response_status=201, response_body=body.model_dump(mode="json")
-    )
+    _complete_idempotent(decision, response_status=201, response_body=body.model_dump(mode="json"))
     await uow.commit()
     return body
 
@@ -259,9 +253,7 @@ async def redeem_streak_freeze(
     user, local = await _user_and_local_date(uow, principal, now)
     profile = await uow.profiles.get(user.id)
 
-    rejection = freeze_rejection_reason(
-        local_date=request.local_date, current_local_date=local
-    )
+    rejection = freeze_rejection_reason(local_date=request.local_date, current_local_date=local)
     if rejection is not None:
         raise unprocessable_content("freeze_window", rejection)
 
@@ -342,8 +334,6 @@ async def redeem_streak_freeze(
         freezes_remaining=(balance or 0) - 1,
         streak_days=closed_streak_length(days, current_local_date=local),
     )
-    _complete_idempotent(
-        decision, response_status=201, response_body=body.model_dump(mode="json")
-    )
+    _complete_idempotent(decision, response_status=201, response_body=body.model_dump(mode="json"))
     await uow.commit()
     return body

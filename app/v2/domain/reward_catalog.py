@@ -58,28 +58,127 @@ class Reward:
 #: Ported verbatim from the retained legacy product configuration so streak
 #: thresholds and titles users already saw do not silently change.
 REWARD_CATALOG: tuple[Reward, ...] = (
-    Reward("streak_freeze", "Streak freeze", "seed", "freeze_token", 3,
-           ASSET_FREEZE, FREEZE_ASSET_KEY, 1, "🧊"),
-    Reward("diet_prefs", "Diet preferences", "seed", "personalization", 7,
-           ASSET_ENTITLEMENT, "diet_prefs", 1, "🥗"),
-    Reward("food_allergies", "Food Allergies", "seed", "personalization", 8,
-           ASSET_ENTITLEMENT, "food_allergies", 1, "🥜"),
-    Reward("cuisine_prefs", "Cuisine preferences", "seed", "personalization", 12,
-           ASSET_ENTITLEMENT, "cuisine_prefs", 1, "🥘"),
-    Reward("symptom_patterns", "Symptom patterns", "seed", "insight", 14,
-           ASSET_ENTITLEMENT, "symptom_patterns", 1, "✨"),
-    Reward("dine_out", "Dine out habits", "seed", "personalization", 14,
-           ASSET_ENTITLEMENT, "dine_out", 1, "🍔"),
-    Reward("plan_refresh_2x", "2x plan refresh", "rise", "refresh_token", 16,
-           ASSET_ENTITLEMENT, "plan_refresh_2x", 1, "🧊"),
-    Reward("ethnicity", "Ethnicity/cultural habits", "rise", "personalization", 18,
-           ASSET_ENTITLEMENT, "ethnicity", 1, "🌏"),
-    Reward("bmi_ratio", "BMI/Waist ratio", "rise", "personalization", 18,
-           ASSET_ENTITLEMENT, "bmi_ratio", 1, "⚖️"),
-    Reward("cravings_healthy", "Cravings made healthy", "rise", "personalization", 18,
-           ASSET_ENTITLEMENT, "cravings_healthy", 1, "🥮"),
-    Reward("first_improvement", "First signs of improvement", "rise", "badge", 21,
-           ASSET_ENTITLEMENT, "first_improvement", 1, "✨"),
+    Reward(
+        "streak_freeze",
+        "Streak freeze",
+        "seed",
+        "freeze_token",
+        3,
+        ASSET_FREEZE,
+        FREEZE_ASSET_KEY,
+        1,
+        "🧊",
+    ),
+    Reward(
+        "diet_prefs",
+        "Diet preferences",
+        "seed",
+        "personalization",
+        7,
+        ASSET_ENTITLEMENT,
+        "diet_prefs",
+        1,
+        "🥗",
+    ),
+    Reward(
+        "food_allergies",
+        "Food Allergies",
+        "seed",
+        "personalization",
+        8,
+        ASSET_ENTITLEMENT,
+        "food_allergies",
+        1,
+        "🥜",
+    ),
+    Reward(
+        "cuisine_prefs",
+        "Cuisine preferences",
+        "seed",
+        "personalization",
+        12,
+        ASSET_ENTITLEMENT,
+        "cuisine_prefs",
+        1,
+        "🥘",
+    ),
+    Reward(
+        "symptom_patterns",
+        "Symptom patterns",
+        "seed",
+        "insight",
+        14,
+        ASSET_ENTITLEMENT,
+        "symptom_patterns",
+        1,
+        "✨",
+    ),
+    Reward(
+        "dine_out",
+        "Dine out habits",
+        "seed",
+        "personalization",
+        14,
+        ASSET_ENTITLEMENT,
+        "dine_out",
+        1,
+        "🍔",
+    ),
+    Reward(
+        "plan_refresh_2x",
+        "2x plan refresh",
+        "rise",
+        "refresh_token",
+        16,
+        ASSET_ENTITLEMENT,
+        "plan_refresh_2x",
+        1,
+        "🧊",
+    ),
+    Reward(
+        "ethnicity",
+        "Ethnicity/cultural habits",
+        "rise",
+        "personalization",
+        18,
+        ASSET_ENTITLEMENT,
+        "ethnicity",
+        1,
+        "🌏",
+    ),
+    Reward(
+        "bmi_ratio",
+        "BMI/Waist ratio",
+        "rise",
+        "personalization",
+        18,
+        ASSET_ENTITLEMENT,
+        "bmi_ratio",
+        1,
+        "⚖️",
+    ),
+    Reward(
+        "cravings_healthy",
+        "Cravings made healthy",
+        "rise",
+        "personalization",
+        18,
+        ASSET_ENTITLEMENT,
+        "cravings_healthy",
+        1,
+        "🥮",
+    ),
+    Reward(
+        "first_improvement",
+        "First signs of improvement",
+        "rise",
+        "badge",
+        21,
+        ASSET_ENTITLEMENT,
+        "first_improvement",
+        1,
+        "✨",
+    ),
 )
 
 #: Which observation codes each personalization reward unlocks. Slice D reads
@@ -143,17 +242,12 @@ def freeze_window(current_local_date: date) -> tuple[date, date]:
     return latest - timedelta(days=FREEZE_LOOKBACK_DAYS - 1), latest
 
 
-def freeze_rejection_reason(
-    *, local_date: date, current_local_date: date
-) -> str | None:
+def freeze_rejection_reason(*, local_date: date, current_local_date: date) -> str | None:
     """Return why this date cannot be frozen, or None when it may be."""
 
     earliest, latest = freeze_window(current_local_date)
     if local_date > latest:
         return "A freeze can only cover a day that has already closed."
     if local_date < earliest:
-        return (
-            "A freeze can only cover the last "
-            f"{FREEZE_LOOKBACK_DAYS} closed days."
-        )
+        return "A freeze can only cover the last " f"{FREEZE_LOOKBACK_DAYS} closed days."
     return None

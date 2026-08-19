@@ -38,9 +38,7 @@ class ActionEvent(V2Base):
         UniqueConstraint("user_id", "client_event_id"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -52,13 +50,9 @@ class ActionEvent(V2Base):
         ForeignKey("app.action_plan_items.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    client_event_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
+    client_event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    occurred_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     decision_local_date: Mapped[date] = mapped_column(Date, nullable=False)
     decision_timezone: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
@@ -77,9 +71,7 @@ class DailyReview(TimestampMixin, V2Base):
         ),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -92,9 +84,7 @@ class DailyReview(TimestampMixin, V2Base):
     )
     local_date: Mapped[date] = mapped_column(Date, nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(24), nullable=False, server_default="open"
-    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False, server_default="open")
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -108,9 +98,7 @@ class DailyReviewItem(V2Base):
         ),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     daily_review_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.daily_reviews.id", ondelete="CASCADE"),
@@ -136,9 +124,7 @@ class PlanRefresh(TimestampMixin, V2Base):
         CheckConstraint("btrim(timezone) <> ''", name="timezone_nonempty"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -186,9 +172,7 @@ class StreakLedger(V2Base):
         CheckConstraint("btrim(timezone) <> ''", name="timezone_nonempty"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -211,9 +195,7 @@ class RewardLedger(V2Base):
     __tablename__ = "reward_ledger"
     __table_args__ = (
         UniqueConstraint("user_id", "source_type", "source_id"),
-        CheckConstraint(
-            "event_type IN ('grant','redeem','expire')", name="valid_event_type"
-        ),
+        CheckConstraint("event_type IN ('grant','redeem','expire')", name="valid_event_type"),
         CheckConstraint(
             "asset_type IN ('points','freeze','entitlement')",
             name="valid_asset_type",
@@ -230,8 +212,7 @@ class RewardLedger(V2Base):
             name="asset_key_presence",
         ),
         CheckConstraint(
-            "asset_type <> 'entitlement' "
-            "OR (event_type = 'grant' AND quantity = 1)",
+            "asset_type <> 'entitlement' " "OR (event_type = 'grant' AND quantity = 1)",
             name="entitlement_quantity",
         ),
         # One claim of one entitlement per user, ever. Partial so it constrains
@@ -245,9 +226,7 @@ class RewardLedger(V2Base):
         ),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -278,9 +257,7 @@ class Conversation(TimestampMixin, V2Base):
             name="valid_thread_type",
         ),
         CheckConstraint("revision > 0", name="positive_revision"),
-        CheckConstraint(
-            "num_nonnulls(subject_type, subject_id) <> 1", name="subject_pairing"
-        ),
+        CheckConstraint("num_nonnulls(subject_type, subject_id) <> 1", name="subject_pairing"),
         CheckConstraint(
             "subject_type IS NULL OR subject_type IN ('action_plan')",
             name="valid_subject_type",
@@ -296,28 +273,20 @@ class Conversation(TimestampMixin, V2Base):
         ),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    status: Mapped[str] = mapped_column(
-        String(24), nullable=False, server_default="active"
-    )
-    thread_type: Mapped[str] = mapped_column(
-        String(32), nullable=False, server_default="general"
-    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False, server_default="active")
+    thread_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default="general")
     #: What this thread is about, when it is about something. A care-plan
     #: check-in names its plan here rather than in message metadata.
     subject_type: Mapped[str | None] = mapped_column(String(32))
     subject_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    revision: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1"
-    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
 
 class ConversationMessage(V2Base):
@@ -327,23 +296,17 @@ class ConversationMessage(V2Base):
         UniqueConstraint("conversation_id", "client_message_id"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.conversations.id", ondelete="CASCADE"),
         nullable=False,
     )
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
-    client_message_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
+    client_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict
-    )
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -355,9 +318,7 @@ class ConversationSummary(V2Base):
         UniqueConstraint("conversation_id", "through_message_id"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.conversations.id", ondelete="CASCADE"),
@@ -379,15 +340,11 @@ class WeeklyCheckin(TimestampMixin, V2Base):
     __table_args__ = (
         UniqueConstraint("user_id", "week_start"),
         UniqueConstraint("conversation_id"),
-        CheckConstraint(
-            "EXTRACT(ISODOW FROM week_start) = 1", name="monday_week_start"
-        ),
+        CheckConstraint("EXTRACT(ISODOW FROM week_start) = 1", name="monday_week_start"),
         CheckConstraint("revision > 0", name="positive_revision"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -401,25 +358,19 @@ class WeeklyCheckin(TimestampMixin, V2Base):
         ForeignKey("app.conversations.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    revision: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1"
-    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WeeklyQuestion(V2Base):
     __tablename__ = "weekly_checkin_questions"
     __table_args__ = (UniqueConstraint("version", "ordinal"), {"schema": APP_SCHEMA})
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     version: Mapped[str] = mapped_column(String(64), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     answer_type: Mapped[str] = mapped_column(String(24), nullable=False)
-    answer_schema: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict
-    )
+    answer_schema: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
@@ -431,9 +382,7 @@ class WeeklyResponse(V2Base):
         UniqueConstraint("weekly_checkin_id", "question_id"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     weekly_checkin_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.weekly_checkins.id", ondelete="CASCADE"),
@@ -457,19 +406,13 @@ class ResearchSource(TimestampMixin, V2Base):
         UniqueConstraint("source_type", "source_external_id"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    source_type: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="pubmed"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="pubmed")
     source_external_id: Mapped[str] = mapped_column(String(64), nullable=False)
     canonical_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     published_at: Mapped[date | None] = mapped_column(Date)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict
-    )
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
 class ResearchCitation(V2Base):
@@ -478,9 +421,7 @@ class ResearchCitation(V2Base):
         UniqueConstraint("source_id", "plan_item_id"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.research_sources.id", ondelete="RESTRICT"),
@@ -507,9 +448,7 @@ class AiInvocation(V2Base):
         ),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.users.id", ondelete="SET NULL")
     )
@@ -547,9 +486,7 @@ class AiEvaluation(V2Base):
         CheckConstraint("score IS NULL OR score BETWEEN 0 AND 100", name="score_range"),
         {"schema": APP_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     invocation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.ai_invocations.id", ondelete="CASCADE"),
@@ -573,9 +510,7 @@ class AiEvaluation(V2Base):
 class AuditEvent(V2Base):
     __tablename__ = "audit_events"
     __table_args__ = ({"schema": APP_SCHEMA},)
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.users.id", ondelete="SET NULL")
     )
@@ -610,16 +545,12 @@ class DeletionRequest(V2Base):
         Index("ix_deletion_requests_state_requested", "state", "requested_at"),
         {"schema": OPS_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.users.id", ondelete="SET NULL")
     )
     subject_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    state: Mapped[str] = mapped_column(
-        String(24), nullable=False, server_default="requested"
-    )
+    state: Mapped[str] = mapped_column(String(24), nullable=False, server_default="requested")
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -661,9 +592,7 @@ class AccountExport(TimestampMixin, V2Base):
         ),
         {"schema": OPS_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("app.users.id", ondelete="CASCADE"),
@@ -676,16 +605,12 @@ class AccountExport(TimestampMixin, V2Base):
         nullable=False,
         unique=True,
     )
-    state: Mapped[str] = mapped_column(
-        String(24), nullable=False, server_default="requested"
-    )
+    state: Mapped[str] = mapped_column(String(24), nullable=False, server_default="requested")
     storage_provider: Mapped[str | None] = mapped_column(String(32))
     bucket: Mapped[str | None] = mapped_column(String(128))
     object_key: Mapped[str | None] = mapped_column(String(512))
     manifest_sha256: Mapped[str | None] = mapped_column(String(64))
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_code: Mapped[str | None] = mapped_column(String(64))
 
@@ -701,9 +626,7 @@ class DeletionStep(V2Base):
             "'runtime_checkpoints_erased','cache_erased','postgres_graph_erased')",
             name="valid_step_name",
         ),
-        CheckConstraint(
-            "state IN ('pending','running','verified','failed')", name="valid_state"
-        ),
+        CheckConstraint("state IN ('pending','running','verified','failed')", name="valid_state"),
         CheckConstraint("attempt_count >= 0", name="nonnegative_attempts"),
         CheckConstraint(
             "(state = 'verified' AND verified_at IS NOT NULL) OR "
@@ -712,18 +635,14 @@ class DeletionStep(V2Base):
         ),
         {"schema": OPS_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     deletion_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ops.deletion_requests.id", ondelete="CASCADE"),
         nullable=False,
     )
     step_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    state: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default="pending"
-    )
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -750,9 +669,7 @@ class DeletionReceipt(V2Base):
         ),
         {"schema": OPS_SCHEMA},
     )
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     deletion_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ops.deletion_requests.id", ondelete="CASCADE"),

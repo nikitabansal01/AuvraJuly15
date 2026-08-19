@@ -67,11 +67,7 @@ def test_a_long_cycle_lengthens_follicular_rather_than_moving_luteal() -> None:
     assert phase_for_day(23, 35) == LUTEAL
     # The luteal phase stays the same length regardless of cycle length.
     for length in (21, 28, 35, 40):
-        luteal_days = sum(
-            1
-            for day in range(1, length + 1)
-            if phase_for_day(day, length) == LUTEAL
-        )
+        luteal_days = sum(1 for day in range(1, length + 1) if phase_for_day(day, length) == LUTEAL)
         assert luteal_days == LUTEAL_LENGTH_DAYS - 1, length
 
 
@@ -105,9 +101,7 @@ def test_history_beats_a_reported_bucket() -> None:
     )
     assert (length, source) == (30, OBSERVED)
 
-    length, source = resolve_cycle_length(
-        period_starts=[anchor], declared_bucket="21-25 days"
-    )
+    length, source = resolve_cycle_length(period_starts=[anchor], declared_bucket="21-25 days")
     assert (length, source) == (23, DECLARED)
 
     length, source = resolve_cycle_length(period_starts=[], declared_bucket=None)
@@ -115,9 +109,7 @@ def test_history_beats_a_reported_bucket() -> None:
 
 
 def test_no_observations_yields_no_phase_rather_than_a_guess() -> None:
-    result = evaluate(
-        period_starts=[], declared_bucket=None, as_of_local_date=date(2026, 8, 8)
-    )
+    result = evaluate(period_starts=[], declared_bucket=None, as_of_local_date=date(2026, 8, 8))
     assert result.phase is None
     assert result.cycle_day is None
     assert result.phase_confidence == UNKNOWN
@@ -213,9 +205,7 @@ def test_evaluation_is_deterministic_and_order_independent() -> None:
     anchor = date(2026, 3, 1)
     starts = _starts(anchor, [29, 28, 30])
     as_of = starts[-1] + timedelta(days=5)
-    first = evaluate(
-        period_starts=starts, declared_bucket=None, as_of_local_date=as_of
-    )
+    first = evaluate(period_starts=starts, declared_bucket=None, as_of_local_date=as_of)
     shuffled = evaluate(
         period_starts=list(reversed(starts)) + starts,
         declared_bucket=None,
@@ -228,9 +218,7 @@ def test_the_snapshot_is_a_reproducible_memo() -> None:
     anchor = date(2026, 4, 1)
     starts = _starts(anchor, [28, 28, 28])
     as_of = starts[-1] + timedelta(days=7)
-    evaluation = evaluate(
-        period_starts=starts, declared_bucket=None, as_of_local_date=as_of
-    )
+    evaluation = evaluate(period_starts=starts, declared_bucket=None, as_of_local_date=as_of)
     snapshot = evaluation.as_snapshot()
 
     replay = evaluate(

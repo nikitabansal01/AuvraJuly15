@@ -14,9 +14,7 @@ from scripts.reconcile_legacy_backup import (
 )
 
 
-FIXTURE = (
-    Path(__file__).parent / "fixtures" / "legacy_reconciliation" / "synthetic_rows.json"
-)
+FIXTURE = Path(__file__).parent / "fixtures" / "legacy_reconciliation" / "synthetic_rows.json"
 
 
 def _write_synthetic_dump(path: Path, *, orphan: bool = False) -> int:
@@ -25,13 +23,9 @@ def _write_synthetic_dump(path: Path, *, orphan: bool = False) -> int:
         fixture["daily_assignments"]["rows"][0][2] = "missing-schedule"
     row_total = sum(len(value["rows"]) for value in fixture.values())
     with gzip.open(path, "wt", encoding="utf-8") as output:
-        output.write(
-            "COPY public.alembic_version (version_num) FROM stdin;\n20260801_0002\n\\.\n"
-        )
+        output.write("COPY public.alembic_version (version_num) FROM stdin;\n20260801_0002\n\\.\n")
         for table, value in fixture.items():
-            output.write(
-                f"COPY public.{table} ({', '.join(value['columns'])}) FROM stdin;\n"
-            )
+            output.write(f"COPY public.{table} ({', '.join(value['columns'])}) FROM stdin;\n")
             for row in value["rows"]:
                 output.write("\t".join(row) + "\n")
             output.write("\\.\n")
@@ -77,8 +71,7 @@ def test_content_free_deterministic_one_to_one_ledger(tmp_path: Path) -> None:
         for record in first["records"]
     )
     assert all(
-        record["canonical_entities"] and record["row_fingerprint"]
-        for record in first["records"]
+        record["canonical_entities"] and record["row_fingerprint"] for record in first["records"]
     )
     assert first["storage"]["object_classification_counts"] == {
         "referenced": 1,
@@ -144,9 +137,7 @@ def test_orphaned_reference_is_quarantined_and_blocks_reconciliation(
     assert report["reconciliation"]["passed"] is False
     assert report["reconciliation"]["orphan_reference_count"] == 1
     assignment = next(
-        record
-        for record in report["records"]
-        if record["legacy_table"] == "daily_assignments"
+        record for record in report["records"] if record["legacy_table"] == "daily_assignments"
     )
     assert assignment["disposition"] == "QUARANTINE"
     assert assignment["reason_code"] == "ORPHAN_LEGACY_REFERENCE"
@@ -219,9 +210,9 @@ def test_catalog_matches_the_runtime_table_and_id_contract() -> None:
     assert catalog["source_contract"]["application_row_total"] == 1_022
     assert {rule["legacy_table"] for rule in catalog["rules"]} == set(RULES)
     catalog_rules = {rule["legacy_table"]: rule for rule in catalog["rules"]}
-    assert {
-        table: rule["legacy_id_column"] for table, rule in catalog_rules.items()
-    } == {table: rule.id_column for table, rule in RULES.items()}
+    assert {table: rule["legacy_id_column"] for table, rule in catalog_rules.items()} == {
+        table: rule.id_column for table, rule in RULES.items()
+    }
     assert {table: rule["disposition"] for table, rule in catalog_rules.items()} == {
         table: rule.disposition for table, rule in RULES.items()
     }
@@ -229,14 +220,11 @@ def test_catalog_matches_the_runtime_table_and_id_contract() -> None:
         table: rule.reason_code for table, rule in RULES.items()
     }
     assert {
-        table: tuple(rule["canonical_target_tables"])
-        for table, rule in catalog_rules.items()
+        table: tuple(rule["canonical_target_tables"]) for table, rule in catalog_rules.items()
     } == {table: rule.target_entities for table, rule in RULES.items()}
     allowed = set(
-        schema["properties"]["rules"]["items"]["properties"]["canonical_target_tables"][
-            "items"
-        ]["enum"]
+        schema["properties"]["rules"]["items"]["properties"]["canonical_target_tables"]["items"][
+            "enum"
+        ]
     )
-    assert {
-        target for rule in RULES.values() for target in rule.target_entities
-    } <= allowed
+    assert {target for rule in RULES.values() for target in rule.target_entities} <= allowed

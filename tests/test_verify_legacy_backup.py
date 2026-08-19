@@ -50,7 +50,5 @@ def test_rejects_a_changed_row_inventory(tmp_path) -> None:
     database = tmp_path / "changed.sql.gz"
     _write_database_export(database, count_delta=1)
 
-    with pytest.raises(
-        EvidenceMismatch, match="differs from the reviewed table contract"
-    ):
+    with pytest.raises(EvidenceMismatch, match="differs from the reviewed table contract"):
         inspect_database_export(database)

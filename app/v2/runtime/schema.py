@@ -23,9 +23,7 @@ def expected_schema_head() -> str:
     scripts = ScriptDirectory.from_config(config)
     heads = scripts.get_heads()
     if len(heads) != 1:
-        raise RuntimeError(
-            "The checked-in v2 migration history must have exactly one head"
-        )
+        raise RuntimeError("The checked-in v2 migration history must have exactly one head")
     return heads[0]
 
 
@@ -37,10 +35,7 @@ async def check_database_schema_head() -> None:
         async with get_engine().connect() as connection:
             actual = (
                 await connection.execute(
-                    text(
-                        "SELECT version_num FROM "
-                        f'"{VERSION_TABLE_SCHEMA}"."{VERSION_TABLE}"'
-                    )
+                    text("SELECT version_num FROM " f'"{VERSION_TABLE_SCHEMA}"."{VERSION_TABLE}"')
                 )
             ).scalar_one_or_none()
     except Exception as exc:

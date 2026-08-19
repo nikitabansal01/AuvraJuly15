@@ -127,25 +127,19 @@ class MobileQuestionnaireV1(ContractModel):
     period_concerns: list[PeriodConcern] | None = Field(default=None, max_length=4)
     body_concerns: list[BodyConcern] | None = Field(default=None, max_length=6)
     skin_hair_concerns: list[SkinHairConcern] | None = Field(default=None, max_length=3)
-    mental_health_concerns: list[MentalHealthConcern] | None = Field(
-        default=None, max_length=3
+    mental_health_concerns: list[MentalHealthConcern] | None = Field(default=None, max_length=3)
+    other_concerns: list[Annotated[str, Field(min_length=1, max_length=200)]] | None = Field(
+        default=None, max_length=2
     )
-    other_concerns: list[
-        Annotated[str, Field(min_length=1, max_length=200)]
-    ] | None = Field(default=None, max_length=2)
     top_concern: Annotated[str, Field(min_length=1, max_length=200)] | None = None
-    diagnosed_conditions: list[
-        Annotated[str, Field(min_length=1, max_length=200)]
-    ] | None = Field(default=None, max_length=14)
-    family_history: list[
-        Annotated[str, Field(min_length=1, max_length=200)]
-    ] | None = Field(default=None, max_length=14)
-    workout_intensity: Literal[
-        "Low", "Moderate", "High", "I'm yet to start"
-    ] | None = None
-    sleep_duration: Literal[
-        "<6 hours", "6-7 hours", "7-8 hours", "8+ hours"
-    ] | None = None
+    diagnosed_conditions: list[Annotated[str, Field(min_length=1, max_length=200)]] | None = Field(
+        default=None, max_length=14
+    )
+    family_history: list[Annotated[str, Field(min_length=1, max_length=200)]] | None = Field(
+        default=None, max_length=14
+    )
+    workout_intensity: Literal["Low", "Moderate", "High", "I'm yet to start"] | None = None
+    sleep_duration: Literal["<6 hours", "6-7 hours", "7-8 hours", "8+ hours"] | None = None
     stress_level: Literal["Low", "Moderate", "High"] | None = None
     lifestyle_focus: list[Literal["eat", "move", "pause"]] | None = Field(
         default=None,
@@ -158,9 +152,7 @@ class MobileQuestionnaireV1(ContractModel):
         if not answer_values:
             raise ValueError("answers must include at least one documented question")
         _validate_unique_lists(answer_values)
-        _validate_other_values(
-            self.other_concerns, {"None of these", "Others (please specify)"}
-        )
+        _validate_other_values(self.other_concerns, {"None of these", "Others (please specify)"})
         _validate_other_values(self.diagnosed_conditions, set(Diagnosis.__args__))
         _validate_other_values(self.family_history, set(Diagnosis.__args__))
         _validate_top_concern(self.top_concern)
@@ -184,14 +176,10 @@ def _validate_other_values(values: list[str] | None, allowed: set[str]) -> None:
 def _validate_top_concern(value: str | None) -> None:
     if value is None:
         return
-    allowed = set(
-        PeriodConcern.__args__ + BodyConcern.__args__ + SkinHairConcern.__args__
-    )
+    allowed = set(PeriodConcern.__args__ + BodyConcern.__args__ + SkinHairConcern.__args__)
     allowed.update(MentalHealthConcern.__args__)
     if value not in allowed and not value.startswith("Others:"):
-        raise ValueError(
-            "top_concern must be a documented concern or use the 'Others:' prefix"
-        )
+        raise ValueError("top_concern must be a documented concern or use the 'Others:' prefix")
 
 
 class AssessmentWriteRequest(ContractModel):
@@ -232,9 +220,7 @@ class ClaimOnboardingRequest(ContractModel):
         decisions = {item.consent_type: item.granted for item in self.consents}
         required = {"privacy", "health_data_processing"}
         if not required.issubset(decisions):
-            raise ValueError(
-                "privacy and health_data_processing consent decisions are required"
-            )
+            raise ValueError("privacy and health_data_processing consent decisions are required")
         if not all(decisions[name] for name in required):
             raise ValueError("required consents must be granted before claim")
         if len(decisions) != len(self.consents):

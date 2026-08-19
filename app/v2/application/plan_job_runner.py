@@ -66,9 +66,7 @@ class PlanGenerationJobRunner:
             raise TerminalJobFailure(exc.reason_code) from exc
         except ProviderFailure as exc:
             async with self._uow_factory() as uow:
-                await self._materializer.record_provider_failure(
-                    uow, job=job, failure=exc
-                )
+                await self._materializer.record_provider_failure(uow, job=job, failure=exc)
             raise
         async with self._uow_factory() as uow:
             published = await self._materializer.finalize(uow, job=job, bundle=bundle)
@@ -78,16 +76,10 @@ class PlanGenerationJobRunner:
         assessment_id = self._assessment_id(job.request_payload)
         async with self._uow_factory() as uow:
             if uow.session is None:
-                raise RuntimeError(
-                    "UnitOfWork must be entered before loading job context"
-                )
+                raise RuntimeError("UnitOfWork must be entered before loading job context")
             assessment = await uow.session.get(OnboardingAssessment, assessment_id)
             profile = await uow.session.get(UserProfile, job.user_id)
-            if (
-                assessment is None
-                or assessment.user_id != job.user_id
-                or profile is None
-            ):
+            if assessment is None or assessment.user_id != job.user_id or profile is None:
                 raise TerminalJobFailure("generation_context_unavailable")
             timezone = self._validated_timezone(job.request_payload)
             if profile.timezone != timezone or assessment.timezone != timezone:

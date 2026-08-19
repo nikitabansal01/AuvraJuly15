@@ -153,9 +153,7 @@ async def test_provider_timeout_retries_with_a_redacted_stable_code() -> None:
             await anyio.sleep(2)
 
     uow = Uow(Session(claimed()))
-    worker = PostgresOutboxWorker(
-        "worker", SlowPublisher(), lease_seconds=6, timeout_seconds=1
-    )
+    worker = PostgresOutboxWorker("worker", SlowPublisher(), lease_seconds=6, timeout_seconds=1)
     assert await worker.run_once(uow)
     retry_sql, params = uow.session.calls[-1]
     assert "LEAST(300, 2 ^ attempt_count)" in retry_sql
@@ -194,8 +192,7 @@ async def test_nonretryable_provider_failure_becomes_terminal_failed_state() -> 
 
 def test_provider_errors_cannot_leak_exception_text() -> None:
     assert (
-        PostgresOutboxWorker._error_code(RuntimeError("provider secret: x"))
-        == "publisher_failed"
+        PostgresOutboxWorker._error_code(RuntimeError("provider secret: x")) == "publisher_failed"
     )
     with pytest.raises(ValueError):
         OutboxPublishFailure("provider secret: x")

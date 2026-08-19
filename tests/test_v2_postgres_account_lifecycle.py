@@ -23,9 +23,7 @@ def _async_factory():
 
     from app.v2.persistence.database import _async_database_url
 
-    engine = create_async_engine(
-        _async_database_url(os.environ["AUVRA_TEST_DATABASE_URL"])
-    )
+    engine = create_async_engine(_async_database_url(os.environ["AUVRA_TEST_DATABASE_URL"]))
     return engine, async_sessionmaker(engine, expire_on_commit=False)
 
 
@@ -37,9 +35,7 @@ async def _create_user(*, subject_prefix: str) -> tuple[uuid.UUID, str]:
 
     user_id = uuid.uuid4()
     subject = f"{subject_prefix}-{user_id}"
-    engine = create_async_engine(
-        _async_database_url(os.environ["AUVRA_TEST_DATABASE_URL"])
-    )
+    engine = create_async_engine(_async_database_url(os.environ["AUVRA_TEST_DATABASE_URL"]))
     try:
         async with engine.begin() as connection:
             await connection.execute(
@@ -109,9 +105,7 @@ async def test_runtime_checkpoint_eraser_only_removes_v2_owned_threads() -> None
                     PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx))"""
                 )
             )
-            await connection.execute(
-                text("INSERT INTO checkpoint_migrations (v) VALUES (9)")
-            )
+            await connection.execute(text("INSERT INTO checkpoint_migrations (v) VALUES (9)"))
             for thread_id, checkpoint_id in (
                 (owner_thread, "owner"),
                 (other_thread, "other"),
@@ -141,53 +135,38 @@ async def test_runtime_checkpoint_eraser_only_removes_v2_owned_threads() -> None
                     {"thread_id": thread_id, "checkpoint_id": checkpoint_id},
                 )
 
-        eraser = PostgresRuntimeCheckpointEraser(
-            uow_factory=lambda: SqlAlchemyUnitOfWork(factory)
-        )
+        eraser = PostgresRuntimeCheckpointEraser(uow_factory=lambda: SqlAlchemyUnitOfWork(factory))
         await eraser.delete_user_runtime(user_id=owner_id)
         async with engine.connect() as connection:
             assert (
                 await connection.scalar(
-                    text(
-                        "SELECT count(*) FROM checkpoints WHERE thread_id = :thread_id"
-                    ),
+                    text("SELECT count(*) FROM checkpoints WHERE thread_id = :thread_id"),
                     {"thread_id": owner_thread},
                 )
                 == 0
             )
             assert (
                 await connection.scalar(
-                    text(
-                        "SELECT count(*) FROM checkpoint_writes WHERE thread_id = :thread_id"
-                    ),
+                    text("SELECT count(*) FROM checkpoint_writes WHERE thread_id = :thread_id"),
                     {"thread_id": owner_thread},
                 )
                 == 0
             )
             assert (
                 await connection.scalar(
-                    text(
-                        "SELECT count(*) FROM checkpoint_blobs WHERE thread_id = :thread_id"
-                    ),
+                    text("SELECT count(*) FROM checkpoint_blobs WHERE thread_id = :thread_id"),
                     {"thread_id": owner_thread},
                 )
                 == 0
             )
             assert (
                 await connection.scalar(
-                    text(
-                        "SELECT count(*) FROM checkpoints WHERE thread_id = :thread_id"
-                    ),
+                    text("SELECT count(*) FROM checkpoints WHERE thread_id = :thread_id"),
                     {"thread_id": other_thread},
                 )
                 == 1
             )
-            assert (
-                await connection.scalar(
-                    text("SELECT count(*) FROM checkpoint_migrations")
-                )
-                == 1
-            )
+            assert await connection.scalar(text("SELECT count(*) FROM checkpoint_migrations")) == 1
     finally:
         if fixture_created:
             async with engine.begin() as connection:
@@ -223,9 +202,7 @@ class _Storage:
 
         assert content and expires_at > datetime.now(UTC)
         self.put_calls += 1
-        return PrivateExportAsset(
-            "test", "private-exports", f"exports/v1/{export_id}.bin"
-        )
+        return PrivateExportAsset("test", "private-exports", f"exports/v1/{export_id}.bin")
 
     async def delete_user_objects(self, *, user_id) -> None:
         assert isinstance(user_id, uuid.UUID)
@@ -252,9 +229,7 @@ class _ExportBuilder:
         return content, hashlib.sha256(content).hexdigest()
 
 
-def _claimed_job(
-    *, job_id: uuid.UUID, user_id: uuid.UUID, job_type: str, payload: dict
-):
+def _claimed_job(*, job_id: uuid.UUID, user_id: uuid.UUID, job_type: str, payload: dict):
     from app.v2.infrastructure.worker import ClaimedJob
 
     return ClaimedJob(
@@ -307,9 +282,7 @@ async def test_canonical_export_is_encrypted_and_excludes_operational_job_payloa
                     "client_id": uuid.uuid4(),
                 },
             )
-        cipher = AesGcmAccountExportCipher(
-            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
-        )
+        cipher = AesGcmAccountExportCipher("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
         builder = CanonicalAccountExportBuilder(
             cipher=cipher,
             uow_factory=lambda: SqlAlchemyUnitOfWork(factory),
@@ -317,9 +290,7 @@ async def test_canonical_export_is_encrypted_and_excludes_operational_job_payloa
         encrypted, checksum = await builder.build(export_id=export_id, user_id=user_id)
         assert hashlib.sha256(encrypted).hexdigest() == checksum
         assert b"private note" not in encrypted
-        payload = json.loads(
-            cipher.decrypt_for_test(export_id=export_id, payload=encrypted)
-        )
+        payload = json.loads(cipher.decrypt_for_test(export_id=export_id, payload=encrypted))
         assert payload["format"] == "auvra.account-export.v1"
         assert payload["datasets"]["profile"][0]["display_name"] == "Export Test"
         assert payload["datasets"]["user_observations"][0]["note"] == "private note"
@@ -327,9 +298,7 @@ async def test_canonical_export_is_encrypted_and_excludes_operational_job_payloa
         assert "auth_subject" not in payload["datasets"]["account"][0]
     finally:
         async with engine.begin() as connection:
-            await connection.execute(
-                text("DELETE FROM app.users WHERE id = :id"), {"id": user_id}
-            )
+            await connection.execute(text("DELETE FROM app.users WHERE id = :id"), {"id": user_id})
         await engine.dispose()
 
 
@@ -410,9 +379,7 @@ async def test_export_is_private_replay_safe_and_result_has_no_object_reference(
         assert checksum and len(checksum) == 64
     finally:
         async with engine.begin() as connection:
-            await connection.execute(
-                text("DELETE FROM app.users WHERE id = :id"), {"id": user_id}
-            )
+            await connection.execute(text("DELETE FROM app.users WHERE id = :id"), {"id": user_id})
         await engine.dispose()
 
 
@@ -540,9 +507,7 @@ async def test_deletion_failure_records_retry_then_completes_only_after_all_step
         assert storage.delete_calls == 2
     finally:
         async with engine.begin() as connection:
-            await connection.execute(
-                text("DELETE FROM app.users WHERE id = :id"), {"id": user_id}
-            )
+            await connection.execute(text("DELETE FROM app.users WHERE id = :id"), {"id": user_id})
             await connection.execute(
                 text("DELETE FROM ops.deletion_requests WHERE id = :id"),
                 {"id": request_id},

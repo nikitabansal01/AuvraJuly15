@@ -81,9 +81,7 @@ class FakeConversations:
         row = self.rows.get(conversation_id)
         return row if row is not None and row.user_id == user_id else None
 
-    async def list_owned(
-        self, user_id, *, limit, before_updated_at=None, before_id=None
-    ):
+    async def list_owned(self, user_id, *, limit, before_updated_at=None, before_id=None):
         return [row for row in self.rows.values() if row.user_id == user_id][:limit]
 
     async def list_messages(self, conversation_id, *, before_sequence=None, limit=100):
@@ -102,11 +100,7 @@ class FakeConversations:
 
     async def next_sequence(self, conversation_id):
         return 1 + max(
-            (
-                row.sequence
-                for row in self.messages
-                if row.conversation_id == conversation_id
-            ),
+            (row.sequence for row in self.messages if row.conversation_id == conversation_id),
             default=0,
         )
 
@@ -147,8 +141,7 @@ class FakeWeeklyCheckins:
             (
                 row
                 for row in self.responses
-                if row.weekly_checkin_id == checkin_id
-                and row.question_id == question_id
+                if row.weekly_checkin_id == checkin_id and row.question_id == question_id
             ),
             None,
         )
@@ -157,9 +150,7 @@ class FakeWeeklyCheckins:
         return [row for row in self.responses if row.weekly_checkin_id == checkin_id]
 
     async def count_required_answered(self, checkin_id, version):
-        required = {
-            row.id for row in self.questions if row.version == version and row.required
-        }
+        required = {row.id for row in self.questions if row.version == version and row.required}
         answered = {
             row.question_id
             for row in self.responses
@@ -216,9 +207,7 @@ async def test_message_is_owned_revision_guarded_and_durably_queued():
         request=ConversationCreateRequest(thread_type="general"),
         now=NOW,
     )
-    request = ConversationMessageCreateRequest(
-        client_message_id=uuid4(), content="Hello"
-    )
+    request = ConversationMessageCreateRequest(client_message_id=uuid4(), content="Hello")
     accepted = await create_conversation_message(
         uow,
         principal=PRINCIPAL,
@@ -231,9 +220,7 @@ async def test_message_is_owned_revision_guarded_and_durably_queued():
     assert accepted.message.sequence == 1
     assert accepted.conversation_revision == 2
     assert len(uow.job_items) == len(uow.outbox_items) == 1
-    assert uow.job_items[0].request_payload["message_id"] == str(
-        accepted.message.message_id
-    )
+    assert uow.job_items[0].request_payload["message_id"] == str(accepted.message.message_id)
     assert uow.conversations.lock_requests[-1] is True
     replay = await create_conversation_message(
         uow,
@@ -263,9 +250,7 @@ async def test_message_rejects_cross_user_and_stale_revision_without_a_second_se
             conversation_id=other.id,
             expected_revision=1,
             key="cross-user-message-0001",
-            request=ConversationMessageCreateRequest(
-                client_message_id=uuid4(), content="No"
-            ),
+            request=ConversationMessageCreateRequest(client_message_id=uuid4(), content="No"),
             now=NOW,
         )
     assert missing.value.status == 404
@@ -283,9 +268,7 @@ async def test_message_rejects_cross_user_and_stale_revision_without_a_second_se
             conversation_id=own.conversation_id,
             expected_revision=9,
             key="stale-message-0001",
-            request=ConversationMessageCreateRequest(
-                client_message_id=uuid4(), content="No"
-            ),
+            request=ConversationMessageCreateRequest(client_message_id=uuid4(), content="No"),
             now=NOW,
         )
     assert stale.value.status == 412
@@ -381,9 +364,7 @@ async def test_weekly_checkin_rejects_wrong_definition_and_invalid_scale():
 
 
 def test_iso_week_start_handles_dst_and_year_boundaries():
-    assert iso_week_start(
-        datetime(2026, 3, 8, 9, 59, tzinfo=UTC), "America/Los_Angeles"
-    ) == date(2026, 3, 2)
-    assert iso_week_start(datetime(2027, 1, 1, 1, tzinfo=UTC), "Asia/Kolkata") == date(
-        2026, 12, 28
+    assert iso_week_start(datetime(2026, 3, 8, 9, 59, tzinfo=UTC), "America/Los_Angeles") == date(
+        2026, 3, 2
     )
+    assert iso_week_start(datetime(2027, 1, 1, 1, tzinfo=UTC), "Asia/Kolkata") == date(2026, 12, 28)

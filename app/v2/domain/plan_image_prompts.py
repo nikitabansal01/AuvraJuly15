@@ -44,18 +44,12 @@ def sanitize_image_prompt(prompt: str) -> str:
     match = _WIRE_PATTERN.fullmatch(prompt)
     if match is None:
         return _render_template("none", "hero", "1")
-    return _render_template(
-        match.group("variant"), match.group("role"), match.group("slot")
-    )
+    return _render_template(match.group("variant"), match.group("role"), match.group("slot"))
 
 
 def _render_template(variant: str, role: str, slot: str) -> str:
     composition = _VARIANT_COMPOSITIONS[variant]
-    framing = (
-        "editorial hero composition"
-        if role == "hero"
-        else "supporting card composition"
-    )
+    framing = "editorial hero composition" if role == "hero" else "supporting card composition"
     return (
         f"Warm inclusive editorial illustration of {composition}, {framing}, {_LAYOUTS[slot]}, "
         "natural light, "
