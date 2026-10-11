@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 import logging
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.core.firebase import get_user_by_uid, list_users, update_user, delete_user
 from app.api.v1.endpoints.auth import get_current_active_user, get_current_user
-from app.core.database import get_db, UserResponse as DBUserResponse
+from app.core.database import get_db, UserResponse as DBUserResponse, UserProfile
+from app.services.profile_service import ProfileService, health_record, DIAGNOSIS_OPTIONS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,6 +33,56 @@ class UserProfileResponse(BaseModel):
     concerns: List[str] = []
     diagnosis: List[str] = []
     top_concern: Optional[str] = None
+    name: Optional[str] = None
+    diagnosis_options: List[str] = DIAGNOSIS_OPTIONS
+    can_update_profile: bool = True
+
+
+class UserProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Optional[str] = None
+    top_concern: Optional[str] = None
+    diagnosis: Optional[List[str]] = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def valid_name(cls, value):
+        if not isinstance(value, str) or not 1 <= len(value.strip()) <= 80 or any(ord(c) < 32 for c in value):
+            raise ValueError("Enter a name between 1 and 80 characters")
+        return value.strip()
+
+    @field_validator("diagnosis", mode="before")
+    @classmethod
+    def valid_diagnosis_list(cls, value):
+        if not isinstance(value, list) or len(value) > 20 or any(not isinstance(item, str) or not 1 <= len(item) <= 4096 for item in value):
+            raise ValueError("Choose valid reported diagnoses")
+        return value
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set:
+            raise ValueError("Choose a profile field to update")
+        return self
+
+
+@router.put("/profile/me", response_model=UserProfileResponse)
+async def update_my_profile(
+    payload: UserProfileUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    uid = current_user.get("uid")
+    if not uid: raise HTTPException(status_code=401, detail="Sign in to update your profile")
+    from starlette.concurrency import run_in_threadpool
+    try:
+        return await run_in_threadpool(ProfileService(db).update, uid, payload.model_dump(exclude_unset=True))
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        logger.error("Profile update failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Your profile could not be saved. Please try again.") from error
 
 
 @router.get("/profile/me", response_model=UserProfileResponse)
@@ -52,53 +103,10 @@ async def get_my_profile(
         logger.info(f"[PROFILE] Request from uid={uid}")
         user_response = db.query(DBUserResponse).filter(
             DBUserResponse.uid == uid
-        ).order_by(desc(DBUserResponse.created_at)).first()
+        ).order_by(desc(DBUserResponse.created_at), desc(DBUserResponse.id)).first()
         
-        if not user_response:
-            return UserProfileResponse(concerns=[], diagnosis=[], top_concern=None)
-        
-        # Collect all concerns
-        concerns = []
-        concern_fields = [
-            user_response.period_concerns,
-            user_response.body_concerns,
-            user_response.skin_hair_concerns,
-            user_response.mental_health_concerns,
-            user_response.other_concerns,
-        ]
-        
-        for concern_field in concern_fields:
-            if concern_field:
-                if isinstance(concern_field, list):
-                    concerns.extend(concern_field)
-                elif isinstance(concern_field, dict):
-                    # Extract values if it's a dict
-                    for key, value in concern_field.items():
-                        if isinstance(value, list):
-                            concerns.extend(value)
-                        elif isinstance(value, str):
-                            concerns.append(value)
-        
-        # Filter out "None of the above" and empty values
-        concerns = [c for c in concerns if c and c.lower() != 'none of the above' and c.strip()]
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_concerns = []
-        for c in concerns:
-            if c.lower() not in seen:
-                seen.add(c.lower())
-                unique_concerns.append(c)
-        
-        # Get diagnosis
-        diagnosis = user_response.diagnosed_conditions or []
-        diagnosis = [d for d in diagnosis if d and d.lower() != 'none of the above' and d.strip()]
-        
-        return UserProfileResponse(
-            concerns=unique_concerns[:5],  # Top 5 concerns
-            diagnosis=diagnosis,
-            top_concern=user_response.top_concern
-        )
+        profile = db.query(UserProfile).filter(UserProfile.uid == uid).first()
+        return UserProfileResponse(name=profile.name if profile else None, **health_record(user_response))
     except HTTPException:
         raise
     except Exception as e:
@@ -111,6 +119,10 @@ async def get_my_profile(
 @router.get("/", response_model=List[UserResponse])
 async def get_users(current_user: dict = Depends(get_current_active_user)):
     """Get all users list (admin only)."""
+    # This dictionary comes from verified Firebase token claims. A verified
+    # email alone does not authorize listing other people's account records.
+    if current_user.get("admin") is not True:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access is required")
     try:
         users = list_users()
         return [UserResponse(**user) for user in users]
@@ -124,6 +136,8 @@ async def get_users(current_user: dict = Depends(get_current_active_user)):
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(user_id: str, current_user: dict = Depends(get_current_active_user)):
     """Get specific user information."""
+    if current_user.get("uid") != user_id and current_user.get("admin") is not True:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view your own account")
     try:
         user = get_user_by_uid(user_id)
         return UserResponse(**user)
@@ -155,6 +169,8 @@ async def update_user_info(user_id: str, user_update: UserUpdate, current_user: 
         
         updated_user = update_user(user_id, **update_data)
         return UserResponse(**updated_user)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -175,6 +191,8 @@ async def delete_user_account(user_id: str, current_user: dict = Depends(get_cur
         
         result = delete_user(user_id)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

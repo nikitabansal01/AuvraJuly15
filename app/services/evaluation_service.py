@@ -196,6 +196,7 @@ class ActionPlanEvaluator:
                 "citation_relevance_score": None,
                 "reasoning": {}
             }
+            llm_scores["_execution"] = {"model": None, "provider": None, "scores_complete": False, "cost_complete": False}
             
         return llm_scores, llm_cost, citation_validity
 
@@ -262,6 +263,10 @@ class ActionPlanEvaluator:
                 citation_validity_score=citation_validity,
                 citation_relevance_score=llm_scores.get("citation_relevance_score")
             )
+            execution = llm_scores.get("_execution", {})
+            complete = execution.get("scores_complete") is True
+            if not complete:
+                overall_score = None
             
             # Step 4: Store evaluation in database
             evaluation = ActionPlanEvaluation(
@@ -275,9 +280,11 @@ class ActionPlanEvaluator:
                 citation_validity_score=citation_validity,
                 citation_relevance_score=llm_scores.get("citation_relevance_score"),
                 overall_quality_score=overall_score,
-                evaluation_cost=f"${total_cost:.6f}",
+                evaluation_cost=f"${total_cost:.6f}" if execution.get("cost_complete") is True else None,
                 evaluation_time_ms=int((time.time() - start_time) * 1000),
-                evaluator_model=self.GPT_MODEL,
+                # Explicit sentinel prevents the ORM's legacy model default
+                # from claiming that a model ran when evaluation was unavailable.
+                evaluator_model=execution.get("model") or "unavailable",
                 llm_evaluation_response=llm_scores
             )
             
@@ -300,11 +307,13 @@ class ActionPlanEvaluator:
                 "citation_validity_score": citation_validity,
                 "citation_relevance_score": llm_scores.get("citation_relevance_score"),
                 "overall_quality_score": overall_score,
-                "cost": total_cost
+                "cost": total_cost if execution.get("cost_complete") is True else None,
+                "evaluation_complete": complete,
             }
             
         except Exception as e:
             logger.error(f"❌ Evaluation failed for plan {plan_id}: {e}")
+            await db.rollback()
             return None
     
     async def _get_recent_feedback(
@@ -473,6 +482,14 @@ class ActionPlanEvaluator:
                             content = content[4:]
                     
                     scores = json.loads(content)
+                    self._validate_llm_scores(scores)
+                    scores["_execution"] = {
+                        "provider": "openai", "model": data.get("model") or self.GPT_MODEL,
+                        "request_id": data.get("id"), "scores_complete": True,
+                        "input_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens"),
+                        "cost_complete": all(isinstance(usage.get(key), int) and not isinstance(usage.get(key), bool) and usage[key] >= 0 for key in ("prompt_tokens", "completion_tokens")),
+                        "pricing_basis": "embedded_estimate_constants",
+                    }
                     
                     logger.info(f"✅ LLM evaluation complete via OpenAI: {scores}")
                     return scores, cost
@@ -527,6 +544,14 @@ class ActionPlanEvaluator:
                 content = content.strip()
                 
                 scores = json.loads(content)
+                self._validate_llm_scores(scores)
+                scores["_execution"] = {
+                    "provider": "groq", "model": data.get("model") or GROQ_FALLBACK_MODEL,
+                    "request_id": data.get("id"), "scores_complete": True,
+                    "cost_complete": False, "known_openai_estimate_before_fallback": cost,
+                    "input_tokens": data.get("usage", {}).get("prompt_tokens"),
+                    "output_tokens": data.get("usage", {}).get("completion_tokens"),
+                }
                 
                 logger.info(f"✅ LLM evaluation complete via Groq fallback: {scores}")
                 return scores, cost
@@ -538,6 +563,12 @@ class ActionPlanEvaluator:
             logger.error(f"❌ LLM evaluation failed: {openai_error}")
             return None, 0.0
     
+    @staticmethod
+    def _validate_llm_scores(scores):
+        keys = ("personalization_score", "condition_appropriateness", "feedback_alignment_score", "preference_compliance_score", "citation_relevance_score")
+        if not isinstance(scores, dict) or any(not isinstance(scores.get(key), int) or isinstance(scores.get(key), bool) or not 0 <= scores[key] <= 100 for key in keys):
+            raise ValueError("The evaluator did not return all required 0-100 scores")
+
     def _calculate_overall_score(
         self,
         structure_valid: bool,

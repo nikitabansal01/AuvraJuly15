@@ -1012,7 +1012,7 @@ async def get_hormone_analysis(user_id: str, db_session: Any) -> Dict[str, Any]:
     
     user_response = db_session.query(UserResponse).filter(
         UserResponse.uid == user_id
-    ).order_by(desc(UserResponse.created_at)).first()
+    ).order_by(desc(UserResponse.created_at), desc(UserResponse.id)).first()
     
     if not user_response:
         return {"success": False, "error": "No health survey data found"}
@@ -1355,7 +1355,7 @@ async def update_user_preference(
             # Update UserResponse
             user_response = db_session.query(UserResponse).filter(
                 UserResponse.uid == user_id
-            ).order_by(UserResponse.created_at.desc()).first()
+            ).order_by(UserResponse.created_at.desc(), UserResponse.id.desc()).first()
             
             if user_response:
                 setattr(user_response, response_fields[preference_key], preference_value)

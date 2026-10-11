@@ -3339,7 +3339,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             response_result = await db.execute(
                 select(UserResponse)
                 .where(UserResponse.uid == user_id)
-                .order_by(UserResponse.created_at.desc())
+                .order_by(UserResponse.created_at.desc(), UserResponse.id.desc())
                 .limit(1)
             )
             user_response = response_result.scalar_one_or_none()
@@ -3569,7 +3569,7 @@ Return as JSON: {{"actions": [array of {num_actions} action objects]}}
             response_result = await db.execute(
                 select(UserResponse)
                 .where(UserResponse.uid == user_id)
-                .order_by(UserResponse.created_at.desc())
+                .order_by(UserResponse.created_at.desc(), UserResponse.id.desc())
                 .limit(1)
             )
             user_response = response_result.scalar_one_or_none()
@@ -7158,7 +7158,8 @@ JSON ONLY:
                 "cycle_phase": plan.cycle_phase,
                 "actions": actions,
                 "generation_cost": plan.generation_cost,
-                "generation_time_ms": plan.generation_time_ms
+                "generation_time_ms": plan.generation_time_ms,
+                "feedback_collected": bool(plan.feedback_collected),
             }
             
         except Exception as e:

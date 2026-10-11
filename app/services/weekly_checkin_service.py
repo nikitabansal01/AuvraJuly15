@@ -393,7 +393,7 @@ fatigue, headache, anxiety, stress, period pain, menstrual."""
         
         # Get user's primary concern from their profile/onboarding
         from app.core.database import UserResponse
-        user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+        user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).order_by(UserResponse.created_at.desc(), UserResponse.id.desc()).first()
         user_top_concern = "your symptoms"  # Fallback
         if user_response:
             # Check top_concern first
@@ -920,74 +920,30 @@ Return strict JSON:
     
     def get_severity_trends(self, uid: str, weeks: int = 8) -> List[Dict[str, Any]]:
         """Get severity trends over time for insights visualization."""
+        from app.utils.checkin_insights import factor_labels
         checkins = self.get_checkin_history(uid, limit=weeks)
         
         trends = []
         for checkin in reversed(checkins):  # Oldest first for chart
             trends.append({
+                "id": checkin.id,
                 "week": f"W{checkin.week_number}",
                 "date": checkin.check_in_date.isoformat(),
                 "concern": checkin.top_concern,
                 "severity": checkin.concern_severity,
                 "wellbeing": checkin.overall_wellbeing,
-                "phase": checkin.phase_at_checkin
+                "phase": checkin.phase_at_checkin,
+                "factors_positive": factor_labels(checkin.factors_positive),
+                "factors_negative": factor_labels(checkin.factors_negative),
             })
         
         return trends
     
     def get_factor_correlations(self, uid: str, weeks: int = 12) -> Dict[str, Any]:
-        """Analyze which factors correlate with better/worse symptoms."""
+        """Summarize reported factors; averages are descriptive, not causal."""
         checkins = self.get_checkin_history(uid, limit=weeks)
-        
-        factor_impact = {
-            "positive": {},  # factor -> avg wellbeing when present
-            "negative": {}   # factor -> avg severity when present
-        }
-        
-        for checkin in checkins:
-            if checkin.factors_positive:
-                for factor in checkin.factors_positive:
-                    if factor not in factor_impact["positive"]:
-                        factor_impact["positive"][factor] = {"total": 0, "count": 0}
-                    if checkin.overall_wellbeing:
-                        factor_impact["positive"][factor]["total"] += checkin.overall_wellbeing
-                        factor_impact["positive"][factor]["count"] += 1
-            
-            if checkin.factors_negative:
-                for factor in checkin.factors_negative:
-                    if factor not in factor_impact["negative"]:
-                        factor_impact["negative"][factor] = {"total": 0, "count": 0}
-                    if checkin.concern_severity:
-                        factor_impact["negative"][factor]["total"] += checkin.concern_severity
-                        factor_impact["negative"][factor]["count"] += 1
-        
-        # Calculate averages
-        result = {
-            "helps": [],
-            "hurts": []
-        }
-        
-        for factor, data in factor_impact["positive"].items():
-            if data["count"] > 0:
-                result["helps"].append({
-                    "factor": factor,
-                    "avg_wellbeing": round(data["total"] / data["count"], 1),
-                    "occurrences": data["count"]
-                })
-        
-        for factor, data in factor_impact["negative"].items():
-            if data["count"] > 0:
-                result["hurts"].append({
-                    "factor": factor,
-                    "avg_severity": round(data["total"] / data["count"], 1),
-                    "occurrences": data["count"]
-                })
-        
-        # Sort by impact
-        result["helps"].sort(key=lambda x: x["avg_wellbeing"], reverse=True)
-        result["hurts"].sort(key=lambda x: x["avg_severity"], reverse=True)
-        
-        return result
+        from app.utils.checkin_insights import factor_mentions
+        return factor_mentions(checkins)
     
     def get_memory_context(self, uid: str, limit: int = 4) -> str:
         """Get check-in history formatted for LLM memory context."""

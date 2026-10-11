@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
 from app.services.question_service import QuestionService
+from app.utils.assessment_data import SavedSetupConflict, has_core_answers
 from app.services.recommendation_service import RecommendationService
 from app.models.question_models import (
     SessionCreate, SessionResponse, SessionDataCreate, SessionData,
@@ -110,6 +111,8 @@ async def save_session_data(
                 detail="Failed to save session data"
             )
         
+    except PermissionError as error:
+        raise HTTPException(status_code=409, detail="This survey is already linked. Update your signed-in profile instead.") from error
     except HTTPException:
         raise
     except Exception as e:
@@ -450,23 +453,15 @@ async def _generate_recommendations_background(session_id: str, service, process
                                 
                                 logger.info(f"🔄 [AUTO-TRANSFER] Updating plan date to {today_local} (enabled valid today check)")
 
-                                await async_session.execute(
-                                    text("UPDATE action_plans SET uid = :uid, session_id = NULL, plan_date = :new_date WHERE id = :plan_id"),
-                                    {"uid": target_uid, "plan_id": plan_id, "new_date": today_local}
-                                )
-                                
-                                # Transfer plan items
-                                await async_session.execute(
-                                    text("UPDATE action_plan_items SET uid = :uid, session_id = NULL WHERE plan_id = :plan_id"),
-                                    {"uid": target_uid, "plan_id": plan_id}
-                                )
+                                from app.services.guest_plan_transfer import transfer_guest_plan
+                                transferred = await transfer_guest_plan(async_session, plan_id, target_uid, today_local)
                                 
                                 # DO NOT delete the session here - link_session_to_user endpoint still needs it
                                 # The session will be deleted by link_session_to_user after successful linking
                                 logger.info(f"📍 [AUTO-TRANSFER] Session {session_id} preserved for link endpoint")
                                 
                                 await async_session.commit()
-                                logger.info(f"🚀 [AUTO-TRANSFER] Plan {plan_id} successfully transferred to user {target_uid}")
+                                logger.info("[AUTO-TRANSFER] Plan %s adoption=%s; existing daily plans and foreign owners preserved", plan_id, transferred)
                             else:
                                 logger.warning(f"⚠️ [AUTO-TRANSFER] Plan {plan_id} not found for transfer")
                     else:
@@ -583,6 +578,12 @@ async def _link_session_to_user_internal(
                 detail="Session linking failed"
             )
             
+    except SavedSetupConflict as error:
+        raise HTTPException(status_code=409, detail="This account already has saved health answers. Continue with your saved profile.") from error
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail="This survey cannot be linked to this account") from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail="The survey session is unavailable or expired") from error
     except HTTPException as he:
         logger.error(f"HTTPException occurred: session_id={session_id}, status_code={he.status_code}, detail={he.detail}")
         raise
@@ -657,6 +658,23 @@ async def test_pydantic(
     except Exception as e:
         logger.error(f"Pydantic test failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Pydantic test failed: {str(e)}")
+
+@router.get("/setup/status")
+async def get_setup_status(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user),
+):
+    """Minimal owned setup facts for recovery after a lost link acknowledgement."""
+    uid = current_user.get("uid")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Sign in to continue setup")
+    from app.core.database import UserProfile, UserResponse
+    has_profile = db.query(UserProfile.uid).filter(UserProfile.uid == uid).first() is not None
+    latest = db.query(UserResponse).filter(UserResponse.uid == uid).order_by(
+        UserResponse.created_at.desc(), UserResponse.id.desc()).first()
+    has_answers = has_core_answers(latest)
+    return {"has_profile": has_profile, "has_answers": has_answers}
+
 
 @router.get("/users/{uid}/responses", response_model=List[UserResponseFull])
 async def get_user_responses(

@@ -64,7 +64,7 @@ def get_cycle_info(user_id: str, db: Session) -> Dict[str, Any]:
     user_response = (
         db.query(UserResponse)
         .filter(UserResponse.uid == user_id)
-        .order_by(UserResponse.created_at.desc())
+        .order_by(UserResponse.created_at.desc(), UserResponse.id.desc())
         .first()
     )
     primary_hormone = user_response.primary_hormone if user_response else None

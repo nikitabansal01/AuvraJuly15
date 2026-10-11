@@ -8,9 +8,9 @@ Provides endpoints for managing weekly check-in sessions:
 - Completing check-ins
 - Retrieving history for insights
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 from time import perf_counter
 
@@ -133,12 +133,15 @@ class TranscribeResponse(BaseModel):
 
 class TrendDataPoint(BaseModel):
     """Single data point for severity trends."""
+    id: Optional[str] = None
     week: str
     date: str
     concern: Optional[str] = None
     severity: Optional[int] = None
     wellbeing: Optional[int] = None
     phase: Optional[str] = None
+    factors_positive: List[str] = Field(default_factory=list)
+    factors_negative: List[str] = Field(default_factory=list)
 
 
 class FactorImpact(BaseModel):
@@ -147,6 +150,7 @@ class FactorImpact(BaseModel):
     avg_wellbeing: Optional[float] = None
     avg_severity: Optional[float] = None
     occurrences: int
+    rated_occurrences: Optional[int] = None
 
 
 class FactorCorrelationsResponse(BaseModel):
@@ -419,7 +423,7 @@ async def get_checkin_history(
 
 @router.get("/trends", response_model=List[TrendDataPoint])
 async def get_severity_trends(
-    weeks: int = 8,
+    weeks: int = Query(default=8, ge=1, le=104),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -438,15 +442,15 @@ async def get_severity_trends(
 
 @router.get("/correlations", response_model=FactorCorrelationsResponse)
 async def get_factor_correlations(
-    weeks: int = 12,
+    weeks: int = Query(default=12, ge=1, le=104),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get factor correlation analysis.
-    
-    Returns which lifestyle factors correlate with better/worse symptoms.
-    This powers the "What works for you" insights section.
+    Get reported helping/hurting factor counts and optional descriptive scores.
+
+    Mentions are counted independently of missing severity/wellbeing ratings.
+    These observations do not establish a causal effect or statistical correlation.
     """
     uid = current_user["uid"]
     service = WeeklyCheckInService(db)

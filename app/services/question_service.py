@@ -1,10 +1,12 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, text
 from app.core.database import QuestionSession, UserResponse, UserProfile, generate_session_id
 from app.models.question_models import SessionData, UserResponseData, SessionDataCreate, UserProfileCreate
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import logging
+import hashlib
+from app.utils.assessment_data import assessment_facts, has_core_answers, ASSESSMENT_FIELDS, SavedSetupConflict
 
 # Import data sanitization utilities (SINGLE SOURCE OF TRUTH for cleaning health data)
 from app.utils.data_sanitization import (
@@ -55,6 +57,9 @@ class QuestionService:
                 logger.warning(f"get_session: Session {session_id} NOT FOUND in DB")
                 return None
                 
+            if session.expires_at <= datetime.utcnow():
+                return None
+
             if session.status != "active":
                 # FIX: Allow getting linked sessions for late data arrival
                 if session.status.startswith("linked:"):
@@ -63,10 +68,6 @@ class QuestionService:
                     return session
                     
                 logger.warning(f"get_session: Session {session_id} found but status is '{session.status}'")
-                return None
-                
-            if session.expires_at <= datetime.utcnow():
-                logger.warning(f"get_session: Session {session_id} found but EXPIRED. Expires: {session.expires_at}, Now: {datetime.utcnow()}")
                 return None
                 
             return session
@@ -80,6 +81,8 @@ class QuestionService:
             session = self.get_session(session_id)
             if not session:
                 raise Exception("Session not found or expired")
+            if session.status.startswith("linked:"):
+                raise PermissionError("This survey is already linked. Use your signed-in profile to change saved answers.")
             
             # Update session with survey data
             if data.age is not None:
@@ -112,15 +115,11 @@ class QuestionService:
                 session.skin_hair_concerns = data.skin_hair_concerns
             if data.mental_health_concerns is not None:
                 session.mental_health_concerns = data.mental_health_concerns
-            # If caller explicitly sends other_concerns, use them; else proactively clear to avoid stale carry-over
+            # Partial requests (such as lifestyle focus) must preserve omitted
+            # health answers. An explicit empty list still clears the field.
             if data.other_concerns is not None:
                 session.other_concerns = sanitize_list_field(data.other_concerns, "other_concerns")
                 logger.info(f"other_concerns updated: {session.other_concerns}")
-            else:
-                # Production-safe: Clear previous free-text / selections if omitted (prevents unintended reuse)
-                if session.other_concerns not in (None, [], {}):
-                    logger.info("other_concerns omitted in request -> clearing previous stored value to prevent stale reuse")
-                session.other_concerns = []
             if data.top_concern is not None:
                 # Sanitize: "None of the above" should become None
                 session.top_concern = sanitize_string_field(data.top_concern, "top_concern")
@@ -136,56 +135,15 @@ class QuestionService:
                 session.sleep_duration = data.sleep_duration
             if data.stress_level is not None:
                 session.stress_level = data.stress_level
-            if data.survey_timezone is not None:
+            if data.survey_timezone is not None and "survey_timezone" in data.model_fields_set:
                 session.survey_timezone = data.survey_timezone
             # PERSONALIZATION: Eat/Move/Pause preference
             if data.lifestyle_focus is not None:
                 session.lifestyle_focus = data.lifestyle_focus
                 logger.info(f"lifestyle_focus saved: {session.lifestyle_focus}")
             
-            # ---------------------------------------------------------
-            # ROOT CAUSE FIX: Write-through to UserResponse if linked
-            # ---------------------------------------------------------
-            if session.status.startswith("linked:"):
-                try:
-                    uid = session.status.split(":")[1]
-                    logger.info(f"Session {session_id} is linked to {uid}. Syncing data to UserResponse.")
-                    
-                    user_response = self.db.query(UserResponse).filter(
-                        UserResponse.uid == uid
-                    ).first()
-                    
-                    if user_response:
-                        # Sync all fields that were present in 'data'
-                        if data.age is not None: user_response.age = data.age
-                        if data.period_description is not None: user_response.period_description = data.period_description
-                        if data.birth_control is not None: user_response.birth_control = data.birth_control
-                        # Dates
-                        if data.last_period_date is not None: user_response.last_period_date_utc = session.last_period_date_utc
-                        
-                        if data.cycle_length is not None: user_response.cycle_length = data.cycle_length
-                        if data.period_concerns is not None: user_response.period_concerns = data.period_concerns
-                        if data.body_concerns is not None: user_response.body_concerns = data.body_concerns
-                        if data.skin_hair_concerns is not None: user_response.skin_hair_concerns = data.skin_hair_concerns
-                        if data.mental_health_concerns is not None: user_response.mental_health_concerns = data.mental_health_concerns
-                        # Use sanitized values from session to avoid "None of the above" pollution
-                        if data.other_concerns is not None: user_response.other_concerns = session.other_concerns
-                        if data.top_concern is not None: user_response.top_concern = session.top_concern
-                        if data.diagnosed_conditions is not None: user_response.diagnosed_conditions = session.diagnosed_conditions
-                        if data.family_history is not None: user_response.family_history = session.family_history
-                        if data.workout_intensity is not None: user_response.workout_intensity = data.workout_intensity
-                        if data.sleep_duration is not None: user_response.sleep_duration = data.sleep_duration
-                        if data.stress_level is not None: user_response.stress_level = data.stress_level
-                        if data.survey_timezone is not None: user_response.survey_timezone = data.survey_timezone
-                        
-                        logger.info(f"✅ Synced late session data to UserResponse for {uid}")
-                    else:
-                        logger.warning(f"⚠️ Session linked to {uid} but UserResponse not found!")
-                        
-                except Exception as e:
-                    logger.error(f"Failed to sync linked session data: {e}", exc_info=True)
-                    # Don't fail the request, session update is still valid
-            
+            # Signed-in changes use the owned profile endpoint. A guest
+            # callback cannot overwrite newer saved health answers.
             self.db.commit()
             logger.info(f"Session data saved: {session_id}")
             return True
@@ -193,9 +151,11 @@ class QuestionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Session data save failed: {str(e)}")
+            if isinstance(e, PermissionError):
+                raise
             raise Exception(f"Session data save failed: {str(e)}")
 
-    def create_user_profile(self, uid: str, name: str, email: str) -> UserProfile:
+    def create_user_profile(self, uid: str, name: str, email: str, *, commit: bool = True) -> UserProfile:
         """Create user profile (get or create)"""
         try:
             logger.info(f"=== create_user_profile started ===")
@@ -209,10 +169,12 @@ class QuestionService:
             if existing_profile:
                 # Update existing profile
                 logger.info(f"Updating existing profile: uid={uid}")
-                existing_profile.name = name
-                existing_profile.email = email
+                if name.strip():
+                    existing_profile.name = name
+                if email:
+                    existing_profile.email = email
                 existing_profile.updated_at = datetime.utcnow()
-                self.db.commit()
+                self.db.commit() if commit else self.db.flush()
                 logger.info(f"User profile updated: {uid}")
                 return existing_profile
             else:
@@ -225,7 +187,7 @@ class QuestionService:
                 )
                 
                 self.db.add(profile)
-                self.db.commit()
+                self.db.commit() if commit else self.db.flush()
                 
                 logger.info(f"User profile created: {uid}")
                 return profile
@@ -512,6 +474,15 @@ class QuestionService:
             Success status
         """
         try:
+            if not uid:
+                raise PermissionError("Sign in to finish setup")
+            # Serialize retries for the same account AND competing claims of
+            # the same guest session. Transaction locks release on commit or
+            # rollback, including when no profile row exists yet.
+            keys = sorted(int.from_bytes(hashlib.blake2b(value.encode(), digest_size=8).digest(), "big", signed=True)
+                          for value in (f"auvra-setup-user:{uid}", f"auvra-setup-session:{session_id}"))
+            for key in keys:
+                self.db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
             logger.info(f"=== QuestionService.link_session_to_user started ===")
             logger.info(f"Parameters: session_id={session_id}, uid={uid}, name={name}, email={email}, current_timezone={current_timezone}, lifestyle_focus={lifestyle_focus}")
             
@@ -520,21 +491,47 @@ class QuestionService:
             logger.info(f"Session retrieval result: session={session}")
             if not session:
                 logger.error(f"Session not found: session_id={session_id}")
-                raise Exception("Session not found or expired")
+                raise LookupError("The survey session is unavailable or expired")
+
+            if session.status.startswith("linked:"):
+                if session.status != f"linked:{uid}":
+                    raise PermissionError("This survey is already linked to another account")
+                latest = self.db.query(UserResponse).filter(UserResponse.uid == uid).order_by(
+                    UserResponse.created_at.desc(), UserResponse.id.desc()).first()
+                if (self.db.query(UserProfile).filter(UserProfile.uid == uid).first() is not None
+                        and has_core_answers(latest)):
+                    self.db.commit()
+                    return True
+
+            if not has_core_answers(session):
+                raise LookupError("Finish your health questions before linking this survey")
+            # Lock in the same profile -> answers order as profile/calendar
+            # edits. A retry must not silently discard a different survey or
+            # overwrite newer signed-in health edits.
+            self.db.query(UserProfile).filter(UserProfile.uid == uid).with_for_update().first()
+            existing_user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).order_by(
+                UserResponse.created_at.desc(), UserResponse.id.desc()).with_for_update().first()
+            if has_core_answers(existing_user_response) and assessment_facts(existing_user_response) != assessment_facts(session):
+                raise SavedSetupConflict("Saved health answers already exist for this account")
             
             # 2. Create user profile (save current timezone and lifestyle focus)
             logger.info(f"Creating user profile: uid={uid}")
-            user_profile = self.create_user_profile(uid, name, email)
+            user_profile = self.create_user_profile(uid, name, email, commit=False)
             user_profile.current_timezone = current_timezone
             user_profile.lifestyle_focus = lifestyle_focus
             # NOTE: Do NOT commit here. We'll commit everything at the end for atomicity.
             logger.info(f"User profile creation completed: uid={uid}, timezone={current_timezone}, lifestyle_focus={lifestyle_focus}")
             
             # 3. Create UserResponse (save UTC data as is) - IDEMPOTENCY CHECK
-            existing_user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
             if existing_user_response:
                 logger.info(f"✅ [IDEMPOTENCY] UserResponse already exists for {uid}, skipping creation")
                 user_response = existing_user_response
+                if not has_core_answers(existing_user_response):
+                    for field in ASSESSMENT_FIELDS:
+                        setattr(user_response, field, getattr(session, field, None))
+                    user_response.primary_hormone = session.primary_hormone
+                    user_response.secondary_hormones = session.secondary_hormones
+                    user_response.lifestyle_focus = lifestyle_focus
             else:
                 response_data = self._convert_session_to_response_data(session)
                 
@@ -577,7 +574,7 @@ class QuestionService:
                 
                 guest_plan = self.db.query(ActionPlan).filter(
                     ActionPlan.session_id == session_id
-                ).first()
+                ).with_for_update().first()
 
                 # A plan row can exist while generation is still running: the
                 # generator inserts a placeholder up front and its items only at
@@ -589,6 +586,8 @@ class QuestionService:
                 # which marks the session linked and lets the generator finish
                 # the handover.
                 if guest_plan:
+                    if guest_plan.uid and guest_plan.uid != uid:
+                        raise PermissionError("This plan belongs to another account")
                     guest_plan_has_items = self.db.query(ActionPlanItem).filter(
                         ActionPlanItem.plan_id == guest_plan.id
                     ).first() is not None
@@ -600,6 +599,23 @@ class QuestionService:
                         guest_plan = None
 
                 if guest_plan:
+                    if guest_plan.uid and guest_plan.uid != uid:
+                        raise PermissionError("This plan belongs to another account")
+                    guest_plan_items = self.db.query(ActionPlanItem).filter(
+                        ActionPlanItem.plan_id == guest_plan.id
+                    ).with_for_update().all()
+                    if any(item.uid and item.uid != uid for item in guest_plan_items):
+                        raise PermissionError("This plan contains actions owned by another account")
+                    from zoneinfo import ZoneInfo
+                    today = datetime.now(ZoneInfo(current_timezone)).date()
+                    assigned_today = self.db.query(ActionPlan).filter(
+                        ActionPlan.uid == uid, ActionPlan.plan_date == today).with_for_update().first()
+                    if assigned_today and assigned_today.id != guest_plan.id:
+                        # Keep the user's real daily plan and its completions.
+                        # This unassigned guest preview remains distinct.
+                        session.status = f"linked:{uid}"
+                        self.db.commit()
+                        return True
                     logger.info(f"✅ Found existing GUEST ActionPlan {guest_plan.id} for session {session_id}")
                     
                     # 1. Link the ActionPlan to the user
@@ -627,10 +643,6 @@ class QuestionService:
                         logger.error(f"Failed to update plan date for guest plan migration: {e}")
                     
                     # 2. Link all ActionPlanItems
-                    guest_plan_items = self.db.query(ActionPlanItem).filter(
-                        ActionPlanItem.plan_id == guest_plan.id
-                    ).all()
-                    
                     for item in guest_plan_items:
                         item.uid = uid
                         item.session_id = None
@@ -683,6 +695,8 @@ class QuestionService:
                 failed_recommendations = []
                 
                 for rec in session_recommendations:
+                    if rec.uid and rec.uid != uid:
+                        raise PermissionError("This recommendation belongs to another account")
                     # Process each recommendation as independent sub-transaction
                     savepoint = self.db.begin_nested()  # Start sub-transaction
                     try:
@@ -706,6 +720,8 @@ class QuestionService:
                 failed_advices = []
                 
                 for advice in session_advices:
+                    if advice.uid and advice.uid != uid:
+                        raise PermissionError("This advice belongs to another account")
                     # Process each advice as independent sub-transaction
                     savepoint = self.db.begin_nested()  # Start sub-transaction
                     try:
@@ -739,6 +755,9 @@ class QuestionService:
                 # If we reach here, generation failed/never started - legacy recommendations were migrated above
                 
                 # 7. Commit
+                if failed_recommendations or failed_advices:
+                    raise RuntimeError("The survey could not be transferred completely")
+                session.status = f"linked:{uid}"
                 self.db.commit()
                 
                 # Log result summary
@@ -758,11 +777,15 @@ class QuestionService:
             except Exception as e:
                 logger.error(f"Session recommendation permanent storage migration failed: {str(e)}", exc_info=True)
                 self.db.rollback()
+                if isinstance(e, (PermissionError, LookupError, SavedSetupConflict)):
+                    raise
                 return False
                 
         except Exception as e:
             logger.error(f"Session linking failed: {str(e)}", exc_info=True)
             self.db.rollback()
+            if isinstance(e, (PermissionError, LookupError, SavedSetupConflict)):
+                raise
             return False
 
     def get_user_responses(self, uid: str) -> List[UserResponse]:
@@ -770,7 +793,7 @@ class QuestionService:
         try:
             return self.db.query(UserResponse).filter(
                 UserResponse.uid == uid
-            ).order_by(UserResponse.created_at.desc()).all()
+            ).order_by(UserResponse.created_at.desc(), UserResponse.id.desc()).all()
         except Exception as e:
             logger.error(f"User response retrieval failed: {str(e)}")
             raise Exception(f"User response retrieval failed: {str(e)}")
@@ -877,4 +900,4 @@ class QuestionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Timezone update failed: {str(e)}")
-            return False 
+            return False

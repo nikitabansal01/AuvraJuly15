@@ -741,7 +741,7 @@ NEW MESSAGES (JSON list in order):
         profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
         user_response = self.db.query(UserResponse).filter(
             UserResponse.uid == uid
-        ).order_by(desc(UserResponse.created_at)).first()
+        ).order_by(desc(UserResponse.created_at), desc(UserResponse.id)).first()
         
         if not profile and not user_response:
             return ""

@@ -20,7 +20,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, or_, update
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -229,7 +229,7 @@ async def get_today_assignments(
             QuestionSession.status == f"linked:{uid}"
         ).order_by(QuestionSession.created_at.desc()).first()
         
-        if linked_session:
+        if linked_session and not plan_exists_for_today:
             # Check if session is still being processed
             processing = db.query(SessionProcessingStatus).filter(
                 SessionProcessingStatus.session_id == linked_session.session_id
@@ -393,12 +393,17 @@ async def get_today_assignments(
         )
         
         # Return in requested format
+        from app.core.database import UserResponse
+        current_answers = db.query(UserResponse).filter(UserResponse.uid == uid).order_by(
+            UserResponse.created_at.desc(), UserResponse.id.desc()).first()
+        result["top_concern"] = current_answers.top_concern if current_answers else None
         if format == "legacy":
             legacy = _convert_to_legacy_format(result, weekly_checkin_status)
             legacy["timings_ms"] = timings_ms
             # Keep a top-level convenience field for quick inspection (backwards compatible)
             legacy["plan_generation_time_ms"] = result.get("generation_time_ms")
             legacy["plan_source"] = result.get("plan_source")
+            legacy["top_concern"] = result.get("top_concern")
             return legacy
         else:
             result["weekly_checkin"] = weekly_checkin_status
@@ -919,46 +924,46 @@ async def complete_action(
         
         from app.core.database import ActionPlan, ActionPlanItem
         
-        # Get the action
-        item = db.query(ActionPlanItem).filter(
-            and_(ActionPlanItem.id == item_id, ActionPlanItem.uid == uid)
-        ).first()
-
-        if not item:
-            # Self-heal an item orphaned by a mid-generation signup.
-            #
-            # If the user signed up while their plan was still generating, the
-            # plan could be transferred to them while its items were still being
-            # written, leaving plan.uid set and item.uid NULL. The plan rendered
-            # but every completion returned 404 (observed 2026-08-19 13:47).
-            # Ownership is claimed here only through the parent plan the user
-            # already provably owns, so this cannot reach another user's data.
-            orphan = (
-                db.query(ActionPlanItem)
-                .join(ActionPlan, ActionPlan.id == ActionPlanItem.plan_id)
-                .filter(
-                    ActionPlanItem.id == item_id,
-                    ActionPlanItem.uid.is_(None),
-                    ActionPlan.uid == uid,
-                )
-                .first()
+        # Lock the item through completion so concurrent retries see the saved
+        # state. Include signup-orphan adoption in this same query/transaction;
+        # a waiting retry still matches after the first request assigns its UID.
+        item = (
+            db.query(ActionPlanItem)
+            .filter(
+                ActionPlanItem.id == item_id,
+                or_(
+                    ActionPlanItem.uid == uid,
+                    and_(
+                        ActionPlanItem.uid.is_(None),
+                        ActionPlanItem.plan.has(ActionPlan.uid == uid),
+                    ),
+                ),
             )
-            if orphan:
-                logger.warning(
-                    f"[ORPHAN_REPAIR] Item {item_id} had no owner but its plan "
-                    f"{orphan.plan_id} belongs to {uid}; adopting"
-                )
-                orphan.uid = uid
-                orphan.session_id = None
-                db.commit()
-                item = orphan
+            .with_for_update(of=ActionPlanItem)
+            .first()
+        )
 
         if not item:
             raise HTTPException(status_code=404, detail="Action not found")
+
+        if item.uid is None:
+            logger.warning(
+                f"[ORPHAN_REPAIR] Item {item_id} had no owner but its plan "
+                f"{item.plan_id} belongs to {uid}; adopting"
+            )
+            item.uid = uid
+            item.session_id = None
+
+        if item.is_completed:
+            completed_at = item.completed_at
+            # Preserve legacy NULL timestamps too: a retry is not a new action.
+            db.commit()  # Persist any ownership repair and release the row lock.
+            return CompletionResponse(success=True, item_id=item_id, completed_at=completed_at)
         
         # Mark as completed
         item.is_completed = True
         item.completed_at = datetime.utcnow()
+        completed_at = item.completed_at
         db.commit()
         
         # Update user's streak data
@@ -971,7 +976,7 @@ async def complete_action(
         return CompletionResponse(
             success=True,
             item_id=item_id,
-            completed_at=item.completed_at
+            completed_at=completed_at
         )
         
     except HTTPException:
@@ -1018,12 +1023,24 @@ async def submit_plan_satisfaction(
         from app.core.database import ActionPlan, ActionPlanItem, ActionPlanFeedback
         
         # Get the plan
-        plan = db.query(ActionPlan).filter(
+        plan_query = db.query(ActionPlan).filter(
             and_(ActionPlan.id == request.plan_id, ActionPlan.uid == uid)
-        ).first()
+        )
+        # Serialize positive acknowledgements without holding a parent-row lock
+        # across the separate session used by the replacement/generation flow.
+        if request.satisfaction == "works_for_me":
+            plan_query = plan_query.with_for_update(of=ActionPlan)
+        plan = plan_query.first()
         
         if not plan:
             raise HTTPException(status_code=404, detail="Plan not found")
+
+        if request.satisfaction == "works_for_me" and plan.feedback_collected:
+            return PlanSatisfactionResponse(
+                success=True,
+                message="Great! We'll keep creating similar plans for you! 💜",
+                will_adjust_future_plans=False,
+            )
         
         # Get all items in the plan
         items = db.query(ActionPlanItem).filter(
@@ -1033,23 +1050,18 @@ async def submit_plan_satisfaction(
         if request.satisfaction == "works_for_me":
             # 👍 User likes the plan - mark ALL non-completed items as LIKED
             for item in items:
-                if not item.is_completed:
+                if not item.is_completed and not item.is_replaced:
                     # Check if feedback already exists for this action (prevent duplicates)
                     existing_feedback = db.query(ActionPlanFeedback).filter(
                         and_(
                             ActionPlanFeedback.uid == uid,
-                            ActionPlanFeedback.action_title == item.title,
+                            ActionPlanFeedback.plan_id == request.plan_id,
+                            ActionPlanFeedback.item_id == item.id,
                             ActionPlanFeedback.feedback_type == "like"
                         )
                     ).first()
                     
-                    if existing_feedback:
-                        # Update timestamp instead of creating duplicate
-                        existing_feedback.created_at = datetime.utcnow()
-                        existing_feedback.plan_id = request.plan_id
-                        existing_feedback.item_id = item.id
-                        logger.info(f"Updated existing 'like' feedback for: {item.title}")
-                    else:
+                    if not existing_feedback:
                         # Record as liked in feedback table
                         feedback = ActionPlanFeedback(
                             uid=uid,
@@ -2029,7 +2041,7 @@ async def _carry_forward_items_to_today(
     # The issue is likely that we are appending to today's plan which might already have items.
     
     # Get user's primary and secondary hormones for balance from UserResponse (not UserProfile)
-    user_response = db.query(UserResponse).filter(UserResponse.uid == uid).first()
+    user_response = db.query(UserResponse).filter(UserResponse.uid == uid).order_by(UserResponse.created_at.desc(), UserResponse.id.desc()).first()
     primary_hormone = (user_response.primary_hormone or "cortisol").lower() if user_response else "cortisol"
     # secondary_hormones is an array, get first one if exists
     secondary_hormones = user_response.secondary_hormones if user_response and user_response.secondary_hormones else []
@@ -2419,6 +2431,7 @@ def _convert_to_legacy_format(result: dict, weekly_checkin_status: dict = None) 
         "primary_hormone": result.get("primary_hormone"),
         "cycle_phase": result.get("cycle_phase"),
         "show_feedback_prompt_after_seconds": 30,  # 30-second feedback prompt
+        "feedback_collected": result.get("feedback_collected") is True,
         "generation_source": "action_plan",
         "weekly_checkin": weekly_checkin_status  # Dynamic check-in card status
     }

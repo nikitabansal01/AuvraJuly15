@@ -22,6 +22,7 @@ import uuid
 import time
 import json
 import asyncio
+import re
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 
@@ -45,6 +46,12 @@ class ImageLibraryService:
     # 0.88 provides good semantic matching while maximizing cache hits
     # Lower = more reuse (faster), Higher = more specificity
     SIMILARITY_THRESHOLD = 0.88  # Cosine similarity threshold for semantic image matching
+    # Visual QA found this immutable asset labeled "Swimming" actually shows
+    # seated floor exercise. Exclude it for aquatic actions without changing
+    # historical plan records or deleting shared cache data.
+    REJECTED_AQUATIC_ASSET_HASHES = frozenset({
+        "fadbdee9885c368f6ae226cd4cadfa4f11dede05f65474341ed520a0b12014f9",
+    })
     
     COST_PER_IMAGE = 0.0  # Provider billing is not metered by this service.
     
@@ -223,7 +230,8 @@ class ImageLibraryService:
                 category, 
                 variant_type, 
                 user_id, 
-                db
+                db,
+                requested_prompt=prompt,
             )
             
             if cached_image:
@@ -293,6 +301,7 @@ class ImageLibraryService:
                 db,
                 threshold=threshold,
                 include_seen=True,
+                requested_prompt=prompt,
             )
             if match and match.get("image_url"):
                 logger.warning(
@@ -436,6 +445,7 @@ class ImageLibraryService:
         *,
         threshold: Optional[float] = None,
         include_seen: bool = False,
+        requested_prompt: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Find a semantically similar image that hasn't been shown to this user.
@@ -459,6 +469,8 @@ class ImageLibraryService:
             
             if variant_type:
                 query = query.where(ImageLibrary.variant_type == variant_type)
+            else:
+                query = query.where((ImageLibrary.variant_type == "hero") | ImageLibrary.variant_type.is_(None))
             
             result = await db.execute(query)
             # Result contains tuples due to specific column selection
@@ -480,6 +492,8 @@ class ImageLibraryService:
             best_similarity = 0.0
             
             for row in rows:
+                if requested_prompt and not self._compatible_image_subject(requested_prompt, row.prompt_text or "", category):
+                    continue
                 # row structure: (id, image_url, prompt_text, prompt_embedding, used_by_users)
                 used_by = row.used_by_users or []
                 if user_id in used_by and not include_seen:
@@ -489,6 +503,9 @@ class ImageLibraryService:
                 # Skip cached images with no actual URL (Fix: prevents returning empty image_url)
                 if not row.image_url or row.image_url.strip() == "":
                     no_embedding += 1  # Reusing counter for "unusable" entries
+                    continue
+                if (requested_prompt and self._water_activity(requested_prompt)
+                        and hashlib.sha256(row.image_url.encode()).hexdigest() in self.REJECTED_AQUATIC_ASSET_HASHES):
                     continue
                 
                 # Skip cached images with expired/non-permanent URLs
@@ -540,6 +557,19 @@ class ImageLibraryService:
         except Exception as e:
             logger.error(f"Error finding similar image: {e}")
             return None
+
+    @staticmethod
+    def _water_activity(prompt: str) -> bool:
+        return bool(re.search(r"\b(swim\w*|pool|aquatic|aqua|hydrotherapy|water\s+(walking|aerobics|exercise))\b", prompt, re.I))
+
+    @classmethod
+    def _compatible_image_subject(cls, requested: str, cached: str, category: str) -> bool:
+        # Embedding similarity alone can confuse seated land exercises with
+        # swimming. The rescue path must obey this boundary too. This checks
+        # cache metadata, not the actual pixels of a generated image.
+        if category == "movement":
+            return cls._water_activity(requested) == cls._water_activity(cached)
+        return True
     
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """Calculate cosine similarity between two vectors."""
@@ -638,7 +668,7 @@ class ImageLibraryService:
             )
 
             elapsed = time.time() - start_time
-            logger.info(f"🎨 New image generated & cached (Cloudinary). Time: {elapsed:.2f}s, Cost: $0.00")
+            logger.info(f"🎨 New image generated & cached (Cloudinary). Time: {elapsed:.2f}s; provider cost is not metered here")
             return (image_url, False, 0.0)
 
         except Exception as e:
@@ -990,6 +1020,14 @@ class ImageLibraryService:
                 f"fitness photography style, full body visible, "
                 f"instructional and easy to follow, women's wellness exercise"
             )
+            if self._water_activity(prompt):
+                activity = "actively swimming with a visible natural arm stroke and water ripples" if re.search(r"\bswim\w*", prompt, re.I) else f"demonstrating {prompt} in water"
+                enhanced = (
+                    f"An adult woman {activity} in a clean swimming pool, "
+                    "water clearly surrounding and supporting her body, appropriate swimwear, "
+                    f"recognizable {prompt} technique, bright natural light, calm wellness photography, "
+                    "clear composition with the pool and activity visible"
+                )
             
         elif category == "mindfulness":
             # MINDFULNESS: Show the ACTUAL meditation or breathing practice
@@ -1183,7 +1221,7 @@ class ImageLibraryService:
                 category=category,
                 variant_type=variant_type,
                 generation_model=generation_model or self.image_provider,
-                generation_cost=str(self.COST_PER_IMAGE),
+                generation_cost=None,  # This provider's charge is not metered here.
                 generation_time_ms=generation_time_ms,
                 image_width=512,
                 image_height=512,

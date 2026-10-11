@@ -120,7 +120,7 @@ class ProactiveEngine:
         # Get cycle length
         user_response = self.db.query(UserResponse).filter(
             UserResponse.uid == user_id
-        ).order_by(desc(UserResponse.created_at)).first()
+        ).order_by(desc(UserResponse.created_at), desc(UserResponse.id)).first()
         
         cycle_length = 28
         if user_response and user_response.cycle_length:

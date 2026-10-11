@@ -181,6 +181,7 @@ class ActionPlanResponse(BaseModel):
     completed_actions: int = 0
     
     # Feedback prompt timing
+    feedback_collected: bool = False
     show_feedback_prompt_after_seconds: int = 30  # Show "Does this plan work for you?" after 30s
     feedback_prompt_message: str = "Does this plan work for you? 💜"
     

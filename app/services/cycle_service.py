@@ -58,13 +58,15 @@ EDGE CASES & CLINICAL CONSIDERATIONS:
 """
 
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time, timezone
 from typing import Optional, Tuple, Dict, NamedTuple, Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.database import UserResponse, UserProfile
 from app.models.cycle_models import CyclePhaseInfo
 from zoneinfo import ZoneInfo
+from calendar import monthrange
+from app.models.cycle_models import CycleCalendarDay, CycleCalendarResponse
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +176,15 @@ class CycleService:
     def _default_cycle_info(self, user_name: str = "Unknown") -> CyclePhaseInfo:
         return CyclePhaseInfo(user_name=user_name, cycle_day=None, phase=None)
 
+    @staticmethod
+    def _profile_timezone(user_profile: UserProfile) -> str:
+        zone = user_profile.current_timezone or "Asia/Seoul"
+        try:
+            ZoneInfo(zone)
+        except (ValueError, KeyError):
+            zone = "Asia/Seoul"
+        return zone
+
     def _build_cycle_phase_info(
         self,
         uid: str,
@@ -185,9 +196,26 @@ class CycleService:
             logger.info(f"User profile not found: uid={uid}")
             return self._default_cycle_info()
 
+        user_timezone = self._profile_timezone(user_profile)
+        as_of_date = self._get_current_date_in_timezone(user_timezone)
+        metadata = {"as_of_date": as_of_date, "timezone": user_timezone}
+
         if not user_response:
             logger.info(f"User response data not found: uid={uid}")
-            return self._default_cycle_info(user_name=user_profile.name or "Unknown")
+            return CyclePhaseInfo(user_name=user_profile.name or "Unknown", **metadata)
+
+        metadata["can_update_period"] = True
+        if user_response.last_period_date_utc:
+            instant = user_response.last_period_date_utc
+            if instant.tzinfo is None:
+                instant = instant.replace(tzinfo=timezone.utc)
+            reported_zone = getattr(user_response, "survey_timezone", None) or user_timezone
+            try:
+                ZoneInfo(reported_zone)
+            except (ValueError, KeyError):
+                reported_zone = user_timezone
+            metadata["last_period_start"] = instant.astimezone(ZoneInfo(reported_zone)).date()
+            metadata["last_period_timezone"] = reported_zone
 
         logger.info(
             "Data verification: last_period_date_utc=%s, cycle_length=%s",
@@ -200,21 +228,86 @@ class CycleService:
                 user_response.last_period_date_utc,
                 user_response.cycle_length,
             )
-            return self._default_cycle_info(user_name=user_profile.name or "Unknown")
+            return CyclePhaseInfo(user_name=user_profile.name or "Unknown", **metadata)
 
         cycle_day, phase = self._calculate_cycle_phase(
             user_response.last_period_date_utc,
             user_response.cycle_length,
             user_response.period_description,
             user_response.diagnosed_conditions,
-            user_profile.current_timezone,
+            user_timezone,
+            as_of_date,
         )
         logger.info(f"Calculation result: cycle_day={cycle_day}, phase={phase}")
         return CyclePhaseInfo(
             user_name=user_profile.name or "Unknown",
             cycle_day=cycle_day,
             phase=phase,
+            cycle_length_days=CYCLE_LENGTH_CONFIG[user_response.cycle_length].avg_days
+                if user_response.cycle_length in CYCLE_LENGTH_CONFIG else None,
+            **metadata,
         )
+
+    def update_last_period_start(self, uid: str, reported_date: date) -> CyclePhaseInfo:
+        """Update the signed-in user's saved start date atomically.
+
+        The existing survey field remains authoritative. This does not invent
+        a bleeding duration, create predicted period events or replace plans.
+        """
+        if self.db is None or not uid:
+            raise ValueError("Sign in to update your period information")
+        try:
+            profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).with_for_update().first()
+            response = self.db.query(UserResponse).filter(UserResponse.uid == uid).order_by(
+                UserResponse.created_at.desc(), UserResponse.id.desc()
+            ).with_for_update().first()
+            if not profile or not response:
+                raise LookupError("Complete your health setup before updating this date")
+            zone = self._profile_timezone(profile)
+            if reported_date > self._get_current_date_in_timezone(zone):
+                raise ValueError("The period start date cannot be in the future")
+            # user_responses uses a UTC-naive DateTime column. Convert local
+            # midnight explicitly instead of letting the phone/DB timezone shift it.
+            try:
+                instant = datetime.combine(reported_date, time.min, tzinfo=ZoneInfo(zone)).astimezone(timezone.utc)
+            except (OverflowError, ValueError) as error:
+                raise ValueError("Choose a valid period start date") from error
+            response.last_period_date_utc = instant.replace(tzinfo=None)
+            response.survey_timezone = zone
+            snapshot = self._build_cycle_phase_info(uid, profile, response)
+            self.db.commit()
+            return snapshot
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def get_calendar_month(self, uid: str, year: int, month: int) -> CycleCalendarResponse:
+        """Read monthly estimates from the same owned answers/rules as Home.
+
+        A projected phase is never a recorded bleeding event. Only the actual
+        saved start date receives the reported-period marker.
+        """
+        if self.db is None or not uid:
+            raise ValueError("Sign in to view your cycle information")
+        profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
+        response = self.db.query(UserResponse).filter(UserResponse.uid == uid).order_by(
+            UserResponse.created_at.desc(), UserResponse.id.desc()
+        ).first()
+        info = self._build_cycle_phase_info(uid, profile, response)
+        days = []
+        for number in range(1, monthrange(year, month)[1] + 1):
+            day = date(year, month, number)
+            cycle_day, phase = None, None
+            if profile and response and response.last_period_date_utc and response.cycle_length:
+                cycle_day, phase = self._calculate_cycle_phase(
+                    response.last_period_date_utc, response.cycle_length,
+                    response.period_description, response.diagnosed_conditions,
+                    info.timezone or "Asia/Seoul", day, log_details=False,
+                )
+            days.append(CycleCalendarDay(date=day, cycle_day=cycle_day, phase=phase,
+                is_projection=bool(info.as_of_date and day > info.as_of_date),
+                reported_period_start=day == info.last_period_start))
+        return CycleCalendarResponse(month=f"{year:04d}-{month:02d}", cycle_info=info, days=days)
     
     def get_cycle_phase_info(self, uid: str) -> CyclePhaseInfo:
         """
@@ -232,7 +325,9 @@ class CycleService:
                 return self._default_cycle_info()
 
             user_profile = self.db.query(UserProfile).filter(UserProfile.uid == uid).first()
-            user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+            user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).order_by(
+                UserResponse.created_at.desc(), UserResponse.id.desc()
+            ).first()
             return self._build_cycle_phase_info(uid, user_profile, user_response)
         except Exception as e:
             logger.error(f"Failed to calculate menstrual cycle information: {str(e)}")
@@ -254,7 +349,7 @@ class CycleService:
             response_result = await db.execute(
                 select(UserResponse)
                 .where(UserResponse.uid == uid)
-                .order_by(UserResponse.created_at.desc())
+                .order_by(UserResponse.created_at.desc(), UserResponse.id.desc())
                 .limit(1)
             )
             user_response = response_result.scalar_one_or_none()
@@ -275,10 +370,13 @@ class CycleService:
         cycle_length: str, 
         period_description: Optional[str], 
         diagnosed_conditions: Optional[list],
-        user_timezone: str
+        user_timezone: str,
+        as_of_date: Optional[date] = None,
+        *,
+        log_details: bool = True,
     ) -> Tuple[Optional[int], Optional[str]]:
         """
-        Calculate menstrual cycle day and phase using scientifically-accurate method.
+        Estimate cycle day and phase from the saved date and configured cycle length.
         
         SCIENTIFIC BASIS:
         - Luteal phase is constant (~14 days)
@@ -295,13 +393,14 @@ class CycleService:
         Returns:
             (cycle_day, phase)
         """
+        info_log = logger.info if log_details else lambda *_args, **_kwargs: None
         try:
-            logger.info(f"=== CYCLE CALCULATION START ===")
-            logger.info(f"Input: last_period_date_utc={last_period_date_utc}")
-            logger.info(f"Input: cycle_length={cycle_length}")
-            logger.info(f"Input: period_description={period_description}")
-            logger.info(f"Input: diagnosed_conditions={diagnosed_conditions}")
-            logger.info(f"Input: user_timezone={user_timezone}")
+            info_log(f"=== CYCLE CALCULATION START ===")
+            info_log(f"Input: last_period_date_utc={last_period_date_utc}")
+            info_log(f"Input: cycle_length={cycle_length}")
+            info_log(f"Input: period_description={period_description}")
+            info_log(f"Input: diagnosed_conditions={diagnosed_conditions}")
+            info_log(f"Input: user_timezone={user_timezone}")
             
             # Step 1: Get cycle configuration
             config = CYCLE_LENGTH_CONFIG.get(cycle_length)
@@ -314,30 +413,30 @@ class CycleService:
             menstrual_length = config.menstrual_length
             ovulation_window = config.ovulation_window
             
-            logger.info(f"Config: cycle_days={cycle_days}, luteal={luteal_length}, menstrual={menstrual_length}")
+            info_log(f"Config: cycle_days={cycle_days}, luteal={luteal_length}, menstrual={menstrual_length}")
             
             # Step 2: Convert UTC date to user timezone
             from app.utils.timezone_utils import convert_from_utc
             last_period = convert_from_utc(last_period_date_utc, user_timezone)
-            logger.info(f"Converted last period date: {last_period}")
+            info_log(f"Converted last period date: {last_period}")
             
             # Step 3: Get current date in user's timezone
-            current_date = self._get_current_date_in_timezone(user_timezone)
-            logger.info(f"Current date (user timezone): {current_date}")
+            current_date = as_of_date or self._get_current_date_in_timezone(user_timezone)
+            info_log(f"Current date (user timezone): {current_date}")
             
             # Step 4: Calculate days since last period
             days_since_last = (current_date - last_period).days
-            logger.info(f"Days since last period: {days_since_last}")
+            info_log(f"Days since last period: {days_since_last}")
             
             # Handle edge case: future date
             if days_since_last < 0:
-                logger.info(f"Last period date is in the future, returning None")
+                info_log(f"Last period date is in the future, returning None")
                 return None, None
             
             # Step 5: Calculate cycle day (which cycle we're in and what day)
             # If days_since_last >= cycle_days, we've moved to subsequent cycle(s)
             cycle_day = (days_since_last % cycle_days) + 1
-            logger.info(f"Calculated cycle day: {cycle_day}")
+            info_log(f"Calculated cycle day: {cycle_day}")
             
             # Step 6: Determine phase using scientific calculation
             # Note: We always calculate phase regardless of conditions
@@ -350,7 +449,7 @@ class CycleService:
                 ovulation_window=ovulation_window
             )
             
-            logger.info(f"=== RESULT: Day {cycle_day}, Phase: {phase} ===")
+            info_log(f"=== RESULT: Day {cycle_day}, Phase: {phase} ===")
             return cycle_day, phase
             
         except Exception as e:

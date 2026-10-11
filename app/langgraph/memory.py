@@ -118,7 +118,7 @@ class AuvraUnifiedMemory:
             # Get user responses (onboarding data)
             response = self.db.query(UserResponse).filter(
                 UserResponse.uid == user_id
-            ).order_by(desc(UserResponse.created_at)).first()
+            ).order_by(desc(UserResponse.created_at), desc(UserResponse.id)).first()
             
             if not response:
                 return {"error": "No user data found"}

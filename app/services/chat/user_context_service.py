@@ -47,7 +47,7 @@ class UserContextService:
             # Get user response (health survey data)
             user_response = self.db.query(UserResponse).filter(
                 UserResponse.uid == user_id
-            ).order_by(desc(UserResponse.created_at)).first()
+            ).order_by(desc(UserResponse.created_at), desc(UserResponse.id)).first()
             
             # Get cycle info
             cycle_info = self.cycle_service.get_cycle_phase_info(user_id)

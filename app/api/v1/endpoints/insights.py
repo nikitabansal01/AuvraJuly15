@@ -8,7 +8,7 @@ Provides endpoints for:
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, extract
+from sqlalchemy import func, and_, or_, extract
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import date, datetime, timedelta
@@ -39,6 +39,7 @@ class WeeklyTrend(BaseModel):
     movement_completed: int
     mindfulness_completed: int
     total_completed: int
+    total_assigned: int = 0
 
 
 class SymptomPatternResponse(BaseModel):
@@ -46,7 +47,9 @@ class SymptomPatternResponse(BaseModel):
     category_breakdown: List[CategoryStats]
     weekly_trends: List[WeeklyTrend]
     top_liked_categories: List[str]
-    insights: List[str]  # AI-generated insights
+    insights: List[str]  # Deterministic summaries of recorded activity
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -83,17 +86,23 @@ async def get_symptom_patterns(
     # Get all action items for this user (join with ActionPlan to filter by date)
     from app.utils.timezone_utils import get_user_current_date
     end_date = get_user_current_date(uid, db)
-    start_date = end_date - timedelta(days=30)
+    start_date = end_date - timedelta(days=29)
     
-    items = db.query(ActionPlanItem).join(
+    rows = db.query(ActionPlanItem, ActionPlan.plan_date).join(
         ActionPlan, ActionPlanItem.plan_id == ActionPlan.id
     ).filter(
         and_(
-            ActionPlanItem.uid == uid,
+            ActionPlan.uid == uid,
+            or_(ActionPlanItem.uid == uid, ActionPlanItem.uid.is_(None)),
+            # Retired, unperformed suggestions are not missed assignments.
+            # Preserve every recorded completion, including legacy retired rows.
+            or_(ActionPlanItem.is_replaced.isnot(True), ActionPlanItem.is_completed.is_(True)),
             ActionPlan.plan_date >= start_date,
             ActionPlan.plan_date <= end_date
         )
     ).all()
+    items = [item for item, _ in rows]
+    assigned_dates = {item.id: plan_date for item, plan_date in rows}
     
     if not items:
         return SymptomPatternResponse(
@@ -101,7 +110,8 @@ async def get_symptom_patterns(
             category_breakdown=[],
             weekly_trends=[],
             top_liked_categories=[],
-            insights=["Start completing actions to see your patterns!"]
+            insights=["Start completing actions to see your patterns!"],
+            period_start=start_date.isoformat(), period_end=end_date.isoformat(),
         )
     
     # Calculate category breakdown
@@ -117,10 +127,14 @@ async def get_symptom_patterns(
     # Get feedback for items
     item_ids = [item.id for item in items]
     feedbacks = db.query(ActionPlanFeedback).filter(
+        ActionPlanFeedback.uid == uid,
         ActionPlanFeedback.item_id.in_(item_ids)
-    ).all()
+    ).order_by(func.coalesce(ActionPlanFeedback.feedback_given_at, ActionPlanFeedback.created_at).desc(),
+               ActionPlanFeedback.id.desc()).all()
     
-    feedback_map = {f.item_id: f for f in feedbacks}
+    feedback_map = {}
+    for feedback in feedbacks:
+        feedback_map.setdefault(feedback.item_id, feedback)
     for item in items:
         cat = item.category or "unknown"
         if item.id in feedback_map:
@@ -151,7 +165,8 @@ async def get_symptom_patterns(
         week_end = end_date - timedelta(days=7 * week_offset)
         week_start = week_end - timedelta(days=6)
         
-        week_items = [i for i in items if week_start <= i.plan_date <= week_end and i.is_completed]
+        week_assigned = [i for i in items if week_start <= assigned_dates[i.id] <= week_end]
+        week_items = [i for i in week_assigned if i.is_completed]
         
         food = len([i for i in week_items if i.category == "food"])
         movement = len([i for i in week_items if i.category == "movement"])
@@ -162,7 +177,8 @@ async def get_symptom_patterns(
             food_completed=food,
             movement_completed=movement,
             mindfulness_completed=mindfulness,
-            total_completed=food + movement + mindfulness
+            total_completed=len(week_items),
+            total_assigned=len(week_assigned),
         ))
     
     weekly_trends.reverse()  # Oldest first
@@ -184,11 +200,11 @@ async def get_symptom_patterns(
     overall_rate = (total_completed / total_items * 100) if total_items > 0 else 0
     
     if overall_rate >= 80:
-        insights.append(f"🌟 Amazing! You completed {round(overall_rate)}% of your actions this month!")
+        insights.append(f"🌟 You completed {total_completed} of {total_items} recorded actions in the last 30 days ({round(overall_rate)}%).")
     elif overall_rate >= 50:
-        insights.append(f"👍 Good progress! {round(overall_rate)}% completion rate. Keep going!")
+        insights.append(f"👍 You completed {total_completed} of {total_items} recorded actions in the last 30 days ({round(overall_rate)}%).")
     else:
-        insights.append(f"💪 You completed {round(overall_rate)}% of actions. Every small step counts!")
+        insights.append(f"💪 You completed {total_completed} of {total_items} recorded actions in the last 30 days. Every small step counts!")
     
     # Category-specific insights
     for stat in category_stats:
@@ -198,7 +214,7 @@ async def get_symptom_patterns(
             insights.append(f"❤️ You seem to love {stat.category} actions!")
     
     # Trend insight
-    if len(weekly_trends) >= 2:
+    if len(weekly_trends) >= 2 and all(week.total_assigned > 0 for week in weekly_trends[-2:]):
         recent = weekly_trends[-1].total_completed
         previous = weekly_trends[-2].total_completed
         if recent > previous:
@@ -211,7 +227,8 @@ async def get_symptom_patterns(
         category_breakdown=category_stats,
         weekly_trends=weekly_trends,
         top_liked_categories=top_liked_categories,
-        insights=insights[:5]  # Max 5 insights
+        insights=insights[:5],  # Max 5 insights
+        period_start=start_date.isoformat(), period_end=end_date.isoformat(),
     )
 
 

@@ -368,7 +368,7 @@ class WeeklyCheckInAI:
             context["first_name"] = profile.name.split()[0] if profile.name else None
         
         # Get user response (symptoms, conditions)
-        user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).first()
+        user_response = self.db.query(UserResponse).filter(UserResponse.uid == uid).order_by(UserResponse.created_at.desc(), UserResponse.id.desc()).first()
         if user_response:
             # Extract diagnosed conditions for personalization
             # SANITIZE: Remove UI placeholders like "None of the above"
