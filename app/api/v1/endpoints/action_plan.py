@@ -13,6 +13,7 @@ Endpoints:
 """
 
 import logging
+from app.utils.action_images import action_image_url
 import time
 from datetime import date, datetime, timezone
 from typing import Optional, List
@@ -1996,7 +1997,7 @@ async def _carry_forward_items_to_today(
                     "mindfulness_durations": item.mindfulness_durations or [],
                     
                     # Images - preserve original images
-                    "hero_image_url": item.hero_image_url,
+                    "hero_image_url": action_image_url(item.title, item.hero_image_url),
                     "hero_image_prompt": item.hero_image_prompt,
                     
                     # Research
@@ -2267,7 +2268,7 @@ def _build_plan_response(plan, db) -> dict:
             "purpose": item.purpose,
             "target_hormone": item.target_hormone,
             "hormone_persona_intro": item.hormone_persona_intro,
-            "hero_image_url": item.hero_image_url,
+            "hero_image_url": action_image_url(item.title, item.hero_image_url),
             "research_studies": item.research_studies or [],
             "conditions": item.conditions or [],
             "symptoms": item.symptoms or [],
@@ -2385,7 +2386,7 @@ def _convert_to_legacy_format(result: dict, weekly_checkin_status: dict = None) 
             "advices": [],
             
             # New fields (extension)
-            "hero_image_url": action.get("hero_image_url"),
+            "hero_image_url": action_image_url(action.get("title") or "", action.get("hero_image_url")),
             "hormone_persona_intro": action.get("hormone_persona_intro"),
             "variants": action.get("variants", []),
             

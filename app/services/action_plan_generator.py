@@ -17,6 +17,7 @@ Features:
 import os
 import json
 import logging
+from app.utils.action_images import action_image_url
 import time
 import random
 import asyncio
@@ -2697,7 +2698,7 @@ class ActionPlanGenerator:
                         "mindfulness_durations": item.mindfulness_durations or [],
                         
                         # Images - preserve original images
-                        "hero_image_url": item.hero_image_url,
+                        "hero_image_url": action_image_url(item.title, item.hero_image_url),
                         "hero_image_prompt": item.hero_image_prompt,
                         
                         # Research
@@ -7117,7 +7118,7 @@ JSON ONLY:
                     "purpose": item.purpose,
                     "target_hormone": item.target_hormone,
                     "hormone_persona_intro": item.hormone_persona_intro,
-                    "hero_image_url": item.hero_image_url,
+                    "hero_image_url": action_image_url(item.title, item.hero_image_url),
                     "research_studies": item.research_studies or [],
                     "conditions": item.conditions or [],
                     "symptoms": item.symptoms or [],
@@ -7929,7 +7930,7 @@ Include these papers in the research_studies field of your response.
                     "title": new_item.title,
                     "specific_action": new_item.specific_action,
                     "purpose": new_item.purpose,
-                    "hero_image_url": new_item.hero_image_url,
+                    "hero_image_url": action_image_url(new_item.title, new_item.hero_image_url),
                     "target_hormone": new_item.target_hormone,
                     "hormone_persona_intro": new_item.hormone_persona_intro,
                     "research_studies": new_item.research_studies or [],
@@ -8645,7 +8646,7 @@ PMID: {paper.get('pmid', '')}
                     "title": new_item.title,
                     "specific_action": new_item.specific_action,
                     "purpose": new_item.purpose,
-                    "hero_image_url": new_item.hero_image_url,
+                    "hero_image_url": action_image_url(new_item.title, new_item.hero_image_url),
                     "target_hormone": new_item.target_hormone,
                     "hormone_persona_intro": new_item.hormone_persona_intro,
                     "research_studies": new_item.research_studies or [],
@@ -9439,7 +9440,7 @@ Respond with valid JSON only."""
                         "purpose": new_item.purpose,
                         "target_hormone": new_item.target_hormone,
                         "hormone_persona_intro": new_item.hormone_persona_intro,
-                        "hero_image_url": new_item.hero_image_url,
+                        "hero_image_url": action_image_url(new_item.title, new_item.hero_image_url),
                         "time_slot": new_item.time_slot,
                         "symptoms": new_item.symptoms or [],
                         "conditions": new_item.conditions or []
@@ -9455,7 +9456,7 @@ Respond with valid JSON only."""
                     "purpose": new_item.purpose,
                     "target_hormone": new_item.target_hormone,
                     "hormone_persona_intro": new_item.hormone_persona_intro,
-                    "hero_image_url": new_item.hero_image_url,
+                    "hero_image_url": action_image_url(new_item.title, new_item.hero_image_url),
                     "time_slot": new_item.time_slot,
                     "research_studies": new_item.research_studies or [],
                     # Add category-specific fields
